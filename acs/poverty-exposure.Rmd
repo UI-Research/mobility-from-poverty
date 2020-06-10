@@ -1,0 +1,246 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    css: www/web_report.css
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+![](www/images/urban-institute-logo.png)
+
+# Poverty Exposure
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(censusapi)
+library(urbnthemes)
+library(reactable)
+
+set_urbn_defaults(style = "print")
+
+source(here::here("R", "census_api_key.R"))
+source(here::here("R", "get_vars.R"))
+```
+
+## 2018 ACS 5-Year  Estimates
+
+**Index:** the share of people who are poor in a county who live in census tracts with poverty rates over 40%. If a county's overall poverty rate is 20% but people experiencing poverty are spread out evenly across all census tracts, the index would equal 0; if they were heavily concentrated in certain tracts, the index would approach 1. 
+
+1. Pull people and poverty rates for Census tracts. 
+2. Count the number of people in poverty who live in Census tracts with poverty > 40% in each county. 
+3. Count the number of people in poverty who live in each county. 
+4. Join and test the summarized tract data and the county data.
+5. Divide the number from 2. by the total number of people in poverty in each Census tract. 
+
+All numbers come for the Census API. The documentation for the Census API is available [here](https://api.census.gov/data/2018/acs/acs5/profile/variables.html).
+
+### 1. Pull people and poverty rates for Census tracts. 
+
+```{r load-tract-data}
+vars <- c(
+  "DP03_0128PE", # Estimate!!PERCENTAGE OF FAMILIES AND PEOPLE WHOSE INCOME IN 
+                 #THE PAST 12 MONTHS IS BELOW THE POVERTY LEVEL!!All people
+  "DP03_0128PM"
+)
+
+# pull Census tracts for 2018
+tracts <- get_vars(year = 2018, vars = vars, geography = "tract")
+
+# rename the variables
+tracts <- tracts %>%
+  rename(people = B01003_001E,
+         poverty = DP03_0128PE,
+         poverty_moe = DP03_0128PM)
+```
+
+In 2018, 792 Census tracts had suppressed poverty rates. ___ of the tracts have no populations. The suppressed cell represent about 380,000 individuals.
+
+The code in the cells `-222222222` because the value does not exist or the cell is too small. Likewise, `-666666666` is reported for the margin of errors does not exist or the cell is too small. 
+
+```{r suppressed-tracts}
+tracts %>%
+  filter(poverty == -666666666) %>%
+  count()
+
+tracts %>%
+  filter(poverty == -666666666) %>%
+  summarize(sum(people))
+```
+
+We replace the suppressed values with zeros. This will only affect the count of people who experience poverty in high-poverty areas. There is one county, outlined later, that has issues. 
+
+```{r zero-suppressed-tracts}
+tracts <- tracts %>%
+  mutate(poverty = if_else(poverty == -666666666, 0, poverty))
+```
+
+Check the number of people. 323 million seems about right for 2018. 
+
+```{r check-total-population}
+tracts %>%
+  summarize(sum(people))
+```
+
+### 2. Count the number of people in poverty who live in Census tracts with poverty > 40% in each county. 
+
+```{r count-high-poverty}
+tracts <- tracts %>%
+  mutate(high_poverty = if_else(poverty > 40, people * poverty * 0.01, 0))
+
+counties_summary <- tracts %>%
+  group_by(state, county) %>%
+  summarize(people = sum(people), 
+            high_poverty = sum(high_poverty),
+            tracts = n()) %>%
+  ungroup()
+```
+
+### 3. Count the number of people in poverty who live in each county. 
+
+```{r load-county-data}
+counties <- get_vars(year = 2018, vars = vars, geography = "county") %>%
+  rename(people_county = B01003_001E,
+         poverty_rate_county = DP03_0128PE,
+         poverty_rate_county_moe = DP03_0128PM)
+```
+
+Rio Arriba County, New Mexico was the only county with a suppressed poverty level in 2018. Its tracts are also suppressed with code -888888888. It will need to be a missing value. 
+
+```{r check-problematic-county}
+tracts %>%
+  filter(state == "35", county == "039")
+
+counties <- counties %>%
+  mutate(poverty_rate_county = ifelse(state == "35" & county == "039", NA, poverty_rate_county))
+```
+
+### 4. Join and test the summarized tract data and the county data.
+
+Join data and calculate the poverty exposure metric. 
+
+This should be a one-to-one match between the `r nrow(counties)` in `counties` and `r nrow(counties_summary)` in `counties_summary`.
+
+```{r join-data}
+counties_joined <- left_join(counties, counties_summary, by = c("state", "county"))
+```
+
+The anti-join is empty.
+
+```{r check-mismatches}
+stopifnot(
+  nrow(anti_join(counties, counties_summary, by = c("state", "county"))) == 0
+)
+```
+
+Check population sums
+
+```{r compare-populations}
+stopifnot(
+  counties_joined %>%
+    filter(people_county != people) %>%
+    nrow() == 0
+)
+```
+
+### 5. Divide the number from 2. by the total number of people in poverty in each Census tract.
+
+```{r calculate-poverty-exposure}
+counties_joined <- counties_joined %>%
+  mutate(poverty_county = people_county * poverty_rate_county * 0.01) 
+  
+counties_joined <- counties_joined %>%
+  mutate(poverty_exposure = high_poverty / poverty_county) 
+
+counties_joined %>%
+  arrange(desc(poverty_exposure))
+```
+
+The only missing value is for Rio Arriba County, New Mexico.
+
+```{r}
+counties_joined %>%
+  filter(is.na(poverty_exposure))
+```
+
+### 6. Validation
+
+The table shows the calculated metrics. Click on the variable columns to sort the table. 
+
+```{r table, echo = FALSE}
+counties_joined %>%
+  mutate(FIPS = paste0(state, county)) %>%
+  select(
+    FIPS,
+    tracts,
+    poverty_rate_county,
+    poverty_exposure
+  ) %>%
+  mutate_if(is.numeric, round, digits = 3) %>%
+  reactable(
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 10,
+    highlight = TRUE
+  )
+```
+
+```{r validation-plots}
+counties_joined %>%
+  ggplot(aes(poverty_exposure)) +
+  geom_histogram() +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  labs(title = "Most Counties in 2018 Have No Poverty Exposure",
+       subtitle = "The Distribution of Poverty Exposure")
+
+counties_joined %>%
+  ggplot(aes(tracts, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Counties")
+  
+counties_joined %>%
+  ggplot(aes(poverty_rate_county, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "County Poverty Rate and COunty Poverty Exposure Are Related")
+```
+
+### 7. Outstanding questions
+
+* What value should we give counties consisting of exactly one tract?
+* Johnson County, Illinois (FIPS == 17087) has a poverty exposure metric of 1.49. One of its four tracts have a poverty estimate of 100% with a margin of error 0.79. 
+* What geographic information are we using the join the data?
+* For earlier years, do I only pull non-overlapping 5-year estimates?
+* How should we account for uncertainty? Should I calculate coefficients of variation before calculating the metric?
+* Alternative: report missing values for all counties with poverty rates suppressed in at least one tract?
+
+```{r prep-final-data, echo = FALSE}
+final_data <- counties_joined
+```
