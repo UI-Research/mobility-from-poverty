@@ -1,0 +1,14 @@
+# Metric template
+
+Brief description
+
+* Final data name(s):
+* Data source(s):
+* Year(s):
+* Notes:
+    * Limitations
+    * Missingness
+    
+Outline the process for creating the data    
+    
+<Repeat above information for additional metrics>

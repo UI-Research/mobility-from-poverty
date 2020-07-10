@@ -7,12 +7,15 @@ This repository contains code to construct 26 county-level metrics that broadly 
 
 The objective of this repository is to make all results reproducible, to document processes and assumptions, and to make it easier for analysts to produce metrics in future years. A little extra effort today can make a big difference in the future. For more motivation, please read the motivation for a style guide by  [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation). If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
-The guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org). 
+This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org). 
 
 # Table of Contents
 
 * [Repository Contents](#repository-contents)
-* [File Description](#file-description)
+* [File Descriptions](#file-descriptions) 
+    * [Recent File](#recent-file)
+    * [Multi-Year File](#multi-year-file)
+    * [Variables](#variables)
 * [Project Organization](#project-organization)
 * [GitHub](#github)
     * [GitHub Standards](#github-standards)
@@ -35,7 +38,17 @@ todo(aaron): clean up repository contents
 
 # File Description
 
-todo(aaron): Add a description of the final file. Include a table with variables and informaiton about the variables. 
+## Recent File
+
+The recent file has exactly one year per county and contains the most recent year for each of the mobility metrics.
+
+## Multi-Year File
+
+The multi-year file contains one year per county per year. It contains missing values where metrics are unavailable or have not been computed. 
+
+## Variables
+
+todo(aaron): Include a table with variables and informaiton about the variables. 
 
 # Project Organization
 
@@ -49,16 +62,16 @@ todo(aaron): Add a description of the final file. Include a table with variables
 
 # GitHub
 
-## GitHub Standard
+## GitHub Standards
 
 * Do not work on the `master` branch. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
-* If you are using files or scripts created by others, be sure to regularly pull from the master branch.
+* Regularly pull from the remote `master` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
 * The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
 
 ## GitHub Workflow
 
-1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch. 
+1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
 2. Commit changes regularly with detailed commit messages. 
 3. Regularly push your code to your remote branch on GitHub. 
 4. To contribute to the `master` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
@@ -74,18 +87,18 @@ todo(aaron): Add a description of the final file. Include a table with variables
 
 ### Joining variables
 
-* The first three variables in every file should be `state`, `county`, and `tract`. `state` should be a two characters FIPS code, `county` should be a three character FIPS code, and `tract` should be a six character FIPS code. All variables should have leading zeros for ids beginning in zeros. 
+* The first four variables in every file should be `year`, `state`, `county`, and `tract`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code, `county` should be a three character FIPS code, and `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 ### Values
 
-* Include all counties even if a county is all missing values. Every join to the master file should be one-to-one.
+* Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between o and 1 inclusive with a leading zero. (75% should be 0.75)
 * Missing values should be coded as `NA`
 
 ### Sorting
 
-* All files should be sorted by `state`, `county`, and `tract`, the first three variables in every file. 
+* All files should be sorted by `year`, `state`, `county`, and `tract`, the first four variables in every file. 
 
 # Code Standards 
 
@@ -100,6 +113,21 @@ todo(aaron): Add a description of the final file. Include a table with variables
 
 > Whenever you are tempted to type something into a print statement or a debugger expression, write it as a test instead. — Martin Fowler
 
+* The top of each script should clearly label the purpose of the script. Here is an example Stata header:
+
+```
+/*************************/
+Ancestor Program: [Path to the program including the name of the program]
+original data: [Path of where the data live]
+Description: [Overall description]
+(1)[insert task description here, and then copy & paste this to indicate where that task is later in your program]
+(2)
+(3) [etc...]
+*/
+/*************************/
+
+```
+
 # Code Review
 
 ## Scope of the review
@@ -107,7 +135,7 @@ todo(aaron): Add a description of the final file. Include a table with variables
 Code and documentation will be reviewed by Aaron R. Williams and possibly additional reviewers. Aaron's code and documentation will be reviewed by someone else. Code reviews will be handled through GitHub. The scope of the review will involve the following three levels:
 
 1. Reproduction of results. 
-    * Code should not error out. 
+    * Code should not error out. Warnings and notes are also cause for concern. 
     * The code should exactly recreate the final result. 
 2. A line-by-line review of code logic. 
     * Variable construction: What is the unit of analysis? Is it consistent throughout the dataset?
@@ -131,7 +159,9 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
 
 # Creating the Final File
 
-todo(aaron): Create a process for reating the final file
+There will be two final files. The first file with be a year-county file with one row per county per year. The second file will be county-level file with only the most recent year of data for each variable. Both files will be [tidy data](https://vita.had.co.nz/papers/tidy-data.pdf) with each variable in its own column, each observation in its own row, and each value in its own cell. 
+
+todo(aaron): Write a program to pull the most recent year from the county-year file
 
 # License
 
