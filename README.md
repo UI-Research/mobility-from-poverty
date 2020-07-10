@@ -5,41 +5,71 @@ This repository contains code to construct 26 county-level metrics that broadly 
 
 # Motivation
 
-The objective of this repository is to make all results reproducible, to document processes and assumptions, and to make it easier for analysts to produce metrics in future years. A little extra effort today can make a big difference in the future. For more motivation, please read the motivation for a style guide by  [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation). 
+The objective of this repository is to make all results reproducible, to document processes and assumptions, and to make it easier for analysts to produce metrics in future years. A little extra effort today can make a big difference in the future. For more motivation, please read the motivation for a style guide by  [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation). If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
 The guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org). 
 
-# Contents
+# Table of Contents
 
-todo(aaron): link to sections
+* [Repository Contents](#repository-contents)
+* [File Description](#file-description)
+* [Project Organization](#project-organization)
+* [GitHub](#github)
+    * [GitHub Standards](#github-standards)
+    * [GitHub Workflow](#github-workflow)
+* [Data Standards](#data-standards)
+    * [Joining Variables](#joining-variables)
+    * [Values](#values)
+    * [Sorting](#sorting)
+* [Code Standards](#code-standards)
+* [Code Review](#code-review)
+    * [Scope of the Review](#scope-of-the-review)
+    * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
+* [Creating the Final File](#creating-the-final-file)
+* [License](#license)
+* [Contact](#contact)
 
-# Contributing
+# Repository Contents
 
-## Organization
+todo(aaron): clean up repository contents
+
+# File Description
+
+todo(aaron): Add a description of the final file. Include a table with variables and informaiton about the variables. 
+
+# Project Organization
 
 * Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
 * Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code. 
-* Avoid absolute file paths. If using R use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
+* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
 * Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
 
-## GitHub Workflow
+# GitHub
+
+## GitHub Standard
 
 * Do not work on the `master` branch. 
-* Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch. 
-* If you are using files or scripts created by others, be sure to regularly pull from the master branch. 
-* Commit changes regularly with detailed commit messages. 
-* Regularly push your code to your remote branch on GitHub. 
-* To contribute to the `master` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
-* Aaron R. Williams will review and incorporate changes into the `master` branch. He may ask you to make changes. 
+* **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
+* If you are using files or scripts created by others, be sure to regularly pull from the master branch.
+* The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
+
+## GitHub Workflow
+
+1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch. 
+2. Commit changes regularly with detailed commit messages. 
+3. Regularly push your code to your remote branch on GitHub. 
+4. To contribute to the `master` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
+5. Aaron R. Williams will review and incorporate changes into the `master` branch. He may ask you to make changes. 
 
 **Please reach out Aaron with any questions.** The only thing he loves more than version control is helping people learn version control. 
 
-## Data Standards
+# Data Standards
 
-* All final files should be in the .csv format.
+* All final files should be in the `.csv` format. 
+* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytical errors. 
 * Important intermediate files should be added to Box. Final data files should be added to Box.
 
 ### Joining variables
@@ -57,12 +87,18 @@ todo(aaron): link to sections
 
 * All files should be sorted by `state`, `county`, and `tract`, the first three variables in every file. 
 
-## Code Standards 
+# Code Standards 
 
+* The [tidyverse style guide](https://style.tidyverse.org/) was written for R but contains lots of good language-agnostic suggestions for programming. 
 * Use descriptive names for all variables, data sets, functions, and macros. Avoid abbreviations. 
-* Include comments that state why, not what. Include comments for all assumptions. 
+* Include comments that state "why", not "what". Include comments for all assumptions. 
 * Don't repeat yourself. If you do anything more than twice, turn it into a function or macro. Document the function or macro. 
 * Use ISO 8601 dates (YYYY-MM-DD).
+* Write assertions and in-line tests. Assertions, things expected to always be true about the code, should be tested in-line. [healthinequality-code](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#assert-what-youre-expecting-to-be-true) offers some good background. `assert` is useful in Stata and `stopifnot()` is useful in R. 
+* Write tests for final files. Write a test if all numbers should be non-negative. Write a test if values should not exceed $3,000. 
+* Write tests for macros and functions to ensure appropriate behavior. 
+
+> Whenever you are tempted to type something into a print statement or a debugger expression, write it as a test instead. — Martin Fowler
 
 # Code Review
 
@@ -89,12 +125,15 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
 ## How to Prepare for a Code Review
 
 * Data access should be abundantly clear. Scripts should download the data or instructions for the necessary files located on Box should be included. 
-* Write tests with code like `assert` and `stopifnot()` to demonstrate the validity of calculations. 
 * State if special computation was used (i.e. the Stata server or SAS server). 
 * If scripts use many variable names, make sure to include a codebook so reviewers can follow along.
 * For calculations, code should be commented with clear variable labels. 
 
-# License for Code
+# Creating the Final File
+
+todo(aaron): Create a process for reating the final file
+
+# License
 
 todo(aaron): find the appropriate license
 
