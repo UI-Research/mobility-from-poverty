@@ -24,6 +24,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Joining Variables](#joining-variables)
     * [Values](#values)
     * [Sorting](#sorting)
+    * [Standard Errors](#standard-errors)
 * [Code Standards](#code-standards)
 * [Code Review](#code-review)
     * [Scope of the Review](#scope-of-the-review)
@@ -53,7 +54,7 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 # Project Organization
 
 * Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code. Start the `README.md` using `README-template.md`.
+* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
@@ -87,25 +88,30 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 
 ### Joining variables
 
-* The first four variables in every file should be `year`, `state`, `county`, and `tract`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code, `county` should be a three character FIPS code, and `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
+* The first three variables in every file should be `year`, `state`, and `county`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code, `county` should be a three character FIPS code. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 ### Values
 
 * Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between o and 1 inclusive with a leading zero. (75% should be 0.75)
-* Missing values should be coded as `NA`
+* Missing values should be coded as empty-
 
 ### Sorting
 
-* All files should be sorted by `year`, `state`, `county`, and `tract`, the first four variables in every file. 
+* All files should be sorted by `year`, `state`, and `county`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
+
+### Standard Errors
+
+todo(aaron): include method for standard errors
+
+todo(aaron): add naming convention for standard errors
 
 # Code Standards 
 
 * The [tidyverse style guide](https://style.tidyverse.org/) was written for R but contains lots of good language-agnostic suggestions for programming. 
 * Use descriptive names for all variables, data sets, functions, and macros. Avoid abbreviations. 
 * Include comments that state "why", not "what". Include comments for all assumptions. 
-* Don't repeat yourself. If you do anything more than twice, turn it into a function or macro. Document the function or macro. 
 * Use ISO 8601 dates (YYYY-MM-DD).
 * Write assertions and in-line tests. Assertions, things expected to always be true about the code, should be tested in-line. [healthinequality-code](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#assert-what-youre-expecting-to-be-true) offers some good background. `assert` is useful in Stata and `stopifnot()` is useful in R. 
 * Write tests for final files. Write a test if all numbers should be non-negative. Write a test if values should not exceed $3,000. 
@@ -146,7 +152,7 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
     * Look at merges/joins and appends - do the data appear to be matched appropriately? Are there identical non-ID variables in both datasets? How are non-matching data handled or dropped?
     * Are weights used consistently?
 3. Code Architecture/Readability.
-    * Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function.
+    * Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function or macro.
     * Is there a place where a variable is rebuilt or changed later on?
     * Are values transcribed by hand?
 
