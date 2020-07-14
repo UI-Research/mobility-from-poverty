@@ -54,7 +54,7 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 # Project Organization
 
 * Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code. Start the `README.md` using `README-template.md`.
+* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
