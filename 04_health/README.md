@@ -10,6 +10,6 @@ Brief description
     * Limitations
     * Missingness
 
-Outline the process for creating the data    
+Outline the process for creating the data including assumptions and methodology   
 
 <Repeat above information for additional metrics>

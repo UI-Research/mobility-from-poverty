@@ -66,7 +66,7 @@ todo(aaron): Include a table with variables and information about the variables.
 # Project Organization
 
 * Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
+* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
