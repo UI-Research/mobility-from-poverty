@@ -32,10 +32,11 @@ get_vars <- function(year, vars, geography) {
     
     combined_data <- left_join(population, acs_profile, by = c("state", "county"))
     
+  } else if (geography == "place") {
+    
+    combined_data <- left_join(population, acs_profile, by = c("state", "place"))
+    
   }
-  
-  
-  
     
   return(as_tibble(combined_data))
   
