@@ -19,7 +19,7 @@ Programmed by Kevin Werner
 %let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_preschool.csv;
 
 libname IPUMS "V:\Centers\Ibp\KWerner\Kevin\Mobility\raw";
-filename ASCIIDAT "V:\Centers\Ibp\KWerner\Kevin\Mobility\raw\usa_00012.dat";
+filename ASCIIDAT "V:\Centers\Ibp\KWerner\Kevin\Mobility\raw\raw_preschool.dat";
 libname libmain "V:\Centers\Ibp\KWerner\Kevin\Mobility";
 
 
