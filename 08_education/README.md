@@ -26,3 +26,18 @@ Outline the process for creating the data
 Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created
 county FIPS using Paul's method. Then, I calculated the number of 3 and 4 year olds, 
 the number of children in pre school, and divided them. 
+
+
+* Final data name(s): metrics_college
+* Analyst(s): Kevin Werner and Paul Johnson
+* Data source(s): ACS
+* Year(s): 2018
+* Notes:
+	The compute_ code computes the metrics. The finalize_ code computes the
+	confidence intervals and outputs the .csv.
+	
+	NOTE: must run the 1_, 2_, and 3_ code in the income subfolder first.
+
+Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created
+county FIPS using Paul's method. Then, we calculated the number of 19-20 year olds, 
+the number with a high school degree and divided them. 
