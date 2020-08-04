@@ -1,0 +1,26 @@
+*=================================================================;
+*Compute county-level unemployment/joblessness metrics;
+*=================================================================;
+%macro compute_metrics_unemployment(microdata_file,metrics_file);
+proc means data=&microdata_file.(where=(25<=age<=54)) noprint; 
+  output out=num_25_thru_54(drop=_type_) sum=num_25_thru_54;
+  by statefip county;
+  var perwt;
+run;
+proc means data=&microdata_file.(where=((25<=age<=54) and empstat=1)) noprint; 
+  output out=num_employed(drop=_type_ _freq_) sum=num_employed;
+  by statefip county;
+  var perwt;
+run;
+data &metrics_file.;
+  merge num_25_thru_54(in=a) num_employed(in=b);
+  by statefip county;
+  if not a or not b then put "error: missing a matching obs: " statefip= county= num_25_thru_54= num_employed=;
+  else if num_25_thru_54 <=0 then put "warning: no 25-64 yr-olds: " statefip= county= num_25_thru_54= num_employed=;
+  else share_employed = num_employed/num_25_thru_54;
+run;
+%mend compute_metrics_unemployment;
+
+%compute_metrics_unemployment(lib2018.microdata,lib2018.metrics_unemployment);
+proc means data=lib2018.metrics_unemployment;
+run;
