@@ -19,12 +19,15 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 * [Project Organization](#project-organization)
 * [GitHub](#github)
     * [GitHub Standards](#github-standards)
+    * [Github Basic](#github-basics)
     * [GitHub Workflow](#github-workflow)
 * [Data Standards](#data-standards)
     * [Joining Variables](#joining-variables)
     * [Values](#values)
     * [Sorting](#sorting)
     * [Standard Errors](#standard-errors)
+    * [Quality Flags](#quality-flags)
+    * [Data Dictionary](#data-dictionary)
 * [Code Standards](#code-standards)
 * [Code Review](#code-review)
     * [Scope of the Review](#scope-of-the-review)
@@ -82,6 +85,22 @@ todo(aaron): Include a table with variables and information about the variables.
 * Regularly pull from the remote `master` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
 * The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
 
+## GitHub Basics
+
+An Urban Institute-focused introduction to GitHub including installation instructions is available [here](https://ui-research.github.io/urbngit/). 
+
+After installing Git and setting up a GitHub account, follow these steps to get started on Windows:
+
+1. Right click and select "Git Bash Here" where you want to copy the repository (main folder) on your computer. 
+2. Submit `git clone https://github.com/UI-Research/gates-mobility-metrics.git`. You will need to enter your user email and password. Everything will then copy to your computer.
+3. Close Git Bash. 
+4. Enter the `gates-mobility-metrics` folder, right click, and select "Git Bash Here". 
+5. Submit `git checkout -b aaron` but replace `aaron` with your name.
+
+After this, you should be able to edit files and then add them to Git with the process outlined in the guide above. 
+
+Email awilliams@urban.org if you have questions about working with Mac or Linux. 
+
 ## GitHub Workflow
 
 1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
@@ -94,7 +113,8 @@ todo(aaron): Include a table with variables and information about the variables.
 
 # Data Standards
 
-* All final files should be in the `.csv` format. 
+* All final files should be in the `.csv` format. The files should be delimited with a comma. 
+* Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
 * Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
 * Important intermediate files should be added to Box. Final data files should be added to Box.
 
@@ -107,7 +127,7 @@ todo(aaron): Include a table with variables and information about the variables.
 * Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between o and 1 inclusive with a leading zero. (75% should be 0.75)
-* Missing values should be coded as empty-
+* Missing values should be coded as empty cells.
 
 ### Sorting
 
@@ -115,9 +135,28 @@ todo(aaron): Include a table with variables and information about the variables.
 
 ### Standard Errors
 
-todo(aaron): include method for standard errors
+* If possible, construct 95 percent confidence intervals for metrics. 
+* Add confidence bounds as columns in the `.csv` files. The variables should have the suffixes `_lb` for lower bound and `_ub` for upper bound. 
+* Do not include the `_lb` and `_ub` if a 95 percent confidence interval calculation isn't possible.
 
-todo(aaron): add naming convention for standard errors
+### Quality Flags
+
+* Construct a "quality" flag for each constructed metric. Include it as a variable the suffix `_quality`. 
+* All observations should receive one of the following three grades or a missing value. 
+
+| Score | Description |
+|-------|:----------|
+| 1  |  The calculated metric for the observation is high-quality and there are no concerns with measurement error, missingness, sample size, or precision.  | 
+| 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
+| 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
+|  | It was not possible to calculate a metric for the county. |
+
+* Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`. 
+
+### Data Dictionary 
+
+* We will construct a detailed data dictionary for users of the data. 
+* Be sure to include information about the format of your metrics in the metric-specific READMEs. Completed metrics will be added to the [variables table](#variables) in this README.
 
 # Code Standards 
 
