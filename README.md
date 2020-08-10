@@ -26,6 +26,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Values](#values)
     * [Sorting](#sorting)
     * [Standard Errors](#standard-errors)
+    * [Quality Flags](#quality-flags)
     * [Data Dictionary](#data-dictionary)
 * [Code Standards](#code-standards)
 * [Code Review](#code-review)
@@ -125,6 +126,20 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 * If possible, construct 95 percent confidence intervals for metrics. 
 * Add confidence bounds as columns in the `.csv` files. The variables should have the suffixes `_lb` for lower bound and `_ub` for upper bound. 
 * Do not include the `_lb` and `_ub` if a 95 percent confidence interval calculation isn't possible.
+
+### Quality Flags
+
+* Construct a "quality" flag for each constructed metric. Include it as a variable the suffix `_quality`. 
+* All observations should receive one of the following three grades or a missing value. 
+
+| Score | Description |
+|-------|:----------|
+| 1  |  The calculated metric for the observation is high-quality and there are no concerns with measurement error, missingness, sample size, or precision.  | 
+| 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
+| 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
+|  | It was not possible to calculate a metric for the county. |
+
+* Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`. 
 
 ### Data Dictionary 
 
