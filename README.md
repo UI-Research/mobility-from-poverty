@@ -32,6 +32,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 * [Code Review](#code-review)
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
+    * [Code Reviews in GitHub](#code-reviews-in-github)
 * [Creating the Final File](#creating-the-final-file)
 * [License](#license)
 * [Contact](#contact)
@@ -146,7 +147,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 | Score | Description |
 |-------|:----------|
-| 1  |  The calculated metric for the observation is high-quality and there are no concerns with measurement error, missingness, sample size, or precision.  | 
+| 1  |  The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.  | 
 | 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
 | 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
 |  | It was not possible to calculate a metric for the county. |
@@ -213,6 +214,38 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
 * State if special computation was used (i.e. the Stata server or SAS server). 
 * If scripts use many variable names, make sure to include a codebook so reviewers can follow along.
 * For calculations, code should be commented with clear variable labels. 
+
+## Code Reviews in GitHub
+
+Our code review process will be handled through GitHub, which has powerful tools for code review. [This page outlines the functionality.](https://github.com/features/code-review/)
+
+### 1. Request
+
+In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `master` is handled through pull requests. 
+
+For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. 
+
+<img src="images/request-review.png" width="400" height="200">
+
+### 2. Review
+
+The code will not be merged to master until the reviewer(s) approve the pull request. 
+
+GitHub will generate a line-by-line comparison of every line that is added or removed from `aaron` to `master`. 
+
+<img src="images/line-by-line.png" width="800" height="300">
+
+Reviewers can add line-specific comments in GitHub. 
+
+<img src="images/comments.png" width="500" height="200">
+
+### 3. Approve
+
+Reviewers can also add overall comments before approving or requesting changes for the pull request. If additional changes are added, GitHub will highlight the specific lines that changed in response to the review--this will save the reviewer time on second or third reviews of the same code. 
+
+<img src="images/approve-review.png" width="300" height="200">
+
+Once the code is approved, the branch can be merged into the `master` branch will it can referenced and used for subsequent analyses. 
 
 # Creating the Final File
 
