@@ -2,15 +2,19 @@ library(tidyverse)
 library(rvest)
 library(polite)
 
-source("get_living_wages.R")
+source(here::here("09_employment", "get_living_wages.R"))
 
-all_counties <- pull(urbnmapr::countydata, county_fips) %>%
-  map_df(.f = get_living_wages, sleep_time = 10)
-
-
+# read in crosswalk file
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-file.csv")) %>%
   filter(year == 2018)
 
+# scrape the data and append each observation to a .csv
+all_counties %>%
+  mutate(fips = paste0(state, county)) %>%
+  pull(fips) %>%  
+  map_df(.f = get_living_wages, sleep_time = 10)
+
+# read in the scraped data
 mit <- read_csv(here::here("09_employment", "mit-living-wage-scraped.csv"), 
                 col_names = FALSE) %>%
   mutate(state = str_sub(X1, 1, 2),
@@ -20,9 +24,11 @@ mit <- read_csv(here::here("09_employment", "mit-living-wage-scraped.csv"),
          children = X3,
          wage = X4)
 
-all_counties <- left_join(all_counties, mit, by = c("state", "county"))
+# joint he scraped data to the final list of counties
+joined_data <- left_join(all_counties, mit, by = c("state", "county"))
 
-all_counties %>%
+# write the final file
+joined_data %>%
   select(year, state, county, adults, children, wage) %>%
   write_csv(here::here("09_employment", "mit-living-wage.csv"))
   
