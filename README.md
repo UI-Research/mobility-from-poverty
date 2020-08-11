@@ -134,7 +134,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 | Score | Description |
 |-------|:----------|
-| 1  |  The calculated metric for the observation is high-quality and there are no concerns with measurement error, missingness, sample size, or precision.  | 
+| 1  |  The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.  | 
 | 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
 | 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
 |  | It was not possible to calculate a metric for the county. |
