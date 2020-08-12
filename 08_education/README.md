@@ -25,8 +25,10 @@ time and space.
 Outline the process for creating the data: SEDA data were manually downloaded
 and read in, and a regression of mean assessment scores was run on grade (as a continuous
 variable) interacted with each county in order to obtain county-specific grade slopes.
+Regressions were weighted by the number of test-takers for each year, grade, and county. 
 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times
-the standard error of the estimate.    
+the standard error of the estimate. A flag indicates how many grades are included in
+each estimate.   
 
 
 

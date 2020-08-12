@@ -1,18 +1,18 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: lines 10 and 11 need to be edited, and new data downloaded to the data/Raw folder **
+** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/Raw folder **
 
 clear all
 set maxvar 10000
 set matsize 10000
 
 global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
+global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2016
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 cd "${gitfolder}\08_education\data"
-
 
 ** Import county file **
 import delimited ${countyfile}, clear
@@ -45,12 +45,14 @@ gen se=.
 qui levelsof county, local(counties)
 local year=${year}
 forvalues cohort = `year'/`year' { 
-	reg mn_all c.grade#county i.county if cohort==`cohort'
+	reg mn_all c.grade#county i.county if cohort==`cohort' [aw=totgyb_all]
 	foreach county of local counties {
 		cap n replace learning_rate = _b[c.grade#`county'.county] if county==`county' & cohort==`cohort'
 		cap n replace se = _se[c.grade#`county'.county] if county==`county' & cohort==`cohort'
 	}
 }
+
+bysort cohort county: egen num_grades_included = count(mn_all)
 
 gen learning_rate_lower_ci = learning_rate - 1.96 * se
 gen learning_rate_upper_ci = learning_rate + 1.96 * se
@@ -66,8 +68,8 @@ tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
 assert strlen(fips)==2
 
-keep year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci
-order year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci
+keep year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci num_grades_included
+order year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci num_grades_included
 duplicates drop
 
 rename fips state
@@ -83,6 +85,8 @@ replace learning_rate_lower_ci = . if flag==1
 replace learning_rate_upper_ci = . if flag==1
 drop flag
 
+replace num_grades_included = . if learning_rate == .
+
 save "Intermediate/SEDA.dta", replace
 
 
@@ -97,5 +101,5 @@ drop _merge
 gsort -year state county
 
 export delimited using "Built/SEDA.csv", replace
-
+export delimited using "${boxfolder}/SEDA.csv", replace
 

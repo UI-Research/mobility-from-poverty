@@ -1,11 +1,12 @@
 ** FREE AND REDUCED PRICE LUNCH: the share of students attending schools where 40% or more students receive FRPL **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: only lines 8 and 9 need to be edited **
+** Instructions: only lines 8-10 need to be edited for the latest year of data **
 
 clear all
 
 global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
+global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2018
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
@@ -102,10 +103,11 @@ keep if year==$year
 gsort -year state county
 
 export delimited using "Built/FRPL.csv", replace
+export delimited using "${boxfolder}/FRPL.csv", replace
 
-/* Footnotes: 
+/* Footnotes for 2018: 
 Partial FRPL, partial DC: Ohio, Alaska
-Other states with <1% reprting DC instead of FRPL: Pennsylviana, Indiana, Arizona, Alabama, West Vriginia
+Other states with <1% reprting DC instead of FRPL: Pennsylviana, Indiana, Arizona, Alabama, West Virginia
 States with 100% DC: Massachusetts, Tennessee, DC, Delaware
 */
 

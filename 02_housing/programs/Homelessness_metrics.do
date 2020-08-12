@@ -1,11 +1,12 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: only lines 8 and 9 need to be edited **
+** Instructions: only lines 8-10 need to be edited for the latest year of data **
 
 clear all
 
 global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
+global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Housing"
 global year=2018
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
@@ -28,7 +29,7 @@ save "Intermediate/countyfile.dta", replace
 
 
 ** Get CCD district data **
-educationdata using "district ccd directory", sub(year=${year}) col(year leaid county_code) clear
+educationdata using "district ccd directory", sub(year=${year}) col(year leaid county_code enrollment) clear
 
 _strip_labels county_code
 tostring county_code, replace
@@ -39,29 +40,6 @@ assert strlen(county)==3
 drop county_code
 
 save "Intermediate/ccd_lea_${year}.dta", replace
-
-
-** Create school-county crosswalk **
-educationdata using "school ccd directory", sub(year=${year}) csv clear
-save "Raw\ccd_dir_${year}.dta", replace
-
-keep year leaid county_code enrollment
-
-drop if enrollment == 0 | enrollment == .
-
-_strip_labels county_code
-tostring county_code, replace
-replace county_code = "0" + county_code if strlen(county_code)==4
-gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
-gen county = substr(county_code,3,5)
-assert strlen(county)==3
-drop county_code
-
-collapse (sum) enrollment, by(year leaid state county)
-bysort year leaid: egen county_share = pc(enrollment), prop
-drop enrollment
-
-save "Intermediate\leaid_county_crosswalk_${year}.dta", replace
 
 
 ** Download EDFacts data **
@@ -101,23 +79,23 @@ assert strlen(leaid)==7
 save "Intermediate/homelessness_${year}.dta", replace
 
 
-** Using crosswalk above locate LEAs into counties **
+** Using district office location to locate LEAs into counties and calculate homelessness share **
 use "Intermediate/homelessness_${year}.dta", clear
-merge 1:m year leaid using "Intermediate/leaid_county_crosswalk_${year}.dta" // not all homeless data merges
+merge m:1 year leaid using "Intermediate/ccd_lea_${year}.dta"
 drop if _merge==2
 drop _merge
 
-merge m:1 year leaid using "Intermediate/ccd_lea_${year}.dta", update // fill in any missing info (78 leaids)
-drop if _merge==2
-drop _merge
+replace enrollment=0 if enrollment<0 | enrollment==.
 
-replace county_share = 1 if county_share==.
+collapse (sum) homeless homeless_lower_ci homeless_upper_ci supp_homeless enrollment, by(year state county)
 
-foreach var in homeless homeless_lower_ci homeless_upper_ci supp_homeless {
-	replace `var' = `var'*county_share
-}
+rename homeless homeless_count
+rename homeless_lower_ci homeless_count_lower_ci
+rename homeless_upper_ci homeless_count_upper_ci
+rename supp_homeless homeless_districts_suppressed
 
-collapse (sum) homeless homeless_lower_ci homeless_upper_ci supp_homeless, by(year state county)
+gen homeless_share = homeless_count/enrollment
+drop enrollment
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
 drop if _merge==1
@@ -125,12 +103,13 @@ drop _merge
 
 keep if year==$year
 
-order year state county homeless homeless_lower_ci homeless_upper_ci supp_homeless
-rename supp_homeless districts_suppressed
+order year state county homeless_count homeless_share homeless_count_lower_ci homeless_count_upper_ci homeless_districts_suppressed
 
 gsort -year state county
 
 export delimited using "Built/Homelessness.csv", replace
+export delimited using "${boxfolder}/Homelessness.csv", replace
+
 
 
 
