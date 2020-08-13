@@ -36,11 +36,11 @@ Brief description
 
 * Final data name(s):
 * Analyst(s): Aaron R. Williams
-* Data source(s):
-* Year(s):
+* Data source(s): 2016 Cooperative Congressional Election Study (CCES), Citizen Voting Age Population (CVAP) Special Tabulation From the 2012-2016 5-Year American Community Survey (ACS)
+* Year(s): 2016
 * Notes:
     * Limitations:
-    * Missingness:
+    * Missingness: Many counties are missing entirely and many more lack the sample size to calculate turnout
 
 Outline the process for creating the data including assumptions and methodology   
 
