@@ -12,6 +12,12 @@ global year=2018
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 cd "${gitfolder}\02_housing\data"
 
+
+** install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name
@@ -90,12 +96,12 @@ replace enrollment=0 if enrollment<0 | enrollment==.
 collapse (sum) homeless homeless_lower_ci homeless_upper_ci supp_homeless enrollment, by(year state county)
 
 rename homeless homeless_count
-rename homeless_lower_ci homeless_count_lower_ci
-rename homeless_upper_ci homeless_count_upper_ci
+rename homeless_lower_ci homeless_count_lb
+rename homeless_upper_ci homeless_count_ub
 rename supp_homeless homeless_districts_suppressed
 
 gen homeless_share = homeless_count/enrollment
-drop enrollment
+*drop enrollment
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
 drop if _merge==1
@@ -103,7 +109,7 @@ drop _merge
 
 keep if year==$year
 
-order year state county homeless_count homeless_share homeless_count_lower_ci homeless_count_upper_ci homeless_districts_suppressed
+order year state county homeless_count homeless_share homeless_count_lb homeless_count_ub homeless_districts_suppressed
 
 gsort -year state county
 

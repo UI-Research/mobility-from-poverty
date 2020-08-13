@@ -12,6 +12,12 @@ global year=2018
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 cd "${gitfolder}\08_education\data"
 
+
+** install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name

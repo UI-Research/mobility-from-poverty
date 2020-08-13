@@ -14,6 +14,12 @@ global year=2016
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 cd "${gitfolder}\08_education\data"
 
+
+** install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name
@@ -54,8 +60,8 @@ forvalues cohort = `year'/`year' {
 
 bysort cohort county: egen num_grades_included = count(mn_all)
 
-gen learning_rate_lower_ci = learning_rate - 1.96 * se
-gen learning_rate_upper_ci = learning_rate + 1.96 * se
+gen learning_rate_lb = learning_rate - 1.96 * se
+gen learning_rate_ub = learning_rate + 1.96 * se
 
 keep if cohort>=2014 & cohort!=.
 drop year
@@ -68,8 +74,8 @@ tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
 assert strlen(fips)==2
 
-keep year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci num_grades_included
-order year fips countyid learning_rate learning_rate_lower_ci learning_rate_upper_ci num_grades_included
+keep year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included
+order year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included
 duplicates drop
 
 rename fips state
@@ -79,10 +85,10 @@ replace year = year - 1 // changed so that the year reflects the fall of the aca
 
 gsort -year state county
 
-gen flag = 1 if learning_rate==0 & learning_rate_lower_ci==0 & learning_rate_upper_ci==0
+gen flag = 1 if learning_rate==0 & learning_rate_lb==0 & learning_rate_ub==0
 replace learning_rate = . if flag==1
-replace learning_rate_lower_ci = . if flag==1
-replace learning_rate_upper_ci = . if flag==1
+replace learning_rate_lb = . if flag==1
+replace learning_rate_ub = . if flag==1
 drop flag
 
 replace num_grades_included = . if learning_rate == .
