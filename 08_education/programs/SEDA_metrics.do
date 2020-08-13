@@ -1,7 +1,7 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/Raw folder **
+** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/Raw folder (currently saved on Box in the education folder) **
 
 clear all
 set maxvar 10000
