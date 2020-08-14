@@ -1,6 +1,6 @@
 # Race/Ethnicity Exposure
 
-Brief description
+This metric measures the exposure of a given race/ethnicity group to other race/ethnicity groups.
 
 * Final data name(s): race-ethnicity-exposure.csv
 * Analyst(s): Aaron R. Williams
@@ -24,14 +24,21 @@ Brief description
 
 # Poverty Exposure
 
-Brief description
+This metric is the share of the poor in a county who live in census tracts with poverty rates over 40%.
 
-* Final data name(s):
+* Final data name(s): poverty-exposure.csv
 * Analyst(s): Aaron R. Williams
-* Data source(s):
-* Year(s):
+* Data source(s): 2014-2018 5-year American Community Survey
+* Year(s): 2018
 * Notes:
     * Limitations
-    * Missingness
+    * Missingness: Rio Arriba County, NM is missing because of a data collection issue. 
+    * Quality flags: * `1` - nothing, `2` - missing observations, `3` - > 5% missing observations
 
-Outline the process for creating the data including assumptions and methodology  
+1. Pull people and poverty rates for Census tracts. 
+2. Count the number of people in poverty who live in Census tracts with poverty > 40% in each county. 
+3. Count the number of people in poverty who live in each county. 
+4. Join and test the summarized tract data and the county data.
+5. Divide the number from 2. by the total number of people in poverty in each Census tract. 
+6. Validation
+7. Data quality flags

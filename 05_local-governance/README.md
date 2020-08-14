@@ -27,24 +27,25 @@ Steps:
 7. Create quality flags
 8. Save the data
 
-## Voter Turnout
-
-
-
-
-Brief description
-
-* Final data name(s):
-* Analyst(s): Aaron R. Williams
-* Data source(s): 2016 Cooperative Congressional Election Study (CCES), Citizen Voting Age Population (CVAP) Special Tabulation From the 2012-2016 5-Year American Community Survey (ACS)
-* Year(s): 2016
-* Notes:
-    * Limitations:
-    * Missingness: Many counties are missing entirely and many more lack the sample size to calculate turnout
-
-Outline the process for creating the data including assumptions and methodology   
-
 ASSUMPTIONS
 
 `middle_eastern_or_north_african` from ICMA counts as `asian_other` from the Census
 
+## Voter Turnout
+
+This metric is a county-level estimate of voter turnout. We use Presidential Election turnout as a measure of "Highest Office" for the numerator. We use the Citizen Voting Age Population (CVAP) for the denominator. 
+
+* Final data name(s): voter-turnout.csv
+* Analyst(s): Aaron R. Williams
+* Data source(s): MIT Election Data and Science Lab, Citizen Voting Age Population (CVAP) Special Tabulation From the 2012-2016 5-Year American Community Survey (ACS)
+* Year(s): 2016
+* Notes:
+    * Limitations: Small counties have very large coefficients of variation for the denominator
+    * Missingness: 31 counties are missing. Alaska is missing. Several other counties are missing. 
+    * Quality flags: `1` No issue, `2` CV >= 0.05, `3` CV >= 0.15
+
+1. Calculate votes in the 2016 Presidential election
+2. Calculate the Citizen Voting Age Population
+3. Divide 1. by 2. to calculate voter turnout
+4. Add data quality flags
+5. Save the data  
