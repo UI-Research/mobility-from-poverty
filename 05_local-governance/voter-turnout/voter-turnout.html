@@ -1619,7 +1619,32 @@ set_urbn_defaults(style = &quot;print&quot;)</code></pre>
 <h2><span class="header-section-number">1.1</span> 1. Numerator</h2>
 <div id="mit-election-data-and-science-lab" class="section level3">
 <h3><span class="header-section-number">1.1.1</span> MIT Election Data and Science Lab</h3>
-<p>We use the MIT Election Data and Science Lab for county-level votes in the 2016 Presidential election (<a href="https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ/HEIJCQ&amp;version=6.0">data here</a>).</p>
+<p>We use the MIT Election Data and Science Lab for county-level votes in the 2016 Presidential election (<a href="https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ/HEIJCQ&amp;version=6.0">data here</a>). First, we download the data.</p>
+<pre class="r"><code># download the data from the Harvard dataverse
+mit_directory &lt;- here::here(&quot;05_local-governance&quot;, 
+                        &quot;voter-turnout&quot;, 
+                        &quot;mit&quot;)
+
+mit_data &lt;- here::here(&quot;05_local-governance&quot;, 
+                        &quot;voter-turnout&quot;, 
+                        &quot;mit&quot;,
+                        &quot;countypres_2000-2016.csv&quot;)
+
+if (!dir.exists(mit_directory)) {
+  
+  dir.create(mit_directory)
+  
+}
+
+if (!file.exists(mit_data)) {
+  
+  download.file(
+    &quot;https://dataverse.harvard.edu/api/access/datafile/3641280?format=original&amp;gbrecs=true&quot;,
+    destfile = mit_data
+  )
+  
+}</code></pre>
+<p>Next we load and clean the data.</p>
 <pre class="r"><code>mit &lt;- read_csv(here::here(&quot;05_local-governance&quot;, 
                            &quot;voter-turnout&quot;, 
                            &quot;mit&quot;, 
@@ -1629,29 +1654,22 @@ set_urbn_defaults(style = &quot;print&quot;)</code></pre>
 
 mit &lt;- mit %&gt;%
   filter(year == 2016)</code></pre>
-<pre class="r"><code>map_dbl(mit, ~sum(is.na(.)))</code></pre>
-<pre><code>##           year          state       state_po         county           FIPS 
-##              0              0             12              0              9 
-##         office      candidate          party candidatevotes     totalvotes 
-##              0              0           3158              6              0 
-##        version 
-##              0</code></pre>
 <p>There are three localities without FIPS codes. <code>totalvotes</code> does not vary for these observations. We elected to drop these observations.</p>
 <pre class="r"><code>mit %&gt;%
-  filter(is.na(FIPS))</code></pre>
-<pre><code>## # A tibble: 9 x 11
-##    year state state_po county FIPS  office candidate party candidatevotes
-##   &lt;dbl&gt; &lt;chr&gt; &lt;chr&gt;    &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;  &lt;chr&gt;     &lt;chr&gt;          &lt;dbl&gt;
-## 1  2016 Conn… &lt;NA&gt;     State… &lt;NA&gt;  Presi… Hillary … demo…             NA
-## 2  2016 Maine &lt;NA&gt;     Maine… &lt;NA&gt;  Presi… Hillary … demo…           3017
-## 3  2016 Rhod… &lt;NA&gt;     Feder… &lt;NA&gt;  Presi… Hillary … demo…            637
-## 4  2016 Conn… &lt;NA&gt;     State… &lt;NA&gt;  Presi… Donald T… repu…             NA
-## 5  2016 Maine &lt;NA&gt;     Maine… &lt;NA&gt;  Presi… Donald T… repu…            648
-## 6  2016 Rhod… &lt;NA&gt;     Feder… &lt;NA&gt;  Presi… Donald T… repu…             53
-## 7  2016 Conn… &lt;NA&gt;     State… &lt;NA&gt;  Presi… Other     &lt;NA&gt;              NA
-## 8  2016 Maine &lt;NA&gt;     Maine… &lt;NA&gt;  Presi… Other     &lt;NA&gt;             321
-## 9  2016 Rhod… &lt;NA&gt;     Feder… &lt;NA&gt;  Presi… Other     &lt;NA&gt;              38
-## # … with 2 more variables: totalvotes &lt;dbl&gt;, version &lt;dbl&gt;</code></pre>
+  filter(is.na(FIPS)) %&gt;%
+  select(state, county, office, candidate, party, candidatevotes, totalvotes)</code></pre>
+<pre><code>## # A tibble: 9 x 7
+##   state     county       office   candidate    party   candidatevotes totalvotes
+##   &lt;chr&gt;     &lt;chr&gt;        &lt;chr&gt;    &lt;chr&gt;        &lt;chr&gt;            &lt;dbl&gt;      &lt;dbl&gt;
+## 1 Connecti… Statewide w… Preside… Hillary Cli… democr…             NA       5056
+## 2 Maine     Maine UOCAVA Preside… Hillary Cli… democr…           3017       5056
+## 3 Rhode Is… Federal Pre… Preside… Hillary Cli… democr…            637       5056
+## 4 Connecti… Statewide w… Preside… Donald Trump republ…             NA       5056
+## 5 Maine     Maine UOCAVA Preside… Donald Trump republ…            648       5056
+## 6 Rhode Is… Federal Pre… Preside… Donald Trump republ…             53       5056
+## 7 Connecti… Statewide w… Preside… Other        &lt;NA&gt;                NA       5056
+## 8 Maine     Maine UOCAVA Preside… Other        &lt;NA&gt;               321       5056
+## 9 Rhode Is… Federal Pre… Preside… Other        &lt;NA&gt;                38       5056</code></pre>
 <pre class="r"><code>mit &lt;- mit %&gt;%
   filter(!is.na(FIPS))</code></pre>
 <p>Bedford County, Virginia is missing for <code>candidatevotes</code> and lists <code>totalvotes</code> as 0, which is clearly incorrect. We set the zeros to <code>NA</code>. Aleutians East Borough, Alaska and Aleutians West Census Area, Alaska both have values that exceed their populations. This seems wrong and we set the values to missing.</p>
@@ -1702,23 +1720,27 @@ mit_counties &lt;- mit_counties %&gt;%
          county,
          votes)</code></pre>
 <p>We compare the aggregated totals to the state total posted on <a href="https://en.wikipedia.org/wiki/2016_United_States_presidential_election">Wikipedia</a>. This code scrapes the vote count:</p>
-<pre class="r"><code>wiki &lt;- read_html(&quot;https://en.wikipedia.org/wiki/2016_United_States_presidential_election&quot;)
+<pre class="r"><code># scrape data from Wikipedia with rvest
+wiki &lt;- read_html(&quot;https://en.wikipedia.org/wiki/2016_United_States_presidential_election&quot;)
 
 wiki_votes &lt;- wiki %&gt;%
   html_nodes(&quot;td:nth-child(22)&quot;) %&gt;%
   html_text() %&gt;%
+  # clean numbers as characters to numerics
   str_replace_all(&quot;,&quot;, &quot;&quot;) %&gt;%
   str_replace_all(&quot;\n&quot;, &quot;&quot;) %&gt;%
   as.numeric()
 
+# the name column int he data doesn&#39;t scrape well so we manually state it
 state &lt;- c(&quot;Alabama&quot;, &quot;Alaska&quot;, &quot;Arizona&quot;, &quot;Arkansas&quot;, &quot;California&quot;, &quot;Colorado&quot;, &quot;Connecticut&quot;, &quot;Delaware&quot;, &quot;District of Columbia&quot;, &quot;Florida&quot;, &quot;Georgia&quot;, &quot;Hawaii&quot;, &quot;Idaho&quot;, &quot;Illinois&quot;, &quot;Indiana&quot;, &quot;Iowa&quot;, &quot;Kansas&quot;, &quot;Kentucky&quot;, &quot;Louisiana&quot;, &quot;Maine&quot;, &quot;subset&quot;, &quot;subset&quot;, &quot;Maryland&quot;, &quot;Massachusetts&quot;, &quot;Michigan&quot;, &quot;Minnesota&quot;, &quot;Mississippi&quot;, &quot;Missouri&quot;, &quot;Montana&quot;, &quot;Nebraska&quot;, &quot;subset&quot;, &quot;subset&quot;, &quot;subset&quot;, &quot;Nevada&quot;, &quot;New Hampshire&quot;, &quot;New Jersey&quot;, &quot;New Mexico&quot;, &quot;New York&quot;, &quot;North Carolina&quot;, &quot;North Dakota&quot;, &quot;Ohio&quot;,      &quot;Oklahoma&quot;, &quot;Oregon&quot;, &quot;Pennsylvania&quot;, &quot;Rhode Island&quot;,&quot;South Carolina&quot;, &quot;South Dakota&quot;, &quot;Tennessee&quot;, &quot;Texas&quot;, &quot;Utah&quot;,      &quot;Vermont&quot;, &quot;Virginia&quot;, &quot;Washington&quot;, &quot;West Virginia&quot;, &quot;Wisconsin&quot;, &quot;Wyoming&quot;)     
 
 state_votes &lt;- tibble(state, wiki_votes) %&gt;%
   filter(state != &quot;subset&quot;)
 
 rm(wiki, wiki_votes, state)</code></pre>
-<p>The totals are very close for most states. Missouri, Washington, and Arizona are problematic.</p>
-<pre class="r"><code>mit_counties %&gt;%
+<p>The totals are very close for most states. Missouri and Washington are problematic.</p>
+<pre class="r"><code># compare the scraped data to the mit data
+mit_counties %&gt;%
   group_by(state) %&gt;%
   summarize(mit_votes = sum(votes, na.rm = TRUE)) %&gt;%
   bind_cols(state_votes) %&gt;%
@@ -2051,7 +2073,7 @@ rm(wiki, wiki_votes, state)</code></pre>
 ##   `sum(votes, na.rm = TRUE)`
 ##                        &lt;dbl&gt;
 ## 1                  136490833</code></pre>
-<p>At this point, the only missing values are Bedford County, Virginia and the two boroughs from Alaska.</p>
+<p>At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely.</p>
 <pre class="r"><code>mit_counties %&gt;%
   map_dbl(~sum(is.na(.)))</code></pre>
 <pre><code>##   year  state county  votes 
@@ -2060,14 +2082,34 @@ rm(wiki, wiki_votes, state)</code></pre>
 </div>
 <div id="denominator" class="section level2">
 <h2><span class="header-section-number">1.2</span> 2. Denominator</h2>
-<p>The denominator for the analysis should be the total age-eligible citizen population.</p>
+<p>The denominator for the analysis should be the total age-eligible citizen population (<a href="https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2016.html">data here</a>)</p>
 <p>The US Census Bureau creates a special tabulation of the 2012-2016 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas.</p>
+<p>If the data are not downloaded, the we download and unzip the data.</p>
+<pre class="r"><code>cvap_zip &lt;- here::here(&quot;05_local-governance&quot;, 
+                       &quot;voter-turnout&quot;,
+                       &quot;CVAP_2012-2016_ACS_csv_files.zip&quot;)
+
+cvap_data &lt;- here::here(&quot;05_local-governance&quot;, 
+                        &quot;voter-turnout&quot;,
+                        &quot;CVAP_2012-2016_ACS_csv_files&quot;)
+
+if (!file.exists(cvap_data)) {
+  
+  download.file(url = &quot;https://www2.census.gov/programs-surveys/decennial/rdo/datasets/2016/2016-cvap/CVAP_2012-2016_ACS_csv_files.zip?#&quot;,
+                destfile = cvap_zip)
+  
+  unzip(zipfile = cvap_zip,
+        exdir = cvap_data)
+    
+}</code></pre>
+<p>Next, we load and clean the data. The variable of interest is <code>CVAP_EST</code>.</p>
 <blockquote>
 <p>CVAP_EST: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.</p>
 </blockquote>
 <pre class="r"><code>cvap &lt;- read_csv(here::here(&quot;05_local-governance&quot;, 
                             &quot;voter-turnout&quot;,
-                            &quot;CVAP_2012-2016_ACS_csv_files&quot;, &quot;County.csv&quot;))
+                            &quot;CVAP_2012-2016_ACS_csv_files&quot;, 
+                            &quot;County.csv&quot;))
 
 cvap &lt;- cvap %&gt;%
   filter(LNTITLE == &quot;Total&quot;) %&gt;%
@@ -2086,44 +2128,18 @@ cvap &lt;- cvap %&gt;%
 </div>
 <div id="combine-and-calculate-turnout" class="section level2">
 <h2><span class="header-section-number">1.3</span> 3. Combine and calculate turnout</h2>
+<p>We combine the data. The join works for all counties except for Alaska; Kalawao, Hawaii; and Oglala Lakota County, South Dakota.</p>
 <pre class="r"><code>joined_data &lt;- left_join(cvap, mit_counties, by = c(&quot;state&quot;, &quot;county&quot;))
 
-boom &lt;- anti_join(cvap, mit_counties, by = c(&quot;state&quot;, &quot;county&quot;)) %&gt;%
-  print(n = Inf)</code></pre>
-<pre><code>## # A tibble: 31 x 4
-##    state county   cvap cvap_moe
-##    &lt;chr&gt; &lt;chr&gt;   &lt;dbl&gt;    &lt;dbl&gt;
-##  1 02    013      1965      157
-##  2 02    016      3635      131
-##  3 02    020    213935      928
-##  4 02    050     11320       83
-##  5 02    060       715       57
-##  6 02    068      1650      158
-##  7 02    070      3355       38
-##  8 02    090     73390      430
-##  9 02    100      2000      132
-## 10 02    105      1640       65
-## 11 02    110     24185      238
-## 12 02    122     43770      151
-## 13 02    130     10165       84
-## 14 02    150      9120      250
-## 15 02    158      4720       36
-## 16 02    164       940       91
-## 17 02    170     70360      245
-## 18 02    180      6370       40
-## 19 02    185      6915      134
-## 20 02    188      4950       35
-## 21 02    195      2340       93
-## 22 02    198      4765       36
-## 23 02    220      6600       85
-## 24 02    230       825       76
-## 25 02    240      4740      115
-## 26 02    261      7095      127
-## 27 02    275      1865       78
-## 28 02    282       490       64
-## 29 02    290      3995       21
-## 30 15    005        90       21
-## 31 46    102      8860      117</code></pre>
+anti_join(cvap, mit_counties, by = c(&quot;state&quot;, &quot;county&quot;)) %&gt;%
+  count(state)</code></pre>
+<pre><code>## # A tibble: 3 x 2
+##   state     n
+##   &lt;chr&gt; &lt;int&gt;
+## 1 02       29
+## 2 15        1
+## 3 46        1</code></pre>
+<p>We calculate turnout and the coefficient of variation for the CVAP estimate.</p>
 <pre class="r"><code>joined_data &lt;- joined_data %&gt;%
   mutate(election_turnout = votes / cvap) %&gt;%
   mutate(cv = cvap_moe / cvap)</code></pre>
@@ -2175,7 +2191,11 @@ stopifnot(
 <li><code>2</code> CV &gt;= 0.05</li>
 <li><code>3</code> CV &gt;= 0.15</li>
 </ul>
-<p><a href="https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf" class="uri">https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf</a></p>
+<p>There isn’t much concensus on critical values for coefficients of variation. We use <code>0.15</code> because it is mentioned <a href="https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf">A Compass for Understanding and Using American Community Survey Data</a>.</p>
+<blockquote>
+<p>While there is no hard-andfast rule, for the purposes of this handbook, estimates with CVs of more than 15 percent are considered cause for caution when interpreting patterns in the data.</p>
+</blockquote>
+<p>If anything, a stricter threshold is necessary because the estimates are used in denominators. Thus, we use <code>0.05</code> for a <code>2</code>.</p>
 <pre class="r"><code>joined_data &lt;- joined_data %&gt;%
   mutate(
     election_turnout_quality = case_when(

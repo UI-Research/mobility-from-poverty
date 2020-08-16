@@ -55,7 +55,37 @@ set_urbn_defaults(style = "print")
 
 ### MIT Election Data and Science Lab
 
-We use the MIT Election Data and Science Lab for county-level votes in the 2016 Presidential election ([data here](https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ/HEIJCQ&version=6.0)).
+We use the MIT Election Data and Science Lab for county-level votes in the 2016 Presidential election ([data here](https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ/HEIJCQ&version=6.0)). First, we download the data. 
+
+```{r}
+# download the data from the Harvard dataverse
+mit_directory <- here::here("05_local-governance", 
+                        "voter-turnout", 
+                        "mit")
+
+mit_data <- here::here("05_local-governance", 
+                        "voter-turnout", 
+                        "mit",
+                        "countypres_2000-2016.csv")
+
+if (!dir.exists(mit_directory)) {
+  
+  dir.create(mit_directory)
+  
+}
+
+if (!file.exists(mit_data)) {
+  
+  download.file(
+    "https://dataverse.harvard.edu/api/access/datafile/3641280?format=original&gbrecs=true",
+    destfile = mit_data
+  )
+  
+}
+
+```
+
+Next we load and clean the data. 
 
 ```{r}
 mit <- read_csv(here::here("05_local-governance", 
@@ -70,17 +100,12 @@ mit <- mit %>%
 
 ```
 
-
-```{r}
-map_dbl(mit, ~sum(is.na(.)))
-
-```
-
 There are three localities without FIPS codes. `totalvotes` does not vary for these observations. We elected to drop these observations. 
 
 ```{r}
 mit %>%
-  filter(is.na(FIPS))
+  filter(is.na(FIPS)) %>%
+  select(state, county, office, candidate, party, candidatevotes, totalvotes)
 
 
 mit <- mit %>%
@@ -142,16 +167,18 @@ mit_counties <- mit_counties %>%
 We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2016_United_States_presidential_election). This code scrapes the vote count: 
 
 ```{r}
-
+# scrape data from Wikipedia with rvest
 wiki <- read_html("https://en.wikipedia.org/wiki/2016_United_States_presidential_election")
 
 wiki_votes <- wiki %>%
   html_nodes("td:nth-child(22)") %>%
   html_text() %>%
+  # clean numbers as characters to numerics
   str_replace_all(",", "") %>%
   str_replace_all("\n", "") %>%
   as.numeric()
 
+# the name column int he data doesn't scrape well so we manually state it
 state <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "subset", "subset", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "subset", "subset", "subset", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",      "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island","South Carolina", "South Dakota", "Tennessee", "Texas", "Utah",      "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")     
 
 state_votes <- tibble(state, wiki_votes) %>%
@@ -161,9 +188,10 @@ rm(wiki, wiki_votes, state)
 
 ```
 
-The totals are very close for most states. Missouri, Washington, and Arizona are problematic. 
+The totals are very close for most states. Missouri and Washington are problematic. 
 
 ```{r}
+# compare the scraped data to the mit data
 mit_counties %>%
   group_by(state) %>%
   summarize(mit_votes = sum(votes, na.rm = TRUE)) %>%
@@ -183,7 +211,7 @@ mit_counties %>%
 
 ```
 
-At this point, the only missing values are Bedford County, Virginia and the two boroughs from Alaska. 
+At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely. 
 
 ```{r}
 mit_counties %>%
@@ -193,16 +221,43 @@ mit_counties %>%
 
 ## 2. Denominator
 
-The denominator for the analysis should be the total age-eligible citizen population.
+The denominator for the analysis should be the total age-eligible citizen population ([data here](https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2016.html))
 
 The US Census Bureau creates a special tabulation of the 2012-2016 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas. 
 
+If the data are not downloaded, the we download and unzip the data.
+
+```{r}
+
+cvap_zip <- here::here("05_local-governance", 
+                       "voter-turnout",
+                       "CVAP_2012-2016_ACS_csv_files.zip")
+
+cvap_data <- here::here("05_local-governance", 
+                        "voter-turnout",
+                        "CVAP_2012-2016_ACS_csv_files")
+
+if (!file.exists(cvap_data)) {
+  
+  download.file(url = "https://www2.census.gov/programs-surveys/decennial/rdo/datasets/2016/2016-cvap/CVAP_2012-2016_ACS_csv_files.zip?#",
+                destfile = cvap_zip)
+  
+  unzip(zipfile = cvap_zip,
+        exdir = cvap_data)
+    
+}
+
+```
+
+Next, we load and clean the data. The variable of interest is `CVAP_EST`.
+
 > CVAP_EST: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
 
-```{r eval}
+```{r}
 cvap <- read_csv(here::here("05_local-governance", 
                             "voter-turnout",
-                            "CVAP_2012-2016_ACS_csv_files", "County.csv"))
+                            "CVAP_2012-2016_ACS_csv_files", 
+                            "County.csv"))
 
 cvap <- cvap %>%
   filter(LNTITLE == "Total") %>%
@@ -223,12 +278,18 @@ cvap <- cvap %>%
 
 ## 3. Combine and calculate turnout
 
+We combine the data. The join works for all counties except for Alaska; Kalawao, Hawaii; and Oglala Lakota County, South Dakota. 
+
 ```{r}
 joined_data <- left_join(cvap, mit_counties, by = c("state", "county"))
 
-boom <- anti_join(cvap, mit_counties, by = c("state", "county")) %>%
-  print(n = Inf)
+anti_join(cvap, mit_counties, by = c("state", "county")) %>%
+  count(state)
+```
 
+We calculate turnout and the coefficient of variation for the CVAP estimate. 
+
+```{r}
 joined_data <- joined_data %>%
   mutate(election_turnout = votes / cvap) %>%
   mutate(cv = cvap_moe / cvap)
@@ -290,7 +351,11 @@ We flag cases with high and very high coefficients of variation in the denominat
 * `2` CV >= 0.05
 * `3` CV >= 0.15
 
-https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf
+There isn't much concensus on critical values for coefficients of variation. We use `0.15` because it is mentioned [A Compass for Understanding and Using American Community Survey Data](https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf).
+
+>  While there is no hard-andfast rule, for the purposes of this handbook, estimates with CVs of more than 15 percent are considered cause for caution when interpreting patterns in the data.
+
+If anything, a stricter threshold is necessary because the estimates are used in denominators. Thus, we use `0.05` for a `2`. 
 
 ```{r}
 joined_data <- joined_data %>%
@@ -336,4 +401,3 @@ all_counties %>%
                        "voter-turnout.csv"))
   
 ```
-
