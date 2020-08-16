@@ -29,7 +29,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Quality Flags](#quality-flags)
     * [Data Dictionary](#data-dictionary)
 * [Code Standards](#code-standards)
-* [Code Review](#code-review)
+* [Code and technical Review](#code-and-technical-review)
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
     * [Code Reviews in GitHub](#code-reviews-in-github)
@@ -174,7 +174,7 @@ Description: [Overall description]
 
 ```
 
-# Code Review
+# Code and Technical Review
 
 ## Scope of the review
 
@@ -211,7 +211,7 @@ Our code review process will be handled through GitHub, which has powerful tools
 
 In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `master` is handled through pull requests. 
 
-For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. 
+For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. Aaron and Claudia will flag the reviewers. 
 
 <img src="images/request-review.png" width="400" height="200">
 
@@ -233,7 +233,7 @@ Reviewers can also add overall comments before approving or requesting changes f
 
 <img src="images/approve-review.png" width="300" height="200">
 
-Once the code is approved, the branch can be merged into the `master` branch will it can referenced and used for subsequent analyses. 
+Once the code is approved, the branch can be merged into the `master` branch where it can referenced and used for subsequent analyses. 
 
 # Creating the Final File
 
