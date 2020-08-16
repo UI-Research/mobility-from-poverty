@@ -59,7 +59,7 @@ tracts_with_pop <- filter(full_data, B01003_001E > 0)
 # Checking to see if there are tracts remaining with N/A values for transit indices. 
 tracts_with_pop %>%
  filter(is.na(tcost_idx)) %>%
-  View
+  #View
 
 # There are 179 remaining tracts that have population and no transit information.These tracts have between 3-11317 people. These tracts span many states, mostly the most populous.
 # Of the 179 tracts, 120 have populations over 1,000; 27 have populations over 5,000.
@@ -219,8 +219,8 @@ problem_counties_trans <- c("48253", # (Jones County, Texas) flagged for n/a ind
 
 #note, Madison County Ohio is not flagged for a data quality issue for transit trips index because it is 0, so having a 0 weight does not change it.
 county_transport_stats <- county_transport_stats %>%
-  mutate(mean_tcost_quality = if_else(condition = GEOID %in% problem_counties_tcost, true = 2, false = 1)) %>%
-  mutate(mean_trans_quality = if_else(condition = GEOID %in% problem_counties_trans, true = 2, false = 1)) 
+  mutate(mean_tcost_quality = if_else(condition = geoid %in% problem_counties_tcost, true = 2, false = 1)) %>%
+  mutate(mean_trans_quality = if_else(condition = geoid %in% problem_counties_trans, true = 2, false = 1)) 
 
 #Write out final CSV
 write_csv(county_transport_stats, "output/county_transport_stats_final.csv", na = "NA", append = FALSE, col_names = TRUE)
