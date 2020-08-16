@@ -25,7 +25,7 @@ knitr::opts_chunk$set(warning = FALSE)
 knitr::opts_chunk$set(message = FALSE)
 ```
 
-This script calculates four measures of descriptive represntation for the Urban Institute Mobility Metrics project. The metrics are constructed using the Municipal Form of Government 2018 Survey and 5-year ACS data. 
+This script calculates four measures of descriptive representation for the Urban Institute Mobility Metrics project. The metrics are constructed using the [ICMA Municipal Form of Government 2018 Survey](https://icma.org/2018-municipal-fog-survey) and 5-year ACS data. 
 
 ```{r setup}
 options(scipen = 999)
@@ -40,6 +40,8 @@ source(here::here("05_local-governance", "R", "get_vars.R"))
 theme_set(theme_minimal())
 
 ```
+
+The Urban Institute purchased the [ICMA Municipal Form of Government 2018 Survey](https://icma.org/2018-municipal-fog-survey). It is available on Box and needs to be added to this directory in a way that matches the filepath below. 
 
 ```{r read-icma}
 # read in the ICMA survey
@@ -61,10 +63,6 @@ analysis <- icma2018 %>%
          starts_with("Q35"))
 
 ```
-
-## Represenativeness
-
-## Quality Checks
 
 ### Recreate Table 35.
 
@@ -183,13 +181,21 @@ The ICMA survey does not distinguish between `0` and `NA`. We calculate the shar
 analysis <- analysis %>%
   mutate(
     council_asian_other = 
-      ifelse(council_members == 0, NA, council_asian_other / council_members),
+      if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = council_asian_other / council_members),
     council_black_nonhispanic = 
-      ifelse(council_members == 0, NA, council_black_nonhispanic / council_members),
+      if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = council_black_nonhispanic / council_members),
     council_hispanic = 
-      ifelse(council_members == 0, NA, council_hispanic / council_members),
+      if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = council_hispanic / council_members),
     council_white_nonhispanic = 
-      ifelse(council_members == 0, NA, council_white_nonhispanic / council_members)
+      if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = council_white_nonhispanic / council_members)
   )
 
 ```
@@ -211,12 +217,14 @@ stopifnot(
 
 ```
 
-todo(aaron): Test number of councilmembers
-todo(aaron): Compare with other questions 
+* todo(aaron): Test number of councilmembers
+* todo(aaron): Compare with other questions 
 
 ### 2. Pull demographics for Census places and Census County Subdivisions
 
 We pull the share of the population that belongs to different racial/ethnic in Census places and Census county subdivisions. 
+
+We pull all of the race/ethnicity counts for 2018 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced above. 
 
 ```{r}
 # list variable of interest
@@ -280,7 +288,15 @@ The Census reports race and ethnicity as many different groups. Table 2 in [this
 # construct asian_other 
 geographies <- geographies %>%
   mutate(asian_other = aian_nh + asian_nh + nhpi_nh + other_nh + two_or_more_nh) %>%
-  select(state, county, place, county_subdivision, people, asian_other, black_nonhispanic, hispanic, white_nonhispanic, geography)
+  select(state, 
+         county, 
+         place, 
+         county_subdivision, 
+         people, asian_other, 
+         black_nonhispanic, 
+         hispanic, 
+         white_nonhispanic, 
+         geography)
 
 # test that the new groups sum to the original people total
 stopifnot(
@@ -312,6 +328,14 @@ stopifnot(
         hispanic < 0 | hispanic > 1 |
         white_nonhispanic < 0 | white_nonhispanic > 1
     ) %>% 
+    nrow() == 0
+)
+
+# test to see if the 4 categories sum to 1
+stopifnot(
+  geographies %>%
+    mutate(total = round(asian_other + black_nonhispanic + hispanic + white_nonhispanic, 10)) %>%
+    filter(total != 1) %>%
     nrow() == 0
 )
 
@@ -418,24 +442,34 @@ Quality checks:
 
 ```{r}
 ggplot(joined_data, aes(U18POPest, people)) +
-  geom_point(alpha = 0.2)
+  geom_point(alpha = 0.2) +
+  labs(title = "The ICMA and Census data have similar estimated populations")
 
-count(joined_data, state_name, county_name, sort = TRUE)
-
-test <- filter(joined_data, state_name == "IL", county_name == "Cook")
 ```
 
 ### 4. Calculate the metrics
 
-Find the ratio of the proportions. 
+Find the ratio of the proportions. Conditional logic is needed to avoid division by `0`.
 
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    asian_other = if_else(asian_other == 0, 0, council_asian_other / asian_other), 
-    black_nonhispanic = if_else(black_nonhispanic == 0, 0, council_black_nonhispanic / black_nonhispanic), 
-    hispanic = if_else(hispanic == 0, 0, council_hispanic / hispanic),
-    white_nonhispanic = if_else(white_nonhispanic == 0, 0, council_white_nonhispanic / white_nonhispanic)
+    asian_other = 
+      if_else(condition = asian_other == 0, 
+              true = 0, 
+              false = council_asian_other / asian_other), 
+    black_nonhispanic = 
+      if_else(condition = black_nonhispanic == 0, 
+              true = 0, 
+              false = council_black_nonhispanic / black_nonhispanic), 
+    hispanic = 
+      if_else(condition = hispanic == 0, 
+              true = 0, 
+              false = council_hispanic / hispanic),
+    white_nonhispanic = 
+      if_else(condition = white_nonhispanic == 0, 
+              true = 0, 
+              false = council_white_nonhispanic / white_nonhispanic)
   ) %>%
   select(-council_asian_other, 
          -council_black_nonhispanic, 
@@ -444,8 +478,13 @@ joined_data <- joined_data %>%
 
 ```
 
+Ensure that there are no undefined numbers.
+
 ```{r}
-missing <- filter(joined_data, is.nan(black_nonhispanic))
+stopifnot(
+  filter(joined_data, is.nan(black_nonhispanic)) %>%
+    nrow() == 0
+)
 
 ```
 
@@ -499,11 +538,15 @@ Quality checks:
 ggplot(county_data, aes(people_county, people)) +
   geom_point(alpha = 0.2) +
   geom_abline(slope = 1) +
-  coord_equal()
+  coord_equal() +
+  labs(title = "The Propotion of Population Represented in Counties is Underwhelming",
+       subtitle = "Comparison of County Population to Represented Population")
 
 county_data %>%
   ggplot(aes(population_prop)) +
-  geom_histogram()
+  geom_histogram() +
+  labs(title = "The Propotion of Population Represented in Counties is Underwhelming",
+       subtitle = "Distribution of Population Representation")
 ```
 
 ### 6. Identify issues
@@ -556,8 +599,20 @@ all_counties <- left_join(all_counties, county_data, by = c("state", "county"))
 # final data set
 all_counties <- all_counties %>%
   mutate(year = 2018) %>%
-  select(year, state, county, asian_other, asian_other_quality, black_nonhispanic, black_nonhispanic_quality, hispanic, hispanic_quality, white_nonhispanic, white_nonhispanic_quality)
+  select(year, 
+         state, 
+         county, 
+         asian_other, 
+         asian_other_quality, 
+         black_nonhispanic, 
+         black_nonhispanic_quality, 
+         hispanic, 
+         hispanic_quality, 
+         white_nonhispanic, 
+         white_nonhispanic_quality)
 
-write_csv(all_counties, here::here("05_local-governance", "descriptive-representation", "descriptive-representation.csv"))
+write_csv(all_counties, here::here("05_local-governance", 
+                                   "descriptive-representation", 
+                                   "descriptive-representation.csv"))
 
 ```
