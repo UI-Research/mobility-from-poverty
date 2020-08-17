@@ -4,11 +4,12 @@
 *	Lily Robin, 2019.6.25		*
 *********************************
 
+///// 1.UPDATE FILE DIRECTORY
 
 cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\crime_rate"
 
-///// IMPORT DATA
 
+///// 2. IMPORT DATA
 
 *****County FIPS
 clear
@@ -154,7 +155,7 @@ duplicates tag citystate , gen(multi_county)
 save city_to_county, replace
 
 
-///// CROSSWALK CITY DATA TO MATCH TO COUNTIES
+///// 3. CROSSWALK CITY DATA TO MATCH TO COUNTIES
 clear 
 use 2018_city_crimerate
 
@@ -188,7 +189,7 @@ replace state_name = proper(state_name)
 save 2018_city_crimerate_working, replace
 
 
-///// CLEAN COUNTY DATA
+///// 4. CLEAN COUNTY CRIME DATA
 
 clear
 use 2018_county_crimerate
@@ -308,7 +309,7 @@ duplicates r state_name county_name year
 save 2018_county_crimerate_working, replace
 
 
-///// CROSSWALK
+///// 5. CROSSWALK COUNTY CRIME DATA TO FIPS and POPULATION DATA 
 
 use county_fipspop_2018
 
@@ -346,7 +347,7 @@ tab county_name if _merge == 1 & state_name == "Alaska"
 *using has Bureau, Census Area, Municipality
 
 
-///// ADD CITIES TO THE COUNTYS DATA
+///// 6. ADD CITIES TO THE COUNTYS DATA
 *"These data do not represent county totals as they exclude crime counts for city agencies and other types of agencies that have jurisdiction within each county."
 
 clear 
@@ -362,7 +363,7 @@ drop if _merge == 2
 save 2018_countycity_crimerate_working, replace
 
 
-///// COLLAPSE TO COUNTY LEVEL
+///// 7. COLLAPSE TO COUNTY LEVEL
 
 *by county: # of cities, pop, # reporting, reporting pop
 bysort state county: gen obs = _n
@@ -400,7 +401,7 @@ duplicates r state county
 
 
 
-///// FINALIZE DATA and EXPORT
+///// 8. FINALIZE DATA and EXPORT
 
 *add leading 00s to FIPS
 gen state_new = string(state, "%02.0f")
