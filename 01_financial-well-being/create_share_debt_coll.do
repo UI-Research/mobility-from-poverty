@@ -12,6 +12,8 @@
 *Setting directory
 local dir "H:\"
 
+****IMPORTING COUNTY CROSSWALK*****
+
 *Importing 2018 county crosswalk file from GitHub
 	import delimited "https://raw.githubusercontent.com/UI-Research/gates-mobility-metrics/master/geographic-crosswalks/data/county-file.csv?token=AQLEERC7OEPEDIALLMXB4ZS7H7T6I", stringcols(_all) clear
 	*Keeping relevant year
@@ -29,8 +31,54 @@ local dir "H:\"
 	
 	save "`dir'/county-file.dta", replace
 
+
+
+*****CREATING 95% CONFIDENCE INTERVAL VARS*****
+clear
+
+local o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files"
+*NOTE: This data is raw credit bureau microdata and cannot be uploaded to Box per our contract; this data must remain on and be accessed via STATA3.
+
+
+*Open base data and creaste temp vars
+	*open working version of microdata:
+	use "`o_o_exper_data_temp'\debt01a 2018.dta", clear
+
+		keep totcollbin county_fips_fixed
+		mean totcollbin
+
+	gen stdm_totcollbin= totcollbin
+
+	gen obs=1
+
+
+	collapse (mean) totcollbin (semean) stdm_totcollbin (sum) obs , by( county_fips_fixed) 
+
+	drop if county_fips_fixed==""
+
+*SUPPRESS n < 50
+
+	replace totcollbin =. if obs<50
+	replace stdm_totcollbin =. if obs<50
+
+
+*Creating 95% confidence intervals
+
+	gen upper_95=totcollbin +1.96*stdm_totcollbin 
+	gen lower_95 = totcollbin -1.96*stdm_totcollbin 
+
+*Setting 95% lower bound to be equal to zero if lower than zero
+	replace lower_95 =0 if lower_95 <0
+
+	rename county_fips_fixed county_fips
+	keep county_fips totcollbin  upper_95 lower_95 
+
+save "`dir'/county_coll_95_inter.dta",replace
+
+	
+	
 *Importing Debt in America data
-	import excel "H:\Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
+	import excel "`dir'Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
 		rename state state_name
 		rename fullcountynamefromcensus county_name
 		rename countyfips county_fips
