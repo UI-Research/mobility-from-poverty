@@ -14,7 +14,7 @@ When using county level crime statistics, it is important to keep in mind that t
     * Limitations
     * Missingness
 
-1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose
+1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
 2. import all files
 3. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv
 4. clean county crime file ((2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
@@ -41,7 +41,7 @@ This dataset contains juvenile arrest rates by county in 2016 using counts of ar
     * Limitations
     * Missingness
 
-1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose
+1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\juvenile_arrest
 2. import all files
 3. crosswalk county FIPS (fbi_crosswalk.dta) to the 2016 agency arrests file (2016_arrest) matching on ORI number
 4. check 2016 agency arrests file (2016_arrest) for missing values in count of juvenile arrests by demographic group
