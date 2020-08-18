@@ -35,11 +35,6 @@ This metric is the share of the poor in a county who live in census tracts with 
 
 All numbers come for the Census API. The documentation for the Census API is available [here](https://api.census.gov/data/2018/acs/acs5/profile/variables.html). We pull all of the race/ethnicity counts for 2018 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced above. 
 
-
-
-
-
-
 To do this we have to identify census tracts with poverty rates over 40% in each county, count the number of residents in those tracts who are poor, sum that up and divided it by the total number of poor residents in the county.
 
 
@@ -101,7 +96,8 @@ tracts <- tracts %>%
 
 ```
 
-Some tracts have [suppression codes](https://www.census.gov/data/developers/data-sets/acs-1year/data-notes.html) instead of observed values. 
+Some tracts have [suppression codes](https://www.census.gov/data/developers/data-sets/acs-1year/data-notes.html) instead of observed values.
+
 * `-888888888` An '(X)' means that the estimate is not applicable or not available.
 * `-222222222` A '**' entry in the margin of error column indicates that either no sample observations or too few sample observations were available to compute a standard error and thus the margin of error. A statistical test is not appropriate.
 
@@ -130,10 +126,17 @@ tracts %>%
 
 ### 2. Count the number of people in poverty who live in Census tracts with poverty > 40% in each county. 
 
+We calculate the rate of poverty in high-poverty tracts.
+
 ```{r count-high-poverty}
 tracts <- tracts %>%
   mutate(high_poverty = if_else(poverty > 40, people * poverty * 0.01, 0))
 
+```
+
+We calculate the overall poverty and the number of people without a poverty estimate and then sum to the county level. 
+
+```{r}
 counties_summary <- tracts %>%
   mutate(poverty_count = people * poverty * 0.01,
          missing_people = if_else(is.na(high_poverty), people, 0)) %>%
@@ -145,14 +148,15 @@ counties_summary <- tracts %>%
             tracts = n()) %>%
   ungroup()
 
+```
+
+Finally, we calculate the share of people who are excluded fromt he poverty calculation in each tract. 
+
+```{r}
 counties_summary <- counties_summary %>%
   mutate(missing_share = missing_people / people)
 
 ```
-
-deal with missing values
-* share of people missing
-* na.rm = TRUE
 
 ### 3. Count the number of people in poverty who live in each county. 
 
@@ -163,7 +167,6 @@ counties <- get_vars(year = 2018, vars = vars, geography = "county") %>%
          poverty_rate_county_moe = DP03_0128PM)
 
 ```
-
 
 There was a data collection error in Rio Arriba County, NM ([source](https://www.census.gov/programs-surveys/acs/technical-documentation/errata/125.html)). We drop these observations. 
 
@@ -203,7 +206,8 @@ counties_joined %>%
   ggplot(aes(poverty_county_count, poverty_count)) +
   geom_point(alpha = 0.1) +
   coord_equal() +
-  scatter_grid()
+  scatter_grid() +
+  labs(title = "There is a Close Match Between the Reported County Population\nand the Tract Population Summed to Counties")
 
 ```
 
@@ -227,16 +231,26 @@ counties_joined <- counties_joined %>%
 counties_joined <- counties_joined %>%
   mutate(poverty_exposure = high_poverty / poverty_count_county) 
 
-counties_joined %>%
-  arrange(desc(poverty_exposure))
 
 ```
 
+Let's look at the highest values. 
 
 ```{r}
 counties_joined %>%
-  filter(is.na(poverty_exposure))
+  arrange(desc(poverty_exposure)) %>%
+  select(state, county, poverty_exposure)
 
+```
+
+There shouldn't be any missing values. 
+
+```{r}
+stopifnot(
+  counties_joined %>%
+    filter(is.na(poverty_exposure)) %>%
+    nrow() == 0
+)
 ```
 
 Johnson County, Illinois has a value above 1 because of rounding at the tract level for statistical disclosure control. We set this value to `NA` for now. 
@@ -286,8 +300,21 @@ counties_joined %>%
   scale_y_continuous(limits = c(0, NA),
                      expand = expansion(mult = c(0, 0.2))) +
   scatter_grid() +
-  labs(title = "Most Extreme Poverty Exposure Values are for Small Counties")
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Counties",
+       x = "Number of Tracts in County")
   
+
+
+counties_joined %>%
+  ggplot(aes(people, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Counties",
+       x = "Population in County")
+
 counties_joined %>%
   ggplot(aes(poverty_rate_county, poverty_exposure)) +
   geom_point(alpha = 0.2,
