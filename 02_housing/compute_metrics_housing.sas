@@ -54,9 +54,10 @@ run;
 
 *Merge on the 80% and 50% AMI income levels and determine:
   1) which households are <= 80% and <= 50% of AMI for a family of 4 
-     (regardless of the actual household size)
+     (regardless of the actual household size!!!). 
   2) which units are affordable for a family of 4 at 80% and 50% of AMI
-     (regardless of the actual unit size)
+     (regardless of the actual unit size!!!). "Affordable" means costs are < 30% of the AMI
+	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
 data households;
   merge &microdata_file.(in=a where=(pernum=1)) County_income_limits(in=b keep=statefip county L50_4 L80_4);
@@ -78,7 +79,9 @@ run;
 
 *Need to account for vacant units as well.
 *Merge on the 80% and 50% AMI income levels and determine which vacant units are affordable
- for a family of 4 at 80% and 50% of AMI (regardless of the actual unit size);
+ for a family of 4 at 80% and 50% of AMI (regardless of the actual unit size!!!).  If there is a non-zero
+ value for gross rent, use that for the costs.  Otherwise, if there is a valid house value, use the housing
+ cost that was calcualted in the "prepare_vacant" macro.;
 data vacant;
   merge &vacant_file.(in=a) County_income_limits(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
