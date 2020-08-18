@@ -33,7 +33,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
     * [Code Reviews in GitHub](#code-reviews-in-github)
-    * [Code Branching for Reviewers](#code-branching-in-github)
+    * [Code Branching for Reviewers](#code-branching-for-reviewers)
 * [Creating the Final File](#creating-the-final-file)
 * [License](#license)
 * [Contact](#contact)
