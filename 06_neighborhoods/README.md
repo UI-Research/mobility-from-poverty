@@ -2,7 +2,7 @@
 
 Brief description
 
-* Final data name(s):
+* Final data name(s): county_level_enviro.csv
 * Analyst(s): Peace Gwam
 * Data source(s): Affirmatively Furthering Fair Housing (AFFH) & ACS
 * Year(s): 2014
