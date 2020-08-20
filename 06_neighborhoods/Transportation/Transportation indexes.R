@@ -122,20 +122,16 @@ test_data <- test_data %>%
 
 ### END OF DATA CHECK 1 BACK TO REMAINING DATA SET UP ###
 
-# Next step: exclude observations with N/A index values.
-tracts_with_pop <- tracts_with_pop %>%
-  replace_na(list(tcost_idx = 0)) %>%
-  replace_na(list(trans_idx = 0))
-
 ### NEXT: USE POPULATION WEIGHTS BY # HOUSEHOLDS <50% AMI ###
   # We generated county average index values by population weighting tract averages. 
   # The way we ultimately decided to do this was using the number of households <50% AMI, 
   # which more closely aligns with the definition for the index than just the overall population number.
   # That number is in the AFFH dataset (the num_hh variable defined in line 20) so we already have it.
+  # The code withholds n/as from calculation.
 county_transport_stats <- tracts_with_pop %>%
   group_by(state, county) %>%
-  summarize(mean_tcost = weighted.mean(x = tcost_idx, w = num_hh),
-            mean_trans = weighted.mean(x = trans_idx, w = num_hh)) %>%
+  summarize(mean_tcost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
+            mean_trans = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
   ungroup()
 
 ### SECOND ROUND OF DATA CHECKING: TRACTS THAT HAVE INDEX VALUES BUT NO HOUSEHOLDS UNDER 50% AMI ###
@@ -214,8 +210,8 @@ problem_counties_trans3 <- c("48253", # (Jones County, Texas) flagged for n/a in
 county_transport_stats <- county_transport_stats %>%
   mutate(mean_tcost_quality = if_else(condition = geoid %in% problem_counties_tcost2, true = 2, false = 1)) %>%
   mutate(mean_trans_quality = if_else(condition = geoid %in% problem_counties_trans2, true = 2, false = 1)) %>%
-  mutate(mean_tcost_quality = if_else(condition = geoid %in% problem_counties_tcost3, true = 3, false = 1)) %>%
-  mutate(mean_trans_quality = if_else(condition = geoid %in% problem_counties_trans3, true = 3, false = 1))
+  mutate(mean_tcost_quality = if_else(condition = geoid %in% problem_counties_tcost3, true = 3, false = mean_tcost_quality)) %>%
+  mutate(mean_trans_quality = if_else(condition = geoid %in% problem_counties_trans3, true = 3, false = mean_trans_quality))
 
 #Write out final CSV
-write_csv(county_transport_stats, "output/county_transport_stats_final.csv", na = "", append = FALSE, col_names = TRUE)
+write_csv(county_transport_stats, "output/county_transport_stats_final.csv")
