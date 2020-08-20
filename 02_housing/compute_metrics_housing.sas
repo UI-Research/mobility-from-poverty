@@ -18,10 +18,10 @@ proc import datafile="&networkDir.\FY18_4050_FMRs_rev.csv" out=FMR_pop dbms=csv 
 run;
 *Convert the FMR code on the population file from a character string to a number,
  and add the population variable onto the income level file;
-data FMR_pop;
+/*data FMR_pop;
   set FMR_pop(rename=(fips2010=fips2010_char));
   fips2010=input(fips2010_char,10.);
-run;
+run;*/
 data FMR_Income_Levels;
   merge FMR_Income_Levels FMR_pop(keep=fips2010 pop2010);
   by fips2010;
