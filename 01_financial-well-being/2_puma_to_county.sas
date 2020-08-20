@@ -18,8 +18,10 @@ data libmain.puma_to_county;
  very small part of PUMA 100);
   if afact=0 then delete;
 run;
+
+/* KW COMMENT: Changed from sort by statefip puma to sort by statefip county */
 proc sort data=libmain.puma_to_county;
-  by statefip puma;
+  by statefip county;
 run;
 
 *Create a file that asignes a weight to each county based on 2010 population;
