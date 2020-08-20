@@ -2,8 +2,8 @@
  warn if merged datasets have same variables (msglevel=i), show resolved values of macro varsiables (symbolgen);
 options source2 mprint msglevel=i symbolgen;
 
-%let localDir=D:\pjtemp\Mobility_ACS_metrics;
-%let networkDir=K:\Ibp\PJohnson\Boosting Upward Mobility;
+%let localDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
+%let networkDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
 
 libname libmain "&localDir";
 libname old  "&localDir.\old";
