@@ -16,7 +16,7 @@ data &metrics_file.;
   merge num_25_thru_54(in=a) num_employed(in=b);
   by statefip county;
   if not a or not b then put "error: missing a matching obs: " statefip= county= num_25_thru_54= num_employed=;
-  else if num_25_thru_54 <=0 then put "warning: no 25-64 yr-olds: " statefip= county= num_25_thru_54= num_employed=;
+  else if num_25_thru_54 <=0 then put "warning: no 25-54 yr-olds: " statefip= county= num_25_thru_54= num_employed=;
   else share_employed = num_employed/num_25_thru_54;
 run;
 %mend compute_metrics_unemployment;
