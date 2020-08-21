@@ -103,6 +103,9 @@ county_pop <- map_dfr(
   )
 )
 
+#rename county pop variable to use later
+county_pop <- rename(county_pop, total_population = B01003_001E)
+
 #Merge datasets and calculate the percent of the county population made up 
   #by the tract with N/A transit values.
 test_data <- left_join(county_pop, population_test, by = "GEOID")
