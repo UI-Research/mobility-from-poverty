@@ -1,7 +1,7 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/Raw folder (currently saved on Box in the education folder) **
+** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/raw folder (currently saved on Box in the education folder) **
 
 clear all
 set maxvar 10000
@@ -12,8 +12,13 @@ global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2016
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
+
+cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
 
+cap n mkdir "raw"
+cap n mkdir "intermediate"
+cap n mkdir "built"
 
 ** install educationdata command **
 cap n ssc install libjson
@@ -33,12 +38,12 @@ tostring state, replace
 replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
 
-save "Intermediate/countyfile.dta", replace
+save "intermediate/countyfile.dta", replace
 
 
 ** NOTE: Download data in advance (manually) from SEDA website **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-use "Raw/seda_county_long_gcs_v30.dta", clear
+use "raw/seda_county_long_gcs_v30.dta", clear
 
 keep if subject=="ela"
 
@@ -93,12 +98,12 @@ drop flag
 
 replace num_grades_included = . if learning_rate == .
 
-save "Intermediate/SEDA.dta", replace
+save "intermediate/SEDA.dta", replace
 
 
-use "Intermediate/SEDA.dta", clear
+use "intermediate/SEDA.dta", clear
 
-merge 1:1 year state county using "Intermediate/countyfile.dta"
+merge 1:1 year state county using "intermediate/countyfile.dta"
 
 keep if year == ${year} - 1
 drop if _merge==1
@@ -106,6 +111,6 @@ drop _merge
 
 gsort -year state county
 
-export delimited using "Built/SEDA.csv", replace
+export delimited using "built/SEDA.csv", replace
 export delimited using "${boxfolder}/SEDA.csv", replace
 

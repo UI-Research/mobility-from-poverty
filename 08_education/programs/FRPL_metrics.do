@@ -10,8 +10,13 @@ global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2018
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
+
+cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
 
+cap n mkdir "raw"
+cap n mkdir "intermediate"
+cap n mkdir "built"
 
 ** install educationdata command **
 cap n ssc install libjson
@@ -31,7 +36,7 @@ tostring state, replace
 replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
 
-save "Intermediate/countyfile.dta", replace
+save "intermediate/countyfile.dta", replace
 
 
 ** get CCD enrollment **
@@ -46,15 +51,15 @@ save "Intermediate\ccd_enr_${year}_wide.dta", replace
 
 ** get CCD directory data **
 educationdata using "school ccd directory", sub(year=${year}) csv clear
-save "Raw\ccd_dir_${year}.dta", replace
+save "raw\ccd_dir_${year}.dta", replace
 
-merge 1:1 year ncessch using "Intermediate\ccd_enr_${year}_wide.dta"
+merge 1:1 year ncessch using "intermediate\ccd_enr_${year}_wide.dta"
 
-save "Intermediate/combined_${year}.dta", replace
+save "intermediate/combined_${year}.dta", replace
 
 
 ** county-level rates **
-use "Intermediate/combined_${year}.dta", clear
+use "intermediate/combined_${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
 
@@ -68,7 +73,7 @@ tab fips no_dc, row nofreq rowsort
 tab fips no_frpl, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1) // for footnotes
 tab fips no_dc, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1)
 
-gen frpl_share = max(free_or_reduced, direct_cert) /  enrollment
+gen frpl_share = max(free_or_reduced, direct_cert) / enrollment
 gen frpl_40 = (frpl_share>0.40) if frpl_share!=.
 replace frpl_40 = 0 if frpl_share==.
 
@@ -108,7 +113,7 @@ keep if year==$year
 
 gsort -year state county
 
-export delimited using "Built/FRPL.csv", replace
+export delimited using "built/FRPL.csv", replace
 export delimited using "${boxfolder}/FRPL.csv", replace
 
 /* Footnotes for 2018: 
