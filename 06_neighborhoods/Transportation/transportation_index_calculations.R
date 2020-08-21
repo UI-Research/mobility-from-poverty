@@ -204,5 +204,8 @@ county_transport_stats <- county_transport_stats %>%
   mutate(mean_tcost_quality = if_else(condition = geoid %in% problem_counties_tcost3, true = 3, false = mean_tcost_quality)) %>%
   mutate(mean_trans_quality = if_else(condition = geoid %in% problem_counties_trans3, true = 3, false = mean_trans_quality))
 
+county_transport_stats <- county_transport_stats %>%
+  select(-geoid)
+
 #Write out final CSV
 write_csv(county_transport_stats, "output/county_transport_stats_final.csv")
