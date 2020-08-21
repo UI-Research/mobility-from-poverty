@@ -111,15 +111,6 @@ test_data <- test_data %>%
   mutate(perc_na = ((missing_pop_county_sum/total_population)*100)) %>%
   mutate(perc_na = round(perc_na, digits = 2))
 
-#We will set the data quality to a 2 for counties that have a N/A tract that 
-  #makes up more than 10% of the county population. Including:
-    # 48253 (Jones County, Texas)
-    # 02185 (North Slope Borough, Alaska)	
-    # 51081 (Greensville County, Virginia)	
-    # 51183 (Sussex County, Virginia)
-    # 08043 (Fremont County, Colorado)	
-    # 30101 (Toole County, Montana)
-
 ### END OF DATA CHECK 1 BACK TO REMAINING DATA SET UP ###
 
 ### NEXT: USE POPULATION WEIGHTS BY # HOUSEHOLDS <50% AMI ###
@@ -182,11 +173,11 @@ county_transport_stats <- county_transport_stats %>%
   #Counties will generally be given a 1 except for the counties flagged by the two data quality exercises.
   #Counties with 10-24% missingness will get a 2
 problem_counties_tcost2 <- c("08043", # (Fremont County, Colorado)	flagged for n/a index values
-                      "30101", # (Toole County, Montana) flagged for n/a index values
-                      "42119", # (Union County, Pennsylvania) flagged for nonzero index values but 0 households <50% AMI
-                      "48001", # (Anderson County, Texas) 	flagged for nonzero index values but 0 households <50% AMI
-                      "39097", # (Madison County, Ohio) flagged for nonzero index values but 0 households <50% AMI
-                      "48099") # (Coryell County, Texas) flagged for nonzero index values but 0 households <50% AMI
+                             "30101", # (Toole County, Montana) flagged for n/a index values
+                             "42119", # (Union County, Pennsylvania) flagged for nonzero index values but 0 households <50% AMI
+                             "48001", # (Anderson County, Texas) 	flagged for nonzero index values but 0 households <50% AMI
+                             "39097", # (Madison County, Ohio) flagged for nonzero index values but 0 households <50% AMI
+                             "48099") # (Coryell County, Texas) flagged for nonzero index values but 0 households <50% AMI
 
 problem_counties_trans2 <- c("08043", # (Fremont County, Colorado)	flagged for n/a index values
                              "30101", # (Toole County, Montana) flagged for n/a index values
