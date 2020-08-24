@@ -1,4 +1,4 @@
-# Metric template
+# ELA learning rate
 
 Brief description: This metric reflects the average annual learning growth 
 in English/language arts (ELA) among public school students between third 
@@ -7,13 +7,16 @@ grade in the 2015-16 school year), this measure is the slope of the best fit
 line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment,
 etc. Assessments normed so that a typical third grade assessment would score 3,
 a typical fourth grade assessment would score 4, etc. Thus, typical learning growth
-is roughly 1 grade level per year. Assessments are state- and year-specific, but
-the Stanford Education Data Archive (SEDA) has normed these to be comparable over
-time and space.
+is roughly 1 grade level per year. 1 indicates a county is learning at an average rate;
+below 1 is slower than average, and above 1 is faster than average. Assessments are 
+state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed 
+these to be comparable over time and space.
 
 * Final data name(s): SEDA
 * Analyst(s): Erica Blom
-* Data source(s):
+* Data source(s): https://cepa.stanford.edu/content/seda-data
+	https://edopportunity.org/get-the-data/seda-archive-downloads/ 
+	exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta
 * Year(s): 2015 (2015-16 school year)
 * Notes:
     * Limitations: Not all counties report assessments for all grades, so some estimates
@@ -30,7 +33,7 @@ Regressions were weighted by the number of test-takers for each year, grade, and
 the standard error of the estimate. A flag indicates how many grades are included in
 each estimate.   
 
-
+# Share of students in high-poverty schools
 
 Brief description: This metric reflects the fraction of students in each county who attend
 schools where 40 percent or more of students receive free or reduced-price lunch (FRPL). 

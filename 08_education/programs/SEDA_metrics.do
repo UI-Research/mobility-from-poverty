@@ -41,12 +41,17 @@ assert strlen(state)==2
 save "intermediate/countyfile.dta", replace
 
 
-** NOTE: Download data in advance (manually) from SEDA website **
+** NOTE: If the following doesn't work, download data in manually from SEDA website: https://cepa.stanford.edu/content/seda-data **
+** or https://edopportunity.org/get-the-data/seda-archive-downloads/ **
+** exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
+cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta" "raw/seda_county_long_gcs_v30.dta", replace
 use "raw/seda_county_long_gcs_v30.dta", clear
 
 keep if subject=="ela"
 
+** define cohort as the year a cohort reaches 8th grade. Eg, the 2016 cohort is the cohort that is in 8th grade in 2016, in 7th grade in 2015,
+** in 6th grade in 2014, etc **
 gen cohort = year - grade + 8
 
 destring countyid, gen(county)
