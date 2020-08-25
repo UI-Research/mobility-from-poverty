@@ -5,8 +5,8 @@ When using county level crime statistics, it is important to keep in mind that t
 * Final data name(s): crimerate_county_2018.csv
 * Analyst(s): Lily Robin
 * Data source(s):
-	2018_county.xls: county level crime data for 2018 (this file required some cleaning in excel to remove headers and footers) (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-10/table-10.xls/view)
-	2018_city.xls: city level crime data for 2018 (this file required some cleaning in excel to remove headers and footers) (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-8/table-8.xls/view)
+	2018_county.xls: county level crime data for 2018 (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-10/table-10.xls/view)
+	2018_city.xls: city level crime data for 2018 (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-8/table-8.xls/view)
 	county_crosswalk.csv: county FIPS and county populations
 	zip_code_database.csv: USPS county and city names and zip codes (source: https://www.unitedstateszipcodes.org/zip-code-database/)
 * Year(s): 2018
@@ -14,8 +14,8 @@ When using county level crime statistics, it is important to keep in mind that t
     * Limitations
     * Missingness
 
-1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
-2. import all files
+1. change the file directory listed after the "cd" command on line 8 and copy the crosswalk and zip code source file to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
+2. import and format all files
 3. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv
 4. clean county crime file ((2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
 5. crosswalk county crime data (2018_county.xls) with county FIPS and population data (county_crosswalk.csv)
