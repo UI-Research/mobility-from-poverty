@@ -74,7 +74,7 @@ tab fips no_frpl, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1) // for footnot
 tab fips no_dc, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1)
 
 gen frpl_share = max(free_or_reduced, direct_cert) / enrollment
-gen frpl_40 = (frpl_share>0.40) if frpl_share!=.
+gen frpl_40 = (frpl_share>=0.40) if frpl_share!=.
 replace frpl_40 = 0 if frpl_share==.
 
 gen numerator = enrollment

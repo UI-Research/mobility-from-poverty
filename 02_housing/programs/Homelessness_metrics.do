@@ -62,7 +62,8 @@ save "raw/edfacts_homelessness_${year}.csv", replace
 
 
 ** Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed ** 
-** I replaced all suppressed data with the midpoint (1) but this does not yield numbers that align with the report sent by Claudia **
+** I replaced all suppressed data with the midpoint (1) but this does not yield numbers (for 2017) that align perfectly with this report: 
+** https://nche.ed.gov/wp-content/uploads/2020/01/Federal-Data-Summary-SY-15.16-to-17.18-Published-1.30.2020.pdf (Tables 5 and 6)
 ** Note also that data are unduplicated * by LEA * which does not mean they will necessarily be unduplicated * by county * if students switch between LEAs in a county **
 use "raw/edfacts_homelessness_${year}.csv", clear
 
