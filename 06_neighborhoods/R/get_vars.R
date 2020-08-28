@@ -1,12 +1,10 @@
-#' Title
+#' Pull variables from the Census API and automatically include population count (B01003_001E)
 #'
-#' @param year 
-#' @param vars 
+#' @param year numeric year
+#' @param vars character vector of variable names
 #'
-#' @return
-#' @export
-#'
-#' @examples
+#' @return A tibble of census data by time and geography
+#' 
 get_vars <- function(year, vars, geography) {
   
   state_fips <- paste0("state:", unique(urbnmapr::states$state_fips))

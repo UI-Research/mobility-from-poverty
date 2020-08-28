@@ -44,6 +44,12 @@ theme_set(theme_minimal())
 The Urban Institute purchased the [ICMA Municipal Form of Government 2018 Survey](https://icma.org/2018-municipal-fog-survey). It is available on Box and needs to be added to this directory in a way that matches the filepath below. 
 
 ```{r read-icma}
+if (!dir.exists("data")) {
+  
+  dir.create("data")  
+  
+}
+
 # read in the ICMA survey
 icma2018 <- read_excel(here::here("05_local-governance", 
                                   "descriptive-representation", 
@@ -178,24 +184,24 @@ analysis <- analysis %>%
 The ICMA survey does not distinguish between `0` and `NA`. We calculate the share of councilmembers by race and turn council shares into `NA` for municipalities that have zero councilmembers. 
 
 ```{r}
+calc_council_proportion <- function(council_race, council_members) {
+  
+  if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = {{council_race}} / council_members)
+  
+}
+
 analysis <- analysis %>%
   mutate(
-    council_asian_other = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_asian_other / council_members),
-    council_black_nonhispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_black_nonhispanic / council_members),
-    council_hispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_hispanic / council_members),
-    council_white_nonhispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_white_nonhispanic / council_members)
+    council_asian_other = calc_council_proportion(council_asian_other, 
+                                                  council_members),
+    council_black_nonhispanic = calc_council_proportion(council_black_nonhispanic, 
+                                                  council_members),
+    council_hispanic = calc_council_proportion(council_hispanic, 
+                                                  council_members),
+    council_white_nonhispanic = calc_council_proportion(council_white_nonhispanic, 
+                                                  council_members)
   )
 
 ```
@@ -400,17 +406,17 @@ analysis <- analysis %>%
     ))
 
 # cases without a place or a county subdivision
-trouble <- filter(analysis, is.na(geography)) %>%
+trouble <- tidylog::filter(analysis, is.na(geography)) %>%
   mutate(geography = "trouble")
 
 # join the Census places
 places <- geographies %>%
-  filter(geography == "place") %>%
+  tidylog::filter(geography == "place") %>%
   select(-county, -county_subdivision, -county_subdivision_code)
 
 places <- analysis %>%
   select(-county_subdivision_code) %>%
-  filter(geography == "place") %>%
+  tidylog::filter(geography == "place") %>%
   left_join(places, by = c("place_code", "geography"))
 ```
 
@@ -419,11 +425,11 @@ Combine the three data (places, county subdivisions, trouble) into one file.
 ```{r}
 # join the Census county subdivisions
 county_subdivisions <- geographies %>% 
-  filter(geography == "county subdivision") %>%
+  tidylog::filter(geography == "county subdivision") %>%
   select(-place, -place_code)
 
 county_subdivisions <- analysis %>%
-  filter(geography == "county subdivision") %>%
+  tidylog::filter(geography == "county subdivision") %>%
   select(-place_code) %>%
   left_join(county_subdivisions, by = c("county_subdivision_code", "geography"))
 
@@ -495,8 +501,8 @@ We now have the four metrics of interest for municipalities. We need to roll the
 ```{r}
 # drop municipalities that don't report ICMA data and drop municipalities without matches
 joined_data <- joined_data %>%
-  filter(council_members > 0) %>%
-  filter(geography != "trouble")
+  tidylog::filter(council_members > 0) %>%
+  tidylog::filter(geography != "trouble")
 
 # find the person-weighted average of the four metrics at the county level
 county_data <- joined_data %>%
@@ -582,6 +588,11 @@ county_data <- county_data %>%
     white_nonhispanic_quality = set_quality(proportion = population_prop)
   )
 
+count(county_data, asian_other_quality)
+count(county_data, black_nonhispanic_quality)
+count(county_data, hispanic_quality)
+count(county_data, white_nonhispanic_quality)
+
 ```
 
 ### 8. Save the data
@@ -591,7 +602,7 @@ We need to include all counties in the published data even if we don't have a me
 ```{r}
 # load the 2018 county file
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-file.csv")) %>%
-  filter(year == 2018)
+  tidylog::filter(year == 2018)
 
 # join the calculated metrics to the full file
 all_counties <- left_join(all_counties, county_data, by = c("state", "county"))

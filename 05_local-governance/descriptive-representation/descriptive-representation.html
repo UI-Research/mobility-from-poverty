@@ -1602,7 +1602,13 @@ source(here::here(&quot;05_local-governance&quot;, &quot;R&quot;, &quot;get_vars
 
 theme_set(theme_minimal())</code></pre>
 <p>The Urban Institute purchased the <a href="https://icma.org/2018-municipal-fog-survey">ICMA Municipal Form of Government 2018 Survey</a>. It is available on Box and needs to be added to this directory in a way that matches the filepath below.</p>
-<pre class="r"><code># read in the ICMA survey
+<pre class="r"><code>if (!dir.exists(&quot;data&quot;)) {
+  
+  dir.create(&quot;data&quot;)  
+  
+}
+
+# read in the ICMA survey
 icma2018 &lt;- read_excel(here::here(&quot;05_local-governance&quot;, 
                                   &quot;descriptive-representation&quot;, 
                                   &quot;data&quot;, 
@@ -1730,24 +1736,24 @@ analysis &lt;- analysis %&gt;%
          -other,
          -white_nonhispanic)</code></pre>
 <p>The ICMA survey does not distinguish between <code>0</code> and <code>NA</code>. We calculate the share of councilmembers by race and turn council shares into <code>NA</code> for municipalities that have zero councilmembers.</p>
-<pre class="r"><code>analysis &lt;- analysis %&gt;%
+<pre class="r"><code>calc_council_proportion &lt;- function(council_race, council_members) {
+  
+  if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = {{council_race}} / council_members)
+  
+}
+
+analysis &lt;- analysis %&gt;%
   mutate(
-    council_asian_other = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_asian_other / council_members),
-    council_black_nonhispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_black_nonhispanic / council_members),
-    council_hispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_hispanic / council_members),
-    council_white_nonhispanic = 
-      if_else(condition = council_members == 0, 
-              true = as.numeric(NA), 
-              false = council_white_nonhispanic / council_members)
+    council_asian_other = calc_council_proportion(council_asian_other, 
+                                                  council_members),
+    council_black_nonhispanic = calc_council_proportion(council_black_nonhispanic, 
+                                                  council_members),
+    council_hispanic = calc_council_proportion(council_hispanic, 
+                                                  council_members),
+    council_white_nonhispanic = calc_council_proportion(council_white_nonhispanic, 
+                                                  council_members)
   )</code></pre>
 <p>We test to ensure that the ratios are bounded by 0 and 1 inclusive.</p>
 <pre class="r"><code># bounded by 0 and 1
@@ -1926,26 +1932,26 @@ analysis &lt;- analysis %&gt;%
     ))
 
 # cases without a place or a county subdivision
-trouble &lt;- filter(analysis, is.na(geography)) %&gt;%
+trouble &lt;- tidylog::filter(analysis, is.na(geography)) %&gt;%
   mutate(geography = &quot;trouble&quot;)
 
 # join the Census places
 places &lt;- geographies %&gt;%
-  filter(geography == &quot;place&quot;) %&gt;%
+  tidylog::filter(geography == &quot;place&quot;) %&gt;%
   select(-county, -county_subdivision, -county_subdivision_code)
 
 places &lt;- analysis %&gt;%
   select(-county_subdivision_code) %&gt;%
-  filter(geography == &quot;place&quot;) %&gt;%
+  tidylog::filter(geography == &quot;place&quot;) %&gt;%
   left_join(places, by = c(&quot;place_code&quot;, &quot;geography&quot;))</code></pre>
 <p>Combine the three data (places, county subdivisions, trouble) into one file.</p>
 <pre class="r"><code># join the Census county subdivisions
 county_subdivisions &lt;- geographies %&gt;% 
-  filter(geography == &quot;county subdivision&quot;) %&gt;%
+  tidylog::filter(geography == &quot;county subdivision&quot;) %&gt;%
   select(-place, -place_code)
 
 county_subdivisions &lt;- analysis %&gt;%
-  filter(geography == &quot;county subdivision&quot;) %&gt;%
+  tidylog::filter(geography == &quot;county subdivision&quot;) %&gt;%
   select(-place_code) %&gt;%
   left_join(county_subdivisions, by = c(&quot;county_subdivision_code&quot;, &quot;geography&quot;))
 
@@ -2000,8 +2006,8 @@ joined_data &lt;- bind_rows(
 <p>We now have the four metrics of interest for municipalities. We need to roll these up to counties.</p>
 <pre class="r"><code># drop municipalities that don&#39;t report ICMA data and drop municipalities without matches
 joined_data &lt;- joined_data %&gt;%
-  filter(council_members &gt; 0) %&gt;%
-  filter(geography != &quot;trouble&quot;)
+  tidylog::filter(council_members &gt; 0) %&gt;%
+  tidylog::filter(geography != &quot;trouble&quot;)
 
 # find the person-weighted average of the four metrics at the county level
 county_data &lt;- joined_data %&gt;%
@@ -2076,14 +2082,43 @@ county_data &lt;- county_data %&gt;%
     black_nonhispanic_quality = set_quality(proportion = population_prop),
     hispanic_quality = set_quality(proportion = population_prop),
     white_nonhispanic_quality = set_quality(proportion = population_prop)
-  )</code></pre>
+  )
+
+count(county_data, asian_other_quality)</code></pre>
+<pre><code>## # A tibble: 3 x 2
+##   asian_other_quality     n
+##                 &lt;dbl&gt; &lt;int&gt;
+## 1                   1    44
+## 2                   2   215
+## 3                   3  1262</code></pre>
+<pre class="r"><code>count(county_data, black_nonhispanic_quality)</code></pre>
+<pre><code>## # A tibble: 3 x 2
+##   black_nonhispanic_quality     n
+##                       &lt;dbl&gt; &lt;int&gt;
+## 1                         1    44
+## 2                         2   215
+## 3                         3  1262</code></pre>
+<pre class="r"><code>count(county_data, hispanic_quality)</code></pre>
+<pre><code>## # A tibble: 3 x 2
+##   hispanic_quality     n
+##              &lt;dbl&gt; &lt;int&gt;
+## 1                1    44
+## 2                2   215
+## 3                3  1262</code></pre>
+<pre class="r"><code>count(county_data, white_nonhispanic_quality)</code></pre>
+<pre><code>## # A tibble: 3 x 2
+##   white_nonhispanic_quality     n
+##                       &lt;dbl&gt; &lt;int&gt;
+## 1                         1    44
+## 2                         2   215
+## 3                         3  1262</code></pre>
 </div>
 <div id="save-the-data" class="section level3">
 <h3><span class="header-section-number">1.1.8</span> 8. Save the data</h3>
 <p>We need to include all counties in the published data even if we don’t have a metric for the county. We load the county file and join our metrics to the county file.</p>
 <pre class="r"><code># load the 2018 county file
 all_counties &lt;- read_csv(here::here(&quot;geographic-crosswalks&quot;, &quot;data&quot;, &quot;county-file.csv&quot;)) %&gt;%
-  filter(year == 2018)
+  tidylog::filter(year == 2018)
 
 # join the calculated metrics to the full file
 all_counties &lt;- left_join(all_counties, county_data, by = c(&quot;state&quot;, &quot;county&quot;))
