@@ -20,4 +20,3 @@ from the CCD data). Shares are calculated by dividing by total enrollment in the
 the location of the district office, with enrollment counts also from CCD data). A flag indicates the
 number of districts with suppressed data that are included in each county's estimate.
 
-<Repeat above information for additional metrics>
