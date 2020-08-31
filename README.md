@@ -29,10 +29,11 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Quality Flags](#quality-flags)
     * [Data Dictionary](#data-dictionary)
 * [Code Standards](#code-standards)
-* [Code Review](#code-review)
+* [Code and technical Review](#code-and-technical-review)
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
     * [Code Reviews in GitHub](#code-reviews-in-github)
+    * [Code Branching for Reviewers](#code-branching-in-github)
 * [Creating the Final File](#creating-the-final-file)
 * [License](#license)
 * [Contact](#contact)
@@ -186,7 +187,7 @@ Description: [Overall description]
 
 ```
 
-# Code Review
+# Code and Technical Review
 
 ## Scope of the review
 
@@ -223,7 +224,7 @@ Our code review process will be handled through GitHub, which has powerful tools
 
 In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `master` is handled through pull requests. 
 
-For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. 
+For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. Aaron and Claudia will flag the reviewers. 
 
 <img src="images/request-review.png" width="400" height="200">
 
@@ -245,7 +246,25 @@ Reviewers can also add overall comments before approving or requesting changes f
 
 <img src="images/approve-review.png" width="300" height="200">
 
-Once the code is approved, the branch can be merged into the `master` branch will it can referenced and used for subsequent analyses. 
+Once the code is approved, the branch can be merged into the `master` branch where it can referenced and used for subsequent analyses. 
+
+## Code Branching for Reviewers
+
+Line-by-line edits and feedback should be handled by reviewers through the point-and-click interface on GitHub. Running code from a pull request will require [branching](https://guides.github.com/introduction/flow/). 
+
+Suppose you are reviewing code from branch `malcolm`. You need to "fetch" the `malcolm` branch on to your local computer to run and review the code. Steps:
+
+1. Open up Git Bash in the directory by right clicking in the `gates-mobility-metrics` directory and and selecting Git Bash Here (on Windows).
+2. Submit `git status` and ensure that you don't have any tracked changes that have not been commited. 
+3. Use `git branch` to see your current branch and other available branches. You should at least see `master`. 
+4. Submit `git fetch` to getch remote branches. 
+5. Submit `git checkout --track origin/malcolm` to switch to the `malcolm` branch. Submit `git branch` to confirm the change. 
+
+At this point, you should be able to run and review the code. Back on GitHub, you should be able to add line-by-line comments to the Pull Request if you click "Files changed" and then click the blue plus sign that appears next to the number by the line of code. 
+
+When your review is complete, click the green "Review changes" button on GitHub. You should be able to add overall comments, approve the Pull Request, or Request changes to the Pull Request. If you request changes, you will need to `git pull malcolm` after the analyst pushes the updated code to GitHub. 
+
+When you are done, you can switch back to your branch with `git checkout branch-name` where `branch-name` is the name of the branch you wish to switch to. If you have un-commited changes, you will need to get rid of them with `git stash`. You shouldn't make substantive changes on some else's branch. 
 
 # Creating the Final File
 
