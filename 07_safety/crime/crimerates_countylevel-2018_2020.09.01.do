@@ -80,6 +80,7 @@ drop if city == ""
 *make all proper case and remove spaces and make other changes for consistency
 replace city = subinstr(city, "-", "", .)
 replace city = subinstr(city, "'", "", .)
+replace city = subinstr(city, "Ft ", "Fort ", .)
 replace city = subinstr(city, " ", "", .)
 replace city = proper(city)
 
@@ -100,7 +101,15 @@ tab dup
 *br if city_dup > 0 & dup == 0
 
 *use largest pop for duplicates and drop full duplicates
-bysort citystate: egen city_pop = total(irs_estimated_population_2015)
+egen place = concat(city_name state_name county_name), p("-")
+duplicates r place 
+
+gen primary = (city_num == 0)
+bysort place: egen primary_place = max(primary)
+drop primary
+tab primary_place, m
+
+bysort place: egen city_pop = total(irs_estimated_population_2015)
 replace irs_estimated_population_2015 = city_pop if dup > 0
 rename irs_estimated_population_2015 city_pop_in_county
 drop city_pop city dup city_dup obs city_num
@@ -108,14 +117,9 @@ drop city_pop city dup city_dup obs city_num
 duplicates r
 duplicates drop
 
-*identify duplicates of cities in multiple counties
-duplicates tag city_name county_name state_name, gen(dup)
-tab dup
-drop dup
-
 *identify cities in multiple counties
 duplicates r citystate
-duplicates tag citystate , gen(multi_county)
+duplicates tag citystate, gen(multi_county)
 
 save city_to_county, replace
 
@@ -294,7 +298,7 @@ replace county_name_fromcity = county_test if county_name_fromcity == ""
 drop county_test
 
 *make all proper case and remove spaces and make other changes for consistency
-replace city = subinstr(city, "St. ", "saint", .)
+replace city = subinstr(city, "St.", "saint", .)
 replace city = subinstr(city, "Sheriff", "", .)
 replace city = subinstr(city, "Police Department", "", .)
 replace city = subinstr(city, "Regional", "", .)
@@ -340,6 +344,9 @@ drop dup
 save crime_city_2018, replace
 
 ///// 3. CROSSWALK CITY DATA TO MATCH TO COUNTIES
+
+*****FIRST MERGE
+
 clear 
 use crime_city_2018
 
@@ -350,7 +357,8 @@ gsort citystate
 
 save crime_city_2018_working, replace
 
-*remerge: make alterations to city names to merge to 
+*****REMERGE 
+*make alterations to city names to merge those that didnt match the first time
 use crime_city_2018_working
 keep if _merge == 1
 drop if county_name_fromcity != ""
@@ -401,16 +409,80 @@ save crime_city_2018_working_remerge, replace
 
 merge 1:m citystate using city_to_county
 
-br if _merge == 1
+*br if _merge == 1
+
+*drop any unmerged from master that cannot be matched to counties
+drop if _merge == 1
+gen merge_2 = _merge
+drop _merge
+
+save crime_city_2018_working_remerge, replace
 
 
+*****APPEND TWO MERGES
+use crime_city_2018_working, clear
 
+tab _merge
 
+drop if _merge == 1 & county_name_fromcity == ""
 
-gen missing_city = (_merge == 2)
+append using crime_city_2018_working_remerge
 
-drop _merge state
+save crime_city_2018_working_append, replace
 
+***file with matched cities
+use crime_city_2018_working_append
+
+keep if _merge == 3 | merge_2 == 3 | county_name_fromcity != ""
+
+replace county_name = county_name_fromcity if county_name == ""
+
+*create variables for proportional share of crime by population for cities in multiple counties
+*for cities where listed population for city in county if more then listed pop for whole city, split evenely across the number of counties a city falls in
+gen percent_pop_county = (city_pop_in_county/pop_city) if pop_city != . & city_pop_in_county != .
+sum percent_pop_county
+tab multi_county
+
+foreach var in violent property {
+	
+	gen `var'_crime_city_share = percent_pop_county*`var'_crime_city if percent_pop_county < 1
+	
+	replace `var'_crime_city_share = 0.5*`var'_crime_city if `var'_crime_city_share == . & multi_county == 1 & `var'_crime_city != .
+	
+	replace `var'_crime_city_share = 0.3333*`var'_crime_city if `var'_crime_city_share == . & multi_county == 2 & `var'_crime_city != .
+	
+	replace `var'_crime_city_share = 0.25*`var'_crime_city if `var'_crime_city_share == . & multi_county == 3 & `var'_crime_city != .
+	
+	replace `var'_crime_city_share = 0.2*`var'_crime_city if `var'_crime_city_share == . & multi_county == 4 & `var'_crime_city != .
+	
+	replace `var'_crime_city = `var'_crime_city_share if `var'_crime_city_share != .
+	
+}
+
+sum violent_crime_city property_crime_city 
+
+*update populations in cities
+replace pop_city = city_pop_in_county if percent_pop_county < 1 & pop_city != .
+
+replace pop_city = pop_city*0.5 if multi_county == 1 & percent_pop_county > 1 & pop_city != .
+
+replace pop_city = pop_city*0.3333 if multi_county == 2 & percent_pop_county > 1 & pop_city != .
+
+replace pop_city = pop_city*0.25 if multi_county == 3 & percent_pop_county > 1 & pop_city != .
+
+replace pop_city = pop_city*0.2 if multi_county == 4 & percent_pop_county > 1 & pop_city != .
+
+drop county_name_fromcity city_pop_in_county _merge city_name1 city_name2 dup collapse_dup merge_2 property_crime_city_share violent_crime_city_share percent_pop_county place
+
+*check for duplicates
+
+duplicates r
+duplicates drop
+
+egen place = concat(city_name state_name county_name), p("-")
+duplicates r place
+
+*prepare for merge to counties
 replace state_name = proper(state_name)
 
 *remove county/parish/burough endings
@@ -425,4 +497,37 @@ replace county_name = subinstr(county_name, " Municipality", "", .)
 replace county_name = subinstr(county_name, " ", "", .)
 replace county_name = proper(county_name)
 
-save crime_city_2018_working, replace
+save crime_city_2018_withcounties, replace
+
+***file with unmatched cities
+use crime_city_2018_working_append
+
+keep if _merge == 2 | merge_2 == 2
+drop if county_name_fromcity != ""
+
+drop pop_city violent_crime_city property_crime_city year annual_reporting_change county_name_fromcity place _merge city_name1 city_name2 dup collapse_dup merge_2 state
+
+duplicates r
+duplicates drop
+
+duplicates r state_name city_name county_name
+
+tab primary_place
+*note that many are likely to be duplicates with alternate names, will address when merged. 
+
+*prepare for merge to counties
+replace state_name = proper(state_name)
+
+*remove county/parish/burough endings
+replace county_name = subinstr(county_name, " County", "", .)
+replace county_name = subinstr(county_name, " Parish", "", .)
+replace county_name = subinstr(county_name, " Borough", "", .)
+replace county_name = subinstr(county_name, " Census Area", "", .)
+replace county_name = subinstr(county_name, " Municipality", "", .)
+*not removing city because there are places like St. Louis county, MO and St. Louis city, MO that are both in the file, and different
+
+*make all proper case and remove spaces
+replace county_name = subinstr(county_name, " ", "", .)
+replace county_name = proper(county_name)
+
+save extra_city_2018_withcounties, replace

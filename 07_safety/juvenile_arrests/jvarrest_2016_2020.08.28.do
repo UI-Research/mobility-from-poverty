@@ -159,12 +159,10 @@ drop if _merge == 1
 *nonreporting agencies
 tab zero, m
 tab areo if zero == .
+tab covby, m
 
 gen nonreporting = 0
-replace nonreporting = 1 if zero == 1 | zero == .
-
-*overlapping agencies (this means a juristiction is covered by multiple agencies)
-tab covby, m
+replace nonreporting = 1 if zero == 1 & covby == 0| zero == . & covby == 0
 
 
 ///// 5. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
@@ -196,7 +194,14 @@ sum arrest_10to17 arrest_under10
 
 *total # of juvenile arrests by county
 
-collapse (sum) arrest_10to17 arrest_under10 nonreporting covby (mean) year adult_under18 adult_17 adult_16 fstate fcounty, by(fips)
+gen agencies = 1
+
+collapse (sum) arrest_10to17 arrest_under10 nonreporting (mean) year adult_under18 adult_17 adult_16 fstate fcounty (count) agencies, by(fips)
+
+sum agencies nonreporting
+
+gen percent_nonreporting = nonreporting/agencies
+sum percent_nonreporting
 
 
 ///// 8. CROSSWALK POPULATION
@@ -245,14 +250,19 @@ merge 1:1  state county using county_crosswalk_2016
 ///// 10. FINALIZE DATA and EXPORT
 
 rename nonreporting nonreporting_agencies
-rename covby overlapping_juristictions
 
 drop countyfips _merge
 
 *order variables appropriatly and sort dataset
-order year state state_name county county_name juvenile_arrest juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 nonreporting_agencies overlapping_juristictions adult_under18 adult_17 adult_16 population, first
+order year state state_name county county_name juvenile_arrest juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 nonreporting_agencies adult_under18 adult_17 adult_16 population, first
 
 gsort year state county
+
+*create data quality index
+gen data_quality = 1
+replace data_quality = 2 if percent_nonreporting > 0.10
+replace data_quality = 3 if percent_nonreporting > 0.5
+tab data_quality, m
 
 save 2016_arrest_by_county, replace
 

@@ -12,19 +12,19 @@ When using county level crime statistics, it is important to keep in mind that t
 * Year(s): 2018
 * Notes: This dataset is not inclusive of all counties and many counties are missing data from cities that reside within that county. Additionally, crimes that occured under the juristiction of agencies other then city and county law enforcment (ex. trible, university, state) are not included in crime counts for each county. Variables have been created to approximate the amount of missingness for a county. 
     * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (I can add back in these footnotes if helpful - 4 for city and 5 for county). 
-    * Missingness: x% of counties are missing all crime data. x% of counties are missing violent crime rates. x% of counties are missing property crime rates. x% percent of counties are missing data from at least one city in the juristiction of the county (var name). Crimes occuring outside of city and county justictictions (ex. tribal, university, school district, and state agencies) are missing from this dataset and missingness cannot be estimated. Iowa provided limited and inssufficient data and is theerfore not included in this dataset. 
+    * Missingness: x% of counties are missing all crime data. x% of counties are missing violent crime rates. x% of counties are missing property crime rates. x% percent of counties are missing data from at least one city in the juristiction of the county (var name). x crimes in cities could not be matched to counties and are missing form the data. Crimes occuring outside of city and county justictictions (ex. tribal, university, school district, and state agencies) are missing from this dataset and missingness cannot be estimated. Iowa provided limited and inssufficient data and is theerfore not included in this dataset. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy the crosswalk and zip code source file to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
 2. import and format all files
 3. clean crosswalk file to match cities to counties
-4. clean county crime file
+4. clean county crime file (2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
 5. clean city crime file
-6. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv
-4. clean county crime file ((2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
+6. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv and creating a file with crimes in cities and county names and a file with cities in counties where there are no crime statistics. this will be used to identify % of pop with no juristiction coverage. 
 5. crosswalk county crime data (2018_county.xls) with county FIPS and population data (county_crosswalk.csv)
 6. Add city crime data to counties
-7. Aggergate data to the county level with one observation per county - calculating crime rates and statstics about missingness
-8. Finalize and export data
+7. Add cities with missing data to counties
+8. Aggergate data to the county level with one observation per county - calculating crime rates and statstics about missingness
+9. Finalize and export data
 
 ----------------
 
@@ -41,8 +41,8 @@ This dataset contains arrest rates of children age 10 to 17 by county in 2016 us
 	county_crosswalk.csv: county FIPS and county populations (provided by Kevin)
 * Year(s):2016
 * Notes: 
-    * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily refelctive of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for counties with at least one arrest of a child under 10. There are also agencies that have overlapping juritsictions. In this senario, arrests should be attributed to only one of the agencies in the juristictional area per FBI data standards. The juristiction_overlap variable denotes how many agencies with overlapping juritiction are in a county. 
-    * Missingness: This dataset is not inclusive of all counties and agencies are missing from county arrest counts. 7 counties are missing arrest data. The nonreporting_agencies variable reports the estimated number of agencies in a county that did not report arrest data, some of these agencies may not have any arrest data. 
+    * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily reflective of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for the number of arrests of children under 10 by county. The data quality index is used to assess the quality of data for each county using the non-reporting agenicies variable. The non-reporting agencies varaible is the best available estimate of how many agencies may not be reporting arrests in a county in this data, but it is not complete. There are over 5,000 agencies in the file that cannot be matched to a county. It also does not account for the population of each county. Counties with over 10% of agencies not reporting are marked as a 2 and agencies with over 50% of agencies not reporting are marked as a 3. ~82% of counties have a data quality index of 1, 10.5% have a data quality index of 2, and 7.5% have a data quality index of 3. 
+    * Missingness: This dataset is not inclusive of all counties and agencies are missing from county arrest counts. 7 counties are missing arrest data. The nonreporting_agencies variable reports the estimated number of agencies in a county that did not report arrest data, some of these agencies may not have any arrest data. There are also agencies that have overlapping juritsictions. In this senario, arrests should be attributed to only one of the agencies in the juristictional area per FBI data standards. If a juristiction is indicated as being covered by another juristiction, it is not included in thecount of non-reporting agencies in a county. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\juvenile_arrest
 2. import all files
