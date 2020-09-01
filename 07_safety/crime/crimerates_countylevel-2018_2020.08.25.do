@@ -73,6 +73,9 @@ rename (violentcrime propertycrime) (violent_crime_city property_crime_city)
 rename population pop_city	
 
 *remove endnotes
+gen annual_reporting_change = (strmatch(state, "*4*"))
+replace annual_reporting_change = 1 if (strmatch(city, "*4*"))
+
 forval i = 0/9 {
     
 	replace state = subinstr(state, "`i'", "",.)

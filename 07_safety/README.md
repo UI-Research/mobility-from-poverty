@@ -10,13 +10,16 @@ When using county level crime statistics, it is important to keep in mind that t
 	county_crosswalk.csv: county FIPS and county populations
 	zip_code_database.csv: USPS county and city names and zip codes (source: https://www.unitedstateszipcodes.org/zip-code-database/)
 * Year(s): 2018
-* Notes: This dataset is not inclusive of all counties and many counties are missing data from cities that reside within that county. Additionally, crimes that occured under the juristiction of agencies other then city and county law enforcment (ex. triable, university, state) are not included in crime counts for each county. Variables have been created to approximate the amount of missingness for a county. 
-    * Limitations
-    * Missingness
+* Notes: This dataset is not inclusive of all counties and many counties are missing data from cities that reside within that county. Additionally, crimes that occured under the juristiction of agencies other then city and county law enforcment (ex. trible, university, state) are not included in crime counts for each county. Variables have been created to approximate the amount of missingness for a county. 
+    * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (I can add back in these footnotes if helpful - 4 for city and 5 for county). 
+    * Missingness: x% of counties are missing all crime data. x% of counties are missing violent crime rates. x% of counties are missing property crime rates. x% percent of counties are missing data from at least one city in the juristiction of the county (var name). Crimes occuring outside of city and county justictictions (ex. tribal, university, school district, and state agencies) are missing from this dataset and missingness cannot be estimated. Iowa provided limited and inssufficient data and is theerfore not included in this dataset. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy the crosswalk and zip code source file to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
 2. import and format all files
-3. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv
+3. clean crosswalk file to match cities to counties
+4. clean county crime file
+5. clean city crime file
+6. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv
 4. clean county crime file ((2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
 5. crosswalk county crime data (2018_county.xls) with county FIPS and population data (county_crosswalk.csv)
 6. Add city crime data to counties
@@ -27,29 +30,27 @@ When using county level crime statistics, it is important to keep in mind that t
 
 # Safety - Juvenile Arrest Rate
 
-This dataset contains juvenile arrest rates by county in 2016 using counts of arrests provided by FBI UCR data and population data for all children age 12 to 17. This age brakcet was chosen because the majority of states have an age of adulat criminal liability of 18 and at least one state has a minimum age of crminal liability of 12. 
+This dataset contains arrest rates of children age 10 to 17 by county in 2016 using counts of arrests provided by Federal Bureau of Investigations (FBI) Uniform Crime Reporting program (UCR) data and population data for all children age 10 to 17 from the ACS 2016 1-year extract from IPUMS. This age bracket was chosen because the majority of states have an age of adulat criminal liability of 18 and at least one state has a minimum age of crminal liability of 12, and arrests of very young children are unlikely. The UCR data is split by children age 0-9, 10 - 12, 13 - 14, and then by individual year. Starting at age 10 was a natural split in the data and anything older then 17 is considered adult in all states. 
 
 * Final data name(s): 2016_arrest_by_county
 * Analyst(s): Lily Robin
 * Data source(s):
-	2016_arrest.dta: arrests by agency in 2016
+	2016_arrest.dta: arrests by agency in 2016 (https://www.icpsr.umich.edu/web/ICPSR/studies/37056)
 	children_12_17_v2.csv: population of children age 12 to 17 by county in 2016
-	fbi_crosswalk.dta: county FIPS to county/agency ORI crosswalk
-	county_crosswalk.csv: county FIPS and county populations
+	fbi_crosswalk.dta: county FIPS to agency Originating Reporting Agency Identifier (ORI) crosswalk (https://www.icpsr.umich.edu/web/ICPSR/series/366)
+	county_crosswalk.csv: county FIPS and county populations (provided by Kevin)
 * Year(s):2016
-* Notes: This dataset is not inclusive of all counties and agencies are missing from county arrest counts. The denominator is the best match for consistency across states, but is not fully accurate of the numerator in all states. Variables are included to identify states that have adult criminal liability ages below 18 and for counties with at least one arrest of a child 12 or under (the data could not be split to count only arrests of children under 12). 
-    * Limitations
-    * Missingness
+* Notes: 
+    * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily refelctive of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for counties with at least one arrest of a child under 10. There are also agencies that have overlapping juritsictions. In this senario, arrests should be attributed to only one of the agencies in the juristictional area per FBI data standards. The juristiction_overlap variable denotes how many agencies with overlapping juritiction are in a county. 
+    * Missingness: This dataset is not inclusive of all counties and agencies are missing from county arrest counts. 7 counties are missing arrest data. The nonreporting_agencies variable reports the estimated number of agencies in a county that did not report arrest data, some of these agencies may not have any arrest data. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\juvenile_arrest
 2. import all files
 3. crosswalk county FIPS (fbi_crosswalk.dta) to the 2016 agency arrests file (2016_arrest) matching on ORI number
-4. check 2016 agency arrests file (2016_arrest) for missing values in count of juvenile arrests by demographic group
-5. Idnetify states with age of adult criminal liability below 18
+4. check 2016 agency arrests file (2016_arrest) for missing values and create non-reporting variable to account for non-reporting agencies in a county
+5. Identify states with age of adult criminal liability below 18
 6. Calculate total juvenile arrests per agency
 7. Aggregate to County
-	7a. Reduce observations to one per agency
-	7b. Reduce observations to one per county
 8. crosswalk arrest file (2016_arrest) to county population file (children_12_17_v2.csv)
 9. crosswalk arrest file (2016_arrest) to county FIPS file (county_crosswalk.csv) with all counties to add in counties with missing data
 10. Finalize and export data

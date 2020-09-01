@@ -16,12 +16,35 @@ clear
 use fbi_crosswalk
 rename *, lower
 rename ori7 ori
+*to make sure it is okay to use the ori9 number when ori7 is -1 I will spot check a few of these counties for arrest counts after merging
+gen spot_check = (ori == "-1")
+replace ori = substr(ori9,1,7) if ori == "-1"
+count if ori == "-1"
 drop if ori == "-1"
+*check for duplicates overall and by ORI, and get to one obs per ORI
+duplicates r
+duplicates r ori
+keep fstate fcounty fplace fips_st fips_county fips ori ua statename countyname
+
+foreach var in fips_st fips_county fips ori statename countyname {
+	
+	replace `var' = trim(`var')
+}
+duplicates r
+duplicates drop
+duplicates r ori
+duplicates tag ori, gen(dup)
+*br if dup > 0
+replace fplace = . if dup > 0
+duplicates r
+duplicates drop
+duplicates r ori
+
 save fbi_crosswalk_clean, replace
 
-***crosswalk file for county population aged 12 - 17
+***crosswalk file for county population aged 10 - 17
 clear
-import delimited "children_12_17_v2.csv"
+import delimited "children_10_17.csv"
 
 *add "0" to beggining of countyfips as needed
 *can revise to cleaner substr code if desired
@@ -32,7 +55,7 @@ egen fip2 = concat(zero countyfips) if fip_len == 4
 replace countyfips = fip2 if fip_len == 4
 drop fip_len zero fip2
 
-save pop_12-17_v2, replace
+save pop_10_17, replace
 
 ***2016 arrests by county
 clear
@@ -123,28 +146,25 @@ rename *, lower
 ///// 3. CREATE/CROSSWALK COUNTY FIPS
 
 merge m:1 ori using fbi_crosswalk_clean
+*with only ori7: 1,423,051 matched, 14,087 not matched from master
+*with ori7 and suplemented ori9: 1,431,801 matched, 5,337 not matched from master
 
-*generate temporary statecounty code
-tostring state, gen(state_code) 
-tostring county, gen(county_code) 
+*12,991 not matched from using, likely to include ori9 that were not ucr counties in 2016, therefore, chosing to drop
+drop if _merge == 2
+*5,337 not matched in master will not be able to be matched to counties so these will be dropped. Appears to include a number of tribal, school, and specialized agencies
+drop if _merge == 1
 
-egen statecounty = concat(state_code county_code), p(-)
+///// 4. IDENTIFY NON REPORTING AGENCIES AND OVERLAPPING AGENCIES
 
-*# of non-reporting agencies by county
-drop if _merge == 1 & zero == 1
-
-count if _merge == 1
-
-
-///// 4. CHECK MISSING VALUES
-
-*86 with no race or ethinic origin reported, age reported in all, but jv varies by state
-tab areo, m
-tab statecounty if areo == "4"
-tab state if state == 17
-*check 17 (Louisiana) - (5 8 9 13 19 22 25 29 30 31 32 35 36 43 47 56 61 62 63)
-*Louisiana age of adult criminal liability 16 as of 2016
+*nonreporting agencies
 tab zero, m
+tab areo if zero == .
+
+gen nonreporting = 0
+replace nonreporting = 1 if zero == 1 | zero == .
+
+*overlapping agencies (this means a juristiction is covered by multiple agencies)
+tab covby, m
 
 
 ///// 5. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
@@ -153,108 +173,47 @@ label list STATE
 *age of adult criminal liability (http://www.jjgps.org/jurisdictional-boundaries) 18 except: 
 	*Georgia (10), Louisiana (17), Michigan (21), Missouri (24), South Carolina (32), Texas (42), Wisconsin (48): 17
 	*New York (31), North Carolina (32): 16
-gen adult_under_18 = 0
-replace adult_under_18 = 1 if state == 10 | state == 17 | state == 21 | state == 24 | state == 32 | state == 42 | state == 48 | state == 31 | state == 32
+gen adult_17 = 0
+replace adult_17 = 1 if state == 10 | state == 17 | state == 21 | state == 24 | state == 32 | state == 42 | state == 48
+gen adult_16 = 0
+replace adult_16 = 1 if state == 31 | state == 32
+gen adult_under18 = 0
+replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
 
 	
 ///// 6. CALCULATE JV ARRESTS
 
-*combine each jv arrest by race catagory to calculate overall jv arrests
-gen arrest_jv = jw + jb + ji + ja
+*number of arrests age 10 to 17
+egen arrest_10to17 = rowtotal(m10_12 m13_14 m15 m16 m17 f10_12 f13_14 f15 f16 f17)
 
-*test for Louisiana which has missing race data
-gen arrest_jv_test =(m0_9 + m10_12 + m13_14 + m15 + m16 + f0_9 + f10_12 + f13_14 + f15 + f16) if state == 17
+*number of children under 10 arrested
+egen arrest_under10 = rowtotal (m0_9 f0_9)
 
-gen test = (arrest_jv != arrest_jv_test) if state == 17
-
-tab test
-tab statecounty if test == 1
-*br if test == 1
-*3 counties have empty test values, the value combining jv arrests by race appear accurate
-
-*Children under 12 (actually has to include 12)
-gen arrest_12below =(m0_9 + m10_12 + f0_9 + f10_12)
+sum arrest_10to17 arrest_under10
 
 
 ///// 7. AGGREGATE TO COUNTY
 
 *total # of juvenile arrests by county
-bysort fips: egen juvenile_arrest = total(arrest_jv)
-sum juvenile_arrest
 
-bysort statecounty: egen juvenile_arrest_nofips = total(arrest_jv)
-replace juvenile_arrest = juvenile_arrest_nofips if fips == ""
-sum juvenile_arrest
-
-*total # of juvenile arrests 12 and under by county
-bysort fips: egen arrest_12under = total(arrest_12below)
-sum arrest_12under
-
-bysort statecounty: egen arrest_12under_nofips = total(arrest_12below)
-replace arrest_12under = arrest_12under_nofips if fips == ""
-sum arrest_12under
-
-
-///// 7a. REDUCE TO ONE OBSERVATION BY AGENCY
-
-*any non report or coverage overlap
-bysort ori: egen nonreporting = max(zero)
-bysort ori: egen overlap = max(covby)
-
-* keep only necassry varaibles prior to dropping duplicates to allow for drop
-keep year statecounty state state_code county county_code juvenile_arrest arrest_12under fstate fcounty fips_st fips_county fips nonreporting overlap ori adult_under_18
-
-*drop duplicates
-duplicates drop
-duplicates r ori
-
-*# of non-reporting agencies by county
-bysort fips: egen nonreporting_agencies = total(nonreporting)
-sum nonreporting_agencies
-
-bysort statecounty: egen nonreporting_agencies_nofips = total(nonreporting)
-replace nonreporting_agencies = nonreporting_agencies_nofips if fips == ""
-sum nonreporting_agencies
-
-*any overlapping juristictions in county
-bysort fips: egen juristiction_overlap = total(overlap)
-sum juristiction_overlap
-
-bysort statecounty: egen juristiction_overlap_nofips = total(overlap)
-replace juristiction_overlap = juristiction_overlap_nofips if fips == ""
-sum juristiction_overlap
-
-
-///// 7b. REDUCE TO ONE OBSERVATION BY COUNTY
-
-keep year statecounty fstate fcounty fips_st fips_county fips juvenile_arrest arrest_12under nonreporting_agencies juristiction_overlap adult_under_18
-
-gen fips_plus = fips
-replace fips_plus = statecounty if fips == ""
-drop statecounty
-
-duplicates drop
-duplicates r fips_plus
+collapse (sum) arrest_10to17 arrest_under10 nonreporting covby (mean) year adult_under18 adult_17 adult_16 fstate fcounty, by(fips)
 
 
 ///// 8. CROSSWALK POPULATION
 
 rename fips countyfips
 
-merge m:1 countyfips using pop_12-17_v2
+merge m:1 countyfips using pop_10_17
 *br if _merge == 1
-drop if _merge == 1
-drop if _merge == 2
-rename child_12_17 pop_12to17
+*br if _merge == 2
+drop if _merge != 3
+rename child_10_17 pop_10to17
 
 *generate juvenile arrest rate
-gen juvenile_arrest_rate = juvenile_arrest/pop_12to17
+gen juvenile_arrest_rate = arrest_10to17/pop_10to17
 
 rename fcounty county
-
-destring fips_st, gen(state)
-
-drop fips_st fips_county
+rename fstate state
 
 drop _merge
 
@@ -272,18 +231,31 @@ save county_crosswalk_2016, replace
 
 clear
 use 2016_arrest_by_county_working
+*46113: Lakota county was changed to be 46102 in 2015 (see note below)
+replace county = 102 if countyfips == "46113"
 
 merge 1:1  state county using county_crosswalk_2016
 
+*br if _merge == 1
+*02270: Wade Hampton Census Area, Alaska
+*46113: Lakota county was changed to be 46102 in 2015 (change replected above)
+*51515: independant city of Bedford, Virginia
 *br if _merge == 2
 
 ///// 10. FINALIZE DATA and EXPORT
 
-drop fstate
+rename nonreporting nonreporting_agencies
+rename covby overlapping_juristictions
+
+drop countyfips _merge
 
 *order variables appropriatly and sort dataset
-order year state state_name county county_name countyfips fips_plus juvenile_arrest juvenile_arrest_rate arrest_12under pop_12to17 nonreporting_agencies juristiction_overlap adult_under_18 population _merge, first
+order year state state_name county county_name juvenile_arrest juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 nonreporting_agencies overlapping_juristictions adult_under18 adult_17 adult_16 population, first
 
 gsort year state county
 
 save 2016_arrest_by_county, replace
+
+tabmiss
+
+*note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am county 16 and 17 year olds that should not be counted as juvenile in several states and not county under 10 only acocunts for 5,677 arrests according to my file. 
