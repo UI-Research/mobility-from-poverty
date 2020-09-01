@@ -1,7 +1,7 @@
 /*******************************************************************************
 Gates Mobility Metrics - Health Professional Shortage Areas
 
-Author: Diane Arnos
+Author: Diane Arnos; Claudia Solari
 Date: Aug 27, 2020
 
 Notes: Not including standard errors or quality flags, since measures are 
@@ -18,7 +18,8 @@ Documentation: https://bhw.hrsa.gov/shortage-designation/hpsa-criteria#scoreauto
 clear all
 
 *change the file directory here if necessary
-global data "C:\Users\DArnos\Box\Metrics Database\Health\HPSA data and program"
+*global data "C:\Users\DArnos\Box\Metrics Database\Health\HPSA data and program"
+global boxfolder "D:\Users\csolari\Box Sync\Gates Dramatically Increasing Mobility from Poverty\Metrics Database\Health\test2"
 
 import delimited "https://data.hrsa.gov//DataDownload/DD_Files/BCD_HPSA_FCT_DET_PC.csv", case(lower)
 
