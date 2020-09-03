@@ -55,7 +55,10 @@ local o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files
 	collapse (mean) totcollbin (semean) stdm_totcollbin (sum) obs , by( county_fips_fixed) 
 
 	drop if county_fips_fixed==""
-
+	*We did not identify the county fips code of 3,956 consumers out of more than 5 million in the data
+	//either because the credit bureau data does not provide the appropriate county information for these consumers
+	//or because they live in PETERSBURG, ALASKA, a county equivalent which was recently created and could not be incorporated into our analysis
+	//In the future versions of Debt in America we hope to improve this issue.
 *SUPPRESS n < 50
 
 	replace totcollbin =. if obs<50
@@ -130,9 +133,16 @@ save "`dir'/county_coll_95_inter.dta",replace
 	//all counties with data should be matched
 	duplicates report state county
 	//should not have any duplicates
+
+*Adding quality flag
+	gen quality_flag=.
+	replace quality_flag= 1 if obs >= 50 & obs !=.
+	replace quality_flag=3 if obs < 50 | obs==. 
+	tab quality_flag, m
+		//shouldn't be any missing
 	
 *Ordering and sorting data
-	drop state_name county_name population _merge
+	drop state_name county_name population obs _merge
 	order year state county share_debt_coll
 	sort year state county
 
