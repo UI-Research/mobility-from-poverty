@@ -13,5 +13,5 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 * Year: 2018
 * Notes:
     o Debt in America data is derived from a 2 percent random sample of deidentified, consumer-level records from a major credit bureau. The credit bureau data are from August 2018 and contain more than 5 million records. These data exclude information on roughly 11 percent of US adults with no credit file.
-    o Variable is missing for 6 counties: Hoonah-Angoon Census Area, Alaska; Logan, Nebraska; McPherson County, Nebraska; Skagway Municipality, Alaska; Wrangell City and Borough, Alaska; Loving County, Texas.
+    o Variable is missing for 197 counties due to suppression for n<50 and 6 counties where data was not available.
 
