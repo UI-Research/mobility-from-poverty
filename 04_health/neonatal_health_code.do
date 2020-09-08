@@ -1,9 +1,9 @@
-****************************************************************************
-* Ancestor program: $boxfolder\programs\neonatal_health_code.do 				   
-* Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $boxfolder\data      				   
+************************************************************************
+* Ancestor program: $gitfolder\neonatal_health_code.do 				   
+* Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder\04_health\data      				   
 * Description: Program to create gates mobility metrics on neonatal health  
 * Author: Emily M. Johnston												   
-* Date: August 14, 2020	
+* Date: August 14, 2020; Updated September 8, 2020	
 * (1)  download data from CDC WONDER											
 * (2)  import, clean, and merge CDC WONDER files					   
 * (3)  intermediate file data cleaning										   
@@ -15,38 +15,38 @@
 * (9) final file cleaning and export to csv file										   
 ****************************************************************************
 
-global boxfolder = "C:\Users\ejohnston\Box\Metrics Database\Health"	// update path as necessary
-cd "${boxfolder}"
+global gitfolder = "K:\Hp\EJohnston\Git\gates-mobility-metrics"	// update path as necessary to the local mobility metrics repository folder
+cd "${gitfolder}"
 
 *(1) download data from CDC WONDER
 
-* access instructions for completing the CDC WONDER data query at: $boxfolder\documentation\CDC_WONDER_query_neonatal_health.doc	
-* data query results are saved as all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $boxfolder\data 
+* access instructions for completing the CDC WONDER data query in README	
+* data query results are saved as all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder\04_health\data 
 
 *(2) open, clean, and merge CDC WONDER files
 
 *all births
-import delimited using "$boxfolder\data\all_births_by_county.txt", clear
+import delimited using "$gitfolder\04_health\data\all_births_by_county.txt", clear
 	keep countyofresidence countyofresidencecode births				// do not need CDC notes
 		rename countyofresidence county_name
 		rename countyofresidencecode fips
 		rename births all_births
 	sort fips county_name												
 	keep if fips!=.													// only keeping observations with data	
-save "$boxfolder\data\all_births_by_county.dta", replace
+save "$gitfolder\04_health\data\all_births_by_county.dta", replace
 
 *low birth weight births
-import delimited using "$boxfolder\data\lbw_births_by_county.txt", clear
+import delimited using "$gitfolder\04_health\data\lbw_births_by_county.txt", clear
 	keep countyofresidence countyofresidencecode births				// do not need CDC notes
 		rename countyofresidence county_name
 		rename countyofresidencecode fips
 		rename births lbw_births
 	sort fips county_name											// count of low birthweight births
 	keep if fips!=.													// only keeping observations with data
-save "$boxfolder\data\lbw_births_by_county.dta", replace
+save "$gitfolder\04_health\data\lbw_births_by_county.dta", replace
 
 *nonmissing birth weight births
-import delimited using "$boxfolder\data\nomiss_bw_by_county.txt", clear
+import delimited using "$gitfolder\04_health\data\nomiss_bw_by_county.txt", clear
 	keep county countycode births									// do not need CDC notes	
 	drop if births=="Missing County"								// only keeping observations with birth data	
 	destring births, replace
@@ -55,17 +55,17 @@ import delimited using "$boxfolder\data\nomiss_bw_by_county.txt", clear
 		rename births nomiss_births 								// count of births with nonmissing birth weight data
 	sort fips county_name
 	keep if fips!=.													// only keeping observations with county data	
-save "$boxfolder\data\nomiss_bw_by_county.dta", replace
+save "$gitfolder\04_health\data\nomiss_bw_by_county.dta", replace
 
 *merge files
-use "$boxfolder\data\all_births_by_county.dta", clear
-	merge 1:1 fips county_name using "$boxfolder\data\lbw_births_by_county.dta"
+use "$gitfolder\04_health\data\all_births_by_county.dta", clear
+	merge 1:1 fips county_name using "$gitfolder\04_health\data\lbw_births_by_county.dta"
 		tab _merge
 		drop _merge
-	merge 1:1 fips county_name using "$boxfolder\data\nomiss_bw_by_county.dta"
+	merge 1:1 fips county_name using "$gitfolder\04_health\data\nomiss_bw_by_county.dta"
 		tab _merge
 		drop _merge
-	save "$boxfolder\data\neonatal_health_intermediate.dta", replace
+	save "$gitfolder\04_health\data\neonatal_health_intermediate.dta", replace
 
 *(3) intermediate file data cleaning	
 
@@ -92,20 +92,15 @@ destring state_s county_s, generate (state county)					// converts new fips vari
 *order, sort, and save
 order year state county
 sort state county
-save "$boxfolder\data\neonatal_health_intermediate.dta", replace
+save "$gitfolder\04_health\data\neonatal_health_intermediate.dta", replace
 
 
 * (4) use crosswalk to add missing counties to data file
 
 * clean crosswalk
-import delimited using "$boxfolder\data\Crosswalk_February2018.csv", clear
-	keep stusab	state state_name county	county_name					// keep only variables needed to crosswalk
-	gen year=2018
-	sort state county
-	by state county: gen count=_n
-		keep if count==1											// keep only one observation per county
-		drop if state==72											// drop Puerto Rico
-		drop if state==.
+import delimited using "$gitfolder\geographic-crosswalks\data\county-file.csv", clear
+	keep year state county county_name				// keep only variables needed to crosswalk 
+	keep if year==2018								// keep only current year
 		format state %02.0f		
 		format county %03.0f	
 keep year state county county_name	
@@ -114,14 +109,14 @@ rename county_name county_cross_name
 	label var state "state fips"
 	label var county "county fips"
 	label var county_cross_name "county name from crosswalk"
-save "$boxfolder\data\clean_county_crosswalk.dta", replace
+save "$gitfolder\04_health\data\clean_county_crosswalk.dta", replace
 
 * merge crosswalk and analytic file
-use "$boxfolder\data\neonatal_health_intermediate.dta", clear
-merge 1:1 state county using "$boxfolder\data\clean_county_crosswalk.dta"
+use "$gitfolder\04_health\data\neonatal_health_intermediate.dta", clear
+merge 1:1 state county using "$gitfolder\04_health\data\clean_county_crosswalk.dta"
 tab _merge															
 // correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-save "$boxfolder\data\neonatal_health_intermediate.dta", replace
+save "$gitfolder\04_health\data\neonatal_health_intermediate.dta", replace
 
 * (5) assign "unidentified county" values to counties with missing values
 
@@ -218,8 +213,8 @@ generate miss_diff = share_lbw_nomiss - share_lbw_all
 	
 
 *(8) construct 95 percent confidence intervals
-* note: confidence intervals are constructed following the User Guide to the 2010 Natality Public Use File: $boxfolder\documentation\UserGuide2020.pdf	
-* for more information, see: $boxfolder\documentation\CDC_WONDER_standard_errors.doc
+* note: confidence intervals are constructed following the User Guide to the 2010 Natality Public Use File, linked in the README and saved on Box 	
+* for more information, see README
 
 *generate and test conditions from User Guide:
 gen test_1=share_lbw_nomiss*nomiss_births
@@ -258,5 +253,5 @@ keep year state county unidentified_county_flag share_lbw_nomiss lbw_lb lbw_ub 	
 	format lbw_ub  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
 order year state county lbw lbw_lb lbw_ub lbw_flag		// order
 
-save "$boxfolder\data\neonatal_health.dta", replace
-export delimited using "$boxfolder\data\neonatal_health.csv", replace
+save "$gitfolder\04_health\data\neonatal_health.dta", replace
+export delimited using "$gitfolder\04_health\final_data\neonatal_health.csv", replace
