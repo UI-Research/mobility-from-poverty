@@ -107,6 +107,11 @@ rename homeless_upper_ci homeless_count_ub
 rename supp_homeless homeless_districts_suppressed
 
 gen homeless_share = homeless_count/enrollment
+
+gen homeless_quality = 1 if homeless_count_ub / homeless_count_lb <=1.05
+replace homeless_quality = 2 if homeless_count_ub / homeless_count_lb > 1.05 & homeless_count_ub / homeless_count_lb <=1.2
+replace homeless_quality = 3 if homeless_quality==. & homeless_count!=.
+
 drop enrollment
 
 merge 1:1 year state county using "intermediate/countyfile.dta"
