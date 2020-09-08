@@ -4,6 +4,8 @@
 *	Lily Robin, 2019.6.25		*
 *********************************
 
+*Erica, this is the new file
+
 ///// 1.UPDATE FILE DIRECTORY
 
 cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\crime_rate"
