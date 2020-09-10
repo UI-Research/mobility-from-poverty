@@ -9,9 +9,16 @@ Kevin Werner
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_employment.csv;
+/* 
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
+This uses the SAS dataset created by Paul's compute_metrics_employment program
+as input.
+
+*/
+
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\metrics_employment.csv;
+
+libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
 
 /* create confidence interval and correctly format variables */
 
@@ -19,7 +26,7 @@ data employment_missing_HI (keep = year county state share_employed share_employ
  set paul.metrics_unemployment;
  year = 2018;
  not_employed = 1 - share_employed;
- interval = 1.96*sqrt((not_employed*share_employed)/num_25_thru_54);
+ interval = 1.96*sqrt((not_employed*share_employed)/_FREQ_);
  share_employed_ub = share_employed + interval;
  share_employed_lb = share_employed - interval;
 
