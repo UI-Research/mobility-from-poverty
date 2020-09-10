@@ -9,20 +9,30 @@ Kevin Werner
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_college_ready.csv;
+/* 
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
+You need metrics_college to run this code.
 
-/* create confidence interval and correctly format variables */
+I put metrics_college in the 08_education subfolder of the repository.
 
-data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb)  ;
- set paul.metrics_college;
+*/
+
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_college.csv;
+
+libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
+
+
+/***** create confidence interval and correctly format variables *******/
+
+data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_)  ;
+ set edu.metrics_college;
  year = 2018;
  no_hs_degree = 1 - share_with_HSdegree;
- interval = 1.96*sqrt((no_hs_degree*share_with_HSdegree)/num_19_and_20);
+ interval = 1.96*sqrt((no_hs_degree*share_with_HSdegree)/_FREQ_); /* _FREQ_ is the unweighted count of people 19-20 */
  share_hs_degree_ub = share_with_HSdegree + interval;
  share_hs_degree_lb = share_with_HSdegree - interval;
 
+ /* put variables in correct format */
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
