@@ -16,14 +16,20 @@ Programmed by Kevin Werner
    Edit the `filename` command similarly to include the full path (the directory and the data file name).
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_preschool.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_preschool.csv;
 
-libname IPUMS "V:\Centers\Ibp\KWerner\Kevin\Mobility\raw";
-filename ASCIIDAT "V:\Centers\Ibp\KWerner\Kevin\Mobility\raw\raw_preschool.dat";
-libname libmain "V:\Centers\Ibp\KWerner\Kevin\Mobility";
+/* 
+
+Please download the file USA_00012.dat from Box, and unzip in the filename folder. 
+
+*/
+
+filename ASCIIDAT "C:\Users\kwerner\Desktop\Metrics\usa_00012.dat";
+libname desktop "C:\Users\kwerner\Desktop\Metrics";
+libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
 
 
-proc format cntlout = IPUMS.usa_00012_f;
+proc format cntlout = desktop.usa_00012_f;
 
 value YEAR_f
   1850 = "1850"
@@ -446,7 +452,8 @@ value GRADEATTD_f
 
 run;
 
-data IPUMS.usa_00012;
+
+data raw_preschool;
 infile ASCIIDAT pad missover lrecl=97;
 
 input
@@ -512,6 +519,8 @@ run;
 
 /************** create county indicator (copied from Paul) ****************/
 
+
+
 %macro prepare_microdata(input_file,output_file);
 
 *Map PUMAs to counties (this consolidates records for multi-PUMAs counties, and expands records for PUMAs that span counties);
@@ -523,7 +532,7 @@ proc sql;
    ,b.afact as afact1  
    ,b.afact2 as afact2
  from &input_file. a  
- left join libmain.puma_to_county b 
+ left join edu.puma_to_county b 
  on (a.statefip = b.statefip and a.puma = b.puma) 
 ;  
 quit;
@@ -546,12 +555,13 @@ run;
 
 *Print error message for any record that did not have a match in the PUMA-to_county file;
 *Adjust weight to acount for PUMA-to-county mapping (this only affects PUMAs that span county).;
-*Adjust dollar amounts to account for inflation;
+*KW: Set people who live in county 515 in state 51 to live county 019 instead (Bedford city was absorbed into Bedford county);
 data &output_file.;
   set add_num_of_counties;
   if (county = .) then put "error: no match: " serial= statefip= puma=;
   hhwt = hhwt*afact1;
   perwt = perwt*afact1;
+    if statefip = 51 and county = 515 then county = 19;
 run;
 
 *Sort into order most useful for calculating metrics;
@@ -561,27 +571,32 @@ run;
 %mend prepare_microdata;
 
 
-%prepare_microdata(IPUMS.usa_00012,main);
+%prepare_microdata(raw_preschool, main);
 
 
 
-/************** Start actual coding ****************/
+/************** Start actual coding for the preschool metric ****************/
 
 
 
 %macro compute_metrics_preschool(microdata_file,metrics_file);
 proc sort data=&microdata_file.; by statefip county; run;
 
+/* outputs a file with only children 3-4 */
 proc means data=&microdata_file.(where=(age in (3,4))) noprint; 
   output out=num_3_and_4(drop=_type_) sum=num_3_and_4;
   by statefip county;
   var perwt;
 run;
+
+/* outputs a file with only children 3-4 AND in pre school */
 proc means data=&microdata_file.(where=(age in (3,4) and gradeatt=1)) noprint; 
   output out=num_in_preschool(drop=_type_ _freq_) sum=num_in_preschool;
   by statefip county;
   var perwt;
 run;
+
+/* combines the two files to get share in pre school */
 data &metrics_file.;
   merge num_3_and_4(in=a) num_in_preschool(in=b);
   by statefip county;
@@ -600,7 +615,7 @@ data data_missing_HI (keep = year county state share_in_preschool share_in_presc
  set metrics_preschool_v2;
  year = 2018;
  not_in_pre = 1 - share_in_preschool;
- interval = 1.96*sqrt((not_in_pre*share_in_preschool)/num_3_and_4);
+ interval = 1.96*sqrt((not_in_pre*share_in_preschool)/_FREQ_);
  share_in_preschool_ub = share_in_preschool + interval;
  share_in_preschool_lb = share_in_preschool - interval;
 
@@ -612,7 +627,7 @@ run;
 
 /* add missing HI county so that there is observation for every county */
 
-data libmain.metrics_preschool;
+data edu.metrics_preschool;
  set data_missing_HI end=eof;
  output;
  if eof then do;
@@ -629,18 +644,18 @@ run;
 
 /* sort final data set and order variables*/
 
-data libmain.metrics_preschool;
+data edu.metrics_preschool;
  retain year state county share_in_preschool share_in_preschool_ub share_in_preschool_lb;
- set libmain.metrics_preschool;
+ set edu.metrics_preschool;
 run;
 
-proc sort data=libmain.metrics_preschool; by year state county; run;
+proc sort data=edu.metrics_preschool; by year state county; run;
 
 
 
 /* export as csv */
 
-proc export data = libmain.metrics_preschool
+proc export data = edu.metrics_preschool
   outfile = "&filepath"
   replace;
 run;
