@@ -12,9 +12,15 @@ Kevin Werner
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_housing.csv;
+/*
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
+Uses the dataset created by compute_metrics_housing as input
+
+*/
+
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing\metrics_housing.csv;
+
+libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 
 data housing_missing_HI (keep = year state county share_affordable_50_ami share_affordable_80_ami);
  set paul.metrics_housing;
