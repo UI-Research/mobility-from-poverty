@@ -19,4 +19,6 @@ Outline the process for creating the data
 	Then I use the quantreg procedure to get the needed percentiles and the confidence
 	intervals. Finally it is output as a .csv.
 
+Note: As of 9/10/20 I have removed the confidence interval code. 
+
 <Repeat above information for additional metrics>
