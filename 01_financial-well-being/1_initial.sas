@@ -5,11 +5,6 @@ options source2 mprint msglevel=i symbolgen;
 %let localDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
 %let networkDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
 
-/*
-Please note that the SAS datasets from the "compute_" programs will be output to the
-destinations set here. To run the "finalize_" programs, you wil have to COPY THE 
-DATASETS to the location noted at the top of the "finalize_" programs.
-*/
 
 libname libmain "&localDir";
 libname old  "&localDir.\old";
