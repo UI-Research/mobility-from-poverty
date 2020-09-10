@@ -16,7 +16,7 @@ Outline the process for creating the data
 
 * Final data name(s): metrics_preschool
 * Analyst(s): Kevin Werner
-* Data source(s): ACS
+* Data source(s): ACS 1-yr
 * Year(s): 2018
 * Notes:
 		Hawaii county 05 is missing. It is very low population.
@@ -30,7 +30,7 @@ the number of children in pre school, and divided them.
 
 * Final data name(s): metrics_college
 * Analyst(s): Kevin Werner and Paul Johnson
-* Data source(s): ACS
+* Data source(s): ACS 1-yr
 * Year(s): 2018
 * Notes:
 	The compute_ code computes the metrics. The finalize_ code computes the
