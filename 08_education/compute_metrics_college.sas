@@ -1,6 +1,8 @@
 *=================================================================;
 *Compute county-level college-readiness metrics;
 *=================================================================;
+libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
+
 %macro compute_metrics_college(microdata_file,metrics_file);
 proc means data=&microdata_file.(where=(age in (19,20))) noprint; 
   output out=num_19_and_20(drop=_type_) sum=num_19_and_20;
@@ -21,6 +23,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_college;
 
-%compute_metrics_college(lib2018.microdata,lib2018.metrics_college);
-proc means data=lib2018.metrics_college;
+%compute_metrics_college(lib2018.microdata,edu.metrics_college);
+proc means data=edu.metrics_college;
 run;
