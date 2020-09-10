@@ -24,7 +24,7 @@ proc sort data=libmain.puma_to_county;
   by statefip county;
 run;
 
-*Create a file that asignes a weight to each county based on 2010 population;
+*Create a file that assigns a weight to each county based on 2010 population;
 proc means data=libmain.puma_to_county noprint;
   var pop10;
   output out=totpop sum=totpop;
