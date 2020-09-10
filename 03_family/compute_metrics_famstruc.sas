@@ -1,6 +1,9 @@
 *=================================================================;
 *Compute county-level family-structure-and-stability metrics;
 *=================================================================;
+
+libname family "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
+
 %let max_hhsize = 20; /*maximum  umber of persons that can be in a household*/
 
 %macro compute_metrics_famstruc(microdata_file,metrics_file);
@@ -92,6 +95,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_famstruc;
 
-%compute_metrics_famstruc(lib2018.microdata,lib2018.metrics_famstruc);
-proc means data=lib2018.metrics_famstruc;
+%compute_metrics_famstruc(lib2018.microdata,family.metrics_famstruc);
+proc means data=family.metrics_famstruc;
 run;
