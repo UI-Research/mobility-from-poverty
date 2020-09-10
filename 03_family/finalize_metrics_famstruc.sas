@@ -9,9 +9,16 @@ Kevin Werner
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_famstruc.csv;
+/*
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
+This code uses the SAS dataset output from Paul's compute_metric_famstruc
+as input.
+
+*/
+
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family\metrics_famstruc.csv;
+
+libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 
 
 /* create confidence interval using macro for each metric.
@@ -22,7 +29,7 @@ data &structure.(keep = year county state &structure &structure._ub &structure._
  set paul.metrics_famstruc;
  year = 2018;
  inverse_&structure = 1 - &structure;
- interval = 1.96*sqrt((inverse_&structure*&structure)/PERWT);
+ interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
  &structure._lb = &structure - interval;
 
