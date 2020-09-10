@@ -1,6 +1,8 @@
 *=================================================================;
 *Compute county-level hosuing metrics;
 *=================================================================;
+libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
+
 %macro compute_metrics_housing(microdata_file,vacant_file,metrics_file);
 * Prepare a file containing HUD income levels for each county. This requires first
   importing a file with the income limits for each FMR, as well as a file that 
@@ -117,7 +119,7 @@ data &metrics_file.;
 run;
 %mend compute_metrics_housing;
 
-%compute_metrics_housing(lib2018.microdata,lib2018.vacant,lib2018.metrics_housing);
+%compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing);
 
 proc freq data=households;
   where Below80AMI=. or Below50AMI=. or Affordable80AMI=. or Affordable50AMI=.;
@@ -125,5 +127,5 @@ proc freq data=households;
   table statefip*county;
   format statefip fips.;
 run;
-proc means data=lib2018.metrics_housing;
+proc means data=housing.metrics_housing;
 run;
