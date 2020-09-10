@@ -7,8 +7,8 @@ Programmed by Kevin Werner
 5/28/20
 ****************************/
 
-local raw "K:\Ibp\KWerner\Kevin\Mobility\raw"
-local wages "K:\Ibp\KWerner\Kevin\Mobility\Wages"
+local raw "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
+local wages "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
 
 /***** save living wage as .dta *****/
 import delimited using "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\mit-living-wage.csv"
@@ -36,7 +36,8 @@ destring state, replace
 
 cd `wages'
 
-/* merge living wage and QCEW data */
+/* merge living wage and QCEW data
+Note that county 05 (Kalawao) in Hawaii is missing */
 merge 1:m state county using mit_living_wages.dta
 
 /* drop statewide obs */
@@ -54,6 +55,15 @@ gen weekly_living_wage = wage * 40
 /* get ratio (main metric) */
 gen average_to_living_wage_ratio = annualaverageweeklywage/weekly_living_wage
 
+/* put state and county in string with leading 0s */
+gen new_state = string(state,"%02.0f")
+drop state
+rename new_state state
+
+gen new_county= string(county,"%03.0f")
+drop county
+rename new_county county
+
 /* check ratio */
 sum average_to_living_wage_ratio, det
 hist average_to_living_wage_ratio
@@ -61,7 +71,11 @@ hist average_to_living_wage_ratio
 /* Generally looks good. County 3 in State 19 (Iowa) is missing average wage 
 data, so it shows up as a 0 in the ratio */
 
+/* replace 0 ratio with missing */
+replace average_to_living_wage_ratio = . if average_to_living_wage_ratio == 0
+
 save "`wages'\\wage_ratio_final.dta",replace
+
 
 keep state county year average_to_living_wage_ratio
 
