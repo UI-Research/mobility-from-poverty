@@ -7,8 +7,9 @@ Brief description
 * Data source(s): ACS 1-year
 * Year(s): 2018
 * Notes:
-		Paul is writing up notes that I will add to this when he has them.
 		Metrics are missing for county 05 in Hawaii.
+		
+		Counties 89 and 119 in state 36 (NY) had some missing data and may not be reliable. 
 
 From Paul:
 First of all, it requires extra data --- Section-8 FMR area income levels, and the population 
