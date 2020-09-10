@@ -1,4 +1,4 @@
-# Metric template
+# Family structure
 
 Brief description
 
@@ -12,9 +12,3 @@ Brief description
 	
 	NOTE: to run this code, you must first run the 1_, 2_, and 3_ programs in the 
 	income folder.
-
-The data comes from IPUMS. It is cleaned and counties are added with Paul's method.
-The compute_ code then finds the percent of children in each family structure. 
-The finalize_ program then calculates confidence intervals a outputs as a .csv.
-
-<Repeat above information for additional metrics>

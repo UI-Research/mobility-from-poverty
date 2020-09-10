@@ -1,4 +1,4 @@
-# Metric template
+# Employment
 
 Brief description
 
@@ -15,7 +15,7 @@ code also adds the the county FIPS. The compute_ code finds the employment rate 
 25-54 year olds. The finalize_ code calculates the confidence intervals and outputs
 the csv.  
 
-<Repeat above information for additional metrics>
+# Wage ratio
 
 * Final data name(s): metrics_wage_ratio
 * Analyst(s): Kevin Werner and Aaron Williams
@@ -33,4 +33,3 @@ is calculated.
 
 The living wage is a FULL TIME worker wage, while the average weekly wage includes part time workers.
 
-<Repeat above information for additional metrics>
