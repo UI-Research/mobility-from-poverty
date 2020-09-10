@@ -1,6 +1,9 @@
 *========================================================================;
 *Macro to prepare an IPUMS extract of vacant units for metrics processing;
 *========================================================================;
+/* USA_00032 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
+It will need to be downloaded and unzipped. */
+
 %macro prepare_vacant(input_file,microdata_file,output_file);
 *Map PUMAs to counties on the file of vacant households, and make adjustments to weight and dollars;
 proc sql; 
