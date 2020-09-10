@@ -7,15 +7,19 @@ Kevin Werner
 
 7/22/20
 
+NOTE: per email from Greg on 9/10/20, I have removed the confidence interval code.
+
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\metrics_income.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income.csv;
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
+/* this runs on the microdata file output by 3_prepate_microdata */
+
+libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2018";
 
 
 /******************* income metric *********************/
-/* this exactly recreates Paul's percentiles, and adds confidence intervals
+/* this exactly recreates Paul's percentiles
    based on the procedure described here: 
    https://blogs.sas.com/content/iml/2017/02/22/difference-of-medians-sas.html */
 
@@ -34,7 +38,7 @@ run;
 
 proc transpose data=income_ci_sorted out=out1;
  by statefip county Quantile;
- var Estimate LowerCL UpperCL;
+ var Estimate;
 run;
 proc transpose data=out1 delimiter = _ out=income_ci_wide  (drop = _name_);
  by statefip county;
@@ -52,14 +56,8 @@ data metric_income;
  drop county statefip;
  rename new_county = county;
  rename Estimate_0_2 = pctl_20;
- rename LowerCL_0_2 = pctl_20_lb;
- rename UpperCL_0_2 = pctl_20_ub;
  rename Estimate_0_5 = pctl_50;
- rename LowerCL_0_5 = pctl_50_lb;
- rename UpperCL_0_5 = pctl_50_ub;
  rename Estimate_0_8 = pctl_80;
- rename LowerCL_0_8 = pctl_80_lb;
- rename UpperCL_0_8 = pctl_80_ub;
 run;
 
 /* add missing HI county so that there is observation for every county */
@@ -72,14 +70,8 @@ data metrics_income;
   state = "15";
   county = "005";
   pctl_20 = .;
-  pctl_20_lb = .;
-  pctl_20_ub = .;
   pctl_50 = .;
-  pctl_50_lb = .;
-  pctl_50_ub = .;
   pctl_80 = .;
-  pctl_80_lb = .;
-  pctl_80_ub = .;
   output;
  end;
 run;
@@ -87,7 +79,7 @@ run;
 /* sort final data set and order variables*/
 
 data metrics_income;
- retain year state county pctl_20 pctl_20_ub pctl_20_lb pctl_50 pctl_50_ub pctl_50_lb pctl_80 pctl_80_ub pctl_80_lb;
+ retain year state county pctl_20 pctl_50 pctl_80;
  set metrics_income;
 run;
 
