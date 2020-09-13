@@ -7,14 +7,14 @@ Brief description
 * Data source(s): Affirmatively Furthering Fair Housing (AFFH) & ACS
 * Year(s): 2014
 * Notes:
-    * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are no longer available online. 
-    * Missingness : Missing observations for all territories except for Puerto Rico. More than 98% of tracts with population are represented. This is documented in the code.
+    * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
+    * Missingness : All 3,142 counties in the United States are represented.
 
 Outline the process for creating the data  
-* Downloaded AFFH data and kept relevant variables on air quality
-* Merged in total population from the 5-yr ACS for the United States, including DC and Puerto Rico
+* Downloaded tract-level 2014 AFFH data
+* Cleaned AFFH data, inclduing the removal of variables and geographies not relevant to this analysis
+* Merged tract-level total population from the 2014 5-yr ACS for the United States with cleaned AFFH data
 * Validated data: checked if merge worked using `<anti-join>` and `<stopifnot>`
-* Dropped all tracts with a population of zero and all tracts without hazard indicies 
-* Weighed air quality indicators by county level population
+* Weighted air quality indicators by county level population
 
 <Repeat above information for additional metrics>
