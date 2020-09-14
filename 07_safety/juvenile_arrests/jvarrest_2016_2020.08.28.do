@@ -262,10 +262,14 @@ gsort year state county
 gen data_quality = 1
 replace data_quality = 2 if percent_nonreporting > 0.10
 replace data_quality = 3 if percent_nonreporting > 0.5
+replace data_quality = 4 if juvenile_arrest_rate == .
 tab data_quality, m
 
 save 2016_arrest_by_county, replace
 
 tabmiss
 
-*note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am county 16 and 17 year olds that should not be counted as juvenile in several states and not county under 10 only acocunts for 5,677 arrests according to my file. 
+*note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
+
+*export as CSV
+export delimited using "jvarrestrate_county_2016.csv", replace

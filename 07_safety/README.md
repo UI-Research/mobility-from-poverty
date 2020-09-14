@@ -1,30 +1,22 @@
 # Safety - Crime Rate
 
-When using county level crime statistics, it is important to keep in mind that they are generally incomplete. The Federal Bureau of Investigations (FBI) Uniform Crime Statistic (UCR) Crime in the United States data series (https://ucr.fbi.gov/crime-in-the-u.s) provides county level crime data that represents all crimes that occured within the county law enforcment agency's juristiction, outside of city juristitction. These data are missing crimes that occured in counties outside of the juristiction of the county. This exclused any crimes that take place within a county but in the juristiction of a city, tribal, univeristy, or other law enofrcmnet agency within the couty. These data also exclude any crimes that occured in the county under the juristiction of the state law enforcment agency.Documentation of the FBI UCR county crime data can be found here (https://www.fbi.gov/file-repository/ucr/ucr-srs-user-manual-v1.pdf/view).To combat this problem, the final dataset includes crimes tracked by county and city law enforcment agencies reporting to FBI UCR, aggregating crime data to the county level.
+When using county level crime statistics, it is important to keep in mind that they are generally incomplete. The Federal Bureau of Investigations (FBI) Uniform Crime Statistic (UCR) Crime in the United States data series (https://ucr.fbi.gov/crime-in-the-u.s) provides county level crime data that represents all crimes that occured within the county law enforcment agency's juristiction, outside of city juristitction. These data are missing crimes that occured in counties outside of the juristiction of the county. This exclused any crimes that take place within a county but in the juristiction of a city, tribal, univeristy, or other law enofrcmnet agency within the couty. These data also exclude any crimes that occured in the county under the juristiction of the state law enforcment agency. Documentation of the FBI UCR county crime data can be found here (https://www.fbi.gov/file-repository/ucr/ucr-srs-user-manual-v1.pdf/view).To combat this problem, we have used a clean county level crime dataset that can be found on ICPSR (https://www.openicpsr.org/openicpsr/project/108164/version/V3/view?path=/openicpsr/108164/fcr:versions/V3). This file was created using agency level data with ORI codes that were crosswalked with county FIPS codes. This file is also not complete, but includes a coverage indicator to show how much of a county is covered in the crime counts captured. The file also uses imputation to estimate crime counts for months of missing data by agency. More information on the dataset can be found here (https://www.openicpsr.org/openicpsr/project/108164/version/V3/view). 
 
-* Final data name(s): crimerate_county_2018.csv
+* Final data name(s): crimerate_county_2017.csv
 * Analyst(s): Lily Robin
 * Data source(s):
-	2018_county.xls: county level crime data for 2018 (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-10/table-10.xls/view)
-	2018_city.xls: city level crime data for 2018 (source: https://ucr.fbi.gov/crime-in-the-u.s/2018/crime-in-the-u.s.-2018/tables/table-8/table-8.xls/view)
 	county_crosswalk.csv: county FIPS and county populations
-	zip_code_database.csv: USPS county and city names and zip codes (source: https://www.unitedstateszipcodes.org/zip-code-database/)
-* Year(s): 2018
+	county_ucr_offenses_known_yearly_1960_2017.dta: county crime counts for 1960 to 2017 
+* Year(s): 2017
 * Notes: This dataset is not inclusive of all counties and many counties are missing data from cities that reside within that county. Additionally, crimes that occured under the juristiction of agencies other then city and county law enforcment (ex. trible, university, state) are not included in crime counts for each county. Variables have been created to approximate the amount of missingness for a county. 
     * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (I can add back in these footnotes if helpful - 4 for city and 5 for county). 
     * Missingness: x% of counties are missing all crime data. x% of counties are missing violent crime rates. x% of counties are missing property crime rates. x% percent of counties are missing data from at least one city in the juristiction of the county (var name). x crimes in cities could not be matched to counties and are missing form the data. Crimes occuring outside of city and county justictictions (ex. tribal, university, school district, and state agencies) are missing from this dataset and missingness cannot be estimated. Iowa provided limited and inssufficient data and is theerfore not included in this dataset. 
 
-1. change the file directory listed after the "cd" command on line 8 and copy the crosswalk and zip code source file to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\crime_rate
-2. import and format all files
-3. clean crosswalk file to match cities to counties
-4. clean county crime file (2018_county.xls), this includes cleaning names of counties to match the county_crosswalk.csv file
-5. clean city crime file
-6. identify counties cities are in (using city and county names) by mergeing 2018_city.xls with zip_code_database.csv and creating a file with crimes in cities and county names and a file with cities in counties where there are no crime statistics. this will be used to identify % of pop with no juristiction coverage. 
-5. crosswalk county crime data (2018_county.xls) with county FIPS and population data (county_crosswalk.csv)
-6. Add city crime data to counties
-7. Add cities with missing data to counties
-8. Aggergate data to the county level with one observation per county - calculating crime rates and statstics about missingness
-9. Finalize and export data
+1. change the file directory
+2. import and clean all files
+3. Merge crime counts to counties
+4. Clean merged data and generate rate3
+5. Finalize and export data
 
 ----------------
 
