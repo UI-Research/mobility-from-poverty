@@ -1,4 +1,4 @@
-# Metric template
+# Homelessness
 
 Brief description: This metric is the total number of students experiencing homelessness at some
 point during the school year.
@@ -20,4 +20,6 @@ from the CCD data). Shares are calculated by dividing by total enrollment in the
 the location of the district office, with enrollment counts also from CCD data). A flag indicates the
 number of districts with suppressed data that are included in each county's estimate.
 
-<Repeat above information for additional metrics>
+Data quality flag: Data quality of "1" requires the ratio of the upper bound (homeless_count_ub) to the
+lower bound (homeless_count_lb) to be less or equal to than 1.05. Data quality of "2" requires this ratio
+to be less than or equal to 1.1. Data quality of 3 is the remainder.
