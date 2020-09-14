@@ -1,7 +1,7 @@
 # enviro. R
 # pulls enviromental idicators from HUD AFFH data and population weighs observations 
 # created by Peace Gwam
-# updated on 2020-08-27
+# updated on 2020-09-11
 
 
 #install.packages("devtools")
@@ -10,6 +10,7 @@ library(tidyverse)
 library(tidycensus)
 library(purrr)
 library(urbnmapr)
+library(dplyr)
 
 #to use tidycensus, use census_api_key function to set api key. download api key from https://api.census.gov/data/key_signup.html
 
@@ -29,12 +30,13 @@ acs <- map_df(state_fips, acs)
 
 # remove variable column: 
 acs <- acs %>%
-  select (-variable)
-
+  select(-variable)
 
 
 # pull hud affh data on air quality
-# AFFH data is no longer available via hud.gov. use urban data catalog for access. 
+# AFFH data is available via the Urban Institute Data Catalog here: 
+# https://datacatalog.urban.org/dataset/data-and-tools-fair-housing-planning/resource/12d878f5-efcc-4a26-93e7-5a3dfc505819 
+# code book is here: https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2020/07/31/AFFH-Data-Documentation.pdf
 affh <- read_csv("raw/AFFH_tract_AFFHT0006_July2020.csv", 
                            col_types = cols(
                              .default = col_double(),
@@ -44,64 +46,60 @@ affh <- read_csv("raw/AFFH_tract_AFFHT0006_July2020.csv",
                              county_name = col_character()
                            ))
 
+
 # keep only variables needed for analyses
 enviro_stats <- affh %>%
   select(GEOID = geoid, state, state_name, county, county_name, tract, haz_idx) 
 
-# remove puerto rico from affh data because not part of analysis
-affh <- affh %>%
-  filter (state_name != "Puerto Rico")
+
+#puerto rico is available in the affh data but not apart of our analyses. drop all observations in puerto rico:
+enviro_stats<- enviro_stats %>%
+  filter(state_name!= "Puerto Rico")
 
 # add leading zeros to GEOID to match with the acs
 enviro_stats <- enviro_stats %>%
-  mutate (GEOID = as.character(GEOID),
+  mutate(GEOID = as.character(GEOID),
           GEOID = str_pad(string = GEOID,
                           width = 11,
                           side = "left",
                           pad = "0"))
 
-# join acs data with affh data
-full_data <- left_join(enviro_stats, acs, by = "GEOID")
+# two county names and fips codes were changed.
+# edit the GEOIDs to match the current fips codes. 
+enviro_stats <- enviro_stats%>%
+  mutate(
+    GEOID = str_pad(GEOID, width = 11, "left", "0"),
+    GEOID = case_when(
+      GEOID == "46113940500" ~ "46102940500",
+      GEOID == "46113940800" ~ "46102940800",
+      GEOID == "46113940900" ~ "46102940900",
+      GEOID == "02158000100" ~ "02270000100",
+      TRUE ~ GEOID
+    )
+  )
 
+# join affh data with acs data
+full_data <- full_join(acs, enviro_stats, by = "GEOID")
 
 ####STEP TWO: VALIDATE AND CLEAN MERGED DATA ####
 
-# identify census tracts not represented in affh data - 4 in US 
-anti_join(acs, enviro_stats, by= c("GEOID"))
-
-# drop census tracts not in affh data 
-tracts_in_affh <- filter(full_data, !GEOID %in% c("02270000100", "46113940500", "46113940800", "46113940900"))
-
-
-# drop the census tracts with no est. population:
-tracts_with_pop <- filter(tracts_in_affh, estimate > 0)
-
-# there are 26 remaining tracts that have population and no hazard information. These tracts have between 1 and 7778 people
-# tracts with no hazard indices and a population greater than zero: 
-tracts_with_pop %>%
-  filter(is.na(haz_idx)) %>%
-  
-
-# the number of tracts without a hazard index and population > 0 are about 0.03% of all observations
-# proceed by dropping the census tracts without haz_idx:
-tracts_with_haz <- filter(tracts_with_pop, !is.na(haz_idx))
-
-# check to make sure that observations have hazard indices and populations greater than zero:
-stopifnot(
-  !is.na(tracts_with_haz$haz_idx), 
-  tracts_with_haz$estimate > 0
-)
+# check merge
+# note that now the census tracts match, but the county_names do not. this will not be in the final file.
+anti_join(acs, enviro_stats, by="GEOID")
+anti_join(enviro_stats, acs, by="GEOID")
 
 
 ####STEP THREE: WEIGH OBSERVATIONS BY POPULATION ####
 
 # calculate average county level haz_idx, weighted by population
-county_enviro_stats <- tracts_with_haz %>%
+county_enviro_stats <- full_data %>%
   group_by(state, county) %>%
-  summarize(mean_haz_idz = weighted.mean(x = haz_idx, w = estimate),
+  summarize(haz_idx = weighted.mean(x = haz_idx, w = estimate),
       ) %>%
   ungroup()
 
+#drop observations with all missing observations
+county_enviro_stats<- filter(county_enviro_stats, !is.na(county))
 
 ####STEP FOUR: EXPORT DATA ####
 
