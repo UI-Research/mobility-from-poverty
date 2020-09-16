@@ -1,7 +1,7 @@
 # enviro. R
 # pulls enviromental idicators from HUD AFFH data and population weighs observations 
 # created by Peace Gwam
-# updated on 2020-09-11
+# updated on 2020-09-16
 
 
 #install.packages("devtools")
@@ -10,7 +10,6 @@ library(tidyverse)
 library(tidycensus)
 library(purrr)
 library(urbnmapr)
-library(dplyr)
 
 #to use tidycensus, use census_api_key function to set api key. download api key from https://api.census.gov/data/key_signup.html
 
@@ -70,16 +69,16 @@ enviro_stats <- enviro_stats%>%
   mutate(
     GEOID = str_pad(GEOID, width = 11, "left", "0"),
     GEOID = case_when(
-      GEOID == "46113940500" ~ "46102940500",
-      GEOID == "46113940800" ~ "46102940800",
-      GEOID == "46113940900" ~ "46102940900",
+      GEOID ==  "46102940500" ~ "46113940500", 
+      GEOID ==  "46102940800" ~ "46113940800",
+      GEOID ==  "46102940900" ~ "46113940900", 
       GEOID == "02158000100" ~ "02270000100",
       TRUE ~ GEOID
     )
   )
 
 # join affh data with acs data
-full_data <- full_join(acs, enviro_stats, by = "GEOID")
+full_data <- full_join(acs, enviro_stats, by="GEOID")
 
 ####STEP TWO: VALIDATE AND CLEAN MERGED DATA ####
 
@@ -88,15 +87,18 @@ full_data <- full_join(acs, enviro_stats, by = "GEOID")
 anti_join(acs, enviro_stats, by="GEOID")
 anti_join(enviro_stats, acs, by="GEOID")
 
-
+full_data <- full_data %>%
+  mutate(na_pop= if_else(condition=is.na(haz_idx), true=estimate, false=0))
 ####STEP THREE: WEIGH OBSERVATIONS BY POPULATION ####
 
 # calculate average county level haz_idx, weighted by population
 county_enviro_stats <- full_data %>%
   group_by(state, county) %>%
-  summarize(haz_idx = weighted.mean(x = haz_idx, w = estimate),
-      ) %>%
-  ungroup()
+  mutate(county_pop = sum(estimate)) %>%
+  summarize(na_pop = sum(na_pop)/sum(estimate), 
+            haz_idx = weighted.mean(x = haz_idx, w = estimate, na.rm = TRUE)) %>%
+  ungroup() 
+
 
 #drop observations with all missing observations
 county_enviro_stats<- filter(county_enviro_stats, !is.na(county))
@@ -111,5 +113,11 @@ county_enviro_stats <- county_enviro_stats %>%
   mutate(GEOID = str_c(state, county, collapse = NULL)) %>% 
   select(-GEOID)
 
+# check if missing haz_idx in dataset
+stopifnot(   
+  county_enviro_stats %>%
+    filter(is.na(haz_idx)) %>%
+    nrow()==0
+  )
 ##output data
 write_csv(county_enviro_stats, "county_level_enviro.csv")
