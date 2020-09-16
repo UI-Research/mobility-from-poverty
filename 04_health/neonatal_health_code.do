@@ -3,7 +3,7 @@
 * Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder\04_health\data      				   
 * Description: Program to create gates mobility metrics on neonatal health  
 * Author: Emily M. Johnston												   
-* Date: August 14, 2020; Updated September 8, 2020	
+* Date: August 14, 2020; Updated September 16, 2020	
 * (1)  download data from CDC WONDER											
 * (2)  import, clean, and merge CDC WONDER files					   
 * (3)  intermediate file data cleaning										   
@@ -27,20 +27,24 @@ cd "${gitfolder}"
 
 *all births
 import delimited using "$gitfolder\04_health\data\all_births_by_county.txt", clear
-	keep countyofresidence countyofresidencecode births				// do not need CDC notes
-		rename countyofresidence county_name
-		rename countyofresidencecode fips
+	keep county countycode births									// do not need CDC notes
+	drop if births=="Missing County"								// only keeping observations with birth data	
+		rename county county_name
+		rename countycode fips
 		rename births all_births
+	destring all_births, replace
 	sort fips county_name												
 	keep if fips!=.													// only keeping observations with data	
 save "$gitfolder\04_health\data\all_births_by_county.dta", replace
 
 *low birth weight births
 import delimited using "$gitfolder\04_health\data\lbw_births_by_county.txt", clear
-	keep countyofresidence countyofresidencecode births				// do not need CDC notes
-		rename countyofresidence county_name
-		rename countyofresidencecode fips
+	keep county countycode births									// do not need CDC notes
+	drop if births=="Missing County"								// only keeping observations with birth data	
+		rename county county_name
+		rename countycode fips
 		rename births lbw_births
+	destring lbw_births, replace
 	sort fips county_name											// count of low birthweight births
 	keep if fips!=.													// only keeping observations with data
 save "$gitfolder\04_health\data\lbw_births_by_county.dta", replace
@@ -53,6 +57,7 @@ import delimited using "$gitfolder\04_health\data\nomiss_bw_by_county.txt", clea
 		rename county county_name
 		rename countycode fips
 		rename births nomiss_births 								// count of births with nonmissing birth weight data
+	destring nomiss_births, replace
 	sort fips county_name
 	keep if fips!=.													// only keeping observations with county data	
 save "$gitfolder\04_health\data\nomiss_bw_by_county.dta", replace
@@ -205,12 +210,17 @@ generate share_lbw_all = lbw_births/all_births
 
 *rates of missing by county						// checking county level rates of missing birthweight data
 generate share_miss = 1-(nomiss_births/all_births)
-	sum share_miss, detail
+	sum share_miss, detail						// highest county-level rate of missing: 3.8% - does not warrant change in quality flag
 	
 *difference by denominator						// assessing how different share lbw is between the two denominators	
 generate miss_diff = share_lbw_nomiss - share_lbw_all
-	sum miss_diff, detail
+	sum miss_diff, detail						// greatest county-level difference when omitting births with missing data: 0.2% - not concerning
 	
+*generate data quality flag						// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3)
+gen lbw_quality = .
+	replace lbw_quality = 1 if unidentified_county_flag==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
+	replace lbw_quality = 3 if unidentified_county_flag==1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
+		label var lbw_quality "share low birthweight births: quality flag"
 
 *(8) construct 95 percent confidence intervals
 * note: confidence intervals are constructed following the User Guide to the 2010 Natality Public Use File, linked in the README and saved on Box 	
@@ -242,16 +252,16 @@ gen lbw_ci_range=lbw_ub-lbw_lb
 
 
 * (9) final file cleaning and export to csv file
-keep year state county unidentified_county_flag share_lbw_nomiss lbw_lb lbw_ub 	// keep only variables needed for final file
+keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality	// keep only variables needed for final file
 	rename share_lbw_nomiss lbw							// final name		
-	rename unidentified_county_flag lbw_flag			// final name
 		label var lbw "share low birth weight births among births with nonmissing birth weight data"
-		label var lbw_lb "lower bound 95 percent confidence interval for lbw"
-		label var lbw_ub "upper bound 95 percent confidence interval for lbw"
+		label var lbw_lb "share low birthweight births: lower bound 95 percent confidence interval"
+		label var lbw_ub "share low birthweight births: upper bound 95 percent confidence interval"
 	format lbw %04.2f									// formate to include leading zero and limit to two decimal places per guidance 
 	format lbw_lb  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
 	format lbw_ub  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
-order year state county lbw lbw_lb lbw_ub lbw_flag		// order
+order year state county lbw lbw_lb lbw_ub lbw_quality	// order
+sort year state county
 
 save "$gitfolder\04_health\data\neonatal_health.dta", replace
 export delimited using "$gitfolder\04_health\final_data\neonatal_health.csv", replace

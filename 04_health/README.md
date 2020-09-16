@@ -11,7 +11,14 @@ This metric captures the share of low birthweight infants out of all births
     * County refers to county of mother's legal residence at the time of birth
     * Counties with populations under 100,000 persons based on the 2010 Census are grouped into pooled "Unidentified Counties" in the CDC WONDER data
         * All counties with populations under 100,000 in a given state have the same value for lbw
-    * lbw_flag indicates "Unidentified Counties" and data for these counties reflect the pooled share low birthweight for all counties in the state with populations under 100,000 and are not county-specific
+    * lbw_quality is a quality flag for the low birthweight metric
+        * A score of 1 indicates a high-quality calculated metric for the observation
+		* All counties with populations of 100,000 persons or more for which the metric is county-specific have a quality score of 1
+	* A score of 2 indicates limited issues for the calculated metric for the observation
+		* No counties have a quality score of 2
+	* A score of 3 indicates serious issues for the calculated metric for the observation
+		* All counties with populationess under 100,000 for which the metric reflects the pooled share low birthweight for all "Unidentified Counties" in the state and are not county-specific have a quality score of 3
+ 
 
 ## Process for creating the data
 
