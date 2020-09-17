@@ -4,18 +4,21 @@
 *Original data: Debt in America 2018 delinquent debt data (add github file path when have)
 *Description: Reformat data to match code standards; merge in 95% confidence interval data; merge to county crosswalk to add any missing counties
 *Author: Alex Carther
-*Last updated: 8/6/20
+*Last updated: 9/17/20
 *Uses StataMP 16
 ************************************************
 
 
 *Setting directory
-local dir "H:\"
+global dir "H:" //directory should be Box folder with raw data (https://urbanorg.app.box.com/folder/121120671765)
+global o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files" //directory for credit bureau data 
+*NOTE: This data is raw credit bureau microdata and cannot be uploaded to Box per our contract; this data must remain on and be accessed via STATA3.
 
 ****IMPORTING COUNTY CROSSWALK*****
 
 *Importing 2018 county crosswalk file from GitHub
-	import delimited "https://raw.githubusercontent.com/UI-Research/gates-mobility-metrics/master/geographic-crosswalks/data/county-file.csv?token=AQLEERC7OEPEDIALLMXB4ZS7H7T6I", stringcols(_all) clear
+	import delimited "$dir/county-file.txt", stringcols(_all) clear
+	//file downloaded from Github at "/geographic-crosswalks/data/county-file.csv"
 	*Keeping relevant year
 		keep if year=="2018"
 		
@@ -29,20 +32,19 @@ local dir "H:\"
 	format state %02.0f
 	format county %03.0f
 	
-	save "`dir'/county-file.dta", replace
+	save "$dir/county-file.dta", replace
 
 
 
 *****CREATING 95% CONFIDENCE INTERVAL VARS*****
 clear
 
-local o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files"
-*NOTE: This data is raw credit bureau microdata and cannot be uploaded to Box per our contract; this data must remain on and be accessed via STATA3.
+
 
 
 *Open base data and creaste temp vars
 	*open working version of microdata:
-	use "`o_o_exper_data_temp'\debt01a 2018.dta", clear
+	use "$o_o_exper_data_temp\debt01a 2018.dta", clear
 
 		keep totcollbin county_fips_fixed
 		mean totcollbin
@@ -55,10 +57,12 @@ local o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files
 	collapse (mean) totcollbin (semean) stdm_totcollbin (sum) obs , by( county_fips_fixed) 
 
 	drop if county_fips_fixed==""
+	
 	*We did not identify the county fips code of 3,956 consumers out of more than 5 million in the data
 	//either because the credit bureau data does not provide the appropriate county information for these consumers
 	//or because they live in PETERSBURG, ALASKA, a county equivalent which was recently created and could not be incorporated into our analysis
 	//In the future versions of Debt in America we hope to improve this issue.
+
 *SUPPRESS n < 50
 
 	replace totcollbin =. if obs<50
@@ -74,20 +78,20 @@ local o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files
 	replace lower_95 =0 if lower_95 <0
 
 	rename county_fips_fixed county_fips
-	keep county_fips totcollbin  upper_95 lower_95 
+	keep county_fips totcollbin upper_95 lower_95 obs
 
-save "`dir'/county_coll_95_inter.dta",replace
+save "$dir/county_coll_95_inter.dta",replace
 
 	
 	
 *Importing Debt in America data
-	import excel "`dir'Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
+	import excel "$dir/Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
 		rename state state_name
 		rename fullcountynamefromcensus county_name
 		rename countyfips county_fips
 
 	*Merging in confidence intervals
-		merge 1:1 county_fips using "`dir'/county_coll_95_inter.dta"
+		merge 1:1 county_fips using "$dir/county_coll_95_inter.dta"
 		drop if _merge==2
 		//Drops 2 counties in Alaska which are no longer in use
 		
@@ -123,30 +127,30 @@ save "`dir'/county_coll_95_inter.dta",replace
 	//Should be true; this is the same variable in both original data and confidence interval file. Using inrange as share_debt is rounded up one decimal place from totcollbin. Using to check merge.
 
 	*Keeping relevant variables
-	keep state county share_debt_coll share_debt_coll_lb share_debt_coll_ub
+	keep state county share_debt_coll share_debt_coll_lb share_debt_coll_ub obs
 
 *Merging with county crosswalk to add any missing counties
-	merge 1:1 county state using "`dir'/county-file.dta
+	merge 1:1 county state using "$dir/county-file.dta"
 	list county if _merge==2
 	//6 counties added
 	assert _merge==3 if share_debt_coll != .
 	//all counties with data should be matched
 	duplicates report state county
 	//should not have any duplicates
-
+	
 *Adding quality flag
-	gen quality_flag=.
-	replace quality_flag= 1 if obs >= 50 & obs !=.
-	replace quality_flag=3 if obs < 50 | obs==. 
-	tab quality_flag, m
+	gen share_debt_coll_quality=.
+	replace share_debt_coll_quality= 1 if obs >= 50 & obs !=.
+	replace share_debt_coll_quality=3 if obs < 50 | obs==. 
+	tab share_debt_coll_quality, m
 		//shouldn't be any missing
 	
 *Ordering and sorting data
 	drop state_name county_name population obs _merge
 	order year state county share_debt_coll
 	sort year state county
-
 *Exporting as CSV
-	export delimited using "`dir'\share_debt_2018.csv", datafmt replace
+	export delimited using "$dir\share_debt_2018.csv", datafmt replace
+	
 	//Exporting as display format to retain leading zeros
 
