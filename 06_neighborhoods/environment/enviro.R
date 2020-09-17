@@ -99,10 +99,6 @@ county_enviro_stats <- full_data %>%
             haz_idx = weighted.mean(x = haz_idx, w = estimate, na.rm = TRUE)) %>%
   ungroup() 
 
-
-#drop observations with all missing observations
-county_enviro_stats<- filter(county_enviro_stats, !is.na(county))
-
 ####STEP FOUR: EXPORT DATA ####
 
 #make file match data standards
