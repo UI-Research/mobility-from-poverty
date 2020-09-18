@@ -10,14 +10,15 @@
 
 
 *Setting directory
-global dir "H:" //directory should be Box folder with raw data (https://urbanorg.app.box.com/folder/121120671765)
+global raw "H:" //directory should be Box folder with raw data (https://urbanorg.app.box.com/folder/121120671765)
+global output "H:" //directory should be Box folder with Debt in America outputs (https://urbanorg.app.box.com/folder/118598368099)
 global o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp Files" //directory for credit bureau data 
 *NOTE: This data is raw credit bureau microdata and cannot be uploaded to Box per our contract; this data must remain on and be accessed via STATA3.
 
 ****IMPORTING COUNTY CROSSWALK*****
 
 *Importing 2018 county crosswalk file from GitHub
-	import delimited "$dir/county-file.txt", stringcols(_all) clear
+	import delimited "$raw/county-file.txt", stringcols(_all) clear
 	//file downloaded from Github at "/geographic-crosswalks/data/county-file.csv"
 	*Keeping relevant year
 		keep if year=="2018"
@@ -32,7 +33,7 @@ global o_o_exper_data_temp "\\STATA3\O&O_Experian\Debt in America\2019\Temp File
 	format state %02.0f
 	format county %03.0f
 	
-	save "$dir/county-file.dta", replace
+	save "$raw/county-file.dta", replace
 
 
 
@@ -80,18 +81,18 @@ clear
 	rename county_fips_fixed county_fips
 	keep county_fips totcollbin upper_95 lower_95 obs
 
-save "$dir/county_coll_95_inter.dta",replace
+save "$output/county_coll_95_inter.dta",replace
 
 	
 	
 *Importing Debt in America data
-	import excel "$dir/Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
+	import excel "$raw/Overall_Delinquent_Debt_county.xlsx", sheet("Sheet1") allstring firstrow case(l) clear
 		rename state state_name
 		rename fullcountynamefromcensus county_name
 		rename countyfips county_fips
 
 	*Merging in confidence intervals
-		merge 1:1 county_fips using "$dir/county_coll_95_inter.dta"
+		merge 1:1 county_fips using "$output/county_coll_95_inter.dta"
 		drop if _merge==2
 		//Drops 2 counties in Alaska which are no longer in use
 		
@@ -130,7 +131,7 @@ save "$dir/county_coll_95_inter.dta",replace
 	keep state county share_debt_coll share_debt_coll_lb share_debt_coll_ub obs
 
 *Merging with county crosswalk to add any missing counties
-	merge 1:1 county state using "$dir/county-file.dta"
+	merge 1:1 county state using "$raw/county-file.dta"
 	list county if _merge==2
 	//6 counties added
 	assert _merge==3 if share_debt_coll != .
@@ -142,6 +143,7 @@ save "$dir/county_coll_95_inter.dta",replace
 	gen share_debt_coll_quality=.
 	replace share_debt_coll_quality= 1 if obs >= 50 & obs !=.
 	replace share_debt_coll_quality=3 if obs < 50 | obs==. 
+	replace share_debt_coll_quality=. if obs==. & share_debt_coll==.
 	tab share_debt_coll_quality, m
 		//shouldn't be any missing
 	
@@ -150,7 +152,6 @@ save "$dir/county_coll_95_inter.dta",replace
 	order year state county share_debt_coll
 	sort year state county
 *Exporting as CSV
-	export delimited using "$dir\share_debt_2018.csv", datafmt replace
+	export delimited using "$output\share_debt_2018.csv", datafmt replace
 	
 	//Exporting as display format to retain leading zeros
-
