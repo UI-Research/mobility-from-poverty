@@ -611,7 +611,7 @@ run;
 
 /* create confidence interval and correctly format variables */
 
-data data_missing_HI (keep = year county state share_in_preschool share_in_preschool_ub share_in_preschool_lb)  ;
+data data_missing_HI (keep = year county state share_in_preschool share_in_preschool_ub share_in_preschool_lb _FREQ_)  ;
  set metrics_preschool_v2;
  year = 2018;
  not_in_pre = 1 - share_in_preschool;
