@@ -184,6 +184,8 @@ replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
 *number of arrests age 10 to 17
 egen arrest_10to17 = rowtotal(m10_12 m13_14 m15 m16 m17 f10_12 f13_14 f15 f16 f17)
 
+sum arrest_10to17
+
 *number of children under 10 arrested
 egen arrest_under10 = rowtotal (m0_9 f0_9)
 
@@ -262,7 +264,7 @@ gsort year state county
 gen data_quality = 1
 replace data_quality = 2 if percent_nonreporting > 0.10
 replace data_quality = 3 if percent_nonreporting > 0.5
-replace data_quality = 4 if juvenile_arrest_rate == .
+replace data_quality = . if juvenile_arrest_rate == .
 tab data_quality, m
 
 save 2016_arrest_by_county, replace

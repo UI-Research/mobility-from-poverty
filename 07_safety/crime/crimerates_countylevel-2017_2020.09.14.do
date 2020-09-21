@@ -113,12 +113,12 @@ gsort year state county
 *create data quality index
 sum coverage_indicator
 gen data_quality = 2
-replace data_quality = 3 if coverage_indicator >= 95 & coverage_indicator != .
-replace data_quality = 1 if coverage_indicator < 50 & coverage_indicator != .
-replace data_quality = 4 if violent_crime_rate == . & property_crime_rate == .
+replace data_quality = 1 if coverage_indicator >= 95 & coverage_indicator != .
+replace data_quality = 3 if coverage_indicator < 50 & coverage_indicator != .
+replace data_quality = . if violent_crime_rate == . & property_crime_rate == .
 tab data_quality, m
 
-drop data_quality
+tabmiss
 
 save 2017_crime_by_county, replace
 
