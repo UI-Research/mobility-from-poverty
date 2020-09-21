@@ -2,6 +2,7 @@
 *Compute county-level hosuing metrics;
 *=================================================================;
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
+libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
 %macro compute_metrics_housing(microdata_file,vacant_file,metrics_file);
 * Prepare a file containing HUD income levels for each county. This requires first
@@ -61,7 +62,7 @@ run;
      (regardless of the actual unit size!!!). "Affordable" means costs are < 30% of the AMI
 	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
-data households;
+data desktop.households;
   merge &microdata_file.(in=a where=(pernum=1)) County_income_limits(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
   if a;
