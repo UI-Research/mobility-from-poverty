@@ -561,7 +561,9 @@ data &output_file.;
   if (county = .) then put "error: no match: " serial= statefip= puma=;
   hhwt = hhwt*afact1;
   perwt = perwt*afact1;
-    if statefip = 51 and county = 515 then county = 19;
+  if statefip = 51 and county = 515 then county = 19;
+  if statefip = 2 and county = 270 then county = 158;
+  if statefip = 46 and county = 113 then county = 102;
 run;
 
 *Sort into order most useful for calculating metrics;
