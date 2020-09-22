@@ -1,6 +1,6 @@
 *********************************
 *	Safety Metrics				*
-*	Crime Rates - County 2018	*
+*	Crime Rates - County 2017	*
 *	Lily Robin, 2019.9.14		*
 *********************************
 
@@ -32,6 +32,7 @@ clear
 cd "$gitfolder/07_safety/crime"
 
 *cant get the zip to download, just go to site and manually download
+*https://www.openicpsr.org/openicpsr/project/108164/version/V3/view
 *copy "https://www.openicpsr.org/openicpsr/project/108164/version/V3/download/terms?path=/openicpsr/108164/fcr:versions/V3/county_ucr_offenses_known_1960_2017_dta.zip" "county_ucr_offenses_known_1960_2017_dta.zip", replace
 
 unzipfile "county_ucr_offenses_known_1960_2017_dta.zip", replace
@@ -55,6 +56,27 @@ destring county, replace
 *check for duplicates
 duplicates r statecounty
 
+*account for some chenged/mismerged counties: change Shannon county to Oglola Lakota County (http://ddorn.net/data/FIPS_County_Code_Changes.pdf), combine Bedfor city (former independant city) with Bedford county
+
+replace county = 102 if state == 46 & county == 113
+
+replace county = 019 if state == 51 & county == 515
+replace statecounty = "51019" if state == 51 & county == 019
+
+foreach var in county_population violent_crime_count property_crime_count {
+	
+	bysort statecounty: egen `var'_bedford = total(`var')
+	
+	replace `var' = `var'_bedford if statecounty == "51019"
+}
+
+replace county_name = "Bedford County" if statecounty == "51019"
+
+drop county_population_bedford violent_crime_count_bedford property_crime_count_bedford
+
+duplicates drop
+
+*save
 save crime_county_2017, replace	
 
 
@@ -73,28 +95,59 @@ drop if _merge == 2
 
 ///// 4. CLEAN AND GENERATE RATES
 
-*non-manhattan new york city counties seem wrong, have zeros, and missing coverage indicators. I am changing them to missing
-foreach var in violent_crime_count property_crime_count {
-	
-	foreach  num in 5 47 81 85 {
+*county populations in crime file appear to be off, and not by the amount indicated by the coverage indicator. 
+gen pop_check = county_population/population
+sum pop_check
+gen pop_coverage = pop_check - coverage_indicator
+sum pop_coverage
+drop pop_coverage pop_check
+
+*new york county appears to have crime counts for whole city. Will apply these counts and entire city pop to each nyc county with a note (using row total to account for any counts in other counties just in case)
+gen ny = 0
+replace ny = 1 if state == 36 & county == 5 | state == 36 & county == 47 | state == 36 & county == 81 | state == 36 & county == 85 | state == 36 & county == 61
+
+foreach var in violent_crime_count property_crime_count county_population {
 		
-		replace `var' = . if state == 36 & county == `num'
-		
-	}
+	bysort ny: egen `var'_ny = total(`var')
 	
 }
 
+foreach var in violent_crime_count property_crime_count county_population {
+	
+	replace `var' = `var'_ny if state == 36 & county == 61
+			
+}
+
+foreach val in 5 47 81 85 {
+		
+		foreach var in violent_crime_count property_crime_count county_population {
+	
+			replace `var' = . if state == 36 & county == `val'
+			
+		}
+		
+		replace coverage_indicator = . if state == 36 & county == `val'
+}
+
+drop ny violent_crime_count_ny property_crime_count_ny county_population_ny
+
 *check missingness
-tabmiss //population is more complete and likely more accurate in the crosswalk file. 12 counties are missing crime counts and coverage indicator. 
+tabmiss //population is more complete and likely more accurate in the crosswalk file. 11 counties are missing crime counts and coverage indicator. 
 
 drop county_population _merge
 
 *generate rates
+
+gen pop_covered = population*coverage_indicator
+replace pop_covered = population if coverage_indicator == 0
+
 foreach var in violent property {
 	
-	gen `var'_crime_rate = (`var'_crime_count/population)*100000 if `var'_crime_count != . & population != .
+	gen `var'_crime_rate = (`var'_crime_count/pop_covered)*100000
 	
 }
+
+drop pop_covered
 
 *check values
 sum violent_crime_rate property_crime_rate //property crime is a little low, probably because it is missing juristictions outside of counties including state juristictions
@@ -112,10 +165,17 @@ gsort year state county
 
 *create data quality index
 sum coverage_indicator
-gen data_quality = 2
-replace data_quality = 1 if coverage_indicator >= 95 & coverage_indicator != .
-replace data_quality = 3 if coverage_indicator < 50 & coverage_indicator != .
+gen data_quality = .
+replace data_quality = 1 if coverage_indicator == 100 & coverage_indicator != .
+replace data_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
+replace data_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
 replace data_quality = . if violent_crime_rate == . & property_crime_rate == .
+
+foreach val in 5 47 81 85 {
+		
+	replace data_quality = 3 if state == 36 & county == `val'
+}
+
 tab data_quality, m
 
 tabmiss

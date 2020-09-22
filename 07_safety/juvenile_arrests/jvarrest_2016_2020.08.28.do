@@ -262,8 +262,8 @@ gsort year state county
 
 *create data quality index
 gen data_quality = 1
-replace data_quality = 2 if percent_nonreporting > 0.10
-replace data_quality = 3 if percent_nonreporting > 0.5
+replace data_quality = 2 if percent_nonreporting > 0
+replace data_quality = 3 if percent_nonreporting > 0.2
 replace data_quality = . if juvenile_arrest_rate == .
 tab data_quality, m
 
