@@ -22,6 +22,8 @@ quit;
 data vacant;
  set vacant; 
   if STATEFIP = 51 and county = 515 then county = 19; /* set county 51515 to 51019 due to 2013 change*/
+  if STATEFIP = 2 and county = 270 then county = 158;
+  if STATEFIP = 46 and county = 113 then county = 102;
 run;
 
 data vacant;
