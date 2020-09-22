@@ -100,7 +100,7 @@ data vacant;
 run;
 
 *Summarize by county, combine households and vacant units, and compute metrics;
-proc means data=Households noprint; 
+proc means data=desktop.Households noprint; 
   output out=households_summed(drop=_type_) sum=;
   by statefip county;
   var Below80AMI Affordable80AMI Below50AMI Affordable50AMI;
@@ -122,7 +122,7 @@ run;
 
 %compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing);
 
-proc freq data=households;
+proc freq data=desktop.households;
   where Below80AMI=. or Below50AMI=. or Affordable80AMI=. or Affordable50AMI=.;
   title "states and counties missing an AMI value";
   table statefip*county;
