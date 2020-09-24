@@ -11,9 +11,10 @@ local raw "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
 local wages "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
 
 /***** save living wage as .dta *****/
-import delimited using "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\mit-living-wage.csv"
+cd `wages'
+import delimited using "mit-living-wage.csv"
 
-save "`wages'\\mit_living_wages.dta", replace
+save "mit_living_wages.dta", replace
 
 clear
 
@@ -21,12 +22,12 @@ clear
 
 cd `raw'
 
-import delimited using "`raw'\\2018_data.csv", numericcols(14 15 16 17 18) clear
+import delimited using "2018_data.csv", numericcols(14 15 16 17 18) clear
 
 /* keep only county totals */
 keep if areatype == "County" & ownership == "Total Covered"
 
-keep st cnty annualaverageweeklywage
+keep st cnty annualaverageweeklywage annualaverageestablishmentcount
 
 rename st state
 
@@ -55,6 +56,15 @@ gen weekly_living_wage = wage * 40
 /* get ratio (main metric) */
 gen average_to_living_wage_ratio = annualaverageweeklywage/weekly_living_wage
 
+/* create data quality flag 
+per discussion with Greg, >= 30 is 1, <30 is 3 */
+gen quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
+replace quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
+replace quality = . if annualaverageestablishmentcount == .
+
+/* test flag */
+tab quality, missing
+
 /* put state and county in string with leading 0s */
 gen new_state = string(state,"%02.0f")
 drop state
@@ -71,14 +81,15 @@ hist average_to_living_wage_ratio
 /* Generally looks good. County 3 in State 19 (Iowa) is missing average wage 
 data, so it shows up as a 0 in the ratio */
 
-/* replace 0 ratio with missing */
+/* replace 0 ratio with missing and replace data quality as missing */
 replace average_to_living_wage_ratio = . if average_to_living_wage_ratio == 0
+replace quality = . if average_to_living_wage_ratio == .
 
-save "`wages'\\wage_ratio_final.dta",replace
+save "wage_ratio_final.dta",replace
 
 
-keep state county year average_to_living_wage_ratio
+keep state county year average_to_living_wage_ratio quality
 
-order year state county average_to_living_wage_ratio
+order year state county average_to_living_wage_ratio quality
 
 export delimited using metrics_wage_ratio.csv, replace
