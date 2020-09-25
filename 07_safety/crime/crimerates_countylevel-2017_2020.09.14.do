@@ -104,7 +104,7 @@ drop pop_coverage pop_check
 
 *new york county appears to have crime counts for whole city. Will apply these counts and entire city pop to each nyc county with a note (using row total to account for any counts in other counties just in case)
 gen ny = 0
-replace ny = 1 if state == 36 & county == 5 | state == 36 & county == 47 | state == 36 & county == 81 | state == 36 & county == 85 | state == 36 & county == 61
+replace ny = 1 if (state == 36 & county == 5) | (state == 36 & county == 47) | (state == 36 & county == 81) | (state == 36 & county == 85) | (state == 36 & county == 61)
 
 foreach var in violent_crime_count property_crime_count county_population {
 		
@@ -129,6 +129,8 @@ foreach val in 5 47 81 85 {
 		replace coverage_indicator = . if state == 36 & county == `val'
 }
 
+replace coverage_indicator = . if state == 36 & county == 61
+
 drop ny violent_crime_count_ny property_crime_count_ny county_population_ny
 
 *check missingness
@@ -138,16 +140,16 @@ drop county_population _merge
 
 *generate rates
 
+/* cannot use this code because of imputation, not accounted for in coverage indicator
 gen pop_covered = population*coverage_indicator
 replace pop_covered = population if coverage_indicator == 0
+*/
 
 foreach var in violent property {
 	
-	gen `var'_crime_rate = (`var'_crime_count/pop_covered)*100000
+	gen `var'_crime_rate = (`var'_crime_count/population)*100000
 	
 }
-
-drop pop_covered
 
 *check values
 sum violent_crime_rate property_crime_rate //property crime is a little low, probably because it is missing juristictions outside of counties including state juristictions
@@ -158,25 +160,29 @@ sum violent_crime_rate property_crime_rate //property crime is a little low, pro
 
 ///// 5. FINALIZE DATA and EXPORT
 
+drop state_name county_name population violent_crime_count property_crime_count 
+
 *order variables appropriatly and sort dataset
-order year state state_name county county_name population violent_crime_count violent_crime_rate property_crime_count property_crime_rate coverage_indicator, first
+rename coverage_indicator coverage_indicator_crime
+
+order year state county violent_crime_rate property_crime_rate coverage_indicator_crime, first
 
 gsort year state county
 
 *create data quality index
 sum coverage_indicator
-gen data_quality = .
-replace data_quality = 1 if coverage_indicator == 100 & coverage_indicator != .
-replace data_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
-replace data_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
-replace data_quality = . if violent_crime_rate == . & property_crime_rate == .
+gen crime_rate_quality = .
+replace crime_rate_quality = 1 if coverage_indicator == 100 & coverage_indicator != .
+replace crime_rate_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
+replace crime_rate_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
+replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate == .
 
-foreach val in 5 47 81 85 {
+foreach val in 5 47 81 85 61 {
 		
-	replace data_quality = 3 if state == 36 & county == `val'
+	replace crime_rate_quality = 3 if state == 36 & county == `val'
 }
 
-tab data_quality, m
+tab crime_rate_quality, m
 
 tabmiss
 

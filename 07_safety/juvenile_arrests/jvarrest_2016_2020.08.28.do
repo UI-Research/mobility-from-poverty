@@ -24,6 +24,7 @@ drop if ori == "-1"
 *check for duplicates overall and by ORI, and get to one obs per ORI
 duplicates r
 duplicates r ori
+*br if spot_check == 1
 keep fstate fcounty fplace fips_st fips_county fips ori ua statename countyname
 
 foreach var in fips_st fips_county fips ori statename countyname {
@@ -154,6 +155,12 @@ drop if _merge == 2
 *5,337 not matched in master will not be able to be matched to counties so these will be dropped. Appears to include a number of tribal, school, and specialized agencies
 drop if _merge == 1
 
+*formerly independant city of Bedford, Virginia, change to county of Bedford (51019)
+*br if fips == "51515"
+replace fcounty = 019 if fips == "51515" 
+replace fips_county = "019" if fips == "51515"
+replace fips = "51019" if fips == "51515"
+
 ///// 4. IDENTIFY NON REPORTING AGENCIES AND OVERLAPPING AGENCIES
 
 *nonreporting agencies
@@ -161,25 +168,11 @@ tab zero, m
 tab areo if zero == .
 tab covby, m
 
-gen nonreporting = 0
-replace nonreporting = 1 if zero == 1 & covby == 0| zero == . & covby == 0
+gen nonreport = 0
+replace nonreport = 1 if (zero == 1 & covby == 0) | (zero == . & covby == 0)
 
 
-///// 5. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
-
-label list STATE
-*age of adult criminal liability (http://www.jjgps.org/jurisdictional-boundaries) 18 except: 
-	*Georgia (10), Louisiana (17), Michigan (21), Missouri (24), South Carolina (32), Texas (42), Wisconsin (48): 17
-	*New York (31), North Carolina (32): 16
-gen adult_17 = 0
-replace adult_17 = 1 if state == 10 | state == 17 | state == 21 | state == 24 | state == 32 | state == 42 | state == 48
-gen adult_16 = 0
-replace adult_16 = 1 if state == 31 | state == 32
-gen adult_under18 = 0
-replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
-
-	
-///// 6. CALCULATE JV ARRESTS
+///// 5. CALCULATE JV ARRESTS
 
 *number of arrests age 10 to 17
 egen arrest_10to17 = rowtotal(m10_12 m13_14 m15 m16 m17 f10_12 f13_14 f15 f16 f17)
@@ -192,18 +185,33 @@ egen arrest_under10 = rowtotal (m0_9 f0_9)
 sum arrest_10to17 arrest_under10
 
 
-///// 7. AGGREGATE TO COUNTY
+///// 6. AGGREGATE TO COUNTY
 
 *total # of juvenile arrests by county
 
-gen agencies = 1
+gen obs = 1
 
-collapse (sum) arrest_10to17 arrest_under10 nonreporting (mean) year adult_under18 adult_17 adult_16 fstate fcounty (count) agencies, by(fips)
+collapse (sum) arrest_10to17 arrest_under10 nonreport (mean) year fstate fcounty (count) obs, by(fips)
+rename (fstate fcounty) (state county)
 
-sum agencies nonreporting
+gen coverage_indicator_jjarrest = 1 - (nonreport/obs)
+sum coverage_indicator_jjarrest
 
-gen percent_nonreporting = nonreporting/agencies
-sum percent_nonreporting
+
+
+///// 7. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
+
+label list STATE
+*age of adult criminal liability (http://www.jjgps.org/jurisdictional-boundaries) 18 except: 
+	*Georgia (10), Louisiana (17), Michigan (21), Missouri (24), South Carolina (32), Texas (42), Wisconsin (48): 17
+	*New York (31), North Carolina (32): 16
+gen adult_17 = 0
+replace adult_17 = 1 if state == 10 | state == 17 | state == 21 | state == 24 | state == 32 | state == 42 | state == 48
+gen adult_16 = 0
+replace adult_16 = 1 if state == 31 | state == 32
+gen adult_under18 = 0
+replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
+
 
 
 ///// 8. CROSSWALK POPULATION
@@ -217,10 +225,12 @@ drop if _merge != 3
 rename child_10_17 pop_10to17
 
 *generate juvenile arrest rate
-gen juvenile_arrest_rate = arrest_10to17/pop_10to17
+gen juvenile_arrest_rate = (arrest_10to17/pop_10to17)*100000
+sum juvenile_arrest_rate
+*jhttps://www.ojjdp.gov/ojstatbb/crime/jar_display.asp#:~:text=Juvenile%20Arrest%20Rate%20Trends&text=The%20juvenile%20arrest%20rate%20for,then%20declined%2074%25%20by%202018.&text=Note%3A%20Rates%20are%20arrests%20of,17%20in%20the%20resident%20population
 
-rename fcounty county
-rename fstate state
+*br if juvenile_arrest_rate > 100000
+*A lot of status offenses. Maybe that's why?
 
 drop _merge
 
@@ -246,26 +256,25 @@ merge 1:1  state county using county_crosswalk_2016
 *br if _merge == 1
 *02270: Wade Hampton Census Area, Alaska
 *46113: Lakota county was changed to be 46102 in 2015 (change replected above)
-*51515: independant city of Bedford, Virginia
 *br if _merge == 2
 
 ///// 10. FINALIZE DATA and EXPORT
 
-rename nonreporting nonreporting_agencies
-
-drop countyfips _merge
+drop countyfips _merge state_name county_name population nonreport obs
 
 *order variables appropriatly and sort dataset
-order year state state_name county county_name juvenile_arrest juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 nonreporting_agencies adult_under18 adult_17 adult_16 population, first
+order year state county juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 coverage_indicator_jjarrest adult_under18 adult_17 adult_16, first
 
 gsort year state county
 
 *create data quality index
-gen data_quality = 1
-replace data_quality = 2 if percent_nonreporting > 0
-replace data_quality = 3 if percent_nonreporting > 0.2
-replace data_quality = . if juvenile_arrest_rate == .
-tab data_quality, m
+sum coverage_indicator_jjarrest
+gen jjarrest_rate_quality = .
+replace jjarrest_rate_quality = 1 if coverage_indicator_jjarrest == 1 & coverage_indicator_jjarrest != .
+replace jjarrest_rate_quality = 2 if coverage_indicator_jjarrest < 1 & coverage_indicator >= 0.8 & coverage_indicator_jjarrest != .
+replace jjarrest_rate_quality = 3 if coverage_indicator_jjarrest < 0.8 & coverage_indicator_jjarrest != .
+replace jjarrest_rate_quality = . if juvenile_arrest_rate == .
+tab jjarrest_rate_quality
 
 save 2016_arrest_by_county, replace
 

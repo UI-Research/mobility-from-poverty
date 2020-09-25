@@ -11,9 +11,9 @@ To combat this problem, we have used a clean county level crime dataset that can
 
 The file also uses imputation to estimate crime counts for months of missing data by agency. More information on the dataset can be found here (https://www.openicpsr.org/openicpsr/project/108164/version/V3/view). 
 
-The metrics of interest from these data are violent crime (murder and nonnegligent manslaughter, forcible rape, robbery, and aggravated assault) and property crime (burglary, larceny-theft, motor vehicle theft, and arson). Rates are calculated as the number of crimes per 100,000 people using ACS county populations multiplied by the coverage indicator. The whole population is used if the coverage indicator is zero, but these counties will be notes as low data quality.  
+The metrics of interest from these data are violent crime (murder and nonnegligent manslaughter, forcible rape, robbery, and aggravated assault) and property crime (burglary, larceny-theft, motor vehicle theft, and arson). Rates are calculated as the number of crimes per 100,000 people using ACS county populations.  
 
-	county crime rate = (county crime count / (county population * coverage indicator)) * 100,000
+	county crime rate = (county crime count / county population) * 100,000
 
 * Final data name(s): crimerate_county_2017.csv
 * Analyst(s): Lily Robin
@@ -25,10 +25,11 @@ The metrics of interest from these data are violent crime (murder and nonneglige
     * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (UCR data from the web has footnotes that I can merge in, but this data does not). Imputation was used to estimate crime rates in unreported months, using the NACJD method. The coverage indicator provides an estimate of the amount of the population coverage by reporting agencies. The data quality index is used to assess the quality of data for each county using the coverage indicator variable.
 
 Counties with 100% coverage are marked as a 1, counties with between 100 and 80% coverage are marked as a 2, and counties with less then 80% coverage are marked as a 3. ~43% of counties have a data quality index of 1, ~40% have a data quality measure of 2, and ~17% have a data quality measure of 3. All counties in New York City are combined and are reported for the whole city in New York county. All NYC counties are given a quality measure of 3 (will update as decission is made). 
+
     * Missingness: ~0.35% (11) of counties are missing all crime data.
 
-1. change the file directory
-2. import and clean all files
+1. Change the file directory
+2. Import and clean all files
 3. Merge crime counts to counties
 4. Clean merged data and generate rate3
 5. Finalize and export data
@@ -48,16 +49,21 @@ This dataset contains arrest rates of children age 10 to 17 by county in 2016 us
 	county_crosswalk.csv: county FIPS and county populations (provided by Kevin)
 * Year(s):2016
 * Notes: 
-    * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily reflective of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for the number of arrests of children under 10 by county. The data does not distinuish between no arrests in an age catagory and a non-report on the catagory so some 0s may actually be non-reports. The data quality index is used to assess the quality of data for each county using the non-reporting agenicies variable. The non-reporting agencies varaible is the best available estimate of how many agencies may not be reporting arrests in a county in this data, but it is not complete. There are over 5,000 agencies in the file that cannot be matched to a county. It also does not account for the population of each county; 1 missing agency in a county could have different impacts depending on the size of that agency. Counties with no agencies not reporting are marked as a 1. Counties with 20% or less of agencies not reporting are marked as a 2 and agencies with over 20% of agencies not reporting are marked as a 3. ~30% of counties have a data quality index of 1, ~57% have a data quality index of 2, and ~13% have a data quality index of 3. ~0.22 (7) counties are missing data.
-    * Missingness: This dataset is not inclusive of all counties and some agencies are missing from county arrest counts. 7 counties are missing arrest data. The nonreporting_agencies variable reports the estimated number of agencies in a county that did not report arrest data, some of these agencies may not have any arrest data. There are also agencies that have overlapping juritsictions. In this senario, arrests should be attributed to only one of the agencies in the juristictional area per FBI data standards. If a juristiction is indicated as being covered by another juristiction, it is not included in the count of non-reporting agencies in a county. 
+    * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily reflective of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for the number of arrests of children under 10 by county. The data does not distinuish between no arrests in an age catagory and a non-report on the catagory so some 0s may actually be non-reports. The data quality index is used to assess the quality of data for each county using the coverage indicator.
+
+The coverage indicator is calculated using an indicator of whether data was reported for each month and offense for an agency in 2016. The coverage indicator is calculated as: 1 - (observations with non reported data for a county / total observations for a county). Where each observation is a arrests reported by an agency for a month for a specific offense catagory. There are also agencies that have overlapping juritsictions. In this senario, arrests should be attributed to only one of the agencies in the juristictional area per FBI data standards. If a juristiction is indicated as being covered by another juristiction, it is not included in the count of non-reporting agencies in a county. This is the best available estimate of how many arrests within a county are actually covered by the statistic provided in the final dataset for a county, but it is not complete. There are over 5,000 agencies in the file that cannot be matched to a county. Additionally population of each county versus the population for missing data is not accounted for. 
+
+Counties with 100% coverage are marked as a 1, counties with between 100 and 80% coverage are marked as a 2, and counties with less then 80% coverage are marked as a 3. ~31% of counties have a data quality index of 1, ~57% have a data quality measure of 2, and ~13% have a data quality measure of 3. 
+
+    * Missingness: 7 counties are missing arrest data. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\juvenile_arrest
 2. import all files
 3. crosswalk county FIPS (fbi_crosswalk.dta) to the 2016 agency arrests file (2016_arrest) matching on ORI number
 4. check 2016 agency arrests file (2016_arrest) for missing values and create non-reporting variable to account for non-reporting agencies in a county
-5. Identify states with age of adult criminal liability below 18
-6. Calculate total juvenile arrests per agency
-7. Aggregate to County
+5. Calculate total juvenile arrests per agency
+6. Aggregate to County
+7. Identify states with age of adult criminal liability below 18
 8. crosswalk arrest file (2016_arrest) to county population file (children_12_17_v2.csv)
 9. crosswalk arrest file (2016_arrest) to county FIPS file (county_crosswalk.csv) with all counties to add in counties with missing data
 10. Finalize and export data
