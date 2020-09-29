@@ -36,13 +36,27 @@ cd "${gitfolder}\04_health\data\raw"
 import delimited "https://data.hrsa.gov//DataDownload/DD_Files/BCD_HPSA_FCT_DET_PC.csv", case(lower)
 save "BCD_HPSA_FCT_DET_PC.csv", replace
 
-*Only keep relevant variables. Need to keep the population in order to population-weight the scores
-keep designationtype hpsastatus hpsascore hpsaid commonstatecountyfipscode hpsadesignationpopulation
+/*Test the data. Start with only looking at geographic designation types. It was recommended to see how the counties would look if I added the population-based types*/
+	/*first, remove territories and restrict to only designation type we need*/
+drop if primarystatefipscode>56 /*This removes territories (drops 374 records)*/
+drop if hpsastatus != "Designated"	/* removes withdrawn and proposed for withdrawl (drops 35,933 records)*/
+keep if designationtype == "Geographic HPSA" | designationtype == "High Needs Geographic HPSA" /*keeps only the records we want for overall county records. We'll need a different dataset for past years (removes 16,190 records)*/
 
-gen state = substr(commonstatecountyfipscode, 1, 2)
+/*how many county-level records do I have? The HPSAcomponenttypecode indicates SCTY = Single County, CSD = County Subdivision, and CT = census tract*/
+tab hpsacomponenttypecode /*have 872 total county records that can stand alone; 1,374 are CSD and 3,455 are CT*/ 
+/*Note that HRSA statistician Brandon said it may be that all of the county is included, but is not the single county level, but instead it is all the county subdivisions and hasn't been changed to single county status.*/
+
+/*We determined with the statistician that we would consider an area an HPSA (1) or not (0) if any geography is on the list. But, I will calculate a coverage rate by summing the population size, "HPSA Designation Population," and merge it with the population size in the county file. Note that the population size is repeated, so I need to deduplicat by HPSAID. The populations considered for these areas is the poulation minus those in group homes and in institutions. So, we will under-estimate coverage*/
+
+
+/*NOTE: Move this keep statement until later. It turned out we needed a lot more variables than what was originally determined*/	
+*Only keep relevant variables. Need to keep the population in order to population-weight the scores
+/*keep designationtype hpsastatus hpsascore hpsaid commonstatecountyfipscode hpsadesignationpopulation hpsageographyidentificationnumbe*/
+
+gen state = substr(commonstatecountyfipscode, 1, 2) /* already have a state code
 gen county = substr(commonstatecountyfipscode, 3, 3)
 
-drop commonstatecountyfipscode
+/*drop commonstatecountyfipscode*/
 
 *Only keep current designated Geographic HPSAs and high needs geographic HPSA ("high needs" based on patient needs).
 	*We expect that we made need other designation types for the subgroup analysis, namely 

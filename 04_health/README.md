@@ -2,7 +2,7 @@
 
 Brief description
 
-* Years: 2020 (A date is generated when the data are downloaded, so the official year will be whatever the corrent year is when you download the data from the Data Warehouse - see the record create date)
+* Years: 2020 (A date is generated when the data are downloaded, so the official year will be whatever the current year is when you download the data from the Data Warehouse - see the record create date). Data are updated by HRSA daily, as noted here: https://data.hrsa.gov/data/about
 * Final data name(s): HPSA_2020.csv
 * Analyst(s): Claudia Solari (started by Fred Blavin, Diane Arnos)
 * Programmer: Claudia Solari
