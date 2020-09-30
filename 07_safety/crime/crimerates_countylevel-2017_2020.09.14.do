@@ -26,7 +26,7 @@ keep if year == 2017
 save "07_safety/crime/county_crosswalk_2017", replace
 
 
-*****County crime 2018
+*****County crime 2017
 clear
 
 cd "$gitfolder/07_safety/crime"
@@ -80,6 +80,31 @@ duplicates drop
 save crime_county_2017, replace	
 
 
+*****NY county crime 2017
+clear
+
+copy "https://www.criminaljustice.ny.gov/crimnet/ojsa/indexcrimes/2017-county-index-rates.xls" "ny_county_indexcrime_2017.xls", replace
+
+import excel "ny_county_indexcrime_2017.xls", sheet ("2017-county-index-rates") cellrange(A5:H67) firstrow case(lower) clear
+
+drop count rate
+
+rename (population e f g h) (county_population_ny violent_crime_count_ny violent_crime_rate_ny property_crime_count_ny property_crime_rate_ny)
+
+tab county
+
+keep if county == "Bronx" | county == "Kings" | county == "New York" | county == "Queens" | county == "Richmond"
+
+gen county_addon = " County"
+egen county_name = concat(county county_addon)
+
+gen state = 36
+
+drop county county_addon
+
+save ny_county_indexcrime_2017, replace
+
+
 
 ///// 3. MERGE
 
@@ -90,6 +115,12 @@ merge 1:1 state county using crime_county_2017
 *br if _merge != 3
 
 drop if _merge == 2
+drop _merge
+
+*merge New York City counties: New York County has crime counts for whole city in the main crime file, using instead county level data from the state
+merge 1:1 state county_name using ny_county_indexcrime_2017
+
+drop _merge
 
 
 
@@ -102,41 +133,22 @@ gen pop_coverage = pop_check - coverage_indicator
 sum pop_coverage
 drop pop_coverage pop_check
 
-*new york county appears to have crime counts for whole city. Will apply these counts and entire city pop to each nyc county with a note (using row total to account for any counts in other counties just in case)
+*update nyc
 gen ny = 0
 replace ny = 1 if (state == 36 & county == 5) | (state == 36 & county == 47) | (state == 36 & county == 81) | (state == 36 & county == 85) | (state == 36 & county == 61)
 
 foreach var in violent_crime_count property_crime_count county_population {
 		
-	bysort ny: egen `var'_ny = total(`var')
+	replace `var' = `var'_ny if ny == 1
 	
 }
 
-foreach var in violent_crime_count property_crime_count county_population {
-	
-	replace `var' = `var'_ny if state == 36 & county == 61
-			
-}
-
-foreach val in 5 47 81 85 {
-		
-		foreach var in violent_crime_count property_crime_count county_population {
-	
-			replace `var' = . if state == 36 & county == `val'
-			
-		}
-		
-		replace coverage_indicator = . if state == 36 & county == `val'
-}
-
-replace coverage_indicator = . if state == 36 & county == 61
-
-drop ny violent_crime_count_ny property_crime_count_ny county_population_ny
+replace coverage_indicator = . if ny == 1
 
 *check missingness
-tabmiss //population is more complete and likely more accurate in the crosswalk file. 11 counties are missing crime counts and coverage indicator. 
+tabmiss //population is more complete and likely more accurate in the crosswalk file. 7 counties are missing crime counts and 12 are missing coverage indicator. 
 
-drop county_population _merge
+drop county_population 
 
 *generate rates
 
@@ -151,8 +163,13 @@ foreach var in violent property {
 	
 }
 
+*check rates compared to ny state file
+*br county_name population county_population_ny violent_crime_rate_ny violent_crime_rate property_crime_rate_ny property_crime_rate if ny == 1
+
+drop county_population_ny violent_crime_count_ny violent_crime_rate_ny property_crime_count_ny property_crime_rate_ny ny
+
 *check values
-sum violent_crime_rate property_crime_rate //property crime is a little low, probably because it is missing juristictions outside of counties including state juristictions
+sum violent_crime_rate property_crime_rate //property crime is a little low, probably because it is missing juristictions outside of counties and territories
 *use the FBI UCR website to check totals and spot check county values
 *https://ucr.fbi.gov/crime-in-the-u.s/2017/crime-in-the-u.s.-2017/topic-pages/violent-crime
 
@@ -160,7 +177,7 @@ sum violent_crime_rate property_crime_rate //property crime is a little low, pro
 
 ///// 5. FINALIZE DATA and EXPORT
 
-drop state_name county_name population violent_crime_count property_crime_count 
+drop state_name county_name population violent_crime_count property_crime_count state_abv statecounty
 
 *order variables appropriatly and sort dataset
 rename coverage_indicator coverage_indicator_crime
@@ -179,7 +196,7 @@ replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate 
 
 foreach val in 5 47 81 85 61 {
 		
-	replace crime_rate_quality = 3 if state == 36 & county == `val'
+	replace crime_rate_quality = 1 if state == 36 & county == `val'
 }
 
 tab crime_rate_quality, m

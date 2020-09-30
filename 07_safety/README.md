@@ -20,13 +20,14 @@ The metrics of interest from these data are violent crime (murder and nonneglige
 * Data source(s):
 	county_crosswalk.csv: county FIPS and county populations
 	county_ucr_offenses_known_yearly_1960_2017.dta: county crime counts for 1960 to 2017 (https://www.openicpsr.org/openicpsr/project/108164/version/V3/view)
+	ny_county_indexcrime_2017.xls: new york state index crimes by county (https://www.criminaljustice.ny.gov/crimnet/ojsa/countycrimestats.htm)
 * Year(s): 2017
 * Notes: This dataset is not inclusive of all counties and many counties are missing data from agencies that reside within that county. 
     * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (UCR data from the web has footnotes that I can merge in, but this data does not). Imputation was used to estimate crime rates in unreported months, using the NACJD method. The coverage indicator provides an estimate of the amount of the population coverage by reporting agencies. The data quality index is used to assess the quality of data for each county using the coverage indicator variable.
 
-Counties with 100% coverage are marked as a 1, counties with between 100 and 80% coverage are marked as a 2, and counties with less then 80% coverage are marked as a 3. ~43% of counties have a data quality index of 1, ~40% have a data quality measure of 2, and ~17% have a data quality measure of 3. All counties in New York City are combined and are reported for the whole city in New York county. All NYC counties are given a quality measure of 3 (will update as decission is made). 
+Counties with 100% coverage are marked as a 1, counties with between 100 and 80% coverage are marked as a 2, and counties with less then 80% coverage are marked as a 3. ~43% of counties have a data quality index of 1, ~40% have a data quality measure of 2, and ~17% have a data quality measure of 3. Data for the five counties that reside in NYC was pulled from NYS data (https://www.criminaljustice.ny.gov/crimnet/ojsa/countycrimestats.htm). These data are likely very accurate, and have been given a quality index measure of 1, but they do not come from the same dataset as the rest of the counties. 
 
-    * Missingness: ~0.35% (11) of counties are missing all crime data.
+    * Missingness: ~0.22% (7) of counties are missing all crime data.~0.39% (12) counties are missing coverage information. 
 
 1. Change the file directory
 2. Import and clean all files
