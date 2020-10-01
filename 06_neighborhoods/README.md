@@ -1,19 +1,26 @@
 # Environmental Quality Index
+<<<<<<< HEAD
 
+=======
+>>>>>>> 78db422ce9d90d761db5ae72501015b6180e02fd
 * Final data name(s): county_level_enviro.csv
 * Analyst(s): Peace Gwam
-* Data source(s): Affirmatively Furthering Fair Housing (AFFH) & ACS
+* Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & ACS. 
 * Year(s): 2014
 * Notes:
     * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
-    * Missingness : All 3,142 counties in the United States are represented.
+    * Missingness : All 3,142 counties in the United States are represented. There are, however, some caveats: 
+      (1) There are 618 tracts without populations. Logically, most do not have hazard indices: 508 of the 618 tracts with zero population do not have a `haz_idx`.
+      (2) There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
+    * Quality flags: `1` for all observations. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.02% of the overall population for the county (see variable `na_pop` in dataset). 
 
 Outline the process for creating the data  
 * Downloaded tract-level 2014 AFFH data
 * Cleaned AFFH data, including the removal of variables and geographies not relevant to this analysis
 * Merged tract-level total population from the 2014 5-yr ACS for the United States with cleaned AFFH data
-* Validated data: checked if merge worked using `<anti-join>` and `<stopifnot>`
+* Validation 
 * Weighted air quality indicators by county level population
+<<<<<<< HEAD
 
 # Transit Cost and Transit Trips Index
 
@@ -80,3 +87,7 @@ This metric is the share of the poor in a county who live in census tracts with 
 5. Divide the number from 2. by the total number of people in poverty in each Census tract. 
 6. Validation
 7. Data quality flags
+=======
+* Add data quality flags
+* Output data
+>>>>>>> 78db422ce9d90d761db5ae72501015b6180e02fd
