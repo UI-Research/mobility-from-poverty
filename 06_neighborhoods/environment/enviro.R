@@ -104,16 +104,35 @@ county_enviro_stats <- full_data %>%
 #make file match data standards
 county_enviro_stats <- county_enviro_stats %>%
   add_column(year = 2014, .before = "state") %>%
+  add_column(quality_flag = 1, .after = "haz_idx") %>%
   mutate(state = str_pad(string = state, width = 2, side ="left", pad = "0")) %>%
   mutate(county = str_pad(string = county, width = 3, side = "left", pad = "0")) %>%
   mutate(GEOID = str_c(state, county, collapse = NULL)) %>% 
   select(-GEOID)
 
-# check if missing haz_idx in dataset
+##output data
+write_csv(county_enviro_stats, "county_level_enviro.csv")
+
+####STEP FIVE: DATA QUALITY CHECKS - NOT IN FINAL DATA SET ####
+
+#number of tracts with 0 population
+tracts_with_nopop <- filter(full_data, estimate == 0)
+# there are 618 tracts with 0 population
+
+#number of tracts with 0 population & missing haz_idx
+tracts_with_nopop_na <- filter(tracts_with_nopop) %>%
+  filter(is.na(haz_idx))
+
+#number of tracts with pop > 0 & missing haz_idx
+tracts_with_pop_na <- filter (full_data, estimate > 0) %>%
+  filter (is.na(haz_idx))
+
+# check if missing haz_idx in final dataset
 stopifnot(   
   county_enviro_stats %>%
     filter(is.na(haz_idx)) %>%
     nrow()==0
-  )
-##output data
-write_csv(county_enviro_stats, "county_level_enviro.csv")
+)
+
+
+
