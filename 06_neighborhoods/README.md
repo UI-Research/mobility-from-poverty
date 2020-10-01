@@ -14,7 +14,6 @@ Outline the process for creating the data
 * Downloaded tract-level 2014 AFFH data
 * Cleaned AFFH data, including the removal of variables and geographies not relevant to this analysis
 * Merged tract-level total population from the 2014 5-yr ACS for the United States with cleaned AFFH data
-* Validated data: checked if merge worked using `<anti-join>` and `<stopifnot>`
 * Validation 
 * Weighted air quality indicators by county level population
 * Add data quality flags
