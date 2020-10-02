@@ -34,9 +34,10 @@ the standard error of the estimate. A flag indicates how many grades are include
 each estimate.  
 
 Data quality flags: Data quality of "1" requires at least 5 or 6 years of data to be
-included, with at least 30 students tested in each year. Data quality of "2" requires 
-at least 4 years included with at least 30 students in each year. Data quality of "3"
-is assigned to the remainder. 
+included, with at least 30 students tested in each year (a commonly used minimum 
+sample size for stability of estimates). Data quality of "2" requires at least 4 years 
+included with at least 30 students in each year. Data quality of "3" is assigned to the 
+remainder. 
 
 # Share of students in high-poverty schools
 
@@ -49,9 +50,15 @@ schools where 40 percent or more of students receive free or reduced-price lunch
 * Year(s): 2018 (2018-19 school year)
 * Notes:
     * Limitations: Not all states report FRPL; some instead report the number of students
-	directly certified (DC). In 2018, these states are Massachusetts, Tennessee, Delaware, 
+	directly certified (DC). FRPL is "The unduplicated number of students who are eligible 
+	to participate in the Free Lunch and Reduced Price Lunch Programs under the National 
+	School Lunch Act of 1946." DC is "The unduplicated count of students in membership 
+	whose National School Lunch Program (NSLP) eligibility has been determined through 
+	direct certification." (https://www2.ed.gov/about/inits/ed/edfacts/eden/non-xml/fs033-14-1.docx)
+	
+	In 2018, the states reporting DC instead of FRPL are Massachusetts, Tennessee, Delaware, 
 	and the District of Columbia. In addition, Alaska and Ohio report either FRPL or DC 
-	for a substantial number of schools (in 2018). 
+	for a substantial number of schools in 2018. 
 	
     * Missingness: 4/3,142 counties
 
