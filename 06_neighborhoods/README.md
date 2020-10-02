@@ -1,8 +1,5 @@
 # Environmental Quality Index
-<<<<<<< HEAD
 
-=======
->>>>>>> 78db422ce9d90d761db5ae72501015b6180e02fd
 * Final data name(s): county_level_enviro.csv
 * Analyst(s): Peace Gwam
 * Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & ACS. 
@@ -20,7 +17,6 @@ Outline the process for creating the data
 * Merged tract-level total population from the 2014 5-yr ACS for the United States with cleaned AFFH data
 * Validation 
 * Weighted air quality indicators by county level population
-<<<<<<< HEAD
 
 # Transit Cost and Transit Trips Index
 
@@ -87,7 +83,3 @@ This metric is the share of the poor in a county who live in census tracts with 
 5. Divide the number from 2. by the total number of people in poverty in each Census tract. 
 6. Validation
 7. Data quality flags
-=======
-* Add data quality flags
-* Output data
->>>>>>> 78db422ce9d90d761db5ae72501015b6180e02fd
