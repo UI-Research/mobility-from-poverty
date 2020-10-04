@@ -71,8 +71,8 @@ tab hpsacomponenttypecode /*yes, it is good*/
 
 /*I just want to look at my new dataset and make sure it is sound*/
 save "${gitfolder}\04_health\data\intermediate\hpsa_bysort1.dta", replace
-export excel "${gitfolder}\04_health\data\intermediate\test1.xlsx" /*for some reason, this does't include variable names. As a short-cut, I copied the variable names from the original dataset. They are all in proper order*/
-/*NOTE: we have counties with the same HPSAID, but they are in different counties, but the population size is identical because it is for the whole HPSAID. In the case of HPSAID = 1175310412, it is a county subdivision with two records, one in La Salle County, IL, and the other in aLee County, IL. La Salle has another county subdivision record of a different HPSAID (1173136549). Because the HPSA Designation Population is based on the HPSAID, it means when I calculate coverage rates, I might exceed 100% per county. I can't tell how much of the population is in which county. */
+export excel "${gitfolder}\04_health\data\intermediate\test1.xlsx", firstrow(variables)/*need "firstrow(variables) option to keep the variable names*/
+/*NOTE: we have counties with the same HPSAID, but they are in different counties, but the population size is identical because it is for the whole HPSAID. In the case of HPSAID = 1175310412, it is a county subdivision with two records, one in La Salle County, IL, and the other in aLee County, IL. La Salle has another county subdivision record of a different HPSAID (1173136549). Because the HPSA Designation Population is based on the HPSAID, it means when I calculate coverage rates, I might exceed 100% per county. I can't tell how much of the population is in which county. There are some instances where there are both census tracts and county subdivisions within a county. The statistician at HRSA noted that these do not overlap. The CT in these circumstances would be from a subdivision that is not already identified. */
 
 /*NOTE: we still have multiple records in a county for the county subdivision and census tract types. We want to sum the hpsa population for records within the same county. */ 
 	*generate a sum of the population counts within each state and county
@@ -93,6 +93,9 @@ gen county = substr(commonstatecountyfipscode, 3, 3)
 /*confirm I don't have any duplicate county records*/
 duplicates report commonstatecountyfipscode /*great, no duplicates*/
 
+/*One county in Alaska had its county code change: hpsaid = 1023212062, the record in Alaska, worked. The old state is 02 and county is 270. Change it to match what it will be for the merge so that I can keep this record.This was changed & renamed to "02158" if you want to include this. https://www.cdc.gov/nchs/nvss/bridged_race/county_geography-_changes2015.pdf*/
+replace county="158" if hpsaid == "1023212062" & county=="270"
+tab county if hpsaid == "1023212062" /*worked*/
 /*save this county-level file, one record per county*/
 save "${gitfolder}\04_health\data\intermediate\hpsacounty_pc.dta", replace
 
@@ -120,10 +123,10 @@ save "${gitfolder}\04_health\data\intermediate\countyfile.dta", replace
 /*The countyfile crosswalk file doesn't include territories but the HPSA file does. We also have a lot of missing counties in the HPSA, so we need to keep those that are in the crosswalk file*/
 merge 1:m state county using "${gitfolder}\04_health\data\intermediate\hpsacounty_pc.dta"
 /*look at the county that doesn't merge. This could be because a new county code was tweaked between 2018 and 2020*/
-tab countyequivalentname if _merge==2 /*it is Wade Hampton (former census area), hpsaid = 1023212062, it is a record in Alaska. We had two records for this HPSAID originally. The state is 02 and county is 270*/
 
-drop if _merge==2 /*drop this one county so the overall metrics merge is smooth*/
-tab _merge /*leaves me with 1,198 that are matched, so should be hpsa_yn==1; the remaining 1,944 will not be an hpsa*/
+tab _merge/*Confirm the recode for Wade Hampton (former census area), hpsaid = 1023212062, the record in Alaska, worked. If it didn't, it will show up in _merge==2. The original state is 02 and county is 270. The new one is "02158." Confirmed, it is no longer there*/
+
+/*leaves me with 1,199 that are matched, so should be hpsa_yn==1; the remaining 1,943 will not be an hpsa*/
 tab hpsa_yn _merge, miss
 /*Set HPSA yn for counties not included in the data set as zeros*/
 replace hpsa_yn = 0 if hpsa_yn == . /* no hpsa designation in N=1,944 counties*/
@@ -148,20 +151,17 @@ tab dup_hpsaid /*Now I can set those of dup_hpsaid>=1 & dup_hpsaid<=3 to be data
 /*now look at coverate over 1 if the dup_hpsaid is 0*/
 sum coverage if dup_hpsaid==0, detail /*it looks like we still have a range of coverage, and even at the 75th percentile, the coverage is .4. So, of these partial county records, most will be of data quality=3. What might be within reason is a population change of 5% in a short amount of time. So, coverage can be >=.5 to <=1.05 and still be a data quality of 2. Otherwise, it is a data quality of 3. */
 
+/*NOTE: I was originally thinking that I would assign data quality based on coverage. But, coverage seems too arbitrary. Instead, andything that is based on a CT or CSD record will have a data quality value of 3*/
 
+/********************/
 /*Data quality Index*/
 gen hpsa_yn_quality = .
 /*assign the poorest values as specified above*/
-replace hpsa_yn_quality=3 if (dup_hpsaid>=1) & (dup_hpsaid<=3) /*recodes 118 cases*/
-replace hpsa_yn_quality=3 if (coverage>0 & coverage <.5) /*167 cases*/
-replace hpsa_yn_quality=3 if (coverage>1.05 & coverage <20) /*11 changes*/
-/*data quality of 2 is if among the less than full counties, their coverage is .5 to 1.05*/
-replace hpsa_yn_quality= 2 if (coverage>=.5 & coverage <=1.05) /*59 changes*/
-/*if the hpsa_yn is zero then the data quality is 1 and if the hpsacomponenttypecode=="SCTY" the data quality is 1*/
-replace hpsa_yn_quality=1 if hpsacomponenttypecode=="SCTY" /*871 changes*/
-replace hpsa_yn_quality=1 if hpsa_yn==0 /*1944 changes*/
+replace hpsa_yn_quality=3 if hpsacomponenttypecode=="CT" | hpsacomponenttypecode=="CSD" /*327 changes*/
+replace hpsa_yn_quality=1 if hpsacomponenttypecode=="SCTY" /*872 changes*/
+replace hpsa_yn_quality=1 if hpsa_yn==0 /*1943 changes*/
 /*confirm it gets all the records*/
-tab hpsa_yn_quality, miss /*yes, it works. 2815 have quality 1, 59 with quality 2, and 268 with quality 3*/
+tab hpsa_yn_quality, miss /*yes, it works. 2815 have quality 1, 327 with quality 3*/
 /*save a version of this intermediate data*/
 save "${gitfolder}\04_health\data\intermediate\hpsacounty_allvars.dta", replace
 /*Keep only the variables I need in the final dataset*/
