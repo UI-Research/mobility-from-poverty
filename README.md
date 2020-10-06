@@ -1,4 +1,4 @@
-This repository contains code to construct 26 county-level metrics that broadly measure mobility from poverty. To learn more please read
+This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
 
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
@@ -19,16 +19,21 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 * [Project Organization](#project-organization)
 * [GitHub](#github)
     * [GitHub Standards](#github-standards)
+    * [Github Basic](#github-basics)
     * [GitHub Workflow](#github-workflow)
 * [Data Standards](#data-standards)
     * [Joining Variables](#joining-variables)
     * [Values](#values)
     * [Sorting](#sorting)
     * [Standard Errors](#standard-errors)
+    * [Quality Flags](#quality-flags)
+    * [Data Dictionary](#data-dictionary)
 * [Code Standards](#code-standards)
-* [Code Review](#code-review)
+* [Code and technical Review](#code-and-technical-review)
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
+    * [Code Reviews in GitHub](#code-reviews-in-github)
+    * [Code Branching for Reviewers](#code-branching-in-github)
 * [Creating the Final File](#creating-the-final-file)
 * [License](#license)
 * [Contact](#contact)
@@ -36,6 +41,18 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 # Repository Contents
 
 todo(aaron): clean up repository contents
+
+| Domain                  |      Metrics      |  Analyst(s) |
+|-------------------------|:-------------:|------:|
+| 01_financial-well-being |   |  |
+| 02_housing              |   |  |
+| 03_family               |   |  |
+| 04_health               |   |  |
+| 05_local-governments    |   |  |
+| 06_neighborhoods        |   |  |
+| 07_safety               |   |  |
+| 08_education            |   |  |
+| 09_employment           |   |  |
 
 # File Description
 
@@ -49,13 +66,13 @@ The multi-year file contains one year per county per year. It contains missing v
 
 ## Variables
 
-todo(aaron): Include a table with variables and informaiton about the variables. 
+todo(aaron): Include a table with variables and information about the variables. 
 
 # Project Organization
 
-* Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
-* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
+* Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
+* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
+* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
@@ -70,6 +87,22 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 * Regularly pull from the remote `master` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
 * The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
 
+## GitHub Basics
+
+An Urban Institute-focused introduction to GitHub including installation instructions is available [here](https://ui-research.github.io/urbngit/). 
+
+After installing Git and setting up a GitHub account, follow these steps to get started on Windows:
+
+1. Right click and select "Git Bash Here" where you want to copy the repository (main folder) on your computer. 
+2. Submit `git clone https://github.com/UI-Research/gates-mobility-metrics.git`. You will need to enter your user email and password. Everything will then copy to your computer.
+3. Close Git Bash. 
+4. Enter the `gates-mobility-metrics` folder, right click, and select "Git Bash Here". 
+5. Submit `git checkout -b aaron` but replace `aaron` with your name.
+
+After this, you should be able to edit files and then add them to Git with the process outlined in the guide above. 
+
+Email awilliams@urban.org if you have questions about working with Mac or Linux. 
+
 ## GitHub Workflow
 
 1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
@@ -82,8 +115,9 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 
 # Data Standards
 
-* All final files should be in the `.csv` format. 
-* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytical errors. 
+* All final files should be in the `.csv` format. The files should be delimited with a comma. 
+* Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
+* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
 * Important intermediate files should be added to Box. Final data files should be added to Box.
 
 ### Joining variables
@@ -95,7 +129,7 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 * Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between o and 1 inclusive with a leading zero. (75% should be 0.75)
-* Missing values should be coded as empty-
+* Missing values should be coded as empty cells.
 
 ### Sorting
 
@@ -103,9 +137,28 @@ todo(aaron): Include a table with variables and informaiton about the variables.
 
 ### Standard Errors
 
-todo(aaron): include method for standard errors
+* If possible, construct 95 percent confidence intervals for metrics. 
+* Add confidence bounds as columns in the `.csv` files. The variables should have the suffixes `_lb` for lower bound and `_ub` for upper bound. 
+* Do not include the `_lb` and `_ub` if a 95 percent confidence interval calculation isn't possible.
 
-todo(aaron): add naming convention for standard errors
+### Quality Flags
+
+* Construct a "quality" flag for each constructed metric. Include it as a variable the suffix `_quality`. 
+* All observations should receive one of the following three grades or a missing value. 
+
+| Score | Description |
+|-------|:----------|
+| 1  |  The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.  | 
+| 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
+| 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
+|  | It was not possible to calculate a metric for the county. |
+
+* Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`. 
+
+### Data Dictionary 
+
+* We will construct a detailed data dictionary for users of the data. 
+* Be sure to include information about the format of your metrics in the metric-specific READMEs. Completed metrics will be added to the [variables table](#variables) in this README.
 
 # Code Standards 
 
@@ -134,7 +187,7 @@ Description: [Overall description]
 
 ```
 
-# Code Review
+# Code and Technical Review
 
 ## Scope of the review
 
@@ -162,6 +215,56 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
 * State if special computation was used (i.e. the Stata server or SAS server). 
 * If scripts use many variable names, make sure to include a codebook so reviewers can follow along.
 * For calculations, code should be commented with clear variable labels. 
+
+## Code Reviews in GitHub
+
+Our code review process will be handled through GitHub, which has powerful tools for code review. [This page outlines the functionality.](https://github.com/features/code-review/)
+
+### 1. Request
+
+In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `master` is handled through pull requests. 
+
+For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. Aaron and Claudia will flag the reviewers. 
+
+<img src="images/request-review.png" width="400" height="200">
+
+### 2. Review
+
+The code will not be merged to master until the reviewer(s) approve the pull request. 
+
+GitHub will generate a line-by-line comparison of every line that is added or removed from `aaron` to `master`. 
+
+<img src="images/line-by-line.png" width="800" height="300">
+
+Reviewers can add line-specific comments in GitHub. 
+
+<img src="images/comments.png" width="500" height="200">
+
+### 3. Approve
+
+Reviewers can also add overall comments before approving or requesting changes for the pull request. If additional changes are added, GitHub will highlight the specific lines that changed in response to the review--this will save the reviewer time on second or third reviews of the same code. 
+
+<img src="images/approve-review.png" width="300" height="200">
+
+Once the code is approved, the branch can be merged into the `master` branch where it can referenced and used for subsequent analyses. 
+
+## Code Branching for Reviewers
+
+Line-by-line edits and feedback should be handled by reviewers through the point-and-click interface on GitHub. Running code from a pull request will require [branching](https://guides.github.com/introduction/flow/). 
+
+Suppose you are reviewing code from branch `malcolm`. You need to "fetch" the `malcolm` branch on to your local computer to run and review the code. Steps:
+
+1. Open up Git Bash in the directory by right clicking in the `gates-mobility-metrics` directory and and selecting Git Bash Here (on Windows).
+2. Submit `git status` and ensure that you don't have any tracked changes that have not been commited. 
+3. Use `git branch` to see your current branch and other available branches. You should at least see `master`. 
+4. Submit `git fetch` to getch remote branches. 
+5. Submit `git checkout --track origin/malcolm` to switch to the `malcolm` branch. Submit `git branch` to confirm the change. 
+
+At this point, you should be able to run and review the code. Back on GitHub, you should be able to add line-by-line comments to the Pull Request if you click "Files changed" and then click the blue plus sign that appears next to the number by the line of code. 
+
+When your review is complete, click the green "Review changes" button on GitHub. You should be able to add overall comments, approve the Pull Request, or Request changes to the Pull Request. If you request changes, you will need to `git pull malcolm` after the analyst pushes the updated code to GitHub. 
+
+When you are done, you can switch back to your branch with `git checkout branch-name` where `branch-name` is the name of the branch you wish to switch to. If you have un-commited changes, you will need to get rid of them with `git stash`. You shouldn't make substantive changes on some else's branch. 
 
 # Creating the Final File
 
