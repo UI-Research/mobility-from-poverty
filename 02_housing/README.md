@@ -1,3 +1,25 @@
+# Housing afforability
+
+* Final data name(s): metrics_housing
+* Analyst(s): Paul Johnson and Kevin Werner
+* Data source(s): ACS 1-year
+* Year(s): 2018
+* Notes:
+		Metrics are missing for county 05 in Hawaii.
+		
+		Counties 89 and 119 in state 36 (NY) had some missing data and may not be reliable. 
+
+From Paul:
+First of all, it requires extra data --- Section-8 FMR area income levels, and the population 
+of each FMR area.  This info is imported at the beginning of the program (I’m not sure where this 
+data was obtained, but I think it came from HUD’s website), and then combined and made ready for 
+merging with the microdata file.  Once it is merged we can determine which households have 
+incomes under 80% and under 40% of the AMI, and which live in “affordable” housing.   Note that, 
+regardless of the household size, the AMI for a family of 4 is always used. After this, we also
+need to account for the affordability of vacant units.  This uses a file (“vacant”) produced by 
+the program “prepare_vacant macro”.  The final metrics are a combination of the results from 
+the microdata file and the results from the vacant file.   
+
 # Homelessness
 
 Brief description: This metric is the total number of students experiencing homelessness at some
@@ -22,4 +44,6 @@ number of districts with suppressed data that are included in each county's esti
 
 Data quality flag: Data quality of "1" requires the ratio of the upper bound (homeless_count_ub) to the
 lower bound (homeless_count_lb) to be less or equal to than 1.05. Data quality of "2" requires this ratio
-to be less than or equal to 1.1. Data quality of 3 is the remainder.
+to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the 
+largest value of this ratio is 3 and that only 6 counties, each with homeless population of less than 10, 
+have ratio values at or between 2 to 3.
