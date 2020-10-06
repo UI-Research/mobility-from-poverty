@@ -34,9 +34,40 @@ the standard error of the estimate. A flag indicates how many grades are include
 each estimate.  
 
 Data quality flags: Data quality of "1" requires at least 5 or 6 years of data to be
-included, with at least 30 students tested in each year. Data quality of "2" requires 
-at least 4 years included with at least 30 students in each year. Data quality of "3"
-is assigned to the remainder. 
+included, with at least 30 students tested in each year (a commonly used minimum 
+sample size for stability of estimates). Data quality of "2" requires at least 4 years 
+included with at least 30 students in each year. Data quality of "3" is assigned to the 
+remainder. 
+
+# Preschool
+
+* Final data name(s): metrics_preschool
+* Analyst(s): Kevin Werner
+* Data source(s): ACS 1-yr
+* Year(s): 2018
+* Notes:
+		Hawaii county 05 is missing. It is very low population.
+		This metric uses Paul Johnson's method of finding county FIPS code from PUMAs.
+		PUMAs can sometimes span counties, which is adjusted for with weights.
+
+Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created
+county FIPS using Paul's method. Then, I calculated the number of 3 and 4 year olds, 
+the number of children in pre school, and divided them. 
+
+
+* Final data name(s): metrics_college
+* Analyst(s): Kevin Werner and Paul Johnson
+* Data source(s): ACS 1-yr
+* Year(s): 2018
+* Notes:
+	The compute_ code computes the metrics. The finalize_ code computes the
+	confidence intervals and outputs the .csv.
+	
+	NOTE: must run the 1_, 2_, and 3_ code in the income subfolder first.
+
+Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created
+county FIPS using Paul's method. Then, we calculated the number of 19-20 year olds, 
+the number with a high school degree and divided them. 
 
 # Share of students in high-poverty schools
 
@@ -49,9 +80,15 @@ schools where 40 percent or more of students receive free or reduced-price lunch
 * Year(s): 2018 (2018-19 school year)
 * Notes:
     * Limitations: Not all states report FRPL; some instead report the number of students
-	directly certified (DC). In 2018, these states are Massachusetts, Tennessee, Delaware, 
+	directly certified (DC). FRPL is "The unduplicated number of students who are eligible 
+	to participate in the Free Lunch and Reduced Price Lunch Programs under the National 
+	School Lunch Act of 1946." DC is "The unduplicated count of students in membership 
+	whose National School Lunch Program (NSLP) eligibility has been determined through 
+	direct certification." (https://www2.ed.gov/about/inits/ed/edfacts/eden/non-xml/fs033-14-1.docx)
+	
+	In 2018, the states reporting DC instead of FRPL are Massachusetts, Tennessee, Delaware, 
 	and the District of Columbia. In addition, Alaska and Ohio report either FRPL or DC 
-	for a substantial number of schools (in 2018). 
+	for a substantial number of schools in 2018. 
 	
     * Missingness: 4/3,142 counties
 
