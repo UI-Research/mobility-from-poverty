@@ -150,9 +150,14 @@ merge m:1 ori using fbi_crosswalk_clean
 *with only ori7: 1,423,051 matched, 14,087 not matched from master
 *with ori7 and suplemented ori9: 1,431,801 matched, 5,337 not matched from master
 
-*12,991 not matched from using, likely to include ori9 that were not ucr counties in 2016, therefore, chosing to drop
+*12,991 obs not matched from using, likely to include ori9 that were not ucr counties in 2016, therefore, chosing to drop
 drop if _merge == 2
-*5,337 not matched in master will not be able to be matched to counties so these will be dropped. Appears to include a number of tribal, school, and specialized agencies
+*5,337 obs (215 agencies) not matched in master will not be able to be matched to counties so these will be dropped. Appears to include a number of tribal, school, and specialized agencies
+preserve
+keep if _merge == 1
+egen master_unmatched = group(ori)
+sum master_unmatched
+restore
 drop if _merge == 1
 
 *formerly independant city of Bedford, Virginia, change to county of Bedford (51019)
@@ -201,18 +206,15 @@ sum coverage_indicator_jjarrest
 
 ///// 7. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
 
-label list STATE
 *age of adult criminal liability (http://www.jjgps.org/jurisdictional-boundaries) 18 except: 
-	*Georgia (10), Louisiana (17), Michigan (21), Missouri (24), South Carolina (32), Texas (42), Wisconsin (48): 17
-	*New York (31), North Carolina (32): 16
+	*Georgia (13), Louisiana (22), Michigan (26), Missouri (29), South Carolina (45), Texas (48), Wisconsin (55): 17
+	*New York (36), North Carolina (37): 16
 gen adult_17 = 0
-replace adult_17 = 1 if state == 10 | state == 17 | state == 21 | state == 24 | state == 32 | state == 42 | state == 48
+replace adult_17 = 1 if state == 13 | state == 22 | state == 26 | state == 29 | state == 45 | state == 48 | state == 55
 gen adult_16 = 0
-replace adult_16 = 1 if state == 31 | state == 32
+replace adult_16 = 1 if state == 36 | state == 37
 gen adult_under18 = 0
 replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
-
-
 
 ///// 8. CROSSWALK POPULATION
 
@@ -260,25 +262,48 @@ merge 1:1  state county using county_crosswalk_2016
 
 ///// 10. FINALIZE DATA and EXPORT
 
-drop countyfips _merge state_name county_name population nonreport obs
-
-*order variables appropriatly and sort dataset
-order year state county juvenile_arrest_rate arrest_10to17 arrest_under10 pop_10to17 coverage_indicator_jjarrest adult_under18 adult_17 adult_16, first
-
-gsort year state county
-
 *create data quality index
 sum coverage_indicator_jjarrest
 gen jjarrest_rate_quality = .
 replace jjarrest_rate_quality = 1 if coverage_indicator_jjarrest == 1 & coverage_indicator_jjarrest != .
 replace jjarrest_rate_quality = 2 if coverage_indicator_jjarrest < 1 & coverage_indicator >= 0.8 & coverage_indicator_jjarrest != .
 replace jjarrest_rate_quality = 3 if coverage_indicator_jjarrest < 0.8 & coverage_indicator_jjarrest != .
+replace jjarrest_rate_quality = 3 if juvenile_arrest_rate > 100000 & coverage_indicator_jjarrest != .
 replace jjarrest_rate_quality = . if juvenile_arrest_rate == .
 tab jjarrest_rate_quality
+
+*fips as string
+gen state1 = string(state, "%02.0f")
+gen county1 = string(county, "%03.0f")
+
+*drop unneeded variables
+drop countyfips _merge state_name county_name population nonreport obs state county 
+
+rename (state1 county1 arrest_under10) (state county juvenile_arrests_under10)
+
+*add labels
+label var juvenile_arrest_rate "rate of juvenile (age 10 - 17) arrests per 100,000 juveniles in county"
+label var juvenile_arrests_under10 "number of arrests of people under 10 in a county"
+label var arrest_10to17 "number of arrests of people 10 to 17 in a county"
+label var adult_under18 "county in state with criminal liability under 18"
+label var pop_10to17 "population of people 10 to 17 in a county"
+
+*save interim dataset
+save 2016_arrest_by_county_interim, replace
+
+*drop variables for final dataset
+drop pop_10to17 adult_17 adult_16 arrest_10to17
+
+*order variables appropriatly and sort dataset
+order year state county juvenile_arrest_rate  juvenile_arrests_under10 coverage_indicator_jjarrest adult_under18, first
+
+gsort year state county
 
 save 2016_arrest_by_county, replace
 
 tabmiss
+
+codebook
 
 *note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
 

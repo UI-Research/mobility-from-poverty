@@ -177,7 +177,12 @@ sum violent_crime_rate property_crime_rate //property crime is a little low, pro
 
 ///// 5. FINALIZE DATA and EXPORT
 
-drop state_name county_name population violent_crime_count property_crime_count state_abv statecounty
+gen state1 = string(state, "%02.0f")
+gen county1 = string(county, "%03.0f")
+
+drop state_name county_name population violent_crime_count property_crime_count state_abv statecounty state county
+
+rename (state1 county1) (state county)
 
 *order variables appropriatly and sort dataset
 rename coverage_indicator coverage_indicator_crime
@@ -194,14 +199,20 @@ replace crime_rate_quality = 2 if coverage_indicator < 100 & coverage_indicator 
 replace crime_rate_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
 replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate == .
 
-foreach val in 5 47 81 85 61 {
+foreach val in 005 047 081 085 061 {
 		
-	replace crime_rate_quality = 1 if state == 36 & county == `val'
+	replace crime_rate_quality = 1 if state == "36" & county == "`val'"
 }
 
 tab crime_rate_quality, m
 
+*add labels
+label var violent_crime_rate "index violent crimes per 100,000 people in a county"
+label var property_crime_rate "index property crimes per 100,000 people in a county"
+
 tabmiss
+
+codebook
 
 save 2017_crime_by_county, replace
 
