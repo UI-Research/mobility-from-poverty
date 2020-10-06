@@ -73,6 +73,9 @@ tab fips no_dc, row nofreq rowsort
 tab fips no_frpl, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1) // for footnotes
 tab fips no_dc, row nofreq rowsort, if ~(no_dc==1 & no_frpl==1)
 
+gen frpl_used = max(free_or_reduced, direct_cert) == free_or_reduced
+gen dc_used = max(free_or_reduced, direct_cert) == direct_cert & max(free_or_reduced, direct_cert) != free_or_reduced
+
 gen frpl_share = max(free_or_reduced, direct_cert) / enrollment
 gen frpl_40 = (frpl_share>=0.40) if frpl_share!=.
 replace frpl_40 = 0 if frpl_share==.
@@ -92,17 +95,39 @@ gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not 
 gen county = substr(county_code,3,5)
 assert strlen(county)==3
 
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator*, by(year state county)
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator* frpl_used dc_used, by(year state county)
 
 gen frpl40_total = numerator/enrollment
 gen frpl40_white = numerator1/enrollment1
 gen frpl40_black = numerator2/enrollment2
 gen frpl40_hispanic = numerator3/enrollment3
 
-drop enrollment* numerator*
+gen poverty_measure_used = "FRPL" if frpl_used>0 & frpl_used!=. & dc_used==0
+replace poverty_measure_used = "DC" if frpl_used==0 & dc_used>0 & dc_used!=.
+replace poverty_measure_used = "Both" if frpl_used>0 & frpl_used!=. & dc_used>0 & dc_used!=.
 
-keep year state county frpl40_total frpl40_white frpl40_black frpl40_hispanic
-order year state county frpl40_total frpl40_white frpl40_black frpl40_hispanic
+gen frpl40_total_quality = 1 if enrollment>=30 & poverty_measure_used!="Both" & frpl40_total!=.
+replace frpl40_total_quality = 2 if enrollment>=15 & poverty_measure_used!="Both" & frpl40_total_quality==. & frpl40_total!=.
+replace frpl40_total_quality = 3 if frpl40_total_quality==. & frpl40_total!=.
+
+gen frpl40_white_quality = 1 if enrollment1>=30 & poverty_measure_used!="Both" & frpl40_white!=.
+replace frpl40_white_quality = 2 if enrollment1>=15 & poverty_measure_used!="Both" & frpl40_white_quality==. & frpl40_white!=.
+replace frpl40_white_quality = 3 if frpl40_white_quality==. & frpl40_white!=.
+
+gen frpl40_black_quality = 1 if enrollment2>=30 & poverty_measure_used!="Both" & frpl40_black!=.
+replace frpl40_black_quality = 2 if enrollment2>=15 & poverty_measure_used!="Both" & frpl40_black_quality==. & frpl40_black!=.
+replace frpl40_black_quality = 3 if frpl40_black_quality==. & frpl40_black!=.
+
+gen frpl40_hispanic_quality = 1 if enrollment3>=30 & poverty_measure_used!="Both" & frpl40_hispanic!=.
+replace frpl40_hispanic_quality = 2 if enrollment3>=15 & poverty_measure_used!="Both" & frpl40_hispanic_quality==. & frpl40_hispanic!=.
+replace frpl40_hispanic_quality = 3 if frpl40_hispanic_quality==. & frpl40_hispanic!=.
+
+drop enrollment* numerator* frpl_used dc_used
+
+keep year state county frpl40_total poverty_measure_used frpl40_total_quality ///
+frpl40_white frpl40_white_quality frpl40_black frpl40_black_quality frpl40_hispanic frpl40_hispanic_quality
+order year state county frpl40_total poverty_measure_used frpl40_total_quality ///
+frpl40_white frpl40_white_quality frpl40_black frpl40_black_quality frpl40_hispanic frpl40_hispanic_quality
 duplicates drop
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
@@ -116,9 +141,10 @@ gsort -year state county
 export delimited using "built/FRPL.csv", replace
 export delimited using "${boxfolder}/FRPL.csv", replace
 
-/* Footnotes for 2018: 
+/* Suggest removing footnotes since replaced with flags.
+Footnotes for 2018: 
 Partial FRPL, partial DC: Ohio, Alaska
-Other states with <1% reprting DC instead of FRPL: Pennsylviana, Indiana, Arizona, Alabama, West Virginia
+Other states with <1% reporting DC instead of FRPL: Pennsylviana, Indiana, Arizona, Alabama, West Virginia
 States with 100% DC: Massachusetts, Tennessee, DC, Delaware
 */
 
