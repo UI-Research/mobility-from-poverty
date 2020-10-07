@@ -131,4 +131,5 @@ drop num_grades_included
 
 export delimited using "built/SEDA.csv", replace
 export delimited using "${boxfolder}/SEDA.csv", replace
+export delimited using "${gitfolder}\08_education\SEDA.csv", replace
 
