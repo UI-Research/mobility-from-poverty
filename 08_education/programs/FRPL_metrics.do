@@ -140,6 +140,8 @@ gsort -year state county
 
 export delimited using "built/FRPL.csv", replace
 export delimited using "${boxfolder}/FRPL.csv", replace
+export delimited using "${gitfolder}\08_education\FRPL.csv", replace
+
 
 /* Suggest removing footnotes since replaced with flags.
 Footnotes for 2018: 
