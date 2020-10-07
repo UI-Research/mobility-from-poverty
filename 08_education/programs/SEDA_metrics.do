@@ -111,7 +111,7 @@ replace num_grades_included = . if learning_rate == .
 
 gen learning_rate_quality=1 if (num_grades_included==6 | num_grades_included==5) & min_sample_size>=30 & min_sample_size!=.
 replace learning_rate_quality=2 if num_grades_included==4 & min_sample_size>=30 & min_sample_size!=.
-replace learning_rate_quality=3 if num_grades_included<=3 & learning_rate!=.
+replace learning_rate_quality=3 if learning_rate!=. & learning_rate_quality==.
 
 drop min_sample_size
 
@@ -127,6 +127,7 @@ drop if _merge==1
 drop _merge
 
 gsort -year state county
+drop num_grades_included
 
 export delimited using "built/SEDA.csv", replace
 export delimited using "${boxfolder}/SEDA.csv", replace
