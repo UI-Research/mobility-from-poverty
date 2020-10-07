@@ -2,6 +2,7 @@
 *Compute county-level hosuing metrics;
 *=================================================================;
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
+libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
 %macro compute_metrics_housing(microdata_file,vacant_file,metrics_file);
 * Prepare a file containing HUD income levels for each county. This requires first
@@ -61,7 +62,7 @@ run;
      (regardless of the actual unit size!!!). "Affordable" means costs are < 30% of the AMI
 	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
-data households;
+data desktop.households;
   merge &microdata_file.(in=a where=(pernum=1)) County_income_limits(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
   if a;
@@ -99,7 +100,7 @@ data vacant;
 run;
 
 *Summarize by county, combine households and vacant units, and compute metrics;
-proc means data=Households noprint; 
+proc means data=desktop.Households noprint; 
   output out=households_summed(drop=_type_) sum=;
   by statefip county;
   var Below80AMI Affordable80AMI Below50AMI Affordable50AMI;
@@ -121,7 +122,7 @@ run;
 
 %compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing);
 
-proc freq data=households;
+proc freq data=desktop.households;
   where Below80AMI=. or Below50AMI=. or Affordable80AMI=. or Affordable50AMI=.;
   title "states and counties missing an AMI value";
   table statefip*county;
