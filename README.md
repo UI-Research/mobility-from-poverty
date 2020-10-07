@@ -1,4 +1,4 @@
-This repository contains code to construct 26 county-level metrics that broadly measure mobility from poverty. To learn more please read
+This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
 
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
@@ -33,6 +33,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
     * [Code Reviews in GitHub](#code-reviews-in-github)
+    * [Code Branching for Reviewers](#code-branching-in-github)
 * [Creating the Final File](#creating-the-final-file)
 * [License](#license)
 * [Contact](#contact)
@@ -40,6 +41,18 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 # Repository Contents
 
 todo(aaron): clean up repository contents
+
+| Domain                  |      Metrics      |  Analyst(s) |
+|-------------------------|:-------------:|------:|
+| 01_financial-well-being |   |  |
+| 02_housing              |   |  |
+| 03_family               |   |  |
+| 04_health               |   |  |
+| 05_local-governments    |   |  |
+| 06_neighborhoods        |   |  |
+| 07_safety               |   |  |
+| 08_education            |   |  |
+| 09_employment           |   |  |
 
 # File Description
 
@@ -57,9 +70,9 @@ todo(aaron): Include a table with variables and information about the variables.
 
 # Project Organization
 
-* Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
-* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
+* Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
+* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
+* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
@@ -234,6 +247,24 @@ Reviewers can also add overall comments before approving or requesting changes f
 <img src="images/approve-review.png" width="300" height="200">
 
 Once the code is approved, the branch can be merged into the `master` branch where it can referenced and used for subsequent analyses. 
+
+## Code Branching for Reviewers
+
+Line-by-line edits and feedback should be handled by reviewers through the point-and-click interface on GitHub. Running code from a pull request will require [branching](https://guides.github.com/introduction/flow/). 
+
+Suppose you are reviewing code from branch `malcolm`. You need to "fetch" the `malcolm` branch on to your local computer to run and review the code. Steps:
+
+1. Open up Git Bash in the directory by right clicking in the `gates-mobility-metrics` directory and and selecting Git Bash Here (on Windows).
+2. Submit `git status` and ensure that you don't have any tracked changes that have not been commited. 
+3. Use `git branch` to see your current branch and other available branches. You should at least see `master`. 
+4. Submit `git fetch` to getch remote branches. 
+5. Submit `git checkout --track origin/malcolm` to switch to the `malcolm` branch. Submit `git branch` to confirm the change. 
+
+At this point, you should be able to run and review the code. Back on GitHub, you should be able to add line-by-line comments to the Pull Request if you click "Files changed" and then click the blue plus sign that appears next to the number by the line of code. 
+
+When your review is complete, click the green "Review changes" button on GitHub. You should be able to add overall comments, approve the Pull Request, or Request changes to the Pull Request. If you request changes, you will need to `git pull malcolm` after the analyst pushes the updated code to GitHub. 
+
+When you are done, you can switch back to your branch with `git checkout branch-name` where `branch-name` is the name of the branch you wish to switch to. If you have un-commited changes, you will need to get rid of them with `git stash`. You shouldn't make substantive changes on some else's branch. 
 
 # Creating the Final File
 
