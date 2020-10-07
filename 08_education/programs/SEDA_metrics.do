@@ -69,6 +69,8 @@ forvalues cohort = `year'/`year' {
 }
 
 bysort cohort county: egen num_grades_included = count(mn_all)
+bysort cohort county: egen total_sample_size = sum(totgyb_all)
+bysort cohort county: egen min_sample_size = min(totgyb_all)
 
 gen learning_rate_lb = learning_rate - 1.96 * se
 gen learning_rate_ub = learning_rate + 1.96 * se
@@ -84,8 +86,12 @@ tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
 assert strlen(fips)==2
 
-keep year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included
-order year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included
+save "intermediate/SEDA_all.dta", replace
+
+use "intermediate/SEDA_all.dta", clear
+
+keep year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
+order year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
 duplicates drop
 
 rename fips state
@@ -102,6 +108,12 @@ replace learning_rate_ub = . if flag==1
 drop flag
 
 replace num_grades_included = . if learning_rate == .
+
+gen learning_rate_quality=1 if (num_grades_included==6 | num_grades_included==5) & min_sample_size>=30 & min_sample_size!=.
+replace learning_rate_quality=2 if num_grades_included==4 & min_sample_size>=30 & min_sample_size!=.
+replace learning_rate_quality=3 if num_grades_included<=3 & learning_rate!=.
+
+drop min_sample_size
 
 save "intermediate/SEDA.dta", replace
 
