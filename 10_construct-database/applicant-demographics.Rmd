@@ -34,12 +34,73 @@ library(tidyverse)
 library(tidycensus)
 library(urbnthemes)
 library(reactable)
+library(readxl)
 
 set_urbn_defaults()
 
 ```
 
 # County Population
+
+```{r}
+# https://www2.census.gov/geo/pdfs/maps-data/maps/reference/us_regdiv.pdf
+regions <- 
+  tribble(
+    ~state_fips, ~state, ~region,
+    "01", "Alabama", "South",
+    "02", "Alaska", "West",  
+    "04", "Arizona", "West",        
+    "05", "Arkansas", "South",
+    "06", "California", "West",    
+    "08", "Colorado", "West",      
+    "09", "Connecticut", "Northeast",   
+    "10", "Delaware", "South",   
+    "11", "District of Columbia", "South",
+    "12", "Florida", "South",      
+    "13", "Georgia", "South",       
+    "15", "Hawaii", "West",       
+    "16", "Idaho", "West",        
+    "17", "Illinois", "Midwest",    
+    "18", "Indiana", "Midwest",      
+    "19", "Iowa", "Midwest",
+    "20", "Kansas", "Midwest",     
+    "21", "Kentucky", "South",   
+    "22", "Louisiana", "South",  
+    "23", "Maine", "Norsttheast",      
+    "24", "Maryland", "South",      
+    "25", "Massachusetts", "Northeast", 
+    "26", "Michigan", "Midwest",       
+    "27", "Minnesota", "Midwest",      
+    "28", "Mississippi", "South",   
+    "29", "Missouri", "Midwest",
+    "30", "Montana", "West",       
+    "31", "Nebraska", "Midwest",      
+    "32", "Nevada", "West",        
+    "33", "New Hampshire", "Northeast", 
+    "34", "New Jersey", "Northeast",    
+    "35", "New Mexico", "West",    
+    "36", "New York", "Northeast",      
+    "37", "North Carolina", "South",
+    "38", "North Dakota", "Midwest",   
+    "39", "Ohio", "Midwest",           
+    "40", "Oklahoma", "South",
+    "41", "Oregon", "West", 
+    "42", "Pennsylvania", "Northeast", 
+    "44", "Rhode Island", "Northeast",
+    "45", "South Carolina", "South",
+    "46", "South Dakota",  "Midwest",
+    "47", "Tennessee", "South",
+    "48", "Texas", "South",
+    "49", "Utah", "West",
+    "50", "Vermont", "Northeast",    
+    "51", "Virginia", "South",     
+    "53", "Washington", "West",  
+    "54", "West Virginia", "South",
+    "55", "Wisconsin", "Midwest",
+    "56", "Wyoming", "West" 
+  )
+
+```
 
 ```{r}
 population <- 
@@ -84,7 +145,9 @@ population %>%
 vars <- tribble(
   ~variable, ~var_name,
   "B01003_001", "population",
+  "B01001B_001", "black", 
   "B01001H_001", "non_hispanic_white",
+  "B01001I_001", "hispanic_or_latino",
   "B06012_002", "poverty",
   # median household income
   "B19013_001", "med_hh_income",
@@ -114,11 +177,21 @@ acs2018 <- acs2018 %>%
   mutate(
     ed_ba_plus = (ed_ba + ed_ma) / 100,
     foreign_born = foreign_born / 100,
-    non_hispanic_white = non_hispanic_white / population
+    black = black / population,
+    non_hispanic_white = non_hispanic_white / population,
+    hispanic_or_latino = hispanic_or_latino / population
   ) %>%
   select(-ed_ba, -ed_ma)
 
+# filter to counties of interest
+fips <- read_excel(here::here("10_construct-database", "RFI Applicant List w. Codes.xlsx")) %>%
+  pull(`FIPS Code`)
+
+fips <- as.character(flatten(str_split(fips, "; "))) %>%
+  str_pad(width = 5, pad = "0")
+
 combined_data <- left_join(population, acs2018, by = "geoid") %>%
+  filter(geoid %in% fips) %>%
   mutate(state = str_sub(geoid, start = 1, end = 2),
          county = str_sub(geoid, start = 3, end = 5)) %>%
   select(state,
@@ -126,7 +199,9 @@ combined_data <- left_join(population, acs2018, by = "geoid") %>%
          name = name.x,
          population,
          density,
+         black,
          non_hispanic_white,
+         hispanic_or_latino,
          foreign_born,
          poverty,
          med_hh_income,
@@ -134,13 +209,19 @@ combined_data <- left_join(population, acs2018, by = "geoid") %>%
          ed_ba_plus) %>%
   filter(state != "72")
 
+combined_data %>%
+  left_join(regions, by = c("state" = "state_fips")) %>%
+  count(region)
+
 write_csv(combined_data, here::here("10_construct-database", "applicant-demographics.csv"))
 
 ```
 
 * `population` Number of people in the county 
 * `density` Number of people per square mile in the county
-* `non_hispanic_white` Proportion of the population that is white, non-Hispanic 
+* `black` Proportion of the population that is black, (Hispanic and non-Hispanic)
+* `non_hispanic_white` Proportion of the population that is white, non-Hispanic
+* `hispanic_or_latino` Proportion of the population that is Hispanic or Latino
 * `foreign_born` Proportion of the population that is foreign born
 * `poverty` Proportion of the population living below the poverty level
 * `med_hh_income` Median household income in the county
@@ -157,6 +238,8 @@ combined_data %>%
     columns = list(
       density = colDef(format = colFormat(digits = 1)),
       non_hispanic_white = colDef(format = colFormat(digits = 2)),
+      black = colDef(format = colFormat(digits = 2)),
+      hispanic_or_latino = colDef(format = colFormat(digits = 2)),
       foreign_born = colDef(format = colFormat(digits = 2)),
       poverty = colDef(format = colFormat(digits = 2))
     ),
