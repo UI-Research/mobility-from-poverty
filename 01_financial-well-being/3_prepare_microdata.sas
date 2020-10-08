@@ -48,6 +48,7 @@ run;
 *Adjust weight to acount for PUMA-to-county mapping (this only affects PUMAs that span county).;
 *Adjust dollar amounts to account for inflation;
 *KW: Set people who live in county 515 in state 51 to live county 019 instead (Bedford city was absorbed into Bedford county);
+*KW: change two more counties as well ;
 data &output_file.;
   set add_num_of_counties;
   if (county = .) then put "error: no match: " serial= statefip= puma=;
@@ -57,6 +58,8 @@ data &output_file.;
   rentgrs=rentgrs*adjust;
   owncost=owncost*adjust;
   if statefip = 51 and county = 515 then county = 19;
+  if statefip = 2 and county = 270 then county = 158;
+  if statefip = 46 and county = 113 then county = 102;
 run;
 
 *Sort into order most useful for calculating metrics;
