@@ -308,4 +308,6 @@ codebook
 *note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
 
 *export as CSV
+cd "H:\gates-mobility-metrics\07_safety\juvenile_arrests"
+
 export delimited using "jvarrestrate_county_2016.csv", replace
