@@ -58,12 +58,12 @@ gen average_to_living_wage_ratio = annualaverageweeklywage/weekly_living_wage
 
 /* create data quality flag 
 per discussion with Greg, >= 30 is 1, <30 is 3 */
-gen quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
-replace quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
-replace quality = . if annualaverageestablishmentcount == .
+gen wage_ratio_quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
+replace wage_ratio_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
+replace wage_ratio_quality = . if annualaverageestablishmentcount == .
 
 /* test flag */
-tab quality, missing
+tab wage_ratio_quality, missing
 
 /* put state and county in string with leading 0s */
 gen new_state = string(state,"%02.0f")
@@ -83,13 +83,13 @@ data, so it shows up as a 0 in the ratio */
 
 /* replace 0 ratio with missing and replace data quality as missing */
 replace average_to_living_wage_ratio = . if average_to_living_wage_ratio == 0
-replace quality = . if average_to_living_wage_ratio == .
+replace wage_ratio_quality = . if average_to_living_wage_ratio == .
 
 save "wage_ratio_final.dta",replace
 
 
-keep state county year average_to_living_wage_ratio quality
+keep state county year average_to_living_wage_ratio wage_ratio_quality
 
-order year state county average_to_living_wage_ratio quality
+order year state county average_to_living_wage_ratio wage_ratio_quality
 
 export delimited using metrics_wage_ratio.csv, replace
