@@ -1,7 +1,7 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-** Instructions: only lines 8-10 need to be edited for the latest year of data, and line **
+** Instructions: only lines 8-10 need to be edited for the latest year of data **
 
 clear all
 
@@ -99,7 +99,15 @@ drop _merge
 
 replace enrollment=0 if enrollment<0 | enrollment==.
 
-collapse (sum) homeless homeless_lower_ci homeless_upper_ci supp_homeless enrollment, by(year state county)
+replace homeless=0 if enrollment==0
+replace homeless_upper_ci=0 if enrollment==0
+replace homeless_lower_ci=0 if enrollment==0
+replace supp_homeless=0 if enrollment==0
+
+gen enroll_nonsupp = enrollment if supp_homeless!=1
+gen enroll_supp = enrollment if supp_homeless==1
+
+collapse (sum) homeless homeless_lower_ci homeless_upper_ci supp_homeless enrollment enroll_nonsupp enroll_supp, by(year state county)
 
 rename homeless homeless_count
 rename homeless_lower_ci homeless_count_lb
@@ -107,7 +115,17 @@ rename homeless_upper_ci homeless_count_ub
 rename supp_homeless homeless_districts_suppressed
 
 gen homeless_share = homeless_count/enrollment
-drop enrollment
+gen coverage = enroll_nonsupp/enrollment
+
+gen homeless_quality = 1 if homeless_count_ub / homeless_count_lb <=1.05
+replace homeless_quality = 2 if homeless_count_ub / homeless_count_lb > 1.05 & homeless_count_ub / homeless_count_lb <=1.1
+replace homeless_quality = 3 if homeless_quality==. & homeless_count!=.
+
+sum coverage, d, if homeless_quality==1
+sum coverage, d, if homeless_quality==2
+sum coverage, d, if homeless_quality==3
+
+drop enrollment homeless_districts_suppressed coverage enroll_supp enroll_nonsupp
 
 merge 1:1 year state county using "intermediate/countyfile.dta"
 drop if _merge==1
@@ -115,7 +133,7 @@ drop _merge
 
 keep if year==$year
 
-order year state county homeless_count homeless_share homeless_count_lb homeless_count_ub homeless_districts_suppressed
+order year state county homeless_count homeless_share homeless_count_lb homeless_count_ub
 
 gsort -year state county
 
