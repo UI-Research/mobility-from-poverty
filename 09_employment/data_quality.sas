@@ -29,6 +29,8 @@ libname house "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_h
 libname fam "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 libname employ "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
 
+%let metrics_folder = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\; 
+
 /* Read in puma to county file and create flags for high percentage
 of data from outside county. Per Greg, 75% or more from the county is good,
 below 35% is bad, in between is marginal.
@@ -39,7 +41,7 @@ across the county
 */
 
 data puma_county;
- set puma.puma_to_county;
+ set puma.puma_to_county; /* this file should be output by the 2_puma_county.sas program */
  by statefip county;
  products = afact*AFACT2;
  retain sum_products county_pop;
@@ -79,17 +81,17 @@ run;
 
 /**** next step is to create a sample size flag for each metric ****/
 
-/* for the housing metric, I have copied some code from the 
-compute_metrics_housing.sas program so I can get the unweighted
+/* for the housing metric, I use an intermediate dataset produced
+when creating the metric so I can get the unweighted
 number of households with <50 AMI to use as the size flag. The 
 dataset I use as input is created as an intermediate step in 
-Paul's code and contains only households 
+Paul's code and contains only households. 
 
 I also use this dataset to create the total number of households, 
 which is the sample size for the income metric*/
 
 data households (keep = statefip county Below50AMI_unw household);
-  set desktop.households;
+  set desktop.households; /* this file should be output by the program compute_metrics_housing.sas */
   if L50_4 ne . then do;
     Below50AMI_unw = hhincome < L50_4;  
   end;
@@ -166,34 +168,34 @@ sample size and less than 75% of the data comes from the county, the
 county gets a "2." Small sample size gives a "3" */
 
 %macro flag(dataset= , metric= ); 
-data &dataset._flag (keep = state county quality);
+data &dataset._flag (keep = state county &metric._quality);
  merge &dataset. puma_county;
  by statefip county;
  if size_flag = 0 then do; 
-  if puma_flag = 1 then quality = 1;
-  else if puma_flag = 2 then quality = 2;
-  else if puma_flag = 3 then quality = 2;
+  if puma_flag = 1 then &metric._quality = 1;
+  else if puma_flag = 2 then &metric._quality = 2;
+  else if puma_flag = 3 then &metric._quality = 2;
  end;
- else if size_flag = 1 then quality = 3;
- else quality = .;
+ else if size_flag = 1 then &metric._quality = 3;
+ else &metric._quality = .;
  state = statefip;
 run;
 
 
 /* tests */
 proc freq data = &dataset._flag;
- table quality;
+ table &metric._quality;
  title "&dataset.";
 run;
 
 %mend flag;
 
-%flag(dataset = metrics_college); 
-%flag(dataset = metrics_famstruc);
-%flag(dataset = metrics_employment);
-%flag(dataset = metrics_housing);
-%flag(dataset = metrics_preschool);
-%flag(dataset = metrics_income);
+%flag(dataset = metrics_college, metric = hs_degree); 
+%flag(dataset = metrics_famstruc, metric = famstruc);
+%flag(dataset = metrics_employment, metric = employed);
+%flag(dataset = metrics_housing, metric = housing);
+%flag(dataset = metrics_preschool, metric = preschool);
+%flag(dataset = metrics_income, metric = pctl);
 
 
 /**** output as CSVs ****/
@@ -204,19 +206,19 @@ run;
 	Then, I output as a final CSV */
 
 %macro output(dataset= , folder =);
-proc import datafile="V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\&folder.&dataset..csv" out=&dataset._orig dbms=csv replace;
+proc import datafile="&metrics_folder.&folder.&dataset..csv" out=&dataset._orig dbms=csv replace;
   getnames=yes;
   guessingrows=100;
   datarow=2;
 run;
 
-data &dataset._final (drop = _FREQ_);
+data &dataset._final (drop = _FREQ_ quality);
  merge &dataset._orig &dataset._flag;
  by state county;
 run;
 
 proc export data= &dataset._final
- outfile = "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\&folder.&dataset..csv"
+ outfile = "&metrics_folder.&folder.&dataset..csv"
  replace;
 run;
 %mend output;
@@ -227,13 +229,6 @@ run;
 %output(dataset = metrics_housing, folder = 02_housing\); 
 %output(dataset = metrics_employment, folder = 09_employment\); 
 
-proc print data=metrics_housing_flag;
- where quality = .;
-run;
-
-proc print data=metrics_college_flag;
- where quality = .;
-run;
 
 /* I want to test if the number of people ages 19 and 20
 in the microdata file is the same as the sum of the _FREQ_
