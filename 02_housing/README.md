@@ -6,10 +6,10 @@ point during the school year.
 * Final data name(s): Homelessness
 * Analyst(s): Erica Blom
 * Data source(s): EDFacts homelessness data; Common Core of Data (CCD) to identify counties.
-* Year(s): 2018 (2018-19 school year)
+* Year(s): 2018 (2018-19 school year); 2014 (2014-15 school year)
 * Notes:
     * Limitations: Data suppression
-    * Missingness: 286/3,142 counties
+    * Missingness: 286/3,142 counties in 2018; 323/3,142 counties in 2014
 
 Outline the process for creating the data: Counts of students experiencing homelessness are downloaded from the EDFacts website.
 Supressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper
@@ -23,5 +23,5 @@ number of districts with suppressed data that are included in each county's esti
 Data quality flag: Data quality of "1" requires the ratio of the upper bound (homeless_count_ub) to the
 lower bound (homeless_count_lb) to be less or equal to than 1.05. Data quality of "2" requires this ratio
 to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the 
-largest value of this ratio is 3 and that only 6 counties, each with homeless population of less than 10, 
-have ratio values at or between 2 to 3.
+largest value of this ratio is 3.5 and that only 6 counties in 2018 and 13 in 2014, each with estimated 
+homeless populations of less than 20, have ratio values at or between 2 to 3.5.
