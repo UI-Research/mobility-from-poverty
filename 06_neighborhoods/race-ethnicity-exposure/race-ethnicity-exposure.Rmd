@@ -131,10 +131,43 @@ tracts <- tracts %>%
     asian_nh_moe = DP05_0080M,
     nhpi_nh = DP05_0081E, 
     nhpi_nh_moe = DP05_0081M,
-    other_nh = DP05_0082E, 
-    other_nh_moe = DP05_0082M, 
+    census_other_nh = DP05_0082E, 
+    census_other_nh_moe = DP05_0082M, 
     two_or_more_nh = DP05_0083E,
     two_or_more_nh_moe = DP05_0083M
+  )
+
+```
+
+Certain estimates are controlled. The margins of errors for these estimates will appear as `-555555555` but [can be treated as zero](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf). [Here are all of the special codes.](https://www.census.gov/data/developers/data-sets/acs-1year/data-notes.html)
+
+```{r}
+tracts <- tracts %>%
+  mutate(hispanic_moe = if_else(hispanic_moe == -555555555, 0, hispanic_moe))
+
+```
+
+```{r}
+tracts_cv <- tracts %>%
+  mutate(
+    hispanic_cv = hispanic_moe / hispanic,
+    white_nh_cv = white_nh_moe / white_nh,
+    black_nh_cv = black_nh_moe / black_nh,
+    aian_nh_cv = aian_nh_moe / aian_nh,
+    nhpi_nh_cv = nhpi_nh_moe / nhpi_nh,
+    census_other_nh_cv = census_other_nh_moe / census_other_nh,
+    two_or_more_nh_cv = two_or_more_nh_moe / two_or_more_nh
+  )
+
+tracts_cv %>%
+  summarize(
+    hispanic = mean(hispanic_cv >= 0.4),
+    white_nh = mean(white_nh_cv >= 0.4),
+    black_nh = mean(black_nh_cv >= 0.4),
+    aian_nh = mean(aian_nh_cv >= 0.4),
+    nhpi_nh = mean(nhpi_nh_cv >= 0.4),
+    census_other_nh = mean(census_other_nh_cv >= 0.4),
+    two_or_more_nh = mean(two_or_more_nh_cv >= 0.4) 
   )
 
 ```
@@ -145,12 +178,80 @@ Other Races and Ethnicities includes Non-Hispanic American Indian and Alaska Nat
 
 ```{r collapse-race-ethnicity-categories}
 tracts <- tracts %>%
-  mutate(other_nh =
-           aian_nh +
-           asian_nh + 
-           nhpi_nh +
-           other_nh +
-           two_or_more_nh) %>%
+  mutate(
+    other_nh =
+      aian_nh +
+      asian_nh + 
+      nhpi_nh +
+      census_other_nh +
+      two_or_more_nh,
+    other_nh_moe =
+      sqrt(
+        aian_nh_moe ^ 2 +
+          asian_nh_moe ^ 2  + 
+          nhpi_nh_moe ^ 2  +
+          census_other_nh_moe ^ 2  +
+          two_or_more_nh_moe ^ 2 
+      )
+  )
+
+```
+
+[This Census presentation](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf) recommends using the maximum margin of error when aggregating multiple zero estimates.
+
+> One way this approximation can differ from the actual MOE is if you were aggregating multiple zero estimates. In this case, the approximate MOE could diverge from the actual margin of error. And so the - our recommendation is to only include one zero estimate margin of error and include the largest one. 
+
+```{r}
+# pivot the point estimates
+values <- tracts %>%
+  select(state, 
+         county, 
+         tract, 
+         aian_nh, 
+         asian_nh, 
+         nhpi_nh, 
+         census_other_nh, 
+         two_or_more_nh) %>%
+  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "value")
+
+# pivot the margins of error
+moes <- tracts %>%
+  select(state, 
+         county, 
+         tract, 
+         aian_nh_moe, 
+         asian_nh_moe, 
+         nhpi_nh_moe, 
+         census_other_nh_moe, 
+         two_or_more_nh_moe) %>%
+  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "moe") %>%
+  mutate(group = str_replace(group, "_moe", ""))
+
+# combine the point estimes and margins of error
+other_moe <- left_join(values, moes, by = c("state", "county", "tract", "group"))
+    
+rm(moes, values)
+
+# keep moes for non-zero estimates and keep the largest moe for zero estimates
+other_moe <- other_moe %>%
+  group_by(state, county, tract) %>%
+  mutate(moe_rank = row_number(desc(moe))) %>%
+  mutate(moe_rank = if_else(value == 0, moe_rank, 5L)) %>%
+  mutate(moe_rank = ifelse(moe_rank == min(moe_rank), moe_rank, 0L)) %>%
+  filter(value != 0 | moe_rank != 0) %>%
+  select(-moe_rank) 
+
+# combine the margins of error
+other_moe <- other_moe %>%
+  summarize(other_nh_moe_reduced = sqrt(sum(moe ^ 2))) %>%
+  ungroup()
+
+# append to the original data set
+tracts <- left_join(tracts, other_moe, by = c("state", "county", "tract"))
+
+tracts_moe <- tracts
+
+tracts <- tracts %>%
   select(state, county, tract, people, hispanic, black_nh, other_nh, white_nh) 
 
 ```
@@ -164,6 +265,54 @@ stopifnot(
     filter(people != people2) %>%
     nrow() == 0
 )
+
+```
+
+Look at the margins of error. A large share of the Other Races and Ethnicities have coefficients of variaiton greater than 0.4.
+
+```{r}
+tracts_moe %>%
+  summarize(mean(other_nh_moe / other_nh > 0.4),
+            mean(other_nh_moe_reduced / other_nh > 0.4))
+
+```
+
+```{r}
+tracts_moe %>%
+  ggplot(aes(hispanic, hispanic_moe)) +
+  geom_point(alpha = 0.1, size = 1) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Hispanic",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+tracts_moe %>%
+  ggplot(aes(black_nh, black_nh_moe)) +
+  geom_point(alpha = 0.1, size = 1) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+  labs(title = "Black, non-Hispanic",
+       subtitle = "Line represents a CV of 0.4") +  
+  coord_equal() +
+  scatter_grid()
+
+tracts_moe %>%
+  ggplot(aes(white_nh, white_nh_moe)) +
+  geom_point(alpha = 0.1, size = 1) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+  labs(title = "White, non-Hispanic",
+       subtitle = "Line represents a CV of 0.4") +  
+  coord_equal() +
+  scatter_grid()
+
+tracts_moe %>%
+  ggplot(aes(other_nh, other_nh_moe)) +
+  geom_point(alpha = 0.1, size = 0.2) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+    labs(title = "Other Races and Ethnicities",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
 
 ```
 
