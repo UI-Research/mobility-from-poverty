@@ -10,6 +10,7 @@ libname libmain "&localDir";
 libname old  "&localDir.\old";
 libname lib2018 "&localDir.\2018";
 libname old2018  "&localDir.\2018\old";
+libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
 proc format;
   value nzp
@@ -76,4 +77,10 @@ value fips
 55='Wisconsin'
 56='Wyoming'
 ;
+
+value s_race
+1='White'
+2='Black'
+3='Non-Hispanic Other'
+4='Hispanic';
 run;
