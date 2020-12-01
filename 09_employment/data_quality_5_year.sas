@@ -9,7 +9,7 @@ county.
 
 Programmed by Kevin Werner
 
-9/1/20
+12/1/20
 
 The program does the following:
 -Creates the county size flag (same for every metric)
@@ -104,7 +104,6 @@ The denominator for each of the metrics is as follows:
 -College: number of people ages 19 and 20
 -Family: number of people under age 18
 -Employment: number of people 25-54
--Housing: number of households below 50% of area median income
 -Preschool: number of people ages 3 and 4
 -Income: total number of households
 
