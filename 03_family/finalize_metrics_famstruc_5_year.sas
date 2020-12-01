@@ -5,7 +5,7 @@ put it in the right format, and outputs it as a csv
 
 Kevin Werner
 
-7/28/20
+12/1/20
 
 *************/
 
