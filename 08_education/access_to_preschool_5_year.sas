@@ -2,11 +2,12 @@
 
 This program calculates the share of 3 and 4 year olds in pre school.
 
-People in group quarters are inclucded.
+Note that this uses a SEPERATE raw file than the rest of the ACS metrics
+because people in group quarters are included.
 
 Programmed by Kevin Werner
 
-7/27/20
+12/1/20
 
 ******************************/
 
