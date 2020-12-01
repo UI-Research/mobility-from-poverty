@@ -4,10 +4,10 @@
 
 /*
 
-The input files USA_00027 and puma_to_county are created by the preceeding SAS programs,
+The input files USA_00014 and puma_to_county are created by the preceeding SAS programs,
 1_init.sas and 2_puma_to_county
 
-USA_00027 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
+USA_00014 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/5_year.
 It will need to be downloaded and unzipped. 
 
 */
