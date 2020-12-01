@@ -5,13 +5,13 @@ put it in the right format, and outputs it as a csv
 
 Kevin Werner
 
-7/28/20
+12/1/20
 
 *************/
 
 /* 
 
-You need metrics_college to run this code.
+You need metrics_college_subgroup to run this code.
 
 I put metrics_college in the 08_education subfolder of the repository.
 
