@@ -1,11 +1,10 @@
 /*************
 
-This code recreates the income metrics created by Paul, adds confidence intervals,
-put it in the right format, and outputs it as a csv
+this code creates the income metrics
 
 Kevin Werner
 
-7/22/20
+12/1/20
 
 NOTE: per email from Greg on 9/10/20, I have removed the confidence interval code.
 
@@ -33,7 +32,7 @@ run;
 
 proc sort data=lib2018.microdata_5_year; by  statefip county subgroup; run;
 
-
+/* get the percentiles */
 proc means data=lib2018.microdata_5_year(where=(pernum=1)) noprint completetypes; 
   output out=income(drop=_type_) p80=pctl_80 p50=pctl_50 p20=pctl_20;
   by statefip county;
@@ -43,7 +42,7 @@ proc means data=lib2018.microdata_5_year(where=(pernum=1)) noprint completetypes
   format subgroup subgroup_f.; 
 run;
 
-
+/* replacing missing with 0 if not actually missing */
 data income;
  set income;
  year = 2018;
