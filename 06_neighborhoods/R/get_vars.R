@@ -5,7 +5,7 @@
 #'
 #' @return A tibble of census data by time and geography
 #' 
-get_vars <- function(year, vars, geography) {
+get_vars <- function(year, vars, geography, source) {
   
   state_fips <- paste0("state:", unique(urbnmapr::states$state_fips))
   
@@ -16,7 +16,7 @@ get_vars <- function(year, vars, geography) {
                                               regionin = .x,
                                               vintage = year))
   
-  acs_profile <- map_df(state_fips, ~getCensus(name = "acs/acs5/profile",
+  acs_profile <- map_df(state_fips, ~getCensus(name = source,
                                                vars = vars, 
                                                region = paste0(geography, ":*"),
                                                regionin = .x,
