@@ -147,23 +147,30 @@ tracts <- tracts %>%
 
 ```
 
+We calculate the coefficients of variation for each variable. 
+
 ```{r}
 tracts_cv <- tracts %>%
   mutate(
     hispanic_cv = hispanic_moe / hispanic,
-    white_nh_cv = white_nh_moe / white_nh,
     black_nh_cv = black_nh_moe / black_nh,
+    white_nh_cv = white_nh_moe / white_nh,
     aian_nh_cv = aian_nh_moe / aian_nh,
     nhpi_nh_cv = nhpi_nh_moe / nhpi_nh,
     census_other_nh_cv = census_other_nh_moe / census_other_nh,
     two_or_more_nh_cv = two_or_more_nh_moe / two_or_more_nh
   )
 
+```
+
+Most tracts have very large coefficients of variation. Some of these tracts will be suppressed. Others will be included in calculations but have lower quality scores. Finally, averaging on the county level will reduce some of the imprecision. 
+
+```{r}
 tracts_cv %>%
   summarize(
     hispanic = mean(hispanic_cv >= 0.4),
-    white_nh = mean(white_nh_cv >= 0.4),
     black_nh = mean(black_nh_cv >= 0.4),
+    white_nh = mean(white_nh_cv >= 0.4),
     aian_nh = mean(aian_nh_cv >= 0.4),
     nhpi_nh = mean(nhpi_nh_cv >= 0.4),
     census_other_nh = mean(census_other_nh_cv >= 0.4),
@@ -227,12 +234,12 @@ moes <- tracts %>%
   pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "moe") %>%
   mutate(group = str_replace(group, "_moe", ""))
 
-# combine the point estimes and margins of error
+# combine the point estimates and margins of error
 other_moe <- left_join(values, moes, by = c("state", "county", "tract", "group"))
     
 rm(moes, values)
 
-# keep moes for non-zero estimates and keep the largest moe for zero estimates
+# keep MOE for non-zero estimates and keep the largest MOE for zero estimates
 other_moe <- other_moe %>%
   group_by(state, county, tract) %>%
   mutate(moe_rank = row_number(desc(moe))) %>%
@@ -252,7 +259,18 @@ tracts <- left_join(tracts, other_moe, by = c("state", "county", "tract"))
 tracts_moe <- tracts
 
 tracts <- tracts %>%
-  select(state, county, tract, people, hispanic, black_nh, other_nh, white_nh) 
+  select(state, 
+         county, 
+         tract, 
+         people, 
+         hispanic, 
+         black_nh, 
+         other_nh, 
+         white_nh, 
+         hispanic_moe,
+         black_nh_moe, 
+         other_nh_moe, 
+         white_nh_moe) 
 
 ```
 
@@ -268,7 +286,7 @@ stopifnot(
 
 ```
 
-Look at the margins of error. A large share of the Other Races and Ethnicities have coefficients of variaiton greater than 0.4.
+Look at the margins of error. A large share of the Other Races and Ethnicities have coefficients of variation greater than 0.4.
 
 ```{r}
 tracts_moe %>%
@@ -279,29 +297,20 @@ tracts_moe %>%
 
 ```{r}
 tracts_moe %>%
-  ggplot(aes(hispanic, hispanic_moe)) +
-  geom_point(alpha = 0.1, size = 1) +
-  geom_abline(aes(slope = 0.4, intercept = 0)) +
-  labs(title = "Hispanic",
-       subtitle = "Line represents a CV of 0.4") +
-  coord_equal() +
-  scatter_grid()
-
-tracts_moe %>%
   ggplot(aes(black_nh, black_nh_moe)) +
   geom_point(alpha = 0.1, size = 1) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
-  labs(title = "Black, non-Hispanic",
+  labs(title = "Most Black, non-Hispanic Estimates Have Large MOE",
        subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
   scatter_grid()
 
 tracts_moe %>%
-  ggplot(aes(white_nh, white_nh_moe)) +
+  ggplot(aes(hispanic, hispanic_moe)) +
   geom_point(alpha = 0.1, size = 1) +
-  geom_abline(aes(slope = 0.4, intercept = 0)) +  
-  labs(title = "White, non-Hispanic",
-       subtitle = "Line represents a CV of 0.4") +  
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Most Hispanic Estimates Have Large MOE",
+       subtitle = "Line represents a CV of 0.4") +
   coord_equal() +
   scatter_grid()
 
@@ -309,8 +318,17 @@ tracts_moe %>%
   ggplot(aes(other_nh, other_nh_moe)) +
   geom_point(alpha = 0.1, size = 0.2) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
-    labs(title = "Other Races and Ethnicities",
+    labs(title = "Most Other Races and Ethnicities Estimates Have Large MOE",
        subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+tracts_moe %>%
+  ggplot(aes(white_nh, white_nh_moe)) +
+  geom_point(alpha = 0.1, size = 1) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+  labs(title = "Most White, non-Hispanic Estimates Have Large MOE",
+       subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
   scatter_grid()
 
@@ -324,8 +342,8 @@ indices <- tracts %>%
   mutate(
     share_of_black_nh = black_nh / sum(black_nh),
     share_of_hispanic = hispanic / sum(hispanic),
-    share_of_white_nh = white_nh / sum(white_nh),
-    share_of_other_nh = other_nh / sum(other_nh)
+    share_of_other_nh = other_nh / sum(other_nh),
+    share_of_white_nh = white_nh / sum(white_nh)
     ) %>%
   ungroup()
 
@@ -338,12 +356,15 @@ stopifnot(
   indices %>%
     group_by(state, county) %>%
     summarize(
-      share_of_hispanic = sum(share_of_hispanic),
-      share_of_white_nh = sum(share_of_white_nh),
       share_of_black_nh = sum(share_of_black_nh),
-      share_of_other_nh = sum(share_of_other_nh)
+      share_of_hispanic = sum(share_of_hispanic),
+      share_of_other_nh = sum(share_of_other_nh),
+      share_of_white_nh = sum(share_of_white_nh)
     ) %>%
-    filter(!near(share_of_white_nh, 1) | !near(share_of_black_nh, 1) | !near(share_of_hispanic, 1)) %>%
+    filter(!near(share_of_white_nh, 1) | 
+             !near(share_of_black_nh, 1) | 
+             !near(share_of_hispanic, 1) |
+             !near(share_of_other_nh, 1)) %>%
     nrow() == 0
 )
 
@@ -367,11 +388,11 @@ indices <- indices %>%
     non_black_nh = (hispanic + white_nh + other_nh) / people,
     non_hispanic = (white_nh + black_nh + other_nh) / people,
     non_other_nh = (hispanic + white_nh + black_nh) / people
-    )
+  )
 
 ```
 
-> We would then take the weighted average across tracts with the weight being the percentage of a county's whites living in each tract. So in a county with only 2 tracts, one tract has 80 whites and only 10 percent of that residents are non-white and in the second tract there are 20 white residents but 50% of the tract is non-white, the white to non-white index would be 0.8*0.1 + 0.2*0.5 = 0.18. In other words the average white resident lives in a neighborhood in which 18% of his neighbors are non-white
+> We would then take the weighted average across tracts with the weight being the percentage of a county's whites living in each tract. So in a county with only 2 tracts, one tract has 80 whites and only 10 percent of that residents are non-white and in the second tract there are 20 white residents but 50% of the tract is non-white, the white to non-white index would be 0.8 * 0.1 + 0.2 * 0.5 = 0.18. In other words the average white resident lives in a neighborhood in which 18% of his neighbors are non-white
 
 We find the weighted average at the county level of exposure to other race/ethnicity groups weighted by the share of the race/ethnicity group living in each tract. In other words, the 0.1 and 0.5 are `non_white_nh` and the 0.8 and 0.2 are `share_of_white_nh`.
 
@@ -381,14 +402,21 @@ county_data <- indices %>%
   summarize(
     tracts = n(),
     people = sum(people),
-    hispanic = sum(hispanic),
+    # counts
     black_nh = sum(black_nh),
-    white_nh = sum(white_nh),
+    hispanic = sum(hispanic),
     other_nh = sum(other_nh),
-    white_nh_exposure = weighted.mean(non_white_nh, w = share_of_white_nh),
+    white_nh = sum(white_nh),
+    # margins of errors
+    black_nh_moe = sqrt(sum(black_nh_moe ^ 2)),
+    hispanic_moe = sqrt(sum(hispanic_moe ^ 2)),
+    other_nh_moe = sqrt(sum(other_nh_moe ^ 2)),
+    white_nh_moe = sqrt(sum(white_nh_moe ^ 2)),
+    # exposures
     black_nh_exposure = weighted.mean(non_black_nh, w = share_of_black_nh),
     hispanic_exposure = weighted.mean(non_hispanic, w = share_of_hispanic),
-    other_nh_exposure = weighted.mean(non_other_nh, w = share_of_other_nh)
+    other_nh_exposure = weighted.mean(non_other_nh, w = share_of_other_nh),
+    white_nh_exposure = weighted.mean(non_white_nh, w = share_of_white_nh)
   ) %>%
   ungroup()
 
@@ -404,14 +432,14 @@ county_data %>%
   select(
     FIPS,
     tracts,
-    hispanic,     
     black_nh,
-    white_nh,
+    hispanic,     
     other_nh,
-    hispanic_exp = hispanic_exposure,
+    white_nh,
     black_nh_exp = black_nh_exposure,
-    white_nh_exp = white_nh_exposure,
-    other_nh_exp = other_nh_exposure
+    hispanic_exp = hispanic_exposure,
+    other_nh_exp = other_nh_exposure,
+    white_nh_exp = white_nh_exposure
   ) %>%
   mutate_if(is.numeric, round, digits = 3) %>%
   reactable(
@@ -442,25 +470,25 @@ stopifnot(
 ```{r check-missingness}
 stopifnot(
   county_data %>%
-    filter(hispanic == 0 & !is.na(hispanic_exposure)) %>%
-    nrow() == 0
-)
-
-stopifnot(
-  county_data %>%
     filter(black_nh == 0 & !is.na(black_nh_exposure)) %>%
     nrow == 0
 )
 
 stopifnot(
   county_data %>%
-    filter(white_nh == 0 & !is.na(white_nh_exposure)) %>%
+    filter(hispanic == 0 & !is.na(hispanic_exposure)) %>%
     nrow() == 0
 )
 
 stopifnot(
   county_data %>%
     filter(other_nh == 0 & !is.na(other_nh_exposure)) %>%
+    nrow() == 0
+)
+
+stopifnot(
+  county_data %>%
+    filter(white_nh == 0 & !is.na(white_nh_exposure)) %>%
     nrow() == 0
 )
 
@@ -479,6 +507,16 @@ Let's visualize the relationship between a group's share of the population in a 
 
 ```{r visualize}
 county_data %>%
+  ggplot(aes(black_nh / people, black_nh_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(expand = c(0, 0),
+                     limits = c(0, 1)) +
+  labs(title = "There is negative relationship between a group's share and exposure",
+       subtitle = "Black non-Hispanic share vs. Black non-Hispanic exposure") +
+  scatter_grid()
+
+county_data %>%
   ggplot(aes(hispanic / people, hispanic_exposure)) +
   geom_point(alpha = 0.2,
              size = 1) +
@@ -489,13 +527,13 @@ county_data %>%
   scatter_grid()
 
 county_data %>%
-  ggplot(aes(black_nh / people, black_nh_exposure)) +
+  ggplot(aes(other_nh / people, other_nh_exposure)) +
   geom_point(alpha = 0.2,
              size = 1) +
   scale_y_continuous(expand = c(0, 0),
                      limits = c(0, 1)) +
   labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "Black non-Hispanic share vs. Black non-Hispanic exposure") +
+       subtitle = "Other Races and Etnicities' share vs. Other Races and Etnicities exposure") +
   scatter_grid()
 
 county_data %>%
@@ -508,27 +546,104 @@ county_data %>%
        subtitle = "White non-Hispanic share vs. white non-Hispanic exposure") +
   scatter_grid()
 
-
-county_data %>%
-  ggplot(aes(other_nh / people, other_nh_exposure)) +
-  geom_point(alpha = 0.2,
-             size = 1) +
-  scale_y_continuous(expand = c(0, 0),
-                     limits = c(0, 1)) +
-  labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "Other Races and Etnicities' share vs. Other Races and Etnicities exposure") +
-  scatter_grid()
-
 ```
 
 ### 6. Add Data Quality Flags
 
+First, we suppress exposure indices for groups in counties that have fewer than 30 individuals in that group. This excludes many observations that have very imprecise estimates. 
+
+```{r}
+#' Suppress counties
+#'
+#' @param race The variable for the count in a race/ethnicity group
+#' @param exposure The variable name for the exposure index
+#' @param threshold The minimum size of the race group to report the exposure index
+#'
+#' @return
+#'
+suppress_county <- function(race, exposure, threshold) {
+  
+  exposure <- if_else(race <= threshold, as.numeric(NA), exposure)
+
+  return(exposure)
+  
+}
+
+county_data %>%
+  summarize(
+    black_nh_exposure = sum(is.na(black_nh_exposure)),
+    hispanic_exposure = sum(is.na(hispanic_exposure)),
+    other_nh_exposure = sum(is.na(other_nh_exposure)),
+    white_nh_exposure = sum(is.na(white_nh_exposure))
+  )
+
+county_data <- county_data %>%
+  mutate(
+    black_nh_exposure = suppress_county(black_nh, black_nh_exposure, threshold = 30),
+    hispanic_exposure = suppress_county(hispanic, hispanic_exposure, threshold = 30),
+    other_nh_exposure = suppress_county(other_nh, other_nh_exposure, threshold = 30),
+    white_nh_exposure = suppress_county(white_nh, white_nh_exposure, threshold = 30)
+  )
+  
+county_data %>%
+  summarize(
+    black_nh = sum(is.na(black_nh_exposure)),
+    hispanic = sum(is.na(hispanic_exposure)),
+    other_nh = sum(is.na(other_nh_exposure)),
+    white_nh = sum(is.na(white_nh_exposure))
+  )
+
+```
+
 We need to add data quality flags with `1`, `2`, or `3`. The values are outlined in the [data standards](https://github.com/UI-Research/gates-mobility-metrics). 
 
-* `1` - otherwise
-* `3` - if 5 or fewer people. The cutoff of 5, which was reached through correspondence, is a little arbitrary.
+* `1` - If the county coefficient of variation for the count in the group is less than 0.2
+* `2` - If the county coefficient of variation for the count in the group is less than 0.4
+* `3` - If the county coefficient of variation for the count in the group exceeds 0.4
+* `NA` - If the metric is missing
 
-We currently don't use `2` for these metrics. 
+```{r}
+county_data <- county_data %>%
+  mutate(
+    black_nh_cv = black_nh_moe / black_nh,
+    hispanic_cv = hispanic_moe / hispanic,
+    other_nh_cv = other_nh_moe / other_nh,
+    white_nh_cv = white_nh_moe / white_nh
+  ) 
+
+county_data %>%
+  filter(black_nh_cv >= 0.4) %>%
+  ggplot(aes(black_nh, black_nh_cv, color = black_nh <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Black, non-Hispanic: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "black_nh <= 30 in yellow") +
+  scatter_grid()
+  
+county_data %>%
+  filter(hispanic_cv >= 0.4) %>%
+  ggplot(aes(hispanic, hispanic_cv, color = hispanic <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "hispanic <= 30 in yellow") +
+  scatter_grid()
+
+county_data %>%
+  filter(other_nh >= 0.4) %>%
+  ggplot(aes(other_nh, other_nh_cv, color = other_nh <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "other_nh <= 30 in yellow") +
+  scatter_grid()
+
+county_data %>%
+  filter(white_nh_cv >= 0.4) %>%
+  ggplot(aes(white_nh, white_nh_cv, color = white_nh <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "white_nh <= 30 in yellow") +
+  scatter_grid()
+
+```
 
 ```{r}
 #' Assign a data quality flag
@@ -538,13 +653,13 @@ We currently don't use `2` for these metrics.
 #'
 #' @return A numeric data quality flag
 #'
-set_quality <- function(race, exposure) {
+set_quality <- function(cv, exposure) {
   
   quality <- case_when(
-    race > 5 ~ 1,
-    race <= 5 ~ 3
+    cv < 0.2 ~ 1,
+    cv < 0.4 ~ 2,
+    cv >= 0.4 ~ 3
   )
-  
   quality <- if_else(is.na(exposure), as.numeric(NA), quality)
   
   return(quality)
@@ -552,16 +667,33 @@ set_quality <- function(race, exposure) {
 }
 
 county_data <- county_data %>%
-  mutate(hispanic_exposure_quality = set_quality(hispanic, hispanic_exposure)) %>%
-  mutate(black_nh_exposure_quality = set_quality(black_nh, black_nh_exposure)) %>%
-  mutate(white_nh_exposure_quality = set_quality(white_nh, white_nh_exposure)) %>%
-  mutate(other_nh_exposure_quality = set_quality(other_nh, white_nh_exposure))
-  
-  
+  mutate(
+    black_nh_exposure_quality = set_quality(cv = black_nh_cv, exposure = black_nh_exposure),
+    hispanic_exposure_quality = set_quality(cv = hispanic_cv, exposure = hispanic_exposure),
+    other_nh_exposure_quality = set_quality(cv = other_nh_cv, exposure = other_nh_exposure),
+    white_nh_exposure_quality = set_quality(cv = white_nh_cv, exposure = white_nh_exposure)
+  )
+
+count(county_data, black_nh_exposure_quality)           
 count(county_data, hispanic_exposure_quality)
-count(county_data, black_nh_exposure_quality)
-count(county_data, white_nh_exposure_quality)
 count(county_data, other_nh_exposure_quality)
+count(county_data, white_nh_exposure_quality)
+
+```
+
+Most of the counties with missing values are very small. 
+
+```{r}
+missing <- county_data %>%
+  filter(
+    is.na(black_nh_exposure) |
+      is.na(hispanic_exposure) |
+      is.na(other_nh_exposure) |
+      is.na(white_nh_exposure)
+    )
+
+max(missing$population)
+max(missing$tracts)
 
 ```
 
@@ -581,17 +713,15 @@ county_data %>%
   select(year, 
          state, 
          county, 
-         hispanic_exposure,
-         hispanic_exposure_quality,
          black_nh_exposure,
          black_nh_exposure_quality,
-         white_nh_exposure,
-         white_nh_exposure_quality,
+         hispanic_exposure,
+         hispanic_exposure_quality,
          other_nh_exposure,
-         other_nh_exposure_quality
+         other_nh_exposure_quality,
+         white_nh_exposure,
+         white_nh_exposure_quality
   ) %>%
   write_csv(here::here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure.csv"))
 
 ```
-
-### Outstanding questions
