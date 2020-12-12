@@ -2,7 +2,7 @@
 
 * Final data name(s): county_level_enviro.csv, county_level_enviro_race.csv, county_level_enviro_poverty.csv
 * Analyst(s): Peace Gwam
-* Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & ACS. 
+* Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-14 ACS. 
 * Year(s): 2014
 * Notes:
     * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
