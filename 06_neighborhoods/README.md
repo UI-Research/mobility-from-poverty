@@ -2,15 +2,15 @@
 
 * Final data name(s): county_level_enviro.csv, county_level_enviro_race.csv, county_level_enviro_poverty.csv
 * Analyst(s): Peace Gwam
-* Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-14 ACS. 
-* Year(s): 2014
+* Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
+* Year(s): 2014 (2010-2014)
 * Notes:
     * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
     * Missingness : All 3,142 counties in the United States are represented. There are, however, some caveats: 
-      (1) There are 618 tracts without populations. Logically, most do not have hazard indices: 508 of the 618 tracts with zero population do not have a `haz_idx`.
+      (1) There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 is dropped in the datasets.
       (2) There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
       (3) There are 163 census tracts with a population > 0 & missing poverty information in the AFFH data. ACS data could only fill 6/163 census tracts. The ACS was not used to calculate the poverty rate for the 6 tracts. 
-    * Quality flags: `1` for all observations. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.02% of the overall population for the county (see variable `na_pop` in county_level_enviro dataset). For tracts with missing `poverty_type`, they represent at most 0.01% of the overall population
+    * Quality flags: `1` for environmental quality and race indices. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.02% of the overall population for the county (see variable `na_pop` in county_level_enviro dataset). There are 157 census tracts with missing poverty information and a population > 0. The income information mas missing in both the ACS and AFFH datasets. Counties with tracts with missing poverty information were given a quality flag of `2`. 
 
 Outline the process for creating the data  
 * Downloaded tract-level 2014 AFFH data
