@@ -119,7 +119,7 @@ test_data <- test_data %>%
   mutate(perc_na = round(perc_na, digits = 2))
 
    #As a result of this, counties with more than 10% missingness were marked
-   #for data quality. See lines ?????? of the code. End of data check 1.
+   #for data quality. See line 230 of the code. End of data check 1.
 
   ###DATA CHECK #2: Tracts that have index values but no households under 50% AMI
       #One downside of this method is that there are 149 tracts that have 0 
@@ -147,17 +147,17 @@ test_data2 <- test_data2 %>%
   mutate(perc_nohh = round(perc_nohh, digits = 2))
 
     #As a result of this, counties with more than 10% missingness were marked
-    #for data quality. See lines ?????? of the code. End of data check 2. 
+    #for data quality. See line 246 of the code. End of data check 2. 
 
 
 #STEP 3: to add the breakdown by race. First, need to create categories:
   #1. > 60% white
   #2. 40-60% white/POC
   #3. > 60% POC 
-tracts_with_pop <- tracts_with_pop%>%
+tracts_with_pop <- tracts_with_pop %>%
   mutate(perc_white = (hh_white_lt50ami/num_hh), 
          perc_POC = ((hh_black_lt50ami + hh_hisp_lt50ami + hh_ai_pi_lt50ami)/num_hh)) %>%
-  mutate(perc_total = perc_white + perc_POC) %>%
+  mutate(perc_total = perc_white + perc_POC)
  
   #We know that these percentages, as shown by perc_total, are not perfect.
   #see data notes.
@@ -169,9 +169,12 @@ tracts_with_pop  <- tracts_with_pop %>%
   mutate(race_category1 = if_else((perc_POC < .6 & (perc_POC > .4 | perc_POC == .4)) | (perc_white < .6 & (perc_white > .4 | perc_white == .4)), 2, 0)) %>%
   mutate(race_category1 = if_else((perc_white > .6 | perc_white == .6), 1, race_category1)) %>%
   mutate(race_category1 = if_else((perc_POC > .6 | perc_POC == .6), 3, race_category1)) 
-      
-#data quality calculation: what percentage of the category of the county does it make up? 10-24 or 25+
-#thresholds to use:race information for at least 90% of 50%amiHH and over 105%
+
+#For reviewer: some tracts end up with a 0 because they don't have enough race data -
+#i.e. neither %white or %POC is >40%. It probably makes the most sense to set to N/A - if possible?
+ 
+  #data quality calculation: what percentage of the category of the county does it make up? 10-24 or 25+
+  #thresholds to use:race information for at least 90% of 50%amiHH and over 105%
 
   ###DATA CHECK #3: Flagging tracts where we have race data on <90% or >105% 50%AMI HHs,
     #if that tract makes up more than 10% of its county.
@@ -208,7 +211,7 @@ test_data3 <- test_data3 %>%
   #That number is in the AFFH dataset (the num_hh variable defined in line 20) so we already have it.
   #The code withholds n/as from calculation.
 county_transport_stats_by_race <- tracts_with_pop %>%
-  group_by(state, county, race_category2) %>%
+  group_by(state, county, race_category1) %>%
   summarize(mean_tcost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
             mean_trans = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
   ungroup()
