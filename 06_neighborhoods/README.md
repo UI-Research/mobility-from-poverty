@@ -20,6 +20,21 @@ Outline the process for creating the data
 (2) Perform a variety of checks on the data to flag places where data quality might not be the highest. See limitations and missingness descriptions above and the R script for more detail.
 (3) Generate county-level average index values from the tract-level data. Use the number of households < 50% AMI as the weights.
 
+Additional notes for adding race data:
+We decided to use the race information in the AFFH dataset for households at 50%AMI 
+since we used that number for the population weighting, and because it most closely 
+approximates the transit measures. There are several limitations to this choice.
+There is no 'other' race category, so it is unclear if missing data is due to
+not fitting into the limitted options (white, Black, Hispanic, Asian) or if it is,
+in fact, missing data. There are 328 tracts with no race data because the number
+of households at 50% AMI is zero. 20 tracts have 0 values in all race categories.
+In 223 tracts, we have race information on less than <50% of 50%AMI households. 
+In 342 tracts, we have race information on more than 105% of 50%AMI households 
+(meaning there must be some overlap or data issue). We tried to account for this
+by taking a similar approach to data quality standards as for the larger dataset - 
+noting these issues if a tract makes up a certain percentage of its county.
+
+
 # Environmental Quality
 
 Brief description
