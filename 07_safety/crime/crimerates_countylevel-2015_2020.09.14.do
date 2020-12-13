@@ -1,6 +1,6 @@
 *********************************
 *	Safety Metrics				*
-*	Crime Rates - County 2017	*
+*	Crime Rates - County 2015	*
 *	Lily Robin, 2019.9.14		*
 *********************************
 
@@ -21,9 +21,9 @@ import delimited using "geographic-crosswalks\data\county-file.csv"
 
 *keep only 2017
 tab year, m
-keep if year == 2017
+keep if year == 2015
 
-save "07_safety/crime/county_crosswalk_2017", replace
+save "07_safety/crime/county_crosswalk_2015", replace
 
 
 *****County crime 2017
@@ -44,7 +44,7 @@ keep year county_name state coverage_indicator state_abb fips_state_code fips_co
 
 *keep only most recent year
 tab year, m
-keep if year == 2017
+keep if year == 2015
 
 *rename variables to match county crosswalk file
 rename (state state_abb fips_state_code fips_county_code fips_state_county actual_index_violent actual_index_property) (state_name state_abv state county statecounty violent_crime_count property_crime_count)
@@ -77,15 +77,15 @@ drop county_population_bedford violent_crime_count_bedford property_crime_count_
 duplicates drop
 
 *save
-save crime_county_2017, replace	
+save crime_county_2015, replace	
 
 
-*****NY county crime 2017
+*****NY county crime 2015
 clear
 
-copy "https://www.criminaljustice.ny.gov/crimnet/ojsa/indexcrimes/2017-county-index-rates.xls" "ny_county_indexcrime_2017.xls", replace
+copy "https://www.criminaljustice.ny.gov/crimnet/ojsa/indexcrimes/2015-county-index-rates.xls" "ny_county_indexcrime_2015.xls", replace
 
-import excel "ny_county_indexcrime_2017.xls", sheet ("2017-county-index-rates") cellrange(A5:H67) firstrow case(lower) clear
+import excel "ny_county_indexcrime_2015.xls", sheet ("rates") cellrange(A5:H67) firstrow case(lower) clear
 
 drop count rate
 
@@ -102,15 +102,15 @@ gen state = 36
 
 drop county county_addon
 
-save ny_county_indexcrime_2017, replace
+save ny_county_indexcrime_2015, replace
 
 
 
 ///// 3. MERGE
 
-use county_crosswalk_2017, clear
+use county_crosswalk_2015, clear
 
-merge 1:1 state county using crime_county_2017
+merge 1:1 state county using crime_county_2015
 
 *br if _merge != 3
 
@@ -118,7 +118,7 @@ drop if _merge == 2
 drop _merge
 
 *merge New York City counties: New York County has crime counts for whole city in the main crime file, using instead county level data from the state
-merge 1:1 state county_name using ny_county_indexcrime_2017
+merge 1:1 state county_name using ny_county_indexcrime_2015
 
 drop _merge
 
@@ -171,7 +171,7 @@ drop county_population_ny violent_crime_count_ny violent_crime_rate_ny property_
 *check values
 sum violent_crime_rate property_crime_rate //property crime is a little low, probably because it is missing juristictions outside of counties and territories
 *use the FBI UCR website to check totals and spot check county values
-*https://ucr.fbi.gov/crime-in-the-u.s/2017/crime-in-the-u.s.-2017/topic-pages/violent-crime
+*https://ucr.fbi.gov/crime-in-the-u.s/2015/crime-in-the-u.s.-2015/topic-pages/violent-crime
 
 
 
@@ -216,7 +216,7 @@ tabmiss
 
 codebook
 
-save 2017_crime_by_county, replace
+save 2015_crime_by_county, replace
 
 *export as CSV
-export delimited using "crimerate_county_2017.csv", replace
+export delimited using "crimerate_county_2015.csv", replace
