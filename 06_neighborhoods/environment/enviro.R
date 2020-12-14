@@ -79,7 +79,7 @@ enviro_stats <- enviro_stats%>%
 
 # join affh data with acs data
 full_data <- full_join(acs, enviro_stats, by="GEOID")
-
+write_csv(full_data, "tract_level_enviro.csv")
 ####STEP TWO: VALIDATE AND CLEAN MERGED DATA ####
 
 # check merge
