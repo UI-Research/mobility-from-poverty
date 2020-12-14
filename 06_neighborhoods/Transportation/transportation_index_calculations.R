@@ -110,7 +110,7 @@ county_pop <- rename(county_pop, total_population = B01003_001E)
   #by the tract with N/A transit values.
 test_data <- left_join(county_pop, population_test, by = "GEOID")
 test_data <- test_data %>%
-  rename(total_population = B01003_001E) %>%
+  #rename(total_population = B01003_001E) %>%
   mutate(perc_na = ((missing_pop_county_sum/total_population)*100)) %>%
   mutate(perc_na = round(perc_na, digits = 2))
 
