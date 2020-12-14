@@ -104,11 +104,11 @@ county_enviro_stats <- full_data %>%
 #make file match data standards
 county_enviro_stats <- county_enviro_stats %>%
   add_column(year = 2014, .before = "state") %>%
-  add_column(quality_flag = 1, .after = "haz_idx") %>%
+  add_column(haz_idx_quality = 1, .after = "haz_idx") %>%
   mutate(state = str_pad(string = state, width = 2, side ="left", pad = "0")) %>%
   mutate(county = str_pad(string = county, width = 3, side = "left", pad = "0")) %>%
   mutate(GEOID = str_c(state, county, collapse = NULL)) %>% 
-  select(-GEOID)
+  select(-GEOID, -na_pop)
 
 ##output data
 write_csv(county_enviro_stats, "county_level_enviro.csv")

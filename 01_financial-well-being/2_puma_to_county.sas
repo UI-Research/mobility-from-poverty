@@ -17,6 +17,11 @@ data libmain.puma_to_county;
 *Drop records where the weight adjustment is 0 (this only happens for county #5 in Hawaii, which is a 
  very small part of PUMA 100);
   if afact=0 then delete;
+  if statefip = 51 and county = 19 then pop10 = 68676 + 6222; /* this is combining county 51515 with 51019 because 51515 was folded in 51019 */
+  if statefip = 51 and county = 19 then afact = 0.562 + 0.051; /* this is combining county 51515 with 51019 because 51515 was folded in 51019 */
+  if statefip = 51 and county = 515 then delete;
+  if statefip = 2 and county = 270 then county = 158;
+  if statefip = 46 and county = 113 then county = 102;
 run;
 
 /* KW COMMENT: Changed from sort by statefip puma to sort by statefip county */

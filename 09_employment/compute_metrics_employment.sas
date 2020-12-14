@@ -26,6 +26,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_unemployment;
 
-%compute_metrics_unemployment(lib2018.microdata,employ.metrics_unemployment);
-proc means data=employ.metrics_unemployment;
+%compute_metrics_unemployment(lib2018.microdata,employ.metrics_employment);
+proc means data=employ.metrics_employment;
 run;

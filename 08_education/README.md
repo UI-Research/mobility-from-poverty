@@ -25,13 +25,19 @@ these to be comparable over time and space.
 	result in the "cohort" not being exactly the same between third and eigth grades.
     * Missingness: 80/3,142 missing counties
 
-Outline the process for creating the data: SEDA data were manually downloaded
+Outline the process for creating the data: SEDA data are manually downloaded
 and read in, and a regression of mean assessment scores was run on grade (as a continuous
 variable) interacted with each county in order to obtain county-specific grade slopes.
-Regressions were weighted by the number of test-takers for each year, grade, and county. 
+Regressions are weighted by the number of test-takers for each year, grade, and county. 
 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times
 the standard error of the estimate. A flag indicates how many grades are included in
-each estimate.   
+each estimate.  
+
+Data quality flags: Data quality of "1" requires at least 5 or 6 years of data to be
+included, with at least 30 students tested in each year (a commonly used minimum 
+sample size for stability of estimates). Data quality of "2" requires at least 4 years 
+included with at least 30 students in each year. Data quality of "3" is assigned to the 
+remainder. 
 
 # Preschool
 
@@ -74,11 +80,26 @@ schools where 40 percent or more of students receive free or reduced-price lunch
 * Year(s): 2018 (2018-19 school year)
 * Notes:
     * Limitations: Not all states report FRPL; some instead report the number of students
-	directly certified (DC). These states are Massachusetts, Tennessee, Delaware, and the 
-	District of Columbia. In addition, Alaska and Ohio report either FRPL or DC.
+	directly certified (DC). FRPL is "The unduplicated number of students who are eligible 
+	to participate in the Free Lunch and Reduced Price Lunch Programs under the National 
+	School Lunch Act of 1946." DC is "The unduplicated count of students in membership 
+	whose National School Lunch Program (NSLP) eligibility has been determined through 
+	direct certification." (https://www2.ed.gov/about/inits/ed/edfacts/eden/non-xml/fs033-14-1.docx)
+	
+	In 2018, the states reporting DC instead of FRPL are Massachusetts, Tennessee, Delaware, 
+	and the District of Columbia. In addition, Alaska and Ohio report either FRPL or DC 
+	for a substantial number of schools in 2018. 
+	
     * Missingness: 4/3,142 counties
 
 Outline the process for creating the data: Schools were flagged as having 40% or more FRPL
 if either the number of students receiving FRPL or the number of DC students was greater than
-40%. Total enrollment (by race) was summed in these schools and divided by total enrollment 
-(by race) in the county. 
+40%. Each county is assigned a flag (poverty_measure_used) that indicates whether all schools 
+have a higher number of students reported under "FRPL" or "DC"; if there is a mix, the county 
+is assigned "Both". Total enrollment (by race) was summed in these schools and divided by total 
+enrollment (by race) in the county. 
+
+Data quality flags: Data quality of "1" requires at least 30 students in the county and for the
+poverty_measure_used to be either "FRPL" or "DC", but not "Both". Data quality of "2" requires at 
+least 15 students in the county and a poverty_measure_used flag of "FRPL" or "DC". The remainder
+receive a data quality flag of "3".
