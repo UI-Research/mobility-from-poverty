@@ -1,4 +1,4 @@
-This repository contains code to construct 26 county-level metrics that broadly measure mobility from poverty. To learn more please read
+This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
 
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
@@ -42,6 +42,18 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 todo(aaron): clean up repository contents
 
+| Domain                  |      Metrics      |  Analyst(s) |
+|-------------------------|:-------------:|------:|
+| 01_financial-well-being |   |  |
+| 02_housing              |   |  |
+| 03_family               |   |  |
+| 04_health               |   |  |
+| 05_local-governments    |   |  |
+| 06_neighborhoods        |   |  |
+| 07_safety               |   |  |
+| 08_education            |   |  |
+| 09_employment           |   |  |
+
 # File Description
 
 ## Recent File
@@ -58,9 +70,9 @@ todo(aaron): Include a table with variables and information about the variables.
 
 # Project Organization
 
-* Each metric or *closely* related set of metrics should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should also contain clear instructions for running the code.
-* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. 
+* Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
+* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
+* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
