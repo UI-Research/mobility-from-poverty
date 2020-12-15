@@ -28,7 +28,9 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Standard Errors](#standard-errors)
     * [Quality Flags](#quality-flags)
     * [Data Dictionary](#data-dictionary)
+    * [Subgroups File Structure](#subgroups-file-structure)
 * [Code Standards](#code-standards)
+    * [Subgroups Code](#subgroups-code)
 * [Code and technical Review](#code-and-technical-review)
     * [Scope of the Review](#scope-of-the-review)
     * [How to Prepare for a Code Review](#how-to-prepare-for-a-code-review)
@@ -58,11 +60,15 @@ todo(aaron): clean up repository contents
 
 ## Recent File
 
-The recent file has exactly one year per county and contains the most recent year for each of the mobility metrics.
+The recent file has exactly one year per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations. 
 
 ## Multi-Year File
 
-The multi-year file contains one year per county per year. It contains missing values where metrics are unavailable or have not been computed. 
+The multi-year file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
+
+## Subgroups File
+
+The subgroups file contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status. 
 
 ## Variables
 
@@ -124,16 +130,23 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 * The first three variables in every file should be `year`, `state`, and `county`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code, `county` should be a three character FIPS code. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
+The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
+
+`subgroup_type` will be `all`, `race-ethnicity`, or `income`. `subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The next section further addresses race/ethnicity.  
+
 ### Values
 
 * Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
-* Percentages should be stored as proportions between o and 1 inclusive with a leading zero. (75% should be 0.75)
+* Percentages should be stored as proportions between 0 and 1 inclusive with a leading zero. (75% should be 0.75)
 * Missing values should be coded as empty cells.
+
+Subgroups will depend on data availability and prioritization. For race, the objective is to pull "Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", and "White, Non-Hispanic." If a subgroup lacks the precision to be responsibly reported, then report an `NA` and set the data quality to a 3. Do not combine groups such as “Other Races and Ethnicities” with “White, Non-Hispanic”.  
 
 ### Sorting
 
 * All files should be sorted by `year`, `state`, and `county`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
+* SUbgroup files should be sorted by `year`, `state`, `county`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
 
 ### Standard Errors
 
@@ -159,6 +172,14 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 * We will construct a detailed data dictionary for users of the data. 
 * Be sure to include information about the format of your metrics in the metric-specific READMEs. Completed metrics will be added to the [variables table](#variables) in this README.
+
+### Subgroups File Structure
+
+A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows. This database will be in a long format. For example, if there are four subgroups then there should be 3,142x4 = 12,568 observations per year. This may seem foreign to some Stata and SAS programmers but it has several advantages.  
+
+1. It limits the challenges in standardization of naming conventions and the number of variables. For example, imagine adding four subgroups in a wide format. This would mean adding four variables, four lower bounds, four upper bounds, and four quality metrics. In addition to being unwieldy, it would result in burdensome variable names (e.g. `share_debt_coll_nonhispanic_white_quality1). 
+2. This format is [tidy](https://www.jstatsoft.org/article/view/v059i10) (Wickham, 2014) and has many appealing features for data analysis.  
+3. The format will transfer better into the county-level data sheets we will need to produce for communities.  
 
 # Code Standards 
 
@@ -186,6 +207,13 @@ Description: [Overall description]
 /*************************/
 
 ```
+
+## Subgroups Code
+
+Metric leads will need to decide whether to create new scripts/programs for extending the database (additional years or subgroup analysis) or to extend existing scripts. The optimal approach may differ based on the situation. For example, some metric leads will need to change data sets entirely (e.g. 1-year vs. 5-year ACS data) and new scripts may be most efficient and clean, while other metric leads may need to make minimal changes to an existing script.  
+
+1. Do not worry about editing existing scripts provided they recreate the original dataset. There is no need to use version control in file names (i.e. script.R to script2.R). Git will handle this. If you have not added your data as a .csv to version control, then please reach out to Aaron (this is a change from earlier policy). 
+2. When possible, use functions and macros to avoid repeating the same code multiple times. For example, if you are pulling the 1-year ACS, try to write functions that take year as an argument and then call the function multiple times instead of copying-and-pasting code.  
 
 # Code and Technical Review
 
