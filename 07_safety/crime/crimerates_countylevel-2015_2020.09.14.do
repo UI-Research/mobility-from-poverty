@@ -1,7 +1,7 @@
 *********************************
 *	Safety Metrics				*
 *	Crime Rates - County 2015	*
-*	Lily Robin, 2019.9.14		*
+*	Lily Robin, 2020.12.15		*
 *********************************
 
 clear
@@ -194,8 +194,8 @@ gsort year state county
 *create data quality index
 sum coverage_indicator
 gen crime_rate_quality = .
-replace crime_rate_quality = 1 if coverage_indicator == 100 & coverage_indicator != .
-replace crime_rate_quality = 1 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
+replace crime_rate_quality = 2 if coverage_indicator == 100 & coverage_indicator != .
+replace crime_rate_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
 replace crime_rate_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
 replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate == .
 
