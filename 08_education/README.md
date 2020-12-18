@@ -17,6 +17,11 @@ these to be comparable over time and space.
 * Data source(s): https://cepa.stanford.edu/content/seda-data
 	https://edopportunity.org/get-the-data/seda-archive-downloads/ 
 	exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta
+	
+	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., Chavez, B., 
+	Buontempo, J., & DiSalvo, R. (2019). Stanford Education Data Archive (Version 3.0). 
+	http://purl.stanford.edu/db586ns4974.
+	
 * Year(s): 2015 (2015-16 school year), 2014, and 2013
 * Subgroups: all; gender; race/ethnicity; income
 * Notes:
@@ -53,7 +58,8 @@ Data quality flags: Data quality of "1" requires at least 5 or 6 years of data t
 included, with at least 30 students tested in each year (a commonly used minimum 
 sample size for stability of estimates). Data quality of "2" requires at least 4 years 
 included with at least 30 students in each year. Data quality of "3" is assigned to the 
-remainder. 
+remainder. These quality flags are determined separately for each subgroup, such that
+the quality flag for one subgroup in a county may differ from that of another subgroup.
 
 # Share of students in high-poverty schools
 
