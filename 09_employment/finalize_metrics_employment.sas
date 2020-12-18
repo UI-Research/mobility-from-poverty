@@ -23,7 +23,7 @@ libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_em
 /* create confidence interval and correctly format variables */
 
 data employment_missing_HI (keep = year county state share_employed share_employed_ub share_employed_lb)  ;
- set paul.metrics_unemployment;
+ set paul.metrics_employment;
  year = 2018;
  not_employed = 1 - share_employed;
  interval = 1.96*sqrt((not_employed*share_employed)/_FREQ_);
