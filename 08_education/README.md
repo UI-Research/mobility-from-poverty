@@ -17,13 +17,34 @@ these to be comparable over time and space.
 * Data source(s): https://cepa.stanford.edu/content/seda-data
 	https://edopportunity.org/get-the-data/seda-archive-downloads/ 
 	exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta
-* Year(s): 2015 (2015-16 school year)
+	
+	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., Chavez, B., 
+	Buontempo, J., & DiSalvo, R. (2019). Stanford Education Data Archive (Version 3.0). 
+	http://purl.stanford.edu/db586ns4974.
+	
+* Year(s): 2015 (2015-16 school year), 2014, and 2013
+* Subgroups: all; gender; race/ethnicity; income
 * Notes:
     * Limitations: Not all counties report assessments for all grades, so some estimates
 	may be based on fewer than 6 data points; underlying data have been manipulated by SEDA
 	to introduce noise to ensure confidentiality; migration into or out of a county may
 	result in the "cohort" not being exactly the same between third and eigth grades.
-    * Missingness: 80/3,142 missing counties
+    * Missingness: missing observations by year and subgroup:
+
+-------------------------------------------------
+                               |       year      
+                      subgroup | 2013  2014  2015
+-------------------------------+-----------------
+                           All |   80    87    80
+           Black, Non-Hispanic | 1796  1825  1839
+    Economically Disadvantaged |  199   211   205
+                        Female |  216   216   223
+                      Hispanic | 1778  1735  1717
+                          Male |  199   209   205
+Not Economically Disadvantaged |  308   324   333
+           White, Non-Hispanic |  202   210   215
+-------------------------------------------------
+
 
 Outline the process for creating the data: SEDA data are manually downloaded
 and read in, and a regression of mean assessment scores was run on grade (as a continuous
@@ -37,7 +58,8 @@ Data quality flags: Data quality of "1" requires at least 5 or 6 years of data t
 included, with at least 30 students tested in each year (a commonly used minimum 
 sample size for stability of estimates). Data quality of "2" requires at least 4 years 
 included with at least 30 students in each year. Data quality of "3" is assigned to the 
-remainder. 
+remainder. These quality flags are determined separately for each subgroup, such that
+the quality flag for one subgroup in a county may differ from that of another subgroup.
 
 # Preschool
 
