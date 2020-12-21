@@ -4,7 +4,7 @@ This metric captures the share of low birthweight infants out of all births
 
 * Final data name(s): neonatal_health.csv
 * Analyst(s): Emily M. Johnston
-* Data source(s): United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Divison of Vital Statistics, Natality public-use data 2007-2018, on CDC WONDER Online Database, September 2019 
+* Data source(s): United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Divison of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020. 
 * Year(s): 2018
 * Notes:
     * Low birthweight is defined as less than 2,500 grams
@@ -16,10 +16,10 @@ This metric captures the share of low birthweight infants out of all births
         * A score of 1 indicates a high-quality calculated metric for the observation
 		* All counties with populations of 100,000 persons or more for which the metric is county-specific and not suppressed have a quality score of 1
 	* A score of 2 indicates limited issues for the calculated metric for the observation
-		* No counties have a quality score of 2
+		* All counties with between 10 and 29 low birthweight births have a quality score of 2
 	* A score of 3 indicates serious issues for the calculated metric for the observation
 		* All counties with populationess under 100,000 for which the metric reflects the pooled share low birthweight for all "Unidentified Counties" in the state and are not county-specific have a quality score of 3
- 		* All counties with suppressed estimates have a quality score of 3
+ 		* All counties with suppressed estimates (indicating fewer than 10 low birthweight births) have a quality score of 3
 
 
 ## Process for creating the data
