@@ -25,7 +25,7 @@ We decided to use the race information in the AFFH dataset for households at 50%
 since we used that number for the population weighting, and because it most closely 
 approximates the transit measures. There are several limitations to this choice.
 There is no 'other' race category, so it is unclear if missing data is due to
-not fitting into the limitted options (white, Black, Hispanic, Asian) or if it is,
+not fitting into the limited options (white, Black, Hispanic, Asian) or if it is,
 in fact, missing data. There are 328 tracts with no race data because the number
 of households at 50% AMI is zero. 20 tracts have 0 values in all race categories.
 In 223 tracts, we have race information on less than <50% of 50%AMI households. 
