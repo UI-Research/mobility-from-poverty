@@ -6,6 +6,9 @@
 
 clear
 
+//to install run the below commented out code, click link, and then new install link that comes up
+*findit tabmiss 
+
 ///// 1.UPDATE FILE DIRECTORY
 
 global gitfolder = "H:\gates-mobility-metrics"	// update path to your local mobility metrics repository folder
@@ -198,7 +201,7 @@ replace crime_rate_quality = 2 if coverage_indicator == 100 & coverage_indicator
 replace crime_rate_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
 replace crime_rate_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
 replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate == .
-
+*NYC
 foreach val in 005 047 081 085 061 {
 		
 	replace crime_rate_quality = 1 if state == "36" & county == "`val'"

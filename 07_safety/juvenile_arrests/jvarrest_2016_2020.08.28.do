@@ -327,3 +327,16 @@ codebook
 cd "H:\gates-mobility-metrics\07_safety\juvenile_arrests"
 
 export delimited using "2016_juvenile_arrest_by_county.csv", replace
+
+//run code to combine for subgroup file
+cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest"
+
+drop juvenile_arrests_under10 adult_under18
+
+gen subgroup_type = "race-ethnicity"
+
+gen subgroup = "All"
+
+save 2016_juvenile_arrest_by_county_forsubgroup, replace
+
+

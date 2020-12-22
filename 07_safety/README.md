@@ -9,7 +9,7 @@ These metrics use a clean county level crime dataset that can be found on ICPSR 
 
 The file also uses imputation to estimate crime counts for months of missing data by agency. More information on the dataset can be found here (https://www.openicpsr.org/openicpsr/project/108164/version/V4/view). 
 
-Unfortunatly, the variable MONTHSREPORTED_i was believed to be the number of months reported, but is actually the last month reported. For example, if an agency reported data in February and April, the value for MONTHSREPORTED_i for that agency would be 4 even though only 2 months were reported.We still believe there is value in this variable to highlight agencies with very very low coverage indicators and are therefore using the flawed variable to flag counties with low (3) data quality. Any county that is not flagged as low (3) data quality and doesnt have missing information is marked as medium (2) data quality. 
+Unfortunatly, the variable MONTHSREPORTED_i was believed to be the number of months reported, but is actually the last month reported. For example, if an agency reported data in February and April, the value for MONTHSREPORTED_i for that agency would be 4 even though only 2 months were reported.We still believe there is value in this variable to highlight agencies with very very low coverage indicators and are therefore using the flawed variable to flag counties with low (3) data quality. Any county that is not flagged as low (3) data quality and doesnt have missing information is marked as medium (2) data quality. There are five counties in New York City that have a data quality measure of high (1) because they were pulled from a different data source. 
 
 The metrics of interest from these data are violent crime (murder and nonnegligent manslaughter, forcible rape, robbery, and aggravated assault) and property crime (burglary, larceny-theft, motor vehicle theft, and arson). Rates are calculated as the number of crimes per 100,000 people using ACS county populations.  
 
@@ -29,14 +29,14 @@ When using county level crime statistics, it is important to keep in mind that t
 * Notes: This dataset is not inclusive of all counties and many counties are missing data from agencies that reside within that county. 
     * Limitations: Some agencies change reporting practices year to year. Therefore, year to year comparisons should be used with caution and a knowledge of agency reporting practices (UCR data from the web has footnotes that I can merge in, but this data does not). Imputation was used to estimate crime rates in unreported months, using the NACJD method. The coverage indicator provides an estimate of the amount of the population coverage by reporting agencies. The data quality index is used to assess the quality of data for each county using the coverage indicator variable. See notes about the flaws in this calculation above. 
 
-Counties with less then 80% coverage are marked as a 3, all other counties are marked as a 1 unless there are missing values. 
-	• 2017 dataset, about 83% of counties have a data quality index of 2 and about 17% have a data quality measure of 3. 
-	• 2015 dataset, about 85% of counties have a data quality index of 2 and about 15% have a data quality measure of 3. 
+Counties with less then 80% coverage are marked as a 3, all other counties are marked as a 2 unless there are missing values (with the exception of the five New York City counties). 
+	• 2017 dataset, about 83% of counties have a data quality index of 2 and about 17% have a data quality measure of 3. Less then 1% (5) counties have a data quality measure of 1.
+	• 2015 dataset, about 85% of counties have a data quality index of 2 and about 15% have a data quality measure of 3. Less then 1% (5) counties have a data quality measure of 1. 
 Data for the five counties that reside in NYC was pulled from NYS data. These data are likely very accurate, and have been given a quality index measure of 1, but they do not come from the same dataset as the rest of the counties. 
 
     * Missingness: 
-	• 2017 datase: about 0.22% (7) of counties are missing all crime data.Anout 0.39% (12) of counties are missing coverage information. 
-	• 2015 dataset: about 0.22% (7) of counties are missing all crime data.Anout 0.39% (12) of counties are missing coverage information. 
+	• 2017 datase: about 0.22% (7) of counties are missing all crime data.
+	• 2015 dataset: about 0.22% (7) of counties are missing all crime data.
 
 1. Change the file directory
 2. Import and clean all files

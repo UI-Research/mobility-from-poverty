@@ -1,10 +1,13 @@
 *********************************
 *	Safety Metrics				*
-*	Crime Rates - County 2015	*
-*	Lily Robin, 2020.12.15		*
+*	Crime Rates - County 2015 and 2017	*
+*	Lily Robin, 2020.12.22		*
 *********************************
 
 clear
+
+//to install run the below commented out code, click link, and then new install link that comes up
+*findit tabmiss 
 
 ///// 1.UPDATE FILE DIRECTORY
 
@@ -19,14 +22,14 @@ cd "$gitfolder"
 
 import delimited using "geographic-crosswalks\data\county-file.csv"
 
-*keep only 2017
+*keep only 2015
 tab year, m
 keep if year == 2015
 
 save "07_safety/crime/county_crosswalk_2015", replace
 
 
-*****County crime 2017
+*****County crime 2015
 clear
 
 cd "$gitfolder/07_safety/crime"
@@ -198,7 +201,7 @@ replace crime_rate_quality = 2 if coverage_indicator == 100 & coverage_indicator
 replace crime_rate_quality = 2 if coverage_indicator < 100 & coverage_indicator >= 80 & coverage_indicator != .
 replace crime_rate_quality = 3 if coverage_indicator < 80 & coverage_indicator != .
 replace crime_rate_quality = . if violent_crime_rate == . & property_crime_rate == .
-
+*NYC
 foreach val in 005 047 081 085 061 {
 		
 	replace crime_rate_quality = 1 if state == "36" & county == "`val'"
@@ -220,3 +223,16 @@ save 2015_crime_by_county, replace
 
 *export as CSV
 export delimited using "crimerate_county_2015.csv", replace
+
+//combine two years
+*run crimerates_countylevel-2017_2020.09.14.do
+
+append using 2017_crime_by_county
+
+save 2015_2017_crime_by_county, replace
+
+*not sure how this should be ordered, feel free to revise
+sort state county year
+
+*export as CSV
+export delimited using "crimerate_county_2015_2017.csv", replace

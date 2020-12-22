@@ -2,7 +2,7 @@
 *	Safety Metrics				*
 *	Arrests JV - County 2016	*
 *	Subgroup Type: Race			*
-*	Lily Robin, 2019.8.01		*
+*	Lily Robin, 2020.12.22		*
 *********************************
 
 ///// 1.UPDATE FILE DIRECTORY
@@ -11,6 +11,8 @@ cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest"
 
 
 ///// 2. IMPORT DATA
+
+***the read me includes directions on where to find data to download
 
 ***crosswalk file for county FIPS to ORI
 clear 
@@ -48,6 +50,11 @@ save fbi_crosswalk_clean, replace
 clear
 import delimited "children_10_17_race.csv"
 
+bysort countyfips: gen obs = _N
+tab obs
+*8 counties with only 2 rows
+drop obs
+
 *add "0" to beggining of countyfips as needed
 *can revise to cleaner substr code if desired
 tostring countyfips, replace
@@ -56,6 +63,8 @@ gen zero = "0"
 egen fip2 = concat(zero countyfips) if fip_len == 4
 replace countyfips = fip2 if fip_len == 4
 drop fip_len zero fip2
+
+replace single_race = "Other Races" if single_race == "All Other"
 
 save pop_10_17_race, replace
 
@@ -238,7 +247,7 @@ drop if _merge != 3
 *generate juvenile arrest rate
 gen juvenile_arrest_rate = (jb/child_10_17)*100000 if single_race == "Black"
 replace juvenile_arrest_rate = (jw/child_10_17)*100000 if single_race == "White"
-replace juvenile_arrest_rate = (jc/child_10_17)*100000 if single_race == "All Other"
+replace juvenile_arrest_rate = (jc/child_10_17)*100000 if single_race == "Other Races"
 
 drop jb jw jc obs _merge
 
@@ -292,7 +301,7 @@ drop countyfips _merge state_name county_name population nonreport state county 
 rename (state1 county1) (state county)
 
 *add labels
-label var juvenile_arrest_rate "rate of arrests of juveniles of race indicated by subgroup variable per 100,000 juveniles (age 10-17) of the same race in county"
+label var juvenile_arrest_rate "rate of arrests of juveniles of race indicated by subgroup variable per 100,000 juveniles (age 10-17) of the same race in county and for all juveniles for observations with a subgroup of All"
 
 
 *order variables appropriatly and sort dataset
@@ -302,11 +311,71 @@ gsort year state county
 
 save 2016_juvenile_arrest_by_county_race, replace
 
+*as a note, the entire state of FL is missing all data
+
+*check for 3 rows per county
+egen state_county = concat(state county), p("-")
+bysort state_county: gen obs = _N
+tab obs
+*8 with 1 all missing
+*8 with 2, missing Black 
+drop state_county obs
+
 tabmiss
 
 codebook
 
 *note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
+
+//add overall
+append using 2016_juvenile_arrest_by_county_forsubgroup
+
+save 2016_juvenile_arrest_by_county_race, replace
+
+//add rows for missing observations
+keep state county
+
+duplicates drop
+
+expand (4)
+
+gsort state county
+
+by state county: gen obs = _n
+
+gen subgroup = ""
+replace subgroup = "All" if obs == 1
+replace subgroup = "Black" if obs == 2
+replace subgroup = "White" if obs == 3
+replace subgroup = "Other Races" if obs == 4
+
+drop obs
+
+save expanded_formissing, replace
+
+use 2016_juvenile_arrest_by_county_race
+merge 1:1 state county subgroup using expanded_formissing
+
+gsort state county
+
+*extra rows for counties that are missing everything, drop
+by state county: gen obs = _N
+tab obs
+drop obs
+drop if subgroup == ""
+by state county: gen obs = _N
+tab obs
+drop obs
+drop _merge
+
+*add in type when missing
+replace subgroup_type = "race-ethnicity" if subgroup_type == ""
+
+*order and sort variables appropriatly and sort dataset
+order year state county subgroup_type subgroup juvenile_arrest_rate juvenile_arrest_rate_quality, first
+
+sort state county year subgroup
+
 
 *export as CSV
 cd "H:\gates-mobility-metrics\07_safety\juvenile_arrests"
