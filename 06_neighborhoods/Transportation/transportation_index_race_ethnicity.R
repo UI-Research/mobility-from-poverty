@@ -102,7 +102,12 @@ acs_county_pop <- rename(acs_county_pop, total_population = B01003_001E)
     #by the tract with N/A transit values (proportion_na_tracts).
     #set data quality to 3 if the proportion missing is higher than 25% of the county,
     #and to 2 if higher than 10%.
-datacheck1 <- left_join(acs_county_pop, datacheck1, by = "GEOID") %>%
+datacheck1 <- left_join(acs_county_pop, datacheck1, by = "GEOID")
+stopifnot(
+  anti_join(acs_county_pop, datacheck1, by = "GEOID") %>%
+    nrow() == 0
+)
+datacheck1 <- datacheck1 %>%
   mutate(proportion_na_tracts = (missing_pop_county_sum/total_population)) %>%
   mutate(proportion_na_tracts = round(proportion_na_tracts, digits = 2)) %>%
   mutate(datacheck1 = case_when(
@@ -129,7 +134,12 @@ datacheck2 <- full_data %>%
     #made up by the tract with 0 households at 50%AMI (proportion_nohh)
     #set data quality to 3 if the proportion missing is higher than 25% of the county,
     #and to 2 if higher than 10%.
-datacheck2 <- left_join(acs_county_pop, datacheck2, by = "GEOID") %>%
+datacheck2 <- left_join(acs_county_pop, datacheck2, by = "GEOID")
+stopifnot(
+  anti_join(acs_county_pop, datacheck2, by = "GEOID") %>%
+    nrow() == 0
+)
+datacheck2 <- datacheck2 %>%
   mutate(proportion_nohh = (nohh_tract_county_sum/total_population)) %>%
   mutate(proportion_nohh = round(proportion_nohh, digits = 2)) %>%
   mutate(datacheck2 = case_when(
@@ -157,7 +167,18 @@ county_transport_stats <- full_data %>%
 
 #add data quality measures from the tests
 county_transport_stats <- left_join(county_transport_stats, datacheck1, by = "GEOID")
-county_transport_stats <- left_join(county_transport_stats, datacheck2, by = "GEOID") %>% 
+stopifnot(
+  anti_join(county_transport_stats, datacheck1, by = "GEOID") %>%
+    nrow() == 0
+)
+
+county_transport_stats <- left_join(county_transport_stats, datacheck2, by = "GEOID")
+stopifnot(
+  anti_join(county_transport_stats, datacheck2, by = "GEOID") %>%
+    nrow() == 0
+)
+
+county_transport_stats <- county_transport_stats %>% 
   mutate(
     mean_tcost_quality = case_when(
       datacheck1 == 2 | datacheck2 == 2 ~ 2,
@@ -170,6 +191,7 @@ county_transport_stats <- left_join(county_transport_stats, datacheck2, by = "GE
   select(-datacheck1, -datacheck2, -GEOID)
 
 rm(datacheck1, datacheck2)
+
 
 #STEP 4: add the breakdown by race. First, need to create categories:
   #1. > 60% white
@@ -203,7 +225,12 @@ datacheck3 <- full_data %>%
   mutate(datacoverageflag = if_else((perc_total < 0.9 | perc_total > 1.05), total_population, 0)) %>%
   group_by(GEOID) %>%
   summarise(datacoverageflag_pop = sum(datacoverageflag))
-datacheck3 <- left_join(acs_county_pop, datacheck3, by = "GEOID") %>%
+datacheck3 <- left_join(acs_county_pop, datacheck3, by = "GEOID") 
+stopifnot(
+  anti_join(acs_county_pop, datacheck3, by = "GEOID") %>%
+    nrow() == 0
+)
+datacheck3 <- datacheck3 %>%
   mutate(proportion_datacoverageflag = (datacoverageflag_pop/total_population),
          proportion_datacoverageflag = round(proportion_datacoverageflag, digits = 2),
          mean_tcost_quality = case_when(
@@ -231,6 +258,10 @@ county_transport_stats_by_race_interim <- full_data %>%
   add_column(year = 2016, .before = "state") %>%
   mutate(GEOID = str_c(state, county))
 county_transport_stats_by_race_interim <- left_join(county_transport_stats_by_race_interim, datacheck3, by = "GEOID")
+stopifnot(
+  anti_join(county_transport_stats_by_race_interim, datacheck3, by = "GEOID") %>%
+    nrow() == 0
+)
 rm(datacheck3)
 
   #expand the data to have 3 values for each county
@@ -249,9 +280,14 @@ rm(county_expander)
 county_transport_stats_by_race_final <- rbind(county_transport_stats_by_race, county_transport_stats)
 
     #And format to fit data standards
-county_transport_stats_by_race_final <- county_transport_stats_by_race_final[, c(1, 2, 3, 9, 4, 5, 6, 7, 8)]
+county_transport_stats_by_race_final <- county_transport_stats_by_race_final[, c("year", "state", "county", "subgroup_type", "subgroup", "mean_tcost", "mean_transit", "mean_tcost_quality", "mean_transit_quality")]
 county_transport_stats_by_race_final <- county_transport_stats_by_race_final %>%
   arrange(year, state, county, subgroup_type, subgroup)
 
-    #Write out final CSV
+    #Write out final CSV for subgroup analysis
 write_csv(county_transport_stats_by_race_final, "output/county_transport_stats_by_race_final.csv")
+
+    #Write out final CSV for county transportation stats only
+county_transport_stats <- county_transport_stats %>%
+  select(-subgroup, -subgroup_type)
+write_csv(county_transport_stats, "output/county_transport_stats.csv")
