@@ -1,0 +1,198 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    css: !expr here::here("10_construct-database", "www", "web_report.css")
+    toc: TRUE
+    toc_float: TRUE
+    editor_options: 
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+```{r}
+files <- c(
+  here("04_health", "final_data", "neonatal_health_subgroup.csv")
+)
+
+```
+
+# Multi-year Database
+
+```{r}
+read_csv_and_clean <- function(file) {
+  
+  read_csv(file) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0"))
+  
+}
+
+db <- map(files, read_csv_and_clean) %>%
+  reduce(full_join, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+
+frame <- 
+  bind_rows(
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
+      subgroup_type = c("all"),
+      subgroup = c("All")
+    ),
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+    )
+  ) %>%
+  arrange(year, state, county, subgroup_type, subgroup)
+  
+db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+
+stopifnot(
+  nrow(db) == nrow(frame)
+)
+
+```
+
+# Recent-year Database
+
+```{r}
+read_csv_recent <- function(file) {
+  
+  file <- read_csv(file)  %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    filter(year == max(year)) %>%
+    select(-year)
+  
+  return(file)
+  
+}
+
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup"))
+
+
+frame <- 
+  bind_rows(
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
+      subgroup_type = c("all"),
+      subgroup = c("All")
+    ),
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+    )
+  ) %>%
+  arrange(year, state, county, subgroup_type, subgroup) %>%
+  filter(year == max(year)) %>%
+  select(-year)
+
+db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
+
+stopifnot(nrow(frame) == nrow(db_recent))
+
+```
+
+## Quality and Completeness
+
+### Full Database
+
+missing metrics
+metrics rated 1
+metrics rated 2
+metrics rated 3
+
+```{r}
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality)
+
+```
+
+### Recent Database
+
+```{r}
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+```
+
+## Test
+
+### Full Database
+
+```{r}
+db_values <- db %>%
+  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb"))
+
+db_quality <- db %>%
+  select(ends_with("_quality"))
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+
+db_values %>%
+  assert(within_bounds(0, 1), lbw)
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### Recent Database
+
+```{r}
+
+
+
+
+```
+
+## Write the File
+
+```{r}
+write_csv(db_recent, here("data", "mobility-metrics_race-ethnicity.csv"))
+
+```
+
+
+
