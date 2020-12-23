@@ -180,8 +180,8 @@ datacheck2 <- datacheck2 %>%
 #Also, formats data and adds data quality checks.
 county_transport_stats <- full_data %>%
   group_by(state, county) %>%
-  summarize(mean_tcost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
-            mean_transit = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
+  summarize(transit_cost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
+            transit_trips = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
   ungroup() %>%
   add_column(year = 2016, .before = "state") %>%
   mutate(GEOID = str_c(state, county, collapse = NULL))
@@ -203,12 +203,12 @@ stopifnot(
 
 county_transport_stats <- county_transport_stats %>% 
   mutate(
-    mean_tcost_quality = case_when(
+    transit_cost_quality = case_when(
       datacheck1 == 2 | datacheck2 == 2 ~ 2,
       datacheck1 == 3 | datacheck2 == 3 ~ 3,
       TRUE ~ 1
     ),
-    mean_transit_quality = mean_tcost_quality,
+    transit_trips_quality = transit_cost_quality,
     subgroup = "All",
     subgroup_type = "All") %>%
   select(-datacheck1, -datacheck2, -GEOID)
@@ -257,12 +257,12 @@ stopifnot(
 
 datacheck3 <- datacheck3 %>%
   mutate(proportion_datacoverageflag = (datacoverageflag_pop/total_population),
-         mean_tcost_quality = case_when(
+         transit_cost_quality = case_when(
                               proportion_datacoverageflag >= 0.25 ~ 3,
                               proportion_datacoverageflag >= 0.10 ~ 2,
                               TRUE ~ 1),
-         mean_transit_quality = mean_tcost_quality) %>%
-  select(GEOID, mean_tcost_quality, mean_transit_quality)
+         transit_trips_quality = transit_cost_quality) %>%
+  select(GEOID, transit_trips_quality, transit_cost_quality)
   
   #1151 counties have some incomplete race data.
   #605 counties have tracts with incomplete race data making up 10% or more 
@@ -276,8 +276,8 @@ datacheck3 <- datacheck3 %>%
   #and join to data quality check
 county_transport_stats_by_race_interim <- full_data %>%
   group_by(state, county, race_category) %>%
-  summarize(mean_tcost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
-            mean_transit = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
+  summarize(transit_cost = weighted.mean(x = tcost_idx, w = num_hh, na.rm = TRUE),
+            transit_trips = weighted.mean(x = trans_idx, w = num_hh, na.rm = TRUE)) %>%
   ungroup() %>%
   add_column(year = 2016, .before = "state") %>%
   mutate(GEOID = str_c(state, county))
@@ -308,7 +308,7 @@ rm(county_expander)
 county_transport_stats_by_race_final <- bind_rows(county_transport_stats_by_race, county_transport_stats)
 
     #And format to fit data standards
-county_transport_stats_by_race_final <- county_transport_stats_by_race_final[, c("year", "state", "county", "subgroup_type", "subgroup", "mean_tcost", "mean_transit", "mean_tcost_quality", "mean_transit_quality")]
+county_transport_stats_by_race_final <- county_transport_stats_by_race_final[, c("year", "state", "county", "subgroup_type", "subgroup", "transit_cost", "transit_trips", "transit_cost_quality", "transit_trips_quality")]
 
 county_transport_stats_by_race_final <- county_transport_stats_by_race_final %>%
   arrange(year, state, county, subgroup_type, subgroup)
