@@ -18,16 +18,19 @@ The Low Transportation Cost Index and Transit Trips Index are both calculated "f
 Outline the process for creating the data 
 (1) Download the AFFH data from HUD and import into R, saving the variables of interest: the geographic variables, the two transit indexes, and the number of households < 50% AMI.
 (2) Perform a variety of checks on the data to flag places where data quality might not be the highest. See limitations and missingness descriptions above and the R script for more detail.
-(3) Generate county-level average index values from the tract-level data. Use the number of households < 50% AMI as the weights.
+(3) Generate county-level average index values from the tract-level data. Use the number of households < 50% AMI as the weight.
 
-Additional notes for adding race data:
-We decided to use the race information in the AFFH dataset for households at 50%AMI 
-since we used that number for the population weighting, and because it most closely 
-approximates the transit measures. There are several limitations to this choice.
-There is no 'other' race category, so it is unclear if missing data is due to
-not fitting into the limited options (white, Black, Hispanic, Asian) or if it is,
-in fact, missing data. There are 328 tracts with no race data because the number
-of households at 50% AMI is zero. 20 tracts have 0 values in all race categories.
+Additional notes for adding the breakdown by race:
+The AFFH dataset contains several different race variables - for the total population,
+for households, and for households at various income brackets. To most closely 
+align with the transit indexes and the initial population-weighted calculation we
+did, we chose to use the race variables for households at 50% AMI.
+
+There are several limitations to this choice. There is no 'other' race category, 
+so it is unclear if missing data is due to not fitting into the limited options 
+(white, Black, Hispanic, Asian) or if it is, in fact, missing data.
+There are 328 tracts with no race data because the number of households at 50% AMI is zero. 
+20 tracts have 0 values in all race categories.
 In 223 tracts, we have race information on less than <50% of 50%AMI households. 
 In 342 tracts, we have race information on more than 105% of 50%AMI households 
 (meaning there must be some overlap or data issue). We tried to account for this

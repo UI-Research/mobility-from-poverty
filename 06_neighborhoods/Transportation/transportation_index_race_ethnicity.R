@@ -26,9 +26,19 @@ affh_transit_data <- read_csv("data/AFFH_tract_AFFHT0006_July2020.csv",
   #able to join it to ACS data later for data checks.
 
 affh_transit_data <- affh_transit_data %>%
-  select(GEOID = geoid, state, state_name, county, county_name, tract,
-         tcost_idx, trans_idx, num_hh = hh_lt50ami_all, hh_white_lt50ami,
-         hh_black_lt50ami, hh_hisp_lt50ami, hh_ai_pi_lt50ami) %>%
+  select(GEOID = geoid, 
+                 state, 
+                 state_name, 
+                 county, 
+                 county_name, 
+                 tract,
+                 tcost_idx, 
+                 trans_idx, 
+                 num_hh = hh_lt50ami_all, 
+                 hh_white_lt50ami,
+                 hh_black_lt50ami, 
+                 hh_hisp_lt50ami, 
+                 hh_ai_pi_lt50ami) %>%
   filter(state_name != "Puerto Rico") %>%
   mutate(GEOID = str_pad(string = GEOID, width = 11, side = "left", pad = "0"))
 
@@ -61,7 +71,8 @@ full_data <- left_join(acs_tract_pop, affh_transit_data, by = "GEOID") %>%
   filter(total_population > 0) %>%
   mutate(state = str_pad(string = state, width = 2, side ="left", pad = "0")) %>%
   mutate(county = str_pad(string = county, width = 3, side = "left", pad = "0")) %>%
-  mutate(GEOID = str_c(state, county))
+  mutate(GEOID = str_c(state, county)) %>%
+  select(-B01003_001M)
 
   #Test with anti_join to make sure it worked properly.
 stopifnot(
@@ -77,6 +88,12 @@ stopifnot(
     #WHAT PERCENTAGE OF THEIR COUNTY DO THEY MAKE UP? 
    #Flag tract-level population for tracts in question 
    #(tracts that have population but do not have transit index values)
+stopifnot(
+  full_data %>%
+    filter(is.na(tcost_idx) | is.na(trans_idx)) %>%
+    nrow() == 179
+)
+
 datacheck1 <- full_data %>%
   mutate(na_tract_pop = if_else(is.na(tcost_idx), total_population, 0)) %>%
   group_by(GEOID) %>%
@@ -96,25 +113,28 @@ acs_county_pop <- map_dfr(
 )
 
     #rename county pop variable to use later
-acs_county_pop <- rename(acs_county_pop, total_population = B01003_001E)
+acs_county_pop <- acs_county_pop %>%
+  rename(total_population = B01003_001E) %>%
+  select(-B01003_001M)
 
     #Merge datasets and calculate the percent of the county population made up 
     #by the tract with N/A transit values (proportion_na_tracts).
     #set data quality to 3 if the proportion missing is higher than 25% of the county,
     #and to 2 if higher than 10%.
 datacheck1 <- left_join(acs_county_pop, datacheck1, by = "GEOID")
+
 stopifnot(
   anti_join(acs_county_pop, datacheck1, by = "GEOID") %>%
     nrow() == 0
 )
+
 datacheck1 <- datacheck1 %>%
-  mutate(proportion_na_tracts = (missing_pop_county_sum/total_population)) %>%
-  mutate(proportion_na_tracts = round(proportion_na_tracts, digits = 2)) %>%
-  mutate(datacheck1 = case_when(
-          proportion_na_tracts >= 0.25 ~ 3,
-          proportion_na_tracts >= 0.10 ~ 2,
-          TRUE ~ 1)
-         ) %>%
+  mutate(proportion_na_tracts = (missing_pop_county_sum/total_population),
+         datacheck1 = case_when(
+                      proportion_na_tracts >= 0.25 ~ 3,
+                      proportion_na_tracts >= 0.10 ~ 2,
+                      TRUE ~ 1)
+                      ) %>%
   select(GEOID, datacheck1)
 
   ###DATA CHECK #2: Tracts that have index values but no households under 50% AMI
@@ -135,18 +155,19 @@ datacheck2 <- full_data %>%
     #set data quality to 3 if the proportion missing is higher than 25% of the county,
     #and to 2 if higher than 10%.
 datacheck2 <- left_join(acs_county_pop, datacheck2, by = "GEOID")
+
 stopifnot(
   anti_join(acs_county_pop, datacheck2, by = "GEOID") %>%
     nrow() == 0
 )
+
 datacheck2 <- datacheck2 %>%
-  mutate(proportion_nohh = (nohh_tract_county_sum/total_population)) %>%
-  mutate(proportion_nohh = round(proportion_nohh, digits = 2)) %>%
-  mutate(datacheck2 = case_when(
-    proportion_nohh >= 0.25 ~ 3,
-    proportion_nohh >= 0.10 ~ 2,
-    TRUE ~ 1)
-       ) %>%
+  mutate(proportion_nohh = (nohh_tract_county_sum/total_population),
+         datacheck2 = case_when(
+                       proportion_nohh >= 0.25 ~ 3,
+                       proportion_nohh >= 0.10 ~ 2,
+                        TRUE ~ 1)
+                       ) %>%
   select(GEOID, datacheck2)
 
 
@@ -167,12 +188,14 @@ county_transport_stats <- full_data %>%
 
 #add data quality measures from the tests
 county_transport_stats <- left_join(county_transport_stats, datacheck1, by = "GEOID")
+
 stopifnot(
   anti_join(county_transport_stats, datacheck1, by = "GEOID") %>%
     nrow() == 0
 )
 
 county_transport_stats <- left_join(county_transport_stats, datacheck2, by = "GEOID")
+
 stopifnot(
   anti_join(county_transport_stats, datacheck2, by = "GEOID") %>%
     nrow() == 0
@@ -186,8 +209,8 @@ county_transport_stats <- county_transport_stats %>%
       TRUE ~ 1
     ),
     mean_transit_quality = mean_tcost_quality,
-    subgroup = "all",
-    subgroup_type = "all") %>%
+    subgroup = "All",
+    subgroup_type = "All") %>%
   select(-datacheck1, -datacheck2, -GEOID)
 
 rm(datacheck1, datacheck2)
@@ -206,14 +229,13 @@ rm(datacheck1, datacheck2)
 full_data <- full_data %>%
   mutate(perc_white = if_else(num_hh > 0, hh_white_lt50ami / num_hh, 0), 
          perc_POC = if_else(num_hh > 0, ((hh_black_lt50ami + hh_hisp_lt50ami + hh_ai_pi_lt50ami) / num_hh), 0),
-         perc_total = perc_white + perc_POC,
-         perc_total = round(perc_total, digits = 2)) %>%
+         perc_total = perc_white + perc_POC) %>%
   mutate(
     race_category = case_when(
       is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
-      perc_white >= 0.6 ~ "majority_white",
-      perc_POC >= 0.6 ~ "majority_poc",
-      perc_white >= 0.4 | perc_POC >= 0.4 ~ "no_majority",
+      perc_white >= 0.6 ~ "Predominantly White",
+      perc_POC >= 0.6 ~ "Predominantly People of Color",
+      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
       perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
     )
   )
@@ -225,18 +247,20 @@ datacheck3 <- full_data %>%
   mutate(datacoverageflag = if_else((perc_total < 0.9 | perc_total > 1.05), total_population, 0)) %>%
   group_by(GEOID) %>%
   summarise(datacoverageflag_pop = sum(datacoverageflag))
+
 datacheck3 <- left_join(acs_county_pop, datacheck3, by = "GEOID") 
+
 stopifnot(
   anti_join(acs_county_pop, datacheck3, by = "GEOID") %>%
     nrow() == 0
 )
+
 datacheck3 <- datacheck3 %>%
   mutate(proportion_datacoverageflag = (datacoverageflag_pop/total_population),
-         proportion_datacoverageflag = round(proportion_datacoverageflag, digits = 2),
          mean_tcost_quality = case_when(
-          proportion_datacoverageflag >= 0.25 ~ 3,
-          proportion_datacoverageflag >= 0.10 ~ 2,
-          TRUE ~ 1),
+                              proportion_datacoverageflag >= 0.25 ~ 3,
+                              proportion_datacoverageflag >= 0.10 ~ 2,
+                              TRUE ~ 1),
          mean_transit_quality = mean_tcost_quality) %>%
   select(GEOID, mean_tcost_quality, mean_transit_quality)
   
@@ -257,30 +281,35 @@ county_transport_stats_by_race_interim <- full_data %>%
   ungroup() %>%
   add_column(year = 2016, .before = "state") %>%
   mutate(GEOID = str_c(state, county))
+
 county_transport_stats_by_race_interim <- left_join(county_transport_stats_by_race_interim, datacheck3, by = "GEOID")
+
 stopifnot(
   anti_join(county_transport_stats_by_race_interim, datacheck3, by = "GEOID") %>%
     nrow() == 0
 )
+
 rm(datacheck3)
 
   #expand the data to have 3 values for each county
 county_expander <- expand_grid(
   count(county_transport_stats_by_race_interim, year, state, county) %>% select(-n),
-  race_category = c("majority_white", "majority_poc", "no_majority")
+  race_category = c("Predominantly White", "Predominantly People of Color", "No Predominant Racial Group")
   )
 
 county_transport_stats_by_race <- left_join(county_expander, county_transport_stats_by_race_interim, by = c("year", "state", "county", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category) %>%
   select(-GEOID)
+
 rm(county_expander)
 
     #Join the race breakdown dataset to the original dataset
-county_transport_stats_by_race_final <- rbind(county_transport_stats_by_race, county_transport_stats)
+county_transport_stats_by_race_final <- bind_rows(county_transport_stats_by_race, county_transport_stats)
 
     #And format to fit data standards
 county_transport_stats_by_race_final <- county_transport_stats_by_race_final[, c("year", "state", "county", "subgroup_type", "subgroup", "mean_tcost", "mean_transit", "mean_tcost_quality", "mean_transit_quality")]
+
 county_transport_stats_by_race_final <- county_transport_stats_by_race_final %>%
   arrange(year, state, county, subgroup_type, subgroup)
 
@@ -290,4 +319,5 @@ write_csv(county_transport_stats_by_race_final, "output/county_transport_stats_b
     #Write out final CSV for county transportation stats only
 county_transport_stats <- county_transport_stats %>%
   select(-subgroup, -subgroup_type)
+
 write_csv(county_transport_stats, "output/county_transport_stats.csv")
