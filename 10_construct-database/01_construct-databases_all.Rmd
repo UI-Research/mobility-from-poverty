@@ -1,0 +1,204 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    css: !expr here::here("10_construct-database", "www", "web_report.css")
+    toc: TRUE
+    toc_float: TRUE
+    editor_options: 
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+```{r eval = FALSE}
+
+```
+
+
+```{r}
+files <- c(
+  here("geographic-crosswalks", "data", "county-file.csv"),
+  here("01_financial-well-being", "metrics_income.csv"),
+  here("01_financial-well-being", "share_debt_2018.csv"), 
+  here("02_housing", "metrics_housing.csv"),
+  here("02_housing", "homelessness.csv"),
+  here("03_family", "metrics_famstruc.csv"),
+  here("04_health", "final_data", "hpsa_2020.csv"),
+  here("04_health", "final_data", "neonatal_health.csv"),
+  here("05_local-governance", "descriptive-representation", "descriptive-representation.csv"),
+  here("05_local-governance", "voter-turnout", "voter-turnout.csv"),
+  here("06_neighborhoods", "environment", "county_level_enviro.csv"),
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure.csv"),
+  here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure.csv"),
+  here("06_neighborhoods", "transportation", "county_transport_stats_final.csv"),
+  here("07_safety", "crime", "crimerate_county_2017.csv"),
+  here("07_safety", "juvenile_arrests", "jvarrestrate_county_2016.csv"),
+  here("08_education", "metrics_college.csv"),
+  here("08_education", "metrics_preschool.csv"),
+  here("08_education", "SEDA.csv"),
+  here("08_education", "FRPL.csv"),
+  here("09_employment", "metrics_employment.csv"),
+  here("09_employment", "metrics_wage_ratio.csv")
+)
+
+```
+
+
+# Multi-year Database
+
+```{r}
+read_csv_and_clean <- function(file) {
+  
+  read_csv(file) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0"))
+  
+}
+
+# construct multiyear database
+db <- map(files, read_csv_and_clean) %>%
+  reduce(left_join, by = c("year", "state", "county"))
+
+```
+
+# Recent-year Database
+
+```{r}
+read_csv_recent <- function(file) {
+  
+  file <- read_csv(file)  %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    filter(year == max(year)) %>%
+    select(-year)
+  
+  return(file)
+  
+}
+
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(left_join, by = c("state", "county"))
+
+
+
+```
+
+## Quality and Completeness
+
+### Full Database
+
+missing metrics
+metrics rated 1
+metrics rated 2
+metrics rated 3
+
+```{r}
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality)
+
+```
+
+### Recent Database
+
+```{r}
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+```
+
+## Test
+
+### Full Database
+
+```{r}
+db_values <- db %>%
+  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb"))
+
+db_quality <- db %>%
+  select(ends_with("_quality"))
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+
+db_values %>%
+  assert(within_bounds(0, Inf), starts_with("pctl_")) %>%
+  assert(within_bounds(0, 1), share_debt_coll) %>%
+  assert(within_bounds(0, Inf), share_affordable_80_ami, share_affordable_50_ami) %>%
+  assert(within_bounds(0, Inf), homeless_count) %>%
+  assert(within_bounds(0, 1), homeless_share) %>%
+  assert(within_bounds(0, 1), starts_with("famstruc_")) %>%
+  assert(in_set(0, 1), hpsa_yn) %>%
+  assert(within_bounds(0, 1), lbw) %>%
+  assert(within_bounds(0, Inf), asian_other, black_nonhispanic, hispanic, white_nonhispanic) %>%
+  assert(within_bounds(0, 1), election_turnout) %>%
+  assert(within_bounds(0, 100), haz_idx) %>%
+  assert(within_bounds(0, 1), ends_with("exposure")) %>%
+  assert(within_bounds(0, 100), transit_cost, transit_trips) %>%
+  assert(within_bounds(0, 100000), ends_with("_crime_rate")) %>%
+  #assert(within_bounds(0, 100000), starts_with("juvenile_arrest")) %>%
+  assert(within_bounds(0, 1), share_hs_degree, share_in_preschool) %>%
+  assert(within_bounds(-1, 10), learning_rate) %>%
+  assert(within_bounds(0, 1), starts_with("frpl40_")) %>%
+  assert(within_bounds(0, 1), share_employed) %>%
+  assert(within_bounds(0, 10), average_to_living_wage_ratio)
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### Recent Database
+
+```{r}
+
+
+
+
+```
+
+## Write the File
+
+```{r}
+write_csv(db_recent, here("10_construct-database", "mobility-metrics.csv"))
+
+```
+
+
+
