@@ -50,8 +50,8 @@ clear
 		tostring year, replace format (%09.0f)
 		merge m:1 zipcode using "$o_o_exper_data_temp\debt03ACS_zip.dta"
 		tab _merge, m
-	*drop territory data:
-		drop if _merge == 2 //drop credit bureau records registered to P.O. boxes since we don't know the racial makeup of their actual residential areas...
+	*drop ACS data with no zips:
+		drop if _merge == 2
 		drop _merge
 		
 		
