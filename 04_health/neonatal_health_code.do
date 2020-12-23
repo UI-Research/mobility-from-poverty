@@ -435,11 +435,19 @@ keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality	// keep only v
 		label var lbw "share low birth weight births among births with nonmissing birth weight data"
 		label var lbw_lb "share low birthweight births: lower bound 95 percent confidence interval"
 		label var lbw_ub "share low birthweight births: upper bound 95 percent confidence interval"
-	format lbw %04.2f									// formate to include leading zero and limit to two decimal places per guidance 
-	format lbw_lb  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
-	format lbw_ub  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
+	format lbw %04.2f									// format to include leading zero and limit to two decimal places per guidance 
+	format lbw_lb  %04.2f								// format to include leading zero and limit to two decimal places per guidance
+	format lbw_ub  %04.2f								// format to include leading zero and limit to two decimal places per guidance
+gen str3 new_county = string(county, "%03.0f")			// fix to include leading zeroes in county variables
+	tab county new_county if county<10					// quick check to confirm leading zeroes
+	drop county
+	rename new_county county
+gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes in state variable
+	tab state new_state if state<10						// quick check to confirm leading zeroes
+	drop state
+	rename new_state state
 order year state county lbw lbw_lb lbw_ub lbw_quality	// order
-sort year state county
+sort year state county									// sort
 
 save "$gitfolder/04_health/data/neonatal_health.dta", replace
 export delimited using "$gitfolder/04_health/final_data/neonatal_health.csv", replace
@@ -453,9 +461,17 @@ keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality subgroup_type 
 		label var lbw "share low birth weight births among births with nonmissing birth weight data"
 		label var lbw_lb "share low birthweight births: lower bound 95 percent confidence interval"
 		label var lbw_ub "share low birthweight births: upper bound 95 percent confidence interval"
-	format lbw %04.2f									// formate to include leading zero and limit to two decimal places per guidance 
-	format lbw_lb  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
-	format lbw_ub  %04.2f								// formate to include leading zero and limit to two decimal places per guidance
+	format lbw %04.2f									// format to include leading zero and limit to two decimal places per guidance 
+	format lbw_lb  %04.2f								// format to include leading zero and limit to two decimal places per guidance
+	format lbw_ub  %04.2f								// format to include leading zero and limit to two decimal places per guidance
+gen str3 new_county = string(county, "%03.0f")			// fix to include leading zeroes in county variable
+	tab county new_county if county<10					// quick check to confirm leading zeroes
+	drop county
+	rename new_county county
+gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes in state variable
+	tab state new_state if state<10						// quick check to confirm leading zeroes
+	drop state
+	rename new_state state
 order year state county lbw lbw_lb lbw_ub lbw_quality subgroup_type subgroup	// order
 sort year state county subgroup_type subgroup
 
