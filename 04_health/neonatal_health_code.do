@@ -150,7 +150,7 @@ gen subgroup = .
 	replace subgroup = 2 if hisp==1
 	replace subgroup = 3 if nhother==1
 	replace subgroup = 4 if nhwhite==1
-label define subl 0 "All" 1 "Black, non-Hispanic" 2 "Hispanic" 3 "Other Races and Ethnicities" 4 "White, Non-Hispanic"
+label define subl 0 "All" 1 "Black, Non-Hispanic" 2 "Hispanic" 3 "Other Races and Ethnicities" 4 "White, Non-Hispanic"
 	label val subgroup subl
 drop nhblack hisp nhother nhwhite
 
@@ -472,7 +472,7 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 	tab state new_state if state<10						// quick check to confirm leading zeroes
 	drop state
 	rename new_state state
-order year state county lbw lbw_lb lbw_ub lbw_quality subgroup_type subgroup	// order
+order year state county subgroup_type subgroup lbw lbw_lb lbw_ub lbw_quality 	// order
 sort year state county subgroup_type subgroup
 
 append using "$gitfolder/04_health/data/neonatal_health.dta"					// append aggregate county-level estimates to subgroup file
