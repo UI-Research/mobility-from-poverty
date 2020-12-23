@@ -36,7 +36,8 @@ acs <- acs %>%
 # AFFH data is available via the Urban Institute Data Catalog here: 
 # https://datacatalog.urban.org/dataset/data-and-tools-fair-housing-planning/resource/12d878f5-efcc-4a26-93e7-5a3dfc505819 
 # code book is here: https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2020/07/31/AFFH-Data-Documentation.pdf
-affh <- read_csv("raw/AFFH_tract_AFFHT0006_July2020.csv", 
+
+affh <- read_csv("data/AFFH_tract_AFFHT0006_July2020.csv", 
                            col_types = cols(
                              .default = col_double(),
                              category = col_character(),
