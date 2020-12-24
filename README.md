@@ -79,7 +79,7 @@ todo(aaron): Include a table with variables and information about the variables.
 * Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
 * Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
-* **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
+* **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
 * Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
@@ -89,7 +89,7 @@ todo(aaron): Include a table with variables and information about the variables.
 ## GitHub Standards
 
 * Do not work on the `master` branch. 
-* **Do not add any data to the repository.** Each subfolder should contain a `data/` folder for intermediate and final data files. The `data/` folder should be added to the `.gitignore`. 
+* **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * Regularly pull from the remote `master` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
 * The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
 
@@ -124,7 +124,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 * All final files should be in the `.csv` format. The files should be delimited with a comma. 
 * Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
 * Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
-* Important intermediate files should be added to Box. Final data files should be added to Box.
+* Important intermediate files should be added to Box. Final data files should be added to Box and the GitHub repository.
 
 ### Joining variables
 
@@ -146,7 +146,7 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 ### Sorting
 
 * All files should be sorted by `year`, `state`, and `county`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
-* SUbgroup files should be sorted by `year`, `state`, `county`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
+* Subgroup files should be sorted by `year`, `state`, `county`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
 
 ### Standard Errors
 
@@ -175,7 +175,7 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 
 ### Subgroups File Structure
 
-A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows. This database will be in a long format. For example, if there are four subgroups then there should be 3,142x4 = 12,568 observations per year. This may seem foreign to some Stata and SAS programmers but it has several advantages.  
+A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows. This database will be in a long format and contain the "all" group. For example, if there are four subgroups then there should be 3,142x4 + 3,142x1 = 15,710 observations per year. This may seem foreign to some Stata and SAS programmers but it has several advantages.  
 
 1. It limits the challenges in standardization of naming conventions and the number of variables. For example, imagine adding four subgroups in a wide format. This would mean adding four variables, four lower bounds, four upper bounds, and four quality metrics. In addition to being unwieldy, it would result in burdensome variable names (e.g. `share_debt_coll_nonhispanic_white_quality1). 
 2. This format is [tidy](https://www.jstatsoft.org/article/view/v059i10) (Wickham, 2014) and has many appealing features for data analysis.  
