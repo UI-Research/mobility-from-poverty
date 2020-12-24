@@ -72,7 +72,7 @@ Counties with 100% coverage are marked as a 1, counties with between 100 and 80%
 
     * Missingness: 
 	• overall file: 493 counties (16%) are missing arrest data. 
-	* file by race: 4041 counties about 43%) are missing arrest data by race and 8 counties (less then 1 %) are missing population infromation by race. 
+	* file by race: 4064 counties about (43%) are missing arrest data by race. 
 
 1. change the file directory listed after the "cd" command on line 8 and copy all source files to the file directory location you chose. Files can be found in the Box folder: Box Sync\Metrics Database\Safety\juvenile_arrest
 2. import all files
