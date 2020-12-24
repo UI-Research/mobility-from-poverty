@@ -34,19 +34,8 @@ library(gt)
 ```
 
 ```{r}
-read_csv(here("08_education", "SEDA_all_subgroups.csv")) %>%
-  filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
-  filter(year == 2015) %>%
-  write_csv(here("08_education", "SEDA_race-ethnicity.csv"))
-
-
-
-```
-
-```{r}
 files <- c(
-  here("04_health", "final_data", "neonatal_health_subgroup.csv"),
-  here("08_education", "SEDA_race-ethnicity.csv")
+  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_race.csv")
 )
 
 ```
@@ -63,7 +52,8 @@ read_csv_and_clean <- function(file) {
 }
 
 db <- map(files, read_csv_and_clean) %>%
-  reduce(full_join, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+  reduce(full_join, by = c("year", "state", "county", "subgroup_type", "subgroup")) %>%
+  filter(state != "02" & county != "270")
 
 frame <- 
   bind_rows(
@@ -75,7 +65,7 @@ frame <-
     expand_grid(
       read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
       subgroup_type = c("race-ethnicity"),
-      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+      subgroup = c("Black", "Other Races", "White")
     )
   ) %>%
   arrange(year, state, county, subgroup_type, subgroup)
@@ -85,6 +75,9 @@ db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "s
 stopifnot(
   nrow(db) == nrow(frame)
 )
+
+anti_join(db, frame)
+
 
 ```
 
@@ -96,6 +89,7 @@ read_csv_recent <- function(file) {
   file <- read_csv(file)  %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    mutate(subgroup_type = str_to_lower(subgroup_type)) %>%
     filter(year == max(year)) %>%
     select(-year)
   
@@ -105,8 +99,9 @@ read_csv_recent <- function(file) {
 
 # construct multiyear database
 db_recent <- map(files, read_csv_recent) %>%
-  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup"))
-
+  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup")) %>%
+  mutate(subgroup_type = str_to_lower(subgroup_type)) %>%
+  filter(state != "02" & county != "270")
 
 frame <- 
   bind_rows(
@@ -118,7 +113,7 @@ frame <-
     expand_grid(
       read_csv(here("geographic-crosswalks", "data", "county-file.csv")),
       subgroup_type = c("race-ethnicity"),
-      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+      subgroup = c("Black", "Other Races", "White")
     )
   ) %>%
   arrange(year, state, county, subgroup_type, subgroup) %>%
@@ -176,27 +171,14 @@ db_bounds <- db %>%
 ```
 
 ```{r}
-db_values %>%
-  assert(within_bounds(0, 1), lbw) %>%
-  assert(within_bounds(-1, 10), learning_rate)
+
+# db_values %>%
+#   assert(within_bounds(0, 100000), juvenile_arrest_rate)
 
 ```
 
-Test confidence interval bounds. 
 
 ```{r}
- db %>%
-  verify(is.na(lbw) | lbw_lb < lbw) %>%
-  verify(is.na(lbw) | lbw_lb < lbw_ub) %>%
-  verify(is.na(lbw) | lbw < lbw_ub) %>%
-  verify(is.na(learning_rate) | learning_rate_lb < learning_rate) %>%
-  verify(is.na(learning_rate) | learning_rate_lb < learning_rate_ub) %>%
-  verify(is.na(learning_rate) | learning_rate < learning_rate_ub)
-
-```
-
-```{r}
-
 db_quality %>%
   assert(in_set(1, 2, 3), everything())
 
@@ -214,6 +196,6 @@ db_quality %>%
 ## Write the File
 
 ```{r}
-write_csv(db_recent, here("data", "02_mobility-metrics_race-ethnicity.csv"))
+write_csv(db_recent, here("data", "03_mobility-metrics_race.csv"))
 
 ```
