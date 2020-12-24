@@ -1,6 +1,7 @@
 *********************************
 *	Safety Metrics				*
 *	Arrests JV - County 2016	*
+*	Subgroup Type: Race			*
 *	Lily Robin, 2020.12.23		*
 *********************************
 
@@ -12,8 +13,9 @@ global boxfolder = "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Ar
 
 cd "$boxfolder"
 
-
 ///// 2. IMPORT DATA
+
+***the read me includes directions on where to find data to download
 
 ***crosswalk file for county FIPS to ORI
 clear 
@@ -49,7 +51,12 @@ save fbi_crosswalk_clean, replace
 
 ***crosswalk file for county population aged 10 - 17
 clear
-import delimited "children_10_17.csv"
+import delimited "children_10_17_race.csv"
+
+bysort countyfips: gen obs = _N
+tab obs
+*8 counties with only 2 rows
+drop obs
 
 *add "0" to beggining of countyfips as needed
 *can revise to cleaner substr code if desired
@@ -60,7 +67,9 @@ egen fip2 = concat(zero countyfips) if fip_len == 4
 replace countyfips = fip2 if fip_len == 4
 drop fip_len zero fip2
 
-save pop_10_17, replace
+replace single_race = "Other Races" if single_race == "All Other"
+
+save pop_10_17_race, replace
 
 ***2016 arrests by county
 
@@ -186,18 +195,8 @@ replace nonreport = 1 if (zero == 1 & covby == 0) | (zero == . & covby == 0)
 
 ///// 5. CALCULATE JV ARRESTS
 
-*number of arrests age 10 to 17
-egen arrest_10to17 = rowtotal(m10_12 m13_14 m15 m16 m17 f10_12 f13_14 f15 f16 f17)
-replace arrest_10to17 = . if  m10_12 == . & m13_14 == . & m15 == . & m16 == . & m17 == . & f10_12 == . & f13_14 == . & f15 == . & f16 == . & f17 == .
-
-sum arrest_10to17
-tab arrest_10to17, m
-
-*number of children under 10 arrested
-egen arrest_under10 = rowtotal (m0_9 f0_9)
-replace arrest_under10 = . if m0_9 == . & f0_9 == .
-
-sum arrest_10to17 arrest_under10
+*number of juvenile arrests by race (Black, white)
+sum jb jw
 
 
 ///// 6. AGGREGATE TO COUNTY
@@ -206,22 +205,27 @@ sum arrest_10to17 arrest_under10
 
 gen obs = 1
 
-gen marrest_10to17 = 1 if arrest_10to17 == .
-gen marrest_under10 = 1 if arrest_under10 == .
+egen jc = rowtotal(ji ja jn)
+replace jc = . if ji == . & ja == . & jn == .
 
-collapse (sum) arrest_10to17 arrest_under10 marrest_10to17 marrest_under10 nonreport  (mean) year fstate fcounty (count) obs, by(fips)
+gen mjb = 1 if jb == .
+gen mjw = 1 if jw == .
+gen mjc = 1 if jc == .
+
+collapse (sum) jb jw jc mjb mjw mjc nonreport  (mean) year fstate fcounty (count) obs, by(fips)
 rename (fstate fcounty) (state county)
 
 *replace 0 with . if all missing
-replace arrest_10to17 = . if marrest_10to17 == obs
-replace arrest_under10 = . if marrest_under10 == obs
-drop marrest_10to17 marrest_under10
+replace jb = . if mjb == obs
+replace jw = . if mjw == obs
+replace jc = . if mjc == obs
+drop mjb mjw mjc
 
 gen coverage_indicator_jjarrest = 1 - (nonreport/obs)
 sum coverage_indicator_jjarrest
 
 
-
+/*
 ///// 7. IDNETIFY STATES WITH AGE OF ADULT CRIMINAL LIBABILITY BELOW 18
 
 *age of adult criminal liability (http://www.jjgps.org/jurisdictional-boundaries) 18 except: 
@@ -233,28 +237,28 @@ gen adult_16 = 0
 replace adult_16 = 1 if state == 36 | state == 37
 gen adult_under18 = 0
 replace adult_under18 = 1 if adult_17 == 1 | adult_16 == 1
-
+*/
 ///// 8. CROSSWALK POPULATION
 
 rename fips countyfips
 
-merge m:1 countyfips using pop_10_17
+merge 1:m countyfips using pop_10_17_race
 *br if _merge == 1
 *br if _merge == 2
 drop if _merge != 3
-rename child_10_17 pop_10to17
 
 *generate juvenile arrest rate
-gen juvenile_arrest_rate = (arrest_10to17/pop_10to17)*100000
-sum juvenile_arrest_rate
-*jhttps://www.ojjdp.gov/ojstatbb/crime/jar_display.asp#:~:text=Juvenile%20Arrest%20Rate%20Trends&text=The%20juvenile%20arrest%20rate%20for,then%20declined%2074%25%20by%202018.&text=Note%3A%20Rates%20are%20arrests%20of,17%20in%20the%20resident%20population
+gen juvenile_arrest_rate = (jb/child_10_17)*100000 if single_race == "Black"
+replace juvenile_arrest_rate = (jw/child_10_17)*100000 if single_race == "White"
+replace juvenile_arrest_rate = (jc/child_10_17)*100000 if single_race == "Other Races"
 
-*br if juvenile_arrest_rate > 100000
-*A lot of status offenses. Maybe that's why?
+drop jb jw jc obs _merge
 
-drop _merge
+rename single_race subgroup
 
-save 2016_arrest_by_county_working, replace
+gen subgroup_type = "race-ethnicity"
+
+save 2016_arrest_by_county_race_working, replace
 
 
 ///// 9. CROSSWALK TO ALL COUNTIES
@@ -267,11 +271,11 @@ keep if year == 2016
 save county_crosswalk_2016, replace
 
 clear
-use 2016_arrest_by_county_working
+use 2016_arrest_by_county_race_working
 *46113: Lakota county was changed to be 46102 in 2015 (see note below)
 replace county = 102 if countyfips == "46113"
 
-merge 1:1  state county using county_crosswalk_2016
+merge m:1  state county using county_crosswalk_2016
 
 *br if _merge == 1
 *02270: Wade Hampton Census Area, Alaska
@@ -290,36 +294,35 @@ replace juvenile_arrest_rate_quality = 3 if juvenile_arrest_rate > 100000 & cove
 replace juvenile_arrest_rate_quality = . if juvenile_arrest_rate == .
 tab juvenile_arrest_rate_quality
 
-drop coverage_indicator_jjarrest
-
 *fips as string
 gen state1 = string(state, "%02.0f")
 gen county1 = string(county, "%03.0f")
 
 *drop unneeded variables
-drop countyfips _merge state_name county_name population nonreport obs state county 
+drop countyfips _merge state_name county_name population nonreport state county  coverage_indicator_jjarrest child_10_17
 
-rename (state1 county1 arrest_under10) (state county juvenile_arrests_under10)
+rename (state1 county1) (state county)
 
 *add labels
-label var juvenile_arrest_rate "rate of juvenile (age 10 - 17) arrests per 100,000 juveniles in county"
-label var juvenile_arrests_under10 "number of arrests of people under 10 in a county"
-label var arrest_10to17 "number of arrests of people 10 to 17 in a county"
-label var adult_under18 "county in state with criminal liability under 18"
-label var pop_10to17 "population of people 10 to 17 in a county"
+label var juvenile_arrest_rate "rate of arrests of juveniles of race indicated by subgroup variable per 100,000 juveniles (age 10-17) of the same race in county and for all juveniles for observations with a subgroup of All"
 
-*save interim dataset
-save 2016_arrest_by_county_interim, replace
-
-*drop variables for final dataset
-drop pop_10to17 adult_17 adult_16 arrest_10to17
 
 *order variables appropriatly and sort dataset
-order year state county juvenile_arrest_rate  juvenile_arrests_under10 adult_under18, first
+order year state county subgroup_type subgroup juvenile_arrest_rate juvenile_arrest_rate_quality, first
 
 gsort year state county
 
-save 2016_juvenile_arrest_by_county, replace
+save 2016_juvenile_arrest_by_county_race, replace
+
+*as a note, the entire state of FL is missing all data
+
+*check for 3 rows per county
+egen state_county = concat(state county), p("-")
+bysort state_county: gen obs = _N
+tab obs
+*8 with 1 all missing
+*8 with 2, missing Black 
+drop state_county obs
 
 tabmiss
 
@@ -327,20 +330,65 @@ codebook
 
 *note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
 
+//add overall
+append using 2016_juvenile_arrest_by_county_forsubgroup
+
+save 2016_juvenile_arrest_by_county_race, replace
+
+//add rows for missing observations
+keep state county
+
+duplicates drop
+
+expand (4)
+
+gsort state county
+
+by state county: gen obs = _n
+
+gen subgroup = ""
+replace subgroup = "All" if obs == 1
+replace subgroup = "Black" if obs == 2
+replace subgroup = "White" if obs == 3
+replace subgroup = "Other Races" if obs == 4
+
+drop obs
+
+save expanded_formissing, replace
+
+use 2016_juvenile_arrest_by_county_race
+merge 1:1 state county subgroup using expanded_formissing
+
+gsort state county
+
+*extra rows for counties that are missing everything, drop
+by state county: gen obs = _N
+tab obs
+drop obs
+drop if subgroup == ""
+by state county: gen obs = _N
+tab obs
+drop obs
+drop _merge
+
+*add in type when missing
+replace subgroup_type = "race-ethnicity" if subgroup_type == ""
+replace subgroup_type = "all" if subgroup == "All"
+
+*replace blank years
+replace year = 2016 if year == .
+
+*order and sort variables appropriatly and sort dataset
+order year state county subgroup_type subgroup juvenile_arrest_rate juvenile_arrest_rate_quality, first
+
+sort year state county subgroup
+
+
 *export as CSV
 cd "$gitfolder/07_safety/juvenile_arrests"
 
-export delimited using "2016_juvenile_arrest_by_county.csv", replace
+export delimited using "2016_arrest_by_county_race.csv", replace
 
-//run code to combine for subgroup file
 cd "$boxfolder"
 
-drop juvenile_arrests_under10 adult_under18
-
-gen subgroup_type = "all"
-
-gen subgroup = "All"
-
-save 2016_juvenile_arrest_by_county_forsubgroup, replace
-
-
+export delimited using "2016_arrest_by_county_race.csv", replace
