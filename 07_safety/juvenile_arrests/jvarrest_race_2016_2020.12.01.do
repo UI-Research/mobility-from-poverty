@@ -2,13 +2,16 @@
 *	Safety Metrics				*
 *	Arrests JV - County 2016	*
 *	Subgroup Type: Race			*
-*	Lily Robin, 2020.12.22		*
+*	Lily Robin, 2020.12.23		*
 *********************************
 
 ///// 1.UPDATE FILE DIRECTORY
 
-cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest"
+global gitfolder = "H:\gates-mobility-metrics"	// update path to your local mobility metrics repository folder
 
+global boxfolder = "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest" // update path to your box folder
+
+cd "$boxfolder"
 
 ///// 2. IMPORT DATA
 
@@ -370,14 +373,18 @@ drop _merge
 
 *add in type when missing
 replace subgroup_type = "race-ethnicity" if subgroup_type == ""
+replace subgroup_type = "all" if subgroup == "All"
+
+*replace blank years
+replace year = 2016 if year == .
 
 *order and sort variables appropriatly and sort dataset
 order year state county subgroup_type subgroup juvenile_arrest_rate juvenile_arrest_rate_quality, first
 
-sort state county year subgroup
+sort year state county subgroup
 
 
 *export as CSV
-cd "H:\gates-mobility-metrics\07_safety\juvenile_arrests"
+cd "$gitfolder/07_safety/juvenile_arrests"
 
 export delimited using "2016_arrest_by_county_race.csv", replace

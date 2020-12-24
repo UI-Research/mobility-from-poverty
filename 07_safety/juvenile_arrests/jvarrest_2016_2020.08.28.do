@@ -1,12 +1,16 @@
 *********************************
 *	Safety Metrics				*
 *	Arrests JV - County 2016	*
-*	Lily Robin, 2019.8.01		*
+*	Lily Robin, 2020.12.23		*
 *********************************
 
 ///// 1.UPDATE FILE DIRECTORY
 
-cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest"
+global gitfolder = "H:\gates-mobility-metrics"	// update path to your local mobility metrics repository folder
+
+global boxfolder = "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest" // update path to your box folder
+
+cd "$boxfolder"
 
 
 ///// 2. IMPORT DATA
@@ -324,16 +328,16 @@ codebook
 *note, the number of juvenile arrests in my file (913,019) is over the estimated number by BJS for 2016 (856,130). I suspect this is just because I am counting 16 and 17 year olds that should not be counted as juvenile in several states and not counting under 10 only accunts for 5,677 arrests according to my file. 
 
 *export as CSV
-cd "H:\gates-mobility-metrics\07_safety\juvenile_arrests"
+cd "$gitfolder/07_safety/juvenile_arrests"
 
 export delimited using "2016_juvenile_arrest_by_county.csv", replace
 
 //run code to combine for subgroup file
-cd "C:\Users\lrobin\Box Sync\Metrics Database\Safety\Juvenile_Arrest"
+cd "$boxfolder"
 
 drop juvenile_arrests_under10 adult_under18
 
-gen subgroup_type = "race-ethnicity"
+gen subgroup_type = "all"
 
 gen subgroup = "All"
 

@@ -1,7 +1,7 @@
 *********************************
 *	Safety Metrics				*
 *	Crime Rates - County 2015 and 2017	*
-*	Lily Robin, 2020.12.22		*
+*	Lily Robin, 2020.12.23		*
 *********************************
 
 clear
@@ -45,7 +45,7 @@ use county_ucr_offenses_known_yearly_1960_2017
 *keep only needed variables
 keep year county_name state coverage_indicator state_abb fips_state_code fips_county_code fips_state_county county_population actual_index_property actual_index_violent 
 
-*keep only most recent year
+*keep only 2015
 tab year, m
 keep if year == 2015
 
@@ -232,7 +232,7 @@ append using 2017_crime_by_county
 save 2015_2017_crime_by_county, replace
 
 *not sure how this should be ordered, feel free to revise
-sort state county year
+gsort year state county
 
 *export as CSV
 export delimited using "crimerate_county_2015_2017.csv", replace
