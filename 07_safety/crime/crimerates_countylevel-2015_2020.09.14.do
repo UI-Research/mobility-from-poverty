@@ -13,6 +13,8 @@ clear
 
 global gitfolder = "H:\gates-mobility-metrics"	// update path to your local mobility metrics repository folder
 
+global boxfolder = "C:\Users\lrobin\Box Sync\Metrics Database\Safety\crime_rate" // update path to your box folder
+
 cd "$gitfolder"
 
 
@@ -236,3 +238,8 @@ gsort year state county
 
 *export as CSV
 export delimited using "crimerate_county_2015_2017.csv", replace
+
+cd "$boxfolder"
+export delimited using "crimerate_county_2015_2017.csv", replace
+
+

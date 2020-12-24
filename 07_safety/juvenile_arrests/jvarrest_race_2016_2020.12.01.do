@@ -388,3 +388,7 @@ sort year state county subgroup
 cd "$gitfolder/07_safety/juvenile_arrests"
 
 export delimited using "2016_arrest_by_county_race.csv", replace
+
+cd "$boxfolder"
+
+export delimited using "2016_arrest_by_county_race.csv", replace
