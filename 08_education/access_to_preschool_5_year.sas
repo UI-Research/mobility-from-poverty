@@ -17,7 +17,7 @@ Programmed by Kevin Werner
    Edit the `filename` command similarly to include the full path (the directory and the data file name).
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_preschool_subgroup.csv;
+/*%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_preschool_subgroup.csv;*/
 
 /* 
 
@@ -25,13 +25,7 @@ Please download the file USA_00017.dat from Box, and unzip in the filename folde
 
 */
 
-filename ASCIIDAT "C:\Users\kwerner\Desktop\Metrics\usa_00017.dat";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
-libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
-
-
-
-proc format cntlout = desktop.usa_00017_f;
+proc format cntlout = DTed.usa_00017_f;
 
 value YEAR_f
   1850 = "1850"
@@ -1204,7 +1198,7 @@ proc sql;
    ,b.afact as afact1  
    ,b.afact2 as afact2
  from &input_file. a  
- left join edu.puma_to_county b 
+ left join localDir.puma_to_county b 
  on (a.statefip = b.statefip and a.puma = b.puma) 
 ;  
 quit;
@@ -1422,7 +1416,7 @@ proc sort data=edu.metrics_preschool_subgroup; by year state county subgroup; ru
 /* export as csv */
 
 proc export data = edu.metrics_preschool_subgroup
-  outfile = "&filepath"
+  outfile = "&preschool_filepath"
   replace;
 run;
 
