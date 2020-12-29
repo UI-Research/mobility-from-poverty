@@ -1,5 +1,7 @@
 # Safety - Crime Rate
 
+This national dataset of crimes at the county level provides the best possible estimates of crime by county at the national level, but local level data is likely to be more accurate and reliable. There is a lot of variation in definitions and reporting across counties making national data less reliable then local data for this purpose. Additional, while the incentive of eligability for federal grant funding exists, reproting of these data is not required and therefore is not available in a national repository for some juristictions. Additionally, as these data is missing additional contextual information about juristictions, the FBI cautoins against using UCR data to rank or compare juristcitions (https://ucr.fbi.gov/ucr-statistics-their-proper-use)
+
 These metrics use a clean county level crime dataset that can be found on ICPSR (https://www.openicpsr.org/openicpsr/project/108164/version/V4/view?path=/openicpsr/108164/fcr:versions/V3). This file was created using agency level data with ORI codes that were crosswalked with county FIPS codes. This file is not complete, but includes a coverage indicator to show how much of a county is covered in the crime counts captured. The coverage indicator is calcualted as follows. 
 
 	CI_x = 100 * ( 1 - SUM_i { [ORIPOP_i/COUNTYPOP] * [ (12 - MONTHSREPORTED_i)/12 ] } )
@@ -48,9 +50,19 @@ Data for the five counties that reside in NYC was pulled from NYS data. These da
 
 # Safety - Juvenile Arrest Rate
 
+This national dataset of juvenile arrests at the county level provides the best possible estimates of juvenile arrests by county at the national level, but local level data is likely to be more accurate and reliable. There is a lot of variation in definitions and reporting across counties making national data less reliable then local data for this purpose. Additional, while the incentive of eligability for federal grant funding exists, reproting of these data is not required and therefore is not available in a national repository for some juristictions. Additionally, as these data are missing additional contextual information about juristictions, the FBI cautoins against using UCR data to rank or compare juristcitions (https://ucr.fbi.gov/ucr-statistics-their-proper-use)
+
 This dataset contains arrest rates of children age 10 to 17 by county in 2016 using counts of arrests provided by Federal Bureau of Investigations (FBI) Uniform Crime Reporting program (UCR) data and population data for all children age 10 to 17 from the ACS 2016 1-year extract from IPUMS. This age bracket was chosen because the majority of states have an age of adulat criminal liability of 18 and at least one state has a minimum age of crminal liability of 12, and arrests of very young children are unlikely. The UCR data is split by children age 0-9, 10 - 12, 13 - 14, and then by individual year. Starting at age 10 was a natural split in the data and anything older then 17 is considered adult in all states. 
 
-Additionally, the data is split by race for juvenile arrest and includes Asian, Black, Indian, and White. We have used this informtion to make a dataset of juvenile arrests by race in addition to the overall juvenile arrests file. Unlike he overall file, this file includes all juveniles as defined by the satte each agency is in, but the denominator is still including children age 10 - 17, as there are not many arrests of children under 10. 
+Each instance of an arrest, citation, or summons for an offense is counted as an arrest. A detailed definition provided by the FBI can be found here: https://ucr.fbi.gov/crime-in-the-u.s/2016/crime-in-the-u.s.-2016/topic-pages/persons-arrested). Note that an individual can be arrested more then once and therefore, rates provided are of arrests not persons arrests. Offenses considered in these data include crimes (ex. aggrevated assault and rape) and status offenses that are considered offenses due to the age of an individual  (ex. missrepresenting age to purchase alcohol, curfew violations, and runaway cases). More information on the offenses included can be found in the codebook for the FBI UCR arrest data found here: https://www.icpsr.umich.edu/web/ICPSR/studies/37056. 
+
+Additionally, the data is split by race for juvenile arrest and includes Asian, Black, Indian, and White. We have used this informtion to make a dataset of juvenile arrests by race in addition to the overall juvenile arrests file. Unlike the overall file, this file includes all juveniles as defined by the state each agency is in, but the denominator is still including children age 10 - 17, as there are not many arrests of children under 10. It is important to note that race is not necassarily definied consistently in the file with arrest counts as it is in the ACS file used for the denominator or the overall population (ex. self-report versus officer reported). 
+
+Due to variation found in these data compared to national averages (https://www.ojjdp.gov/ojstatbb/crime/ucr.asp?table_in=1&selYrs=2016&rdoGroups=1&rdoData=r), we chose to suppress data we felt was unreliable. These data include all observations with an overall population (denominator) of less then 30 people and all observations with an arrest rate of over 150,000 arresst per 100,000, 1.5 times the arresst as the number of people. 
+
+This file reports juvenile arrest counts for all of New York City in the New York County observation. For this reason, data from New York State (https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-profiles.htm) was used for the five counties in New York City instead. These counts in New York City counties are for epople age 7 to 15 and the denominator for New York counties has been adjusted to reflect this population of people age 7-15 in each New York City county. Data by race by county in New York City is not available. 
+
+A codebook with definitions for the origanol arrest data used can be found here: https://www.icpsr.umich.edu/web/ICPSR/studies/37056. 
 
 * Final data name(s): 2016_juvenile_arrest_by_county.csv and 2016_juvenile_arrest_by_county_race.csv
 * Analyst(s): Lily Robin
@@ -60,6 +72,7 @@ Additionally, the data is split by race for juvenile arrest and includes Asian, 
 	children_10_17_race.csv: population of children age 10 to 17 by race by county in 2016 (created by Kevin Werner)
 	fbi_crosswalk.dta: county FIPS to agency Originating Reporting Agency Identifier (ORI) crosswalk (https://www.icpsr.umich.edu/web/ICPSR/series/366)
 	county_crosswalk.csv: county FIPS and county populations (provided by Kevin)
+	nyc county juvenile arrests: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-profiles.htm
 * Year(s):2016
 * Notes: 
     * Limitations: Children age 10 - 17 is the best match of numerator and denominator across states, but not necassarily reflective of definitions of juvenile by state. Variables are included to identify states that have adult criminal liability ages below 18 and for the number of arrests of children under 10 by county. The data does not distinuish between no arrests in an age catagory and a non-report on the catagory so some 0s may actually be non-reports. The data quality index is used to assess the quality of data for each county using the coverage indicator.
