@@ -78,6 +78,11 @@ save pop_10_17_race, replace
 clear
 use 2016_arrest
 
+count if OFFENSE == "998"
+count if OFFENSE == "29"
+count if OFFENSE == "26"
+count if OFFENSE == "22"
+
 *update missing values - code provided in ICPSR files
 replace MSA = . if (MSA == 998)
 replace SEQNO = . if (SEQNO == 99998)
@@ -251,6 +256,16 @@ drop if _merge != 3
 gen juvenile_arrest_rate = (jb/child_10_17)*100000 if single_race == "Black"
 replace juvenile_arrest_rate = (jw/child_10_17)*100000 if single_race == "White"
 replace juvenile_arrest_rate = (jc/child_10_17)*100000 if single_race == "Other Races"
+*suppress data with rates of 150,000 per 100,000
+replace juvenile_arrest_rate = . if juvenile_arrest_rate > 150000
+*supress data using populations below 30 people
+replace juvenile_arrest_rate = . if child_10_17 < 30
+*replace new york city counties with missing
+replace juvenile_arrest_rate = . if state == 36 & county == 005
+replace juvenile_arrest_rate = . if state == 36 & county == 047
+replace juvenile_arrest_rate = . if state == 36 & county == 061
+replace juvenile_arrest_rate = . if state == 36 & county == 081
+replace juvenile_arrest_rate = . if state == 36 & county == 085
 
 drop jb jw jc obs _merge
 
@@ -387,8 +402,8 @@ sort year state county subgroup
 *export as CSV
 cd "$gitfolder/07_safety/juvenile_arrests"
 
-export delimited using "2016_arrest_by_county_race.csv", replace
+export delimited using "2016_arrest_by_county_subgroup.csv", replace
 
 cd "$boxfolder"
 
-export delimited using "2016_arrest_by_county_race.csv", replace
+export delimited using "2016_arrest_by_county_subgroup.csv", replace
