@@ -244,10 +244,34 @@ merge m:1 countyfips using pop_10_17
 drop if _merge != 3
 rename child_10_17 pop_10to17
 
+*update new york city counties
+*Bronx: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-reports/bronx.pdf
+replace arrest_10to17 = 1308 if state == 36 & county == 005
+replace pop_10to17 = 177238 if state == 36 & county == 005
+*Kings: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-reports/kings.pdf
+replace arrest_10to17 = 1408 if state == 36 & county == 047
+replace pop_10to17 = 281864 if state == 36 & county == 047
+*New York: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-reports/newyork.pdf
+replace arrest_10to17 = 891 if state == 36 & county == 061
+replace pop_10to17 = 107576 if state == 36 & county == 061
+*Queens: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-reports/queens.pdf
+replace arrest_10to17 = 740 if state == 36 & county == 081
+replace pop_10to17 = 223712 if state == 36 & county == 081
+*Richmond: https://www.criminaljustice.ny.gov/crimnet/ojsa/jj-reports/richmond.pdf
+replace arrest_10to17 = 268 if state == 36 & county == 085
+replace pop_10to17 = 53545 if state == 36 & county == 085
+
 *generate juvenile arrest rate
 gen juvenile_arrest_rate = (arrest_10to17/pop_10to17)*100000
 sum juvenile_arrest_rate
 *jhttps://www.ojjdp.gov/ojstatbb/crime/jar_display.asp#:~:text=Juvenile%20Arrest%20Rate%20Trends&text=The%20juvenile%20arrest%20rate%20for,then%20declined%2074%25%20by%202018.&text=Note%3A%20Rates%20are%20arrests%20of,17%20in%20the%20resident%20population
+
+*suppress data with rates of 150,000 per 100,000
+replace juvenile_arrest_rate = . if juvenile_arrest_rate > 150000
+*supress data using populations below 30 people
+replace juvenile_arrest_rate = . if pop_10to17 < 30
+
+
 
 *br if juvenile_arrest_rate > 100000
 *A lot of status offenses. Maybe that's why?
