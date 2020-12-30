@@ -1,23 +1,31 @@
 # Environmental Quality Index
 
-* Final data name(s): county_level_enviro.csv, county_level_enviro_race.csv, county_level_enviro_poverty.csv
+* Final data name(s): county_level_enviro.csv
 * Analyst(s): Peace Gwam
 * Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
-* Year(s): 2014 (2010-2014)
+* Year(s): 2014 (2010-2014 ACS)
 * Notes:
     * Limitations : AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
     * Missingness : All 3,142 counties in the United States are represented. There are, however, some caveats: 
-      (1) There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 is dropped in the datasets.
+      (1) There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 are dropped in the datasets.
       (2) There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
-      (3) There are 163 census tracts with a population > 0 & missing poverty information in the AFFH data. ACS data could only fill 6/163 census tracts. The ACS was not used to calculate the poverty rate for the 6 tracts. 
-    * Quality flags: `1` for environmental quality and race indices. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.02% of the overall population for the county (see variable `na_pop` in county_level_enviro dataset). There are 157 census tracts with missing poverty information and a population > 0. The income information mas missing in both the ACS and AFFH datasets. Counties with tracts with missing poverty information were given a quality flag of `2`. 
+      (3) There are 147 additional tracts without populations that count for poverty estimates. 10 of the 147 tracts with zero population for the people that are counted for the poverty metric do not have a `haz_idx`. Tracts with a population = 0 for the poverty metric are dropped for the poverty subgroup dataset.
+      
+    * Quality flags: `1` for main environmental indicy. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.029% of the overall population for the county (see variable `na_perc` for the `All` subgroup type in `county_level_enviro.csv`). There are 147 census tracts with missing poverty information and a population > 0. For the `Poverty` subgroup type, counties with missing hazard or poverty information of more than 5 percent of the county were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. There was one county  for the `Poverty` subgroup type with a quality flag of `2`. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. There was one county with the `Race` subgroup type that had a quality flag of `2`. 
 
-Outline the process for creating the data  
-* Downloaded tract-level 2014 AFFH data
-* Cleaned AFFH data, including the removal of variables and geographies not relevant to this analysis
-* Merged tract-level total population from the 2014 5-yr ACS for the United States with cleaned AFFH data
-* Validation 
-* Weighted air quality indicators by county level population, race, and income level/poverty rate. 
+Outline the process for creating the data
+
+(1) Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.
+(2) Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise. 
+(3) Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis
+(4) Merged ACS data with cleaned AFFH data
+(5) Checked Missingness
+(6) Created county-level metrics
+  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level
+  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"
+  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".
+(7) Expanded subgroup data to represent unique values for each subgroup and county
+(8) Appended data together, cleaned, and wrote to `.csv`
 
 # Transit Cost and Transit Trips Index
 

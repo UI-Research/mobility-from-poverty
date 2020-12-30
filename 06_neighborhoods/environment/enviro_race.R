@@ -13,78 +13,63 @@ library(urbnmapr)
 library(skimr)
 #to use tidycensus, use census_api_key function to set api key. download api key from https://api.census.gov/data/key_signup.html
 
+options(scipen = 999)
 
-dir.create("06_neighborhoods/environment/data", showWarnings = FALSE)
+#add data folder in current directory, if not available already
+dir.create("data", showWarnings = FALSE)
 
 ####STEP ONE: PULL RACE VARIABLES FROM ACS####
-# pull total population and white, non-Hispanic population by tract from the ACS
+# pull total population and white, non-Hispanic population, total for poverty calculation, and total in poverty
+# by tract from the ACS
 state_fips <- unique(urbnmapr::states$state_fips)
 pull_acs <- function(state_fips) {
   tidycensus::get_acs(geography = "tract", 
-          variables = c("total_pop" = "B02001_001","wnh" = "B03002_003"),
-          year = 2014,
-          state = state_fips,
-          geometry = FALSE,
-          output = "wide")
+                      variables = c("total_pop" = "B02001_001",
+                                    "wnh" = "B03002_003", 
+                                    "total_pov" = "B17001_001", 
+                                    "poverty" = "B17001_002"),
+                      year = 2014,
+                      state = state_fips,
+                      geometry = FALSE,
+                      output = "wide")
 }
 acs <- map_df(state_fips, pull_acs)
 
 
-####STEP TWO: CREATE INDICATORS FOR RACE#### 
+####STEP TWO: CREATE INDICATORS FOR RACE AND POVERTY#### 
 
 # use acs data to create a variable for percent poc, by tract
-race<- acs %>%
+race_pov<- acs %>%
   transmute(GEOID = GEOID,
             name = NAME,
             total_pop = total_popE,
             wnh = wnhE,
             poc = total_pop - wnh, 
-            percent_poc = poc/total_pop
-    )  
+            percent_poc = poc/total_pop, 
+            total_pov = total_povE, 
+            poverty = povertyE, 
+            percent_pov = poverty / total_pov
+  )  
 
 
 # create indicator variable for race based on perctage of poc/nh-White in each tract. These percentage cut offs were determined by Marge Turner.
-race_indicator <- race %>%
+# also create indicator for tracts in 'high_poverty', with 40% or higher poverty rate meaning the tract has a high level of poverty
+race_pov <- race_pov %>%
   mutate(
-    GEOID = as.numeric(GEOID),
     race_ind = case_when(
       percent_poc > .4 & percent_poc < .6 ~"No Predominant Racial Group",
       percent_poc >= .6 ~ "Predominantly People of Color",
-      percent_poc <= .6 ~ "Predominantly White, Non-Hispanic")
+      percent_poc <= .6 ~ "Predominantly White, Non-Hispanic"), 
+    poverty_type = case_when(
+      percent_pov < .4 ~ "low_poverty",
+      percent_pov >=  .4 ~ "high_poverty")
   )
-
-
-# create state and county level fips from geoids
-state_county <- race_indicator %>%
-  mutate(
-  state = str_sub(GEOID, 1, 2),
-  county = str_sub(GEOID, 3, 5),
-  GEOID = as.numeric(GEOID)
-  ) 
 
 
 ####STEP THREE: PULL IN AIR QUALITY INDEX FROM AFFH DATA####
 
 
-#use completed haz_idx file previously created and add leading zeros to state and county fips to match acs file
-enviro <- read.csv("./tract_level_enviro.csv") %>%
-  mutate(state = str_pad(string = state, width = 2, side ="left", pad = "0"))%>%
-  mutate(county = str_pad(string = county, width = 3, side = "left", pad = "0"))%>%
-  mutate(GEOID = as.numeric(GEOID))
-  
-#keep relevant variables
-enviro_idx <- enviro %>%
-  select(-NAME, -estimate, -moe)
-
-#join to race indicator file
-race_enviro <- left_join(race_indicator, enviro_idx, by="GEOID")
-
-
-# drop census tracts with zero population (618): 
-race_tracts_with_pop <- filter(race_enviro, total_pop > 0)
-
-####STEP FOUR: CREATE POVERTY METRICS ####
-#pull HUD AFFH data on poverty
+# pull hud affh data on air quality
 # AFFH data is available via the Urban Institute Data Catalog here: 
 # https://datacatalog.urban.org/dataset/data-and-tools-fair-housing-planning/resource/12d878f5-efcc-4a26-93e7-5a3dfc505819 
 # code book is here: https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2020/07/31/AFFH-Data-Documentation.pdf
@@ -100,15 +85,26 @@ affh <- read_csv("data/AFFH_tract_AFFHT0006_July2020.csv",
 
 
 # keep only variables needed for analyses
+enviro_stats <- affh %>%
+  select(GEOID = geoid, state, state_name, county, county_name, tract, haz_idx) 
 
-# puerto rico is available in the affh data but not apart of our analyses. drop all observations in puerto rico:
-affh <- affh %>%
-  select(GEOID = geoid, pct_poor) %>%
+
+#puerto rico is available in the affh data but not apart of our analyses. drop all observations in puerto rico:
+enviro_stats<- enviro_stats %>%
   filter(state_name!= "Puerto Rico")
+
+# add leading zeros to GEOID to match with the acs
+enviro_stats <- enviro_stats %>%
+  mutate(
+    GEOID = str_pad(string = GEOID,
+                    width = 11,
+                    side = "left",
+                    pad = "0")
+  )
 
 # two county names and fips codes were changed.
 # edit the GEOIDs to match the current fips codes. 
-affh <- affh %>%
+enviro_stats <- enviro_stats%>%
   mutate(
     GEOID = str_pad(GEOID, width = 11, "left", "0"),
     GEOID = case_when(
@@ -117,165 +113,173 @@ affh <- affh %>%
       GEOID ==  "46102940900" ~ "46113940900", 
       GEOID == "02158000100" ~ "02270000100",
       TRUE ~ GEOID
-    )
-  )
-# tracts where pct_poor <= 40 (40% or higher poverty rate) has a high level of poverty
-# create indicator for poverty rate
-poverty_indicator <- affh %>%
-  mutate (
-    poverty_type = case_when(
-      pct_poor <= 40 ~ "high_poverty",
-      pct_poor >  40 ~ "low_poverty"
-    )
+    ), 
+    state = str_sub(GEOID, 1, 2), 
+    county = str_sub(GEOID, 3, 5), 
+    tract = str_sub(GEOID, 6, 11)
   )
 
-# join to race and hazard index file
-poverty_indicator <- poverty_indicator %>%
-  mutate(GEOID = as.numeric(GEOID))
-haz_poverty_race <- left_join(race_enviro, poverty_indicator, by="GEOID")
 
-# drop census tracts with zero population:
-haz_poverty_race <- filter(haz_poverty_race, total_pop > 0)
+#join to race indicator file
+race_enviro <- left_join(race_pov, enviro_stats, by="GEOID") %>% 
+  mutate(na_pop= if_else(is.na(haz_idx), total_pop, 0))
 
 
-####STEP FIVE: CHECK MISSINGNESS ####
+
+####STEP FOUR: CHECK MISSINGNESS ####
 #number of tracts with pop > 0 & missing poverty rates:
 
-tracts_with_pop_na <- filter (haz_poverty_race) %>%
-  filter (is.na(poverty_type))
+#census tracts with zero population (618): 
+filter(race_enviro, total_pop == 0)
 
-#there are 168 census tracts with missing poverty rates
-#this is significant: use acs to fill in missing data
-state_fips <- unique(urbnmapr::states$state_fips)
-poverty_acs <- function(state_fips) {
-  tidycensus::get_acs(geography = "tract", 
-                      variables = c("total_pop" = "B17026_001", "poverty_status" = "B17026_002"),
-                      year = 2014,
-                      state = state_fips,
-                      geometry = FALSE,
-                      output = "wide")
-}
-pov_acs <- map_df(state_fips, poverty_acs)
+#census tracts with population that are missing hazard index (508)
+filter(race_enviro, total_pop==0, is.na(haz_idx))
 
-# use acs data to create a variable for percent in poverty, by tract
-poverty <- pov_acs %>%
-  transmute(GEOID = GEOID,
-            name = NAME,
-            total_pop = total_popE,
-            poverty_status = poverty_statusE,
-            percent_in_poverty = poverty_status/total_pop * 100
-  )  
+#census tracts with population greater than 0 that are missing hazard index (22)
+filter(race_enviro, total_pop>0, is.na(haz_idx))
 
-# tracts where percent_in_poverty >= 40 (40% or higher poverty rate) has a high level of poverty
-# drop if population = 0.
-poverty <- filter(poverty, total_pop > 0)
+#census tracts with population greater than 100 that are missing hazard index (22)
+filter(race_enviro, total_pop>100, is.na(haz_idx))
 
+#census tracts with zero population counted in poverty total metric (147)
+filter(race_enviro, total_pov == 0, total_pop != 0)
 
-# create indicator for poverty rate
-poverty_acs_indicator <- poverty %>%
-  mutate (
-    poverty_type = case_when(
-      percent_in_poverty >= 40 ~ "high_poverty",
-      percent_in_poverty < 40 ~ "low_poverty"
-    )
-  )
+#census tracts with zero population counted in poverty total metric 
+#also have hazard index missing (10)
+filter(race_enviro, total_pov == 0, total_pop != 0, is.na(haz_idx))
 
-#merge this with other data
-poverty_acs_indicator <- poverty_acs_indicator %>%
-  mutate(GEOID = as.numeric(GEOID))
-poverty_from_acs<- left_join(tracts_with_pop_na, poverty_acs_indicator, by="GEOID")
-# the ACS can only fill in 6/163 missing observations. The other census tracts do not have a population. 
-#This will be noted in README file, and these tracts will have a data quality of 2.
+####STEP FIVE: CREATE COUNTY LEVEL ESTIMATES####
+### calculate avg county level hazard index
+all_environment <- race_enviro %>%
+  group_by(state, county) %>%
+  summarise(environmental = weighted.mean(haz_idx, total_pop, na.rm=TRUE), 
+            na_pop = sum(na_pop), 
+            county_pop = sum(total_pop)) %>%
+  ungroup() 
 
-#number of tracts with pop>0 & missing hazard indices:
-tracts_haz_na <- filter (haz_poverty_race) %>%
-  filter (is.na(haz_idx))
-#there are 22 census tracts with missing hazard indices. 
-# this is not significant. drop these tracts:
+#create percent of the population of each county has has missing tract hazard information
+all_environment <- all_environment %>% 
+  mutate(na_perc = na_pop / county_pop, 
+         subgroup_type = "All", 
+         subgroup = "All") %>% 
+  select(-c(na_pop, county_pop))
+
+#check max percent of population of county that has missing hazard information
+all_environment %>% 
+  pull(na_perc) %>% 
+  max()
 
 
-#number of tracts with pop > 0 & missing race:
-tracts_race_na <- filter (haz_poverty_race) %>%
-  filter (is.na(race_ind))
-#there are zero tracts with missing race indices and a population > 0.
-
-#drop tracts with missing environmental quality. Keep tracts with missing poverty rates, but note the unrealiability: 
-environment_poverty_race  <- haz_poverty_race %>%
-  drop_na(haz_idx)
-
-
-####STEP SIX: CREATE COUNTY LEVEL ESTIMATES####
-# calculate avg county level hazard index
-all_environment_quality <- enviro %>%
-  drop_na(haz_idx) %>%
-  dplyr::group_by(state, county) %>%
-  summarize(environmental_quality = mean(haz_idx)) %>%
-  ungroup()
-
-
-#avg county level hazard, by income level
-income_indicator <- haz_poverty_race %>%
-  mutate(GEOID = as.numeric(GEOID)) %>%
-  select(-state, -county, -haz_idx, -pct_poor, -tract, -total_pop, -wnh, -poc, -percent_poc, -state_name, -county_name, -env_qual_high_pov, -env_qual_score_low_pov, -race_ind)
-income_environment_quality <- left_join(income_indicator, enviro, by="GEOID")
-
-income_environment_quality <- income_environment_quality %>%
-  dplyr::group_by(state, county,poverty_type) %>%
-  summarize(environmental_quality = mean(haz_idx)) %>%
+###create county level hazard index by race
+#checked transportation code; excluded tracts that do not have poverty information, which we replicate here
+#we weight the index by number in poverty if it is a high poverty area, and the number not in poverty
+#if it is a low poverty area. we also count percent missing by those na's in order to more accurately
+#track missingness.
+pov_environment <- race_enviro %>%
+  mutate(weighting_ind = case_when(poverty_type == "high_poverty" ~ poverty, 
+                                   poverty_type == "low_poverty" ~ (total_pov - poverty)), 
+    na_pop = if_else(is.na(haz_idx) | is.na(poverty_type), weighting_ind, 0)) %>%
+  group_by(state, county,state_name, county_name, poverty_type) %>%
+  summarise(environmental = weighted.mean(haz_idx, weighting_ind, na.rm = TRUE), 
+            na_pop = sum(na_pop, na.rm = TRUE), 
+            subgroup_pop = sum(weighting_ind, na.rm=TRUE)
+  ) %>%
   ungroup() %>%
-  mutate(geoid = str_c(state, county))
+  mutate(geoid = str_c(state, county), 
+         na_perc = na_pop / subgroup_pop) %>% 
+  select(-c(na_pop, subgroup_pop)) %>% 
+  filter(!is.na(poverty_type))
 
+#make dataset of unique state/county pairs
+state_county <- race_enviro %>% 
+  transmute(geoid = str_c(state, county), state, county, state_name, county_name) %>% 
+  distinct()
 
 # there should be an indicator for low and high income per county.
-# fill in for counties:
+# expand dataset for every county/poverty_type
 
-expanded <- income_environment_quality %>%
+expanded <- pov_environment %>%
   expand(geoid, poverty_type) 
 
-income_environmental_quality <- left_join(expanded, income_environment_quality, by=c("geoid", "poverty_type"))
+#join dataset on expanded dataset, join with geo variables, and add subgroup type variables
+pov_environment_exp <- left_join(expanded, 
+                                         pov_environment %>% 
+                                           select(geoid, poverty_type, environmental, na_perc), 
+                                         by=c("geoid", 
+                                              "poverty_type")) %>% 
+  left_join(state_county, by = "geoid") %>% 
+  rename(subgroup_type = poverty_type) %>% 
+  mutate(subgroup = "Poverty")
 
-#avg county level hazard, by raceethnicity
-race_tracts_with_pop <- race_tracts_with_pop %>%
-  select (-total_pop, -wnh, -poc, -percent_poc, -name, -na_pop) %>%
-  mutate(GEOID = as.numeric(GEOID))
 
-raceethnicity_environment_quality <- race_tracts_with_pop %>%
-  dplyr::group_by(state, county, state_name, county_name, race_ind) %>%
-  summarize(environmental_quality = mean(haz_idx)) %>%
+###avg county level hazard, by raceethnicity
+#we choose to weight the index by total population for tracts that have 
+#no predominant racial group, weight by number of people of color for tracts
+#that are predominantly people of color, and weight by white, non hispanic 
+#people in tracts that are predominantly white. we calculate missingness
+#based off of these weights as well. 
+haz_by_race <- race_enviro %>% 
+  mutate(weighting_ind = case_when(
+    race_ind == "No Predominant Racial Group" ~ total_pop, 
+    race_ind == "Predominantly People of Color" ~ poc,
+    race_ind == "Predominantly White, Non-Hispanic" ~ wnh
+  ), 
+    na_pop = if_else(is.na(haz_idx) | is.na(race_ind), 
+                          weighting_ind,
+                          0)) %>%
+  group_by(state, county, state_name, county_name, race_ind) %>%
+  summarise(environmental = weighted.mean(haz_idx, weighting_ind, na.rm = TRUE), 
+  na_pop = sum(na_pop, na.rm = TRUE), 
+  subgroup_pop = sum(weighting_ind, na.rm=TRUE)
+  ) %>%
   ungroup() %>%
-  mutate(geoid = str_c(state,county))
+  mutate(geoid = str_c(state, county), 
+         na_perc = na_pop / subgroup_pop) %>% 
+  select(-c(na_pop, subgroup_pop)) %>% 
+  filter(!is.na(race_ind))
+
 
 # there should be an environmental quality indicator for majority white, no majority, and majority poc per county.
 # fill in for counties:
 
-expand_race <- raceethnicity_environment_quality %>%
-  filter(!is.na(environmental_quality)) %>%
+expand_race <- haz_by_race %>%
   expand(geoid,race_ind) 
 
-raceethnicity_environment_quality <- left_join(expand_race, raceethnicity_environment_quality, by=c("geoid", "race_ind"))
+#join to expanded dataset, add geo variables, and add subgroup variables
+haz_by_race_exp <- left_join(expand_race, 
+                             haz_by_race %>% 
+                               select(geoid, race_ind, environmental, na_perc), 
+                             by=c("geoid", "race_ind")) %>% 
+  left_join(state_county, by = "geoid") %>% 
+  rename(subgroup_type = race_ind) %>% 
+  mutate(subgroup = "Race")
+
+####STEP SIX: Append DATA####
+
+final_dat<- all_environment %>% 
+  bind_rows(pov_environment_exp) %>% 
+  bind_rows(haz_by_race_exp) 
+
+####STEP SEVEN: Make File Match Data Standards####
+final_dat <- final_dat %>% 
+  select(-c(geoid, state_name, county_name)) %>% 
+  mutate(year = 2014) %>% 
+  select(year, state, county, environmental, everything()) %>% 
+  #we choose to make the quality variable 2 if missing value is missing by more than 5 percent
+  mutate(environmental_quality = if_else(na_perc >= .05, 2, 1)) %>% 
+  #select(-na_perc) %>% 
+  arrange(year, 
+          state, 
+          county, 
+          subgroup_type,
+          subgroup)
 
 
-####STEP SEVEN: OUTPUT DATA####
-#make file match data standards
-raceethnicity_environment_quality <- raceethnicity_environment_quality  %>%
-  add_column(year = 2014, .before = "state") %>%
-  add_column(quality_flag = 1, .after = "environmental_quality") %>%
-  select(-geoid, -state_name, -county_name) 
-
-raceethnicity_environment_quality <- raceethnicity_environment_quality[,c("year", "state", "county", "race_ind", "environmental_quality", "quality_flag")]
-
-write_csv(raceethnicity_environment_quality, "county_level_enviro_raceethnicity.csv")
+#Check to make sure that environmental quality and environmental have the same amount of missings
+stopifnot(sum(is.na(final_dat$environmental_quality)) == sum(is.na(final_dat$environmental)))
 
 
-income_environmental_quality <- income_environmental_quality  %>%
-  add_column(year = 2014, .before = "state") %>%
-  add_column(quality_flag = 1, .after = "environmental_quality") %>%
-  select(-geoid)
-
-income_environmental_quality <- income_environmental_quality[,c("year", "state", "county", "poverty_type", "environmental_quality", "quality_flag")]
-write_csv(income_environmental_quality, "county_level_enviro_income.csv")
-
-
-
-
+####STEP EIGHT: Write Out File####
+final_dat %>% 
+  write_csv("county_level_enviro.csv")
 
