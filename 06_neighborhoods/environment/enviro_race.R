@@ -281,5 +281,8 @@ stopifnot(sum(is.na(final_dat$environmental_quality)) == sum(is.na(final_dat$env
 
 ####STEP EIGHT: Write Out File####
 final_dat %>% 
-  write_csv("county_level_enviro.csv")
+  write_csv("county_enviro_subgroups.csv")
 
+final_dat %>% 
+filter(subgroup == "All") %>% 
+  write_csv("county_enviro_all.csv")

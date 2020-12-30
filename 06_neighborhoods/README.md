@@ -1,6 +1,6 @@
 # Environmental Quality Index
 
-* Final data name(s): county_level_enviro.csv
+* Final data name(s): county_enviro_all.csv, county_enviro_subgroups.csv
 * Analyst(s): Peace Gwam
 * Data source(s): Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
 * Year(s): 2014 (2010-2014 ACS)
