@@ -23,7 +23,9 @@ Outline the process for creating the data:
 (6) Created county-level metrics  
   * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level  
   * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"  
-  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".  
+  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".    
+
+
 (7) Expanded subgroup data to represent unique values for each subgroup and county  
 (8) Appended data together, cleaned, and wrote to `.csv`  
 
