@@ -13,19 +13,19 @@
       
     * Quality flags: `1` for main environmental indicy. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.029% of the overall population for the county (see variable `na_perc` for the `All` subgroup type in `county_level_enviro.csv`). There are 147 census tracts with missing poverty information and a population > 0. For the `Poverty` subgroup type, counties with missing hazard or poverty information of more than 5 percent of the county were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. There was one county  for the `Poverty` subgroup type with a quality flag of `2`. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. There was one county with the `Race` subgroup type that had a quality flag of `2`. 
 
-Outline the process for creating the data
+Outline the process for creating the data:
 
-(1) Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.
-(2) Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise. 
-(3) Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis
-(4) Merged ACS data with cleaned AFFH data
-(5) Checked Missingness
-(6) Created county-level metrics
-  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level
-  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"
-  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".
-(7) Expanded subgroup data to represent unique values for each subgroup and county
-(8) Appended data together, cleaned, and wrote to `.csv`
+(1) Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.  
+(2) Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise.   
+(3) Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis  
+(4) Merged ACS data with cleaned AFFH data  
+(5) Checked Missingness  
+(6) Created county-level metrics  
+  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level  
+  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"  
+  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".  
+(7) Expanded subgroup data to represent unique values for each subgroup and county  
+(8) Appended data together, cleaned, and wrote to `.csv`  
 
 # Transit Cost and Transit Trips Index
 
