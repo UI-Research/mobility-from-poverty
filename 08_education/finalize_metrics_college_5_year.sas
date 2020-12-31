@@ -26,6 +26,8 @@ data college_missing_HI (keep = year county state share_hs_degree share_hs_degre
  interval = 1.96*sqrt((no_hs_degree*share_with_HSdegree)/_FREQ_); /* _FREQ_ is the unweighted count of people 19-20 */
  share_hs_degree_ub = share_with_HSdegree + interval;
  share_hs_degree_lb = share_with_HSdegree - interval;
+ if share_hs_degree_ub > 1 then share_hs_degree_ub = 1;
+ if share_hs_degree_lb < 0 then share_hs_degree_lb = 0;
 
  /* put variables in correct format */
  new_county = put(county,z3.); 
@@ -103,12 +105,12 @@ run;
 /* sort final data set and order variables*/
 
 data metrics_college_ready;
- retain year state subgroup_type subgroup county share_hs_degree share_hs_degree_ub share_hs_degree_lb;
+ retain year state county subgroup_type subgroup  share_hs_degree share_hs_degree_ub share_hs_degree_lb;
  set metrics_college_ready;
  if share_hs_degree = . and _FREQ_ > 0 then share_hs_degree = 0;
  if share_hs_degree_ub = . and _FREQ_ > 0 then share_hs_degree_ub = 0;
  if share_hs_degree_lb = . and _FREQ_ > 0 then share_hs_degree_lb = 0;
- subgroup_type = "Race-ethnicity";
+ subgroup_type = "race-ethnicity";
 run;
 
 proc sort data=metrics_college_ready; by year state county subgroup; run;

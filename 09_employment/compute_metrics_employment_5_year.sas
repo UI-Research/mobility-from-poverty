@@ -4,10 +4,10 @@
 options fmtsearch=(lib2018);
 
 
- Proc format;
-  Value subgroup_f
- 4 = "White, Non Hispanic"
- 1 = "Black, Non Hispanic"
+ Proc format ;
+  Value subgroup_f ( default = 30)
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
  3 = "Other Races and Ethnicities"
  2 = "Hispanic"
 ;
@@ -24,6 +24,12 @@ proc means data=&microdata_file.(where=(25<=age<=54)) noprint completetypes;
   var perwt;
 run;
 /* creates dataset with number of employed 25-54 year olds by county */
+/* empstat values:
+0		N/A
+1		Employed
+2		Unemployed
+3		Not in labor force
+*/
 proc means data=&microdata_file.(where=((25<=age<=54) and empstat=1)) noprint completetypes; 
   output out=num_employed(drop=_type_ _freq_) sum=num_employed;
   by statefip county;

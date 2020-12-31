@@ -1,5 +1,5 @@
-%let project = K:\Ibp\AWilliams\analyses\gates-mobility-metrics\;
-libname desktop "K:\Ibp\AWilliams\analyses\gates-mobility-metrics";
+%let project = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\;
+libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
 /* financial well-being */
 %let localDir=&project.01_financial-well-being;
@@ -12,11 +12,11 @@ libname family "&project.03_family";
 libname paul "&project.03_family";
 
 /* 08 education */
-filename ASCIIDAT "&project.08_education\2018\usa_00017.dat";
-libname DTed "&project.08_education\2018\Metrics";
+filename ASCIIDAT "C:\Users\kwerner\Desktop\Metrics\usa_00017.dat";
+libname DTed "C:\Users\kwerner\Desktop\Metrics";
 libname edu "&project.08_education";
 
-%let preschool_filepath = &project.metrics_preschool_subgroup.csv;
+%let preschool_filepath = &project.08_education\metrics_preschool_subgroup.csv;
 %let college_filepath = &project.08_education\metrics_college_subgroup.csv;
 
 

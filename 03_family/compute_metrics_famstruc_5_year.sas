@@ -2,13 +2,13 @@
 *Compute county-level family-structure-and-stability metrics;
 *=================================================================;
 
-%let max_hhsize = 20; /*maximum  umber of persons that can be in a household*/
+%let max_hhsize = 20; /*maximum number of persons that can be in a household*/
 options fmtsearch=(lib2018);
 
  Proc format;
-  Value subgroup_f
- 4 = "White, Non Hispanic"
- 1 = "Black, Non Hispanic"
+  Value subgroup_f ( default = 30)
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
  3 = "Other Races and Ethnicities"
  2 = "Hispanic"
 ;

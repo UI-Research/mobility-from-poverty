@@ -215,6 +215,17 @@ run;
 data &dataset._final (drop = _FREQ_ quality);
  merge &dataset._orig &dataset._flag;
  by state county;
+ /* make sure that state and county have leading 0s */
+ new_county = put(county, z3.); 
+ new_statefip = put(state, z2.);
+ drop county state;
+ rename new_county = county;
+ rename new_statefip = state;
+run;
+
+data &dataset._final;
+	retain year state county;
+ 	set &dataset._final;
 run;
 
 proc export data= &dataset._final
