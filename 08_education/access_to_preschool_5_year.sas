@@ -1198,7 +1198,7 @@ proc sql;
    ,b.afact as afact1  
    ,b.afact2 as afact2
  from &input_file. a  
- left join localDir.puma_to_county b 
+ left join libmain.puma_to_county b 
  on (a.statefip = b.statefip and a.puma = b.puma) 
 ;  
 quit;
@@ -1248,13 +1248,33 @@ run;
 data main; 
  set main;
    /* create race categories */
+   /* values for RACE:
+	1	White	
+	2	Black/African American/Negro	
+	3	American Indian or Alaska Native
+	4	Chinese
+	5	Japanese	
+	6	Other Asian or Pacific Islander
+	7	Other race, nec	
+	8	Two major races	
+	9	Three or more major races	
+
+  	values for HISPAN:
+  	0	Not Hispanic
+	1	Mexican
+	2	Puerto Rican·
+	3	Cuban
+	4	Other
+	9	Not Reported
+  */
+
   if hispan = 0 then do;
-   if race = 1 then subgroup = 4;
-   else if race = 2 then subgroup = 1;
-   else if race in (3,4,5,6,7,8,9) then subgroup = 3;
+   if race = 1 then subgroup = 4 /* white */;
+   else if race = 2 then subgroup = 1 /* black */;
+   else if race in (3,4,5,6,7,8,9) then subgroup = 3 /* other */;
    else subgroup = .;
   end;
-  else if hispan in (1,2,3,4) then subgroup = 2;
+  else if hispan in (1,2,3,4) then subgroup = 2 /* hispanic */;
   else subgroup = .;
 
   
@@ -1288,6 +1308,16 @@ data num_3_and_4;
 run;
 
 /* outputs a file with only children 3-4 AND in pre school */
+/* gradeatt values from IPUMS:
+0		N/A
+1		Nursery school/preschool
+2		Kindergarten
+3		Grade 1 to grade 4
+4		Grade 5 to grade 8
+5		Grade 9 to grade 12
+6		College undergraduate
+7		Graduate or professional school
+*/
 proc means data=&microdata_file.(where=(age in (3,4) and gradeatt=1)) noprint completetypes; 
   output out=num_in_preschool(drop=_type_ _freq_) sum=num_in_preschool;
   by statefip county ;
@@ -1323,12 +1353,14 @@ data data_missing_HI (keep = year county state share_in_preschool share_in_presc
  interval = 1.96*sqrt((not_in_pre*share_in_preschool)/_FREQ_);
  share_in_preschool_ub = share_in_preschool + interval;
  share_in_preschool_lb = share_in_preschool - interval;
+ if share_in_preschool_ub > 1 then share_in_preschool_ub = 1;
+ if share_in_preschool_lb < 0 then share_in_preschool_lb = 0;
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
  rename new_county = county;
- subgroup_type = "Race-ethnicity";
+ subgroup_type = "race-ethnicity";
 run;
 
 /* add missing HI county so that there is observation for every county */
@@ -1340,7 +1372,7 @@ data edu.metrics_preschool_subgroup;
   year = 2018;
   state = "15";
   county = "005";
-  subgroup_type = "Race-ethnicity";
+  subgroup_type = "race-ethnicity";
   subgroup = 1;
   share_in_preschool = "";
   share_in_preschool_ub = "";
@@ -1356,7 +1388,7 @@ data edu.metrics_preschool_subgroup;
   year = 2018;
   state = "15";
   county = "005";
-  subgroup_type = "Race-ethnicity";
+  subgroup_type = "race-ethnicity";
   subgroup = 2;
   share_in_preschool = "";
   share_in_preschool_ub = "";
@@ -1372,7 +1404,7 @@ data edu.metrics_preschool_subgroup;
   year = 2018;
   state = "15";
   county = "005";
-  subgroup_type = "Race-ethnicity";
+  subgroup_type = "race-ethnicity";
   subgroup = 3;
   share_in_preschool = "";
   share_in_preschool_ub = "";
@@ -1388,7 +1420,7 @@ data edu.metrics_preschool_subgroup;
   year = 2018;
   state = "15";
   county = "005";
-  subgroup_type = "Race-ethnicity";
+  subgroup_type = "race-ethnicity";
   subgroup = 4;
   share_in_preschool = "";
   share_in_preschool_ub = "";

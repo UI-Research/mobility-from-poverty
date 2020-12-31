@@ -66,22 +66,42 @@ data &output_file.;
 
   /* create race categories */
    /* create race categories */
+  /* values for RACE:
+	1	White	
+	2	Black/African American/Negro	
+	3	American Indian or Alaska Native
+	4	Chinese
+	5	Japanese	
+	6	Other Asian or Pacific Islander
+	7	Other race, nec	
+	8	Two major races	
+	9	Three or more major races	
+
+  	values for HISPAN:
+  	0	Not Hispanic
+	1	Mexican
+	2	Puerto Rican·
+	3	Cuban
+	4	Other
+	9	Not Reported
+  */
+
   if hispan = 0 then do;
-   if race = 1 then subgroup = 4;
-   else if race = 2 then subgroup = 1;
-   else if race in (3,4,5,6,7,8,9) then subgroup = 3;
+   if race = 1 then subgroup = 4 /* white */;
+   else if race = 2 then subgroup = 1 /*black */;
+   else if race in (3,4,5,6,7,8,9) then subgroup = 3 /* other */;
    else subgroup = .;
   end;
-  else if hispan in (1,2,3,4) then subgroup = 2;
+  else if hispan in (1,2,3,4) then subgroup = 2 /* hispanic */;
   else subgroup = .;
 
   
  run;
 
  Proc format;
-  Value subgroup_f
- 4 = "White, Non Hispanic"
- 1 = "Black, Non Hispanic"
+  Value subgroup_f ( default = 30)
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
  3 = "Other Races and Ethnicities"
  2 = "Hispanic"
 ;

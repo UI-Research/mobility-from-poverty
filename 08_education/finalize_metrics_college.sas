@@ -32,6 +32,9 @@ data college_missing_HI (keep = year county state share_hs_degree share_hs_degre
  share_hs_degree_ub = share_with_HSdegree + interval;
  share_hs_degree_lb = share_with_HSdegree - interval;
 
+ if share_hs_degree_ub > 1 then share_hs_degree_ub = 1;
+ if share_hs_degree_lb < 0 then share_hs_degree_lb = 0;
+
  /* put variables in correct format */
  new_county = put(county,z3.); 
  state = put(statefip,z2.);

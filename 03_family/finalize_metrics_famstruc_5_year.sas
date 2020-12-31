@@ -20,7 +20,7 @@ options fmtsearch=(lib2018);
 
 /* add rows for the missing HI county */
 data all_structure;
- set paul.metrics_famstruc_subgroup end=eof;
+ set family.metrics_famstruc_subgroup end=eof;
  output;
  if eof then do;
   statefip = 15;
@@ -105,11 +105,13 @@ proc sort data=all_structure; by statefip county subgroup; run;
 data &structure. (keep = year county state subgroup subgroup_type &structure &structure._ub &structure._lb _FREQ_) ;
  set all_structure;
  year = 2018;
- subgroup_type = "Race-ethnicity";
+ subgroup_type = "race-ethnicity";
  inverse_&structure = 1 - &structure;
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
  &structure._lb = &structure - interval;
+ if &structure._ub > 1 then &structure._ub =1;
+ if &structure._lb < 0 then &structure._lb =0; 
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
