@@ -2,15 +2,19 @@
  warn if merged datasets have same variables (msglevel=i), show resolved values of macro varsiables (symbolgen);
 options source2 mprint msglevel=i symbolgen;
 
-%let localDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
-%let networkDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
+/*%let localDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;
+%let networkDir=V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul;*/
+
+/*%let localDir=K:\Ibp\AWilliams\analyses\gates-mobility-metrics\01_financial-well-being;
+%let networkDir=K:\Ibp\AWilliams\analyses\gates-mobility-metrics\01_financial-well-being;*/
+
 
 
 libname libmain "&localDir";
 libname old  "&localDir.\old";
 libname lib2018 "&localDir.\2018";
 libname old2018  "&localDir.\2018\old";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+/*libname desktop "K:\Ibp\AWilliams\analyses\gates-mobility-metrics";*/
 
 proc format;
   value nzp

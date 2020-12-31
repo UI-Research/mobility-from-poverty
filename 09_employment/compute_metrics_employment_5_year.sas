@@ -2,7 +2,7 @@
 *Compute county-level unemployment/joblessness metrics;
 *=================================================================;
 options fmtsearch=(lib2018);
-libname employ "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
+
 
  Proc format;
   Value subgroup_f

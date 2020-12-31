@@ -3,7 +3,6 @@
 *=================================================================;
 
 options fmtsearch=(lib2018);
-libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
 
  Proc format;
   Value subgroup_f
@@ -43,5 +42,5 @@ run;
 %mend compute_metrics_college;
 
 %compute_metrics_college(lib2018.microdata_5_year,edu.metrics_college_subgroup);
-proc means data=edu.metrics_college_5_year;
+proc means data=edu.metrics_college_subgroup;
 run;

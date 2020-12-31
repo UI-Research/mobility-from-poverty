@@ -17,11 +17,6 @@ I put metrics_college in the 08_education subfolder of the repository.
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_college_subgroup.csv;
-
-libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
-
-
 /***** create confidence interval and correctly format variables *******/
 
 data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_ subgroup subgroup_type)  ;
@@ -123,6 +118,6 @@ proc sort data=metrics_college_ready; by year state county subgroup; run;
 /* export as csv */
 
 proc export data = metrics_college_ready
-  outfile = "&filepath"
+  outfile = "&college_filepath"
   replace;
 run;

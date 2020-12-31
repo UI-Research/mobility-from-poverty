@@ -16,10 +16,6 @@ as input.
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\metrics_employment_subgroup.csv;
-
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
-
 /* create confidence interval and correctly format variables */
 
 data employment_missing_HI (keep = year county state subgroup subgroup_type share_employed share_employed_ub share_employed_lb _FREQ_)  ;
@@ -124,6 +120,6 @@ proc sort data=employment; by year state county subgroup; run;
 /* export as csv */
 
 proc export data = employment
-  outfile = "&filepath"
+  outfile = "&employ_filepath"
   replace;
 run;

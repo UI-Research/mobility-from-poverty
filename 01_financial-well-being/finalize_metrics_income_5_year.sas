@@ -10,11 +10,13 @@ NOTE: per email from Greg on 9/10/20, I have removed the confidence interval cod
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_subgroup.csv;
+/*%let filepath = K:\Ibp\AWilliams\analyses\gates-mobility-metrics\01_financial-well-being\metrics_income_subgroup.csv;*/
+
+
 
 /* this runs on the microdata file output by 3_prepate_microdata_5_year */
 
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+/*libname desktop "C:\Users\kwerner\Desktop\Metrics";*/
 options fmtsearch=(lib2018);
 
  Proc format;
