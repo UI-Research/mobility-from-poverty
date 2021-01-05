@@ -164,9 +164,9 @@ data &dataset._flag (keep = state county subgroup &metric._quality);
 
  /* I have to change the subgroup variable to character, since when I bring in the original CSV it will be a character var */
 
-/*length subgroup $30;*/
-if subgroup = 4 then subgroup_c = "White, Non Hispanic";
- else if subgroup = 1 then subgroup_c = "Black, Non Hispanic";
+length subgroup_c $30;
+if subgroup = 4 then subgroup_c = "White, Non-Hispanic";
+ else if subgroup = 1 then subgroup_c = "Black, Non-Hispanic";
  else if subgroup = 3 then subgroup_c = "Other Races and Ethnicities";
  else if subgroup = 2 then subgroup_c = "Hispanic";
 
@@ -209,12 +209,24 @@ data &dataset._f (drop = _FREQ_ quality);
  merge &dataset._orig &dataset._flag;
  by state county;
  if state = 15 and county = 5 then &metric._quality = 3;
+/* make sure that state and county have leading 0s */
+ new_county = put(county, z3.); 
+ new_statefip = put(state, z2.);
+ drop county state;
+ rename new_county = county;
+ rename new_statefip = state;
+run;
+
+data &dataset._f;
+	retain year state county subgroup_type subgroup;
+ 	set &dataset._f;
 run;
 
 proc export data= &dataset._f
  outfile = "&metrics_folder.&folder.&dataset..csv"
  replace;
 run;
+
 %mend output;
 %output(dataset = metrics_college_subgroup, folder = 08_education\, metric = hs_degree); 
 %output(dataset = metrics_preschool_subgroup, folder = 08_education\, metric = preschool); 

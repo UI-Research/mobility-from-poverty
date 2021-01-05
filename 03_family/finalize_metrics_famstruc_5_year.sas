@@ -16,16 +16,11 @@ as input.
 
 */
 
-
-
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family\metrics_famstruc_subgroup.csv;
-
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 options fmtsearch=(lib2018);
 
 /* add rows for the missing HI county */
 data all_structure;
- set paul.metrics_famstruc_subgroup end=eof;
+ set family.metrics_famstruc_subgroup end=eof;
  output;
  if eof then do;
   statefip = 15;
@@ -104,17 +99,19 @@ proc sort data=all_structure; by statefip county subgroup; run;
 
 
 /* create confidence interval using macro for each metric.
-	creates one data set per metric */
+  creates one data set per metric */
 
 %macro fam_struc(structure= );
 data &structure. (keep = year county state subgroup subgroup_type &structure &structure._ub &structure._lb _FREQ_) ;
  set all_structure;
  year = 2018;
- subgroup_type = "Race-ethnicity";
+ subgroup_type = "race-ethnicity";
  inverse_&structure = 1 - &structure;
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
  &structure._lb = &structure - interval;
+ if &structure._ub > 1 then &structure._ub =1;
+ if &structure._lb < 0 then &structure._lb =0; 
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
@@ -152,6 +149,6 @@ proc sort data=all_structure_merged; by year state county subgroup; run;
 /* export as csv */
 
 proc export data = all_structure_merged
-  outfile = "&filepath"
+  outfile = "&family_filepath"
   replace;
 run;

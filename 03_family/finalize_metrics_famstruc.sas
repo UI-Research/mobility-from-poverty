@@ -32,6 +32,8 @@ data &structure.(keep = year county state &structure &structure._ub &structure._
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
  &structure._lb = &structure - interval;
+ if &structure._ub > 1 then &structure._ub = 1;
+ if &structure._lb < 0 then &structure._lb = 0; 
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);

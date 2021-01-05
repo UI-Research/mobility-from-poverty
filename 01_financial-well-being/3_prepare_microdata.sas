@@ -10,6 +10,9 @@ The input files USA_00027 and puma_to_county are created by the preceeding SAS p
 USA_00027 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
 It will need to be downloaded and unzipped. 
 
+USA_00019 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
+It will need to be downloaded and unzipped. 
+
 */
 
 %macro prepare_microdata(input_file,output_file);
@@ -68,8 +71,11 @@ proc sort data=&output_file.;
 run;
 %mend prepare_microdata;
 
-
+/* this is used for all of the one-year metrics besides preschool */
 %prepare_microdata(lib2018.usa_00027,lib2018.microdata);
+
+/* this should be run to get the 2014 housing data */
+%prepare_microdata(lib2014.usa_00024,lib2014.microdata);
 
 /* check to make sure I fixed the county 51515 issue */
 

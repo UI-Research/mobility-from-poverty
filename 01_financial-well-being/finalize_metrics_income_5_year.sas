@@ -10,17 +10,19 @@ NOTE: per email from Greg on 9/10/20, I have removed the confidence interval cod
 
 *************/
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_subgroup.csv;
+/*%let filepath = K:\Ibp\AWilliams\analyses\gates-mobility-metrics\01_financial-well-being\metrics_income_subgroup.csv;*/
+
+
 
 /* this runs on the microdata file output by 3_prepate_microdata_5_year */
 
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+/*libname desktop "C:\Users\kwerner\Desktop\Metrics";*/
 options fmtsearch=(lib2018);
 
  Proc format;
-  Value subgroup_f
- 4 = "White, Non Hispanic"
- 1 = "Black, Non Hispanic"
+  Value subgroup_f ( default = 30)
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
  3 = "Other Races and Ethnicities"
  2 = "Hispanic"
 ;
@@ -67,7 +69,7 @@ data income;
   year = 2018;
   state = "15";
   county = "005";
-  single_race = 1;
+  subgroup = 1;
   pctl_20 = .;
   pctl_50 = .;
   pctl_80 = .;
@@ -81,7 +83,7 @@ data income;
   year = 2018;
   state = "15";
   county = "005";
-  single_race = 2;
+  subgroup = 2;
   pctl_20 = .;
   pctl_50 = .;
   pctl_80 = .;
@@ -95,7 +97,7 @@ data income;
   year = 2018;
   state = "15";
   county = "005";
-  single_race = 3;
+  subgroup = 3;
   pctl_20 = .;
   pctl_50 = .;
   pctl_80 = .;
@@ -109,7 +111,7 @@ data income;
   year = 2018;
   state = "15";
   county = "005";
-  single_race = 4;
+  subgroup = 4;
   pctl_20 = .;
   pctl_50 = .;
   pctl_80 = .;
@@ -122,7 +124,7 @@ run;
 data income (drop = single_race);
  retain year state county subgroup_type subgroup pctl_20 pctl_50 pctl_80;
  set income;
- subgroup_type = "Race-ethnicity";
+ subgroup_type = "race-ethnicity";
 run;
 
 proc sort data=income; by year state county subgroup; run;
