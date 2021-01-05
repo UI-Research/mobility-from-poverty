@@ -53,16 +53,16 @@ race_pov<- acs %>%
 
 
 # create indicator variable for race based on perctage of poc/nh-White in each tract. These percentage cut offs were determined by Marge Turner.
-# also create indicator for tracts in 'high_poverty', with 40% or higher poverty rate meaning the tract has a high level of poverty
+# also create indicator for tracts in 'High Poverty', with 40% or higher poverty rate meaning the tract has a high level of poverty
 race_pov <- race_pov %>%
   mutate(
     race_ind = case_when(
-      percent_poc > .4 & percent_poc < .6 ~"No Predominant Racial Group",
-      percent_poc >= .6 ~ "Predominantly People of Color",
-      percent_poc <= .6 ~ "Predominantly White, Non-Hispanic"), 
+      percent_poc > .4 & percent_poc < .6 ~"Mixed Race and Ethnicity",
+      percent_poc >= .6 ~ "Majority Non-White",
+      percent_poc <= .6 ~ "Majority White, Non-Hispanic"), 
     poverty_type = case_when(
-      percent_pov < .4 ~ "low_poverty",
-      percent_pov >=  .4 ~ "high_poverty")
+      percent_pov < .4 ~ "Not High Poverty",
+      percent_pov >=  .4 ~ "High Poverty")
   )
 
 
@@ -160,8 +160,8 @@ all_environment <- race_enviro %>%
 #create percent of the population of each county has has missing tract hazard information
 all_environment <- all_environment %>% 
   mutate(na_perc = na_pop / county_pop, 
-         subgroup_type = "All", 
-         subgroup = "All") %>% 
+         subgroup = "All", 
+         subgroup_type = "all") %>% 
   select(-c(na_pop, county_pop))
 
 #check max percent of population of county that has missing hazard information
@@ -176,8 +176,8 @@ all_environment %>%
 #if it is a low poverty area. we also count percent missing by those na's in order to more accurately
 #track missingness.
 pov_environment <- race_enviro %>%
-  mutate(weighting_ind = case_when(poverty_type == "high_poverty" ~ poverty, 
-                                   poverty_type == "low_poverty" ~ (total_pov - poverty)), 
+  mutate(weighting_ind = case_when(poverty_type == "High Poverty" ~ poverty, 
+                                   poverty_type == "Not High Poverty" ~ (total_pov - poverty)), 
     na_pop = if_else(is.na(haz_idx) | is.na(poverty_type), weighting_ind, 0)) %>%
   group_by(state, county,state_name, county_name, poverty_type) %>%
   summarise(environmental = weighted.mean(haz_idx, weighting_ind, na.rm = TRUE), 
@@ -208,21 +208,21 @@ pov_environment_exp <- left_join(expanded,
                                          by=c("geoid", 
                                               "poverty_type")) %>% 
   left_join(state_county, by = "geoid") %>% 
-  rename(subgroup_type = poverty_type) %>% 
-  mutate(subgroup = "Poverty")
+  rename(subgroup = poverty_type) %>% 
+  mutate(subgroup_type = "poverty")
 
 
 ###avg county level hazard, by raceethnicity
 #we choose to weight the index by total population for tracts that have 
-#no predominant racial group, weight by number of people of color for tracts
-#that are predominantly people of color, and weight by white, non hispanic 
+#Mixed Race and Ethnicity, weight by number of people of color for tracts
+#that are Majority Non-White, and weight by white, non hispanic 
 #people in tracts that are predominantly white. we calculate missingness
 #based off of these weights as well. 
 haz_by_race <- race_enviro %>% 
   mutate(weighting_ind = case_when(
-    race_ind == "No Predominant Racial Group" ~ total_pop, 
-    race_ind == "Predominantly People of Color" ~ poc,
-    race_ind == "Predominantly White, Non-Hispanic" ~ wnh
+    race_ind == "Mixed Race and Ethnicity" ~ total_pop, 
+    race_ind == "Majority Non-White" ~ poc,
+    race_ind == "Majority White, Non-Hispanic" ~ wnh
   ), 
     na_pop = if_else(is.na(haz_idx) | is.na(race_ind), 
                           weighting_ind,
@@ -251,8 +251,8 @@ haz_by_race_exp <- left_join(expand_race,
                                select(geoid, race_ind, environmental, na_perc), 
                              by=c("geoid", "race_ind")) %>% 
   left_join(state_county, by = "geoid") %>% 
-  rename(subgroup_type = race_ind) %>% 
-  mutate(subgroup = "Race")
+  rename(subgroup = race_ind) %>% 
+  mutate(subgroup_type = "race-ethnicity")
 
 ####STEP SIX: Append DATA####
 
@@ -272,7 +272,8 @@ final_dat <- final_dat %>%
           state, 
           county, 
           subgroup_type,
-          subgroup)
+          subgroup) %>%
+  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality)
 
 
 #Check to make sure that environmental quality and environmental have the same amount of missings
@@ -281,8 +282,16 @@ stopifnot(sum(is.na(final_dat$environmental_quality)) == sum(is.na(final_dat$env
 
 ####STEP EIGHT: Write Out File####
 final_dat %>% 
-  write_csv("county_enviro_subgroups.csv")
+  filter(subgroup == "All") %>% 
+  select(-subgroup, -subgroup_type) %>%
+  write_csv("enviro.csv")
 
 final_dat %>% 
-filter(subgroup == "All") %>% 
-  write_csv("county_enviro_all.csv")
+  filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
+  write_csv("enviro_race-ethnicity.csv")
+
+final_dat %>% 
+  filter(subgroup_type %in% c("all", "poverty")) %>%
+  write_csv("enviro_poverty.csv")
+
+
