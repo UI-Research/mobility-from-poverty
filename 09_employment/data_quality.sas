@@ -89,30 +89,43 @@ Paul's code and contains only households.
 
 I also use this dataset to create the total number of households, 
 which is the sample size for the income metric*/
-
-data households (keep = statefip county Below50AMI_unw household);
-  set desktop.households; /* this file should be output by the program compute_metrics_housing.sas */
+%macro number_of_hhs(year);
+data households_&year (keep = statefip county Below50AMI_unw household year);
+  set desktop.households_&year; /* this file should be output by the program compute_metrics_housing.sas */
   if L50_4 ne . then do;
     Below50AMI_unw = hhincome < L50_4;  
   end;
   household = 1;
 run;
 
-proc means data=households noprint; 
-  output out=number_hhs(drop=_type_) sum=;
-  by statefip county;
+proc means data=households_&year noprint; 
+  output out=number_hhs_&year(drop=_type_) sum=;
+  by year statefip county;
   var Below50AMI_unw household ;
+run;
+%mend;
+%number_of_hhs(year=2014);
+%number_of_hhs(year=2018);
+
+/* get state and county in same format */
+data house.metrics_housing;
+ set house.metrics_housing;
+ new_county = input(county, 8.); 
+ new_statefip = input(state, 8.);
+ drop county state;
+ rename new_county = county;
+ rename new_statefip = statefip;
 run;
 
 /* add number of low income households to housing metric */
 data metrics_housing;
- merge house.metrics_housing number_hhs;
- by statefip county;
+ merge house.metrics_housing number_hhs_2014 number_hhs_2018;
+ by year statefip county;
 run;
 
 /* create income metric that right now just has the number of total households */
 data metrics_income (keep = statefip county household);
- set number_hhs;
+ set number_hhs_2018;
 run;
 
  
@@ -142,6 +155,21 @@ run;
 %metric(lib = edu, dataset = metrics_preschool, denominator = _FREQ_);
 %metric(lib = work, dataset = metrics_income, denominator = household);
 
+/* add a year variable for all datasets except Housing. This is needed for a later merge, and will allow more years
+	of data to be added more easily */
+%macro add_year(lib= , dataset= );
+data &dataset.;
+ set &dataset.;
+ year = 2018;
+run;
+%mend add_year;
+%add_year(dataset = metrics_college);
+%add_year(dataset = metrics_famstruc);
+%add_year(dataset = metrics_employment);
+%add_year(dataset = metrics_preschool);
+%add_year(dataset = metrics_income);
+
+
 
 /****
 Next step is to merge the PUMA flag with each individual metric, and then create the final 
@@ -159,6 +187,7 @@ data metrics_preschool;
 run;
 
 proc sort data = metrics_preschool; by statefip county; run;
+proc sort data = metrics_housing; by statefip county; run;
 
 /* this creates the quality metric. Per email from Greg on 9/18/20, 
 only ACS metrics with sample size < 30 should be be marked as "3"
@@ -168,7 +197,7 @@ sample size and less than 75% of the data comes from the county, the
 county gets a "2." Small sample size gives a "3" */
 
 %macro flag(dataset= , metric= ); 
-data &dataset._flag (keep = state county &metric._quality);
+data &dataset._flag (keep = state county &metric._quality year);
  merge &dataset. puma_county;
  by statefip county;
  if size_flag = 0 then do; 
@@ -179,6 +208,7 @@ data &dataset._flag (keep = state county &metric._quality);
  else if size_flag = 1 then &metric._quality = 3;
  else &metric._quality = .;
  state = statefip;
+ if state = 15 and county = 5 then &metric._quality = .;
 run;
 
 
@@ -197,6 +227,11 @@ run;
 %flag(dataset = metrics_preschool, metric = preschool);
 %flag(dataset = metrics_income, metric = pctl);
 
+/*
+proc print data=metrics_housing_flag;
+ where housing_quality = 3;
+run;
+*/
 
 /**** output as CSVs ****/
 /* first I infile the original metric CSVs.
@@ -212,9 +247,12 @@ proc import datafile="&metrics_folder.&folder.&dataset..csv" out=&dataset._orig 
   datarow=2;
 run;
 
+proc sort data=&dataset._orig;  by year state county; run;
+proc sort data=&dataset._flag;  by year state county; run;
+
 data &dataset._final (drop = _FREQ_ quality);
  merge &dataset._orig &dataset._flag;
- by state county;
+ by year state county;
  /* make sure that state and county have leading 0s */
  new_county = put(county, z3.); 
  new_statefip = put(state, z2.);
