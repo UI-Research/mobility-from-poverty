@@ -4,7 +4,9 @@
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
-%macro compute_metrics_housing(microdata_file,vacant_file,metrics_file);
+options fmtsearch=(lib2018);
+
+%macro compute_metrics_housing(microdata_file,vacant_file,metrics_file,year);
 * Prepare a file containing HUD income levels for each county. This requires first
   importing a file with the income limits for each FMR, as well as a file that 
   includes the population for each FMR;
@@ -62,7 +64,7 @@ run;
      (regardless of the actual unit size!!!). "Affordable" means costs are < 30% of the AMI
 	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
-data desktop.households;
+data desktop.households_&year;
   merge &microdata_file.(in=a where=(pernum=1)) County_income_limits(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
   if a;
@@ -100,7 +102,7 @@ data vacant;
 run;
 
 *Summarize by county, combine households and vacant units, and compute metrics;
-proc means data=desktop.Households noprint; 
+proc means data=desktop.Households_&year noprint; 
   output out=households_summed(drop=_type_) sum=;
   by statefip county;
   var Below80AMI Affordable80AMI Below50AMI Affordable50AMI;
@@ -120,13 +122,18 @@ data &metrics_file.;
 run;
 %mend compute_metrics_housing;
 
-%compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing);
+/* this is for 2018 */
+%compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing_2018,year=2018);
 
-proc freq data=desktop.households;
-  where Below80AMI=. or Below50AMI=. or Affordable80AMI=. or Affordable50AMI=.;
-  title "states and counties missing an AMI value";
-  table statefip*county;
-  format statefip fips.;
+/* this is for 2014 */
+%compute_metrics_housing(lib2014.microdata,lib2014.vacant,housing.metrics_housing_2014,year=2014);
+
+proc means data=housing.metrics_housing_2014;
+var share_affordable_80AMI share_affordable_50AMI;
+title '2014';
 run;
-proc means data=housing.metrics_housing;
+
+proc means data=housing.metrics_housing_2018;
+var share_affordable_80AMI share_affordable_50AMI;
+title '2018';
 run;
