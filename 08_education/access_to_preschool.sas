@@ -621,6 +621,9 @@ data data_missing_HI (keep = year county state share_in_preschool share_in_presc
  share_in_preschool_ub = share_in_preschool + interval;
  share_in_preschool_lb = share_in_preschool - interval;
 
+ if share_in_preschool_ub > 1 then share_in_preschool_ub = 1;
+ if share_in_preschool_lb < 0 then share_in_preschool_lb = 0;
+
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
