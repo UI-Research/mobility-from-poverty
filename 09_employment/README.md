@@ -1,4 +1,4 @@
-# Metric template
+# Employment
 
 Brief description
 
@@ -18,6 +18,9 @@ the csv.
 The process for the subgroup analysis is the same. You must run the file 3_prepare_microdata_5_year.
 
 <Repeat above information for additional metrics>
+
+# Wage ratio
+
 
 * Final data name(s): metrics_wage_ratio
 * Analyst(s): Kevin Werner and Aaron Williams
@@ -41,3 +44,4 @@ The living wage is a FULL TIME worker wage, while the average weekly wage includ
 We use the living wage level for one adult and two children. 
 
 <Repeat above information for additional metrics>
+
