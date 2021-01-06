@@ -22,9 +22,12 @@ Uses the dataset created by compute_metrics_housing as input
 
 libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 
-data housing_missing_HI (keep = year state county share_affordable_50_ami share_affordable_80_ami);
- set paul.metrics_housing;
- year = 2018;
+/* I turned this into a macro so it can easily read both the 2014 and 2018 data */
+
+%macro finalize_housing(year);
+data housing_missing_HI_&year (keep = year state county share_affordable_50_ami share_affordable_80_ami);
+ set paul.metrics_housing_&year;
+ year = &year;
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
@@ -35,11 +38,11 @@ run;
 
 /* add missing HI county so that there is observation for every county */
 
-data housing;
- set housing_missing_HI end=eof;
+data housing_&year;
+ set housing_missing_HI_&year end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = &year;
   state = "15";
   county = "005";
   share_affordable_50_ami = .;
@@ -50,13 +53,28 @@ run;
 
 /* sort final data set and order variables*/
 
-data housing;
+data housing_&year;
  retain year state county;
- set housing;
+ set housing_&year;
 run;
 
-proc sort data=housing; by year state county; run;
+proc sort data=housing_&year; by year state county; run;
 
+%mend finalize_housing;
+%finalize_housing(year = 2014);
+%finalize_housing(year = 2018);
+
+/* append the two datasets together */
+data housing;
+ set housing_2014;
+run;
+
+proc append base=housing data=housing_2018;
+run;
+
+data paul.metrics_housing;
+ set housing;
+run;
 
 
 /* export as csv */
