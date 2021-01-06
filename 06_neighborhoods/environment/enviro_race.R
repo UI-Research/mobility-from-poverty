@@ -66,6 +66,18 @@ race_pov <- race_pov %>%
   )
 
 
+# two county names and fips codes were changed.
+# edit the GEOIDs to match the current fips codes. 
+race_pov <- race_pov %>% 
+  mutate(GEOID = case_when(
+    GEOID ==  "46113940500" ~ "46102940500",
+    GEOID ==  "46113940800" ~ "46102940800",
+    GEOID ==  "46113940900" ~ "46102940900", 
+    GEOID ==  "02270000100" ~ "02158000100",
+    TRUE ~ GEOID
+  ))
+
+
 ####STEP THREE: PULL IN AIR QUALITY INDEX FROM AFFH DATA####
 
 
@@ -102,18 +114,9 @@ enviro_stats <- enviro_stats %>%
                     pad = "0")
   )
 
-# two county names and fips codes were changed.
-# edit the GEOIDs to match the current fips codes. 
+#add state/county/tract variables
 enviro_stats <- enviro_stats%>%
   mutate(
-    GEOID = str_pad(GEOID, width = 11, "left", "0"),
-    GEOID = case_when(
-      GEOID ==  "46102940500" ~ "46113940500", 
-      GEOID ==  "46102940800" ~ "46113940800",
-      GEOID ==  "46102940900" ~ "46113940900", 
-      GEOID == "02158000100" ~ "02270000100",
-      TRUE ~ GEOID
-    ), 
     state = str_sub(GEOID, 1, 2), 
     county = str_sub(GEOID, 3, 5), 
     tract = str_sub(GEOID, 6, 11)
