@@ -4,6 +4,9 @@
 /* USA_00032 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
 It will need to be downloaded and unzipped. */
 
+/* USA_00021 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2014.
+It will need to be downloaded and unzipped. */
+
 %macro prepare_vacant(input_file,microdata_file,output_file);
 *Map PUMAs to counties on the file of vacant households, and make adjustments to weight and dollars;
 proc sql; 
@@ -70,5 +73,8 @@ data &output_file.;
 run;
 %mend prepare_vacant;
 
-
+/* run this version for 2018 */
 %prepare_vacant(lib2018.usa_00032,lib2018.microdata,lib2018.vacant);
+
+/* run this version for 2014 */
+%prepare_vacant(lib2014.usa_00025,lib2014.microdata,lib2014.vacant);

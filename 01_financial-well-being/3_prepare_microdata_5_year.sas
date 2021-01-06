@@ -4,16 +4,16 @@
 
 /*
 
-The input files USA_00027 and puma_to_county are created by the preceeding SAS programs,
+The input files USA_00014 and puma_to_county are created by the preceeding SAS programs,
 1_init.sas and 2_puma_to_county
 
-USA_00027 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
-It will need to be downloaded and unzipped. 
-
-USA_00019 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
+USA_00014 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/5_year.
 It will need to be downloaded and unzipped. 
 
 */
+
+options fmtsearch=(lib2018);
+
 
 %macro prepare_microdata(input_file,output_file);
 
@@ -63,6 +63,49 @@ data &output_file.;
   if statefip = 51 and county = 515 then county = 19;
   if statefip = 2 and county = 270 then county = 158;
   if statefip = 46 and county = 113 then county = 102;
+
+  /* create race categories */
+   /* create race categories */
+  /* values for RACE:
+	1	White	
+	2	Black/African American/Negro	
+	3	American Indian or Alaska Native
+	4	Chinese
+	5	Japanese	
+	6	Other Asian or Pacific Islander
+	7	Other race, nec	
+	8	Two major races	
+	9	Three or more major races	
+
+  	values for HISPAN:
+  	0	Not Hispanic
+	1	Mexican
+	2	Puerto Rican·
+	3	Cuban
+	4	Other
+	9	Not Reported
+  */
+
+  if hispan = 0 then do;
+   if race = 1 then subgroup = 4 /* white */;
+   else if race = 2 then subgroup = 1 /*black */;
+   else if race in (3,4,5,6,7,8,9) then subgroup = 3 /* other */;
+   else subgroup = .;
+  end;
+  else if hispan in (1,2,3,4) then subgroup = 2 /* hispanic */;
+  else subgroup = .;
+
+  
+ run;
+
+ Proc format;
+  Value subgroup_f ( default = 30)
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
+ 3 = "Other Races and Ethnicities"
+ 2 = "Hispanic"
+;
+
 run;
 
 *Sort into order most useful for calculating metrics;
@@ -71,15 +114,6 @@ proc sort data=&output_file.;
 run;
 %mend prepare_microdata;
 
-/* this is used for all of the one-year metrics besides preschool */
-%prepare_microdata(lib2018.usa_00027,lib2018.microdata);
 
-/* this should be run to get the 2014 housing data */
-%prepare_microdata(lib2014.usa_00024,lib2014.microdata);
+%prepare_microdata(lib2018.usa_00014,lib2018.microdata_5_year);
 
-/* check to make sure I fixed the county 51515 issue */
-
-proc freq data=lib2018.microdata;
- where statefip = 51;
- table county;
-run;
