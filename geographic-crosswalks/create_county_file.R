@@ -47,4 +47,12 @@ pop <- pop %>%
   arrange(year, state, county) %>%
   mutate(county_name = ifelse(county_name == "DoÃ±a Ana County", "Doña Ana County", county_name))
 
+pop <-
+  bind_rows(
+    pop %>%
+      filter(year == 2015) %>%
+      mutate(year = 2014, population = NA),
+    pop
+  )
+
 write_csv(pop, "geographic-crosswalks/data/county-file.csv")
