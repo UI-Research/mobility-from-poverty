@@ -10,12 +10,12 @@ options fmtsearch=(lib2018);
 * Prepare a file containing HUD income levels for each county. This requires first
   importing a file with the income limits for each FMR, as well as a file that 
   includes the population for each FMR;
-proc import datafile="&networkDir.\Section8-FY18.csv" out=FMR_Income_Levels dbms=csv replace;
+proc import datafile="&networkDir.\Section8-FY&year..csv" out=FMR_Income_Levels_&year dbms=csv replace;
   getnames=yes;
   guessingrows=100;
   datarow=2;
 run;
-proc import datafile="&networkDir.\FY18_4050_FMRs_rev.csv" out=FMR_pop dbms=csv replace
+proc import datafile="&networkDir.\FY&year._4050_FMRs_rev.csv" out=FMR_pop_&year dbms=csv replace
 ;
   getnames=yes;
   guessingrows=100;
@@ -27,13 +27,13 @@ run;
   set FMR_pop(rename=(fips2010=fips2010_char));
   fips2010=input(fips2010_char,10.);
 run;*/
-data FMR_Income_Levels;
-  merge FMR_Income_Levels FMR_pop(keep=fips2010 pop2010);
+data FMR_Income_Levels_&year;
+  merge FMR_Income_Levels_&year FMR_pop_&year(keep=fips2010 pop2010);
   by fips2010;
 run;
 *Make some final adjustments to the income file so it can be matched to the ACS microdata by counties;
-data FMR_Income_Levels;
-  set FMR_Income_Levels(rename=(county=countytemp));
+data FMR_Income_Levels_&year;
+  set FMR_Income_Levels_&year(rename=(county=countytemp));
   length statefip 3;
   length county 4;
   statefip=state;
@@ -50,11 +50,11 @@ run;
  contain multiple FMRs. For these counties, replace the multiple FMR records with just
  one county record, using the weighted average value of the income levels, weighted 
  by the FMR population.*/
-proc means data=FMR_Income_Levels nway noprint;
+proc means data=FMR_Income_Levels_&year nway noprint;
  class statefip county;
  var L50_1-L50_8 L80_1-L80_8;
  weight pop2010;
- output out=County_income_limits n=num_of_FMRs mean=;
+ output out=County_income_limits_&year n=num_of_FMRs mean=;
 run;
 
 *Merge on the 80% and 50% AMI income levels and determine:
@@ -65,7 +65,7 @@ run;
 	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
 data desktop.households_&year;
-  merge &microdata_file.(in=a where=(pernum=1)) County_income_limits(in=b keep=statefip county L50_4 L80_4);
+  merge &microdata_file.(in=a where=(pernum=1)) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
   if a;
   if L80_4 ne . then do;
@@ -88,7 +88,7 @@ run;
  value for gross rent, use that for the costs.  Otherwise, if there is a valid house value, use the housing
  cost that was calcualted in the "prepare_vacant" macro.;
 data vacant;
-  merge &vacant_file.(in=a) County_income_limits(in=b keep=statefip county L50_4 L80_4);
+  merge &vacant_file.(in=a) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4);
   by statefip county;
   if a;
   if L80_4 ne . then do;
