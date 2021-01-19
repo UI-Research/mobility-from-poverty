@@ -1,4 +1,4 @@
-# Metric template
+# Family structure
 
 Brief description
 
@@ -10,8 +10,7 @@ Brief description
 	The compute_ program calculates the percent of children in each family structure,
 	while the finalize_ calculates the confidence intervals and outputs the .csv.
 	
-	NOTE: to run this code, you must first run the 1_, 2_, and 3_ programs in the 
-	income folder. (For the subgroup analysis, run 3_create_microdata_5_year.)
+	NOTE: to run this code, you must first run the 1_, 2_, and 3_ programs in the income folder. (For the subgroup analysis, run 3_create_microdata_5_year.)
 
 The data comes from IPUMS. It is cleaned and counties are added with Paul's method.
 The compute_ code then finds the percent of children in each family structure. 
