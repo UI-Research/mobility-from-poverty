@@ -1349,12 +1349,15 @@ run;
 data data_missing_HI (keep = year county state share_in_preschool share_in_preschool_ub share_in_preschool_lb _FREQ_ subgroup subgroup_type)  ;
  set metrics_preschool_v2;
  year = 2018;
+ /* suppress values under 30 */
+ if _FREQ_ >= 0 and _FREQ_ < &suppress then share_in_preschool = .;
+
  not_in_pre = 1 - share_in_preschool;
  interval = 1.96*sqrt((not_in_pre*share_in_preschool)/_FREQ_);
  share_in_preschool_ub = share_in_preschool + interval;
  share_in_preschool_lb = share_in_preschool - interval;
  if share_in_preschool_ub > 1 then share_in_preschool_ub = 1;
- if share_in_preschool_lb < 0 then share_in_preschool_lb = 0;
+ if share_in_preschool_lb ne . and share_in_preschool_lb < 0 then share_in_preschool_lb = 0;
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);

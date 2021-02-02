@@ -21,12 +21,16 @@ as input.
 data employment_missing_HI (keep = year county state subgroup subgroup_type share_employed share_employed_ub share_employed_lb _FREQ_)  ;
  set paul.metrics_employment_subgroup;
  year = 2018;
+ /* suppress values under 30 */
+ if _FREQ_ >= 0 and _FREQ_ < &suppress then share_employed = .;
+
+
  not_employed = 1 - share_employed;
  interval = 1.96*sqrt((not_employed*share_employed)/_FREQ_);
  share_employed_ub = share_employed + interval;
  share_employed_lb = share_employed - interval;
  if share_employed_ub > 1 then share_employed_ub = 1;
- if share_employed_lb < 0 then share_employed_lb = 0;
+ if share_employed_lb ne .  and share_employed_lb < 0 then share_employed_lb = 0;
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
