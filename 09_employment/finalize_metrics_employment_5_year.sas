@@ -37,9 +37,9 @@ data employment_missing_HI (keep = year county state subgroup subgroup_type shar
  drop county statefip;
  rename new_county = county;
 
- if share_employed = . and _FREQ_ > 0 then share_employed = 0;
- if share_employed_ub = . and _FREQ_ > 0 then share_employed_ub = 0;
- if share_employed_lb = . and _FREQ_ > 0 then share_employed_lb = 0;
+ if share_employed = . and _FREQ_ >= &suppress then share_employed = 0;
+ if share_employed_ub = . and _FREQ_ >= &suppress then share_employed_ub = 0;
+ if share_employed_lb = . and _FREQ_ >= &suppress then share_employed_lb = 0;
  subgroup_type = "race-ethnicity";
 run;
 

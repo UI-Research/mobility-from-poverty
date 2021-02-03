@@ -111,9 +111,9 @@ run;
 data metrics_college_ready;
  retain year state county subgroup_type subgroup  share_hs_degree share_hs_degree_ub share_hs_degree_lb;
  set metrics_college_ready;
- if share_hs_degree = . and _FREQ_ > 0 then share_hs_degree = 0;
- if share_hs_degree_ub = . and _FREQ_ > 0 then share_hs_degree_ub = 0;
- if share_hs_degree_lb = . and _FREQ_ > 0 then share_hs_degree_lb = 0;
+ if share_hs_degree = . and _FREQ_ >= &suppress then share_hs_degree = 0;
+ if share_hs_degree_ub = . and _FREQ_ >= &suppress then share_hs_degree_ub = 0;
+ if share_hs_degree_lb = . and _FREQ_ >= &suppress then share_hs_degree_lb = 0;
  subgroup_type = "race-ethnicity";
 run;
 

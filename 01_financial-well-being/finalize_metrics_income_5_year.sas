@@ -53,15 +53,17 @@ data income;
  drop county statefip;
  rename new_county = county;
 
- /* suppress values less than 30 */
+   /* suppress values less than 30 */
  if _FREQ_ >= 0 and _FREQ_ < &suppress then pctl_80 = .;
  if _FREQ_ >= 0 and _FREQ_ < &suppress then pctl_50 = .;
  if _FREQ_ >= 0 and _FREQ_ < &suppress then pctl_20 = .;
 
  if subgroup = . then delete;
- if pctl_80 = . and _FREQ_ > 0 then pctl_80 = 0;
- if pctl_50 = . and _FREQ_ > 0 then pctl_50 = 0;
- if pctl_20 = . and _FREQ_ > 0 then pctl_20 = 0;
+ if pctl_80 = . and _FREQ_ >= &suppress then pctl_80 = 0;
+ if pctl_50 = . and _FREQ_ >= &suppress then pctl_50 = 0;
+ if pctl_20 = . and _FREQ_ >= &suppress then pctl_20 = 0;
+
+
 run;
 
 run;

@@ -107,7 +107,7 @@ data &structure. (keep = year county state subgroup subgroup_type &structure &st
  year = 2018;
  subgroup_type = "race-ethnicity";
 
- /* suppress values less than 30 */
+  /* suppress values less than 30 */
  if _FREQ_ >= 0 and _FREQ_ < &suppress then &structure = .;
 
  inverse_&structure = 1 - &structure;
@@ -122,9 +122,10 @@ data &structure. (keep = year county state subgroup subgroup_type &structure &st
  drop county statefip;
  rename new_county = county;
 
- if &structure = . and _FREQ_ > 0 then &structure = 0;
- if &structure._ub = . and _FREQ_ > 0 then &structure._ub = 0;
- if &structure._lb = . and _FREQ_ > 0 then &structure._lb = 0;
+ if &structure = . and _FREQ_ >= &suppress then &structure = 0;
+ if &structure._ub = . and _FREQ_ >= &suppress then &structure._ub = 0;
+ if &structure._lb = . and _FREQ_ >= &suppress then &structure._lb = 0;
+
 
 run;
 %mend fam_struc;
