@@ -22,12 +22,16 @@ I put metrics_college in the 08_education subfolder of the repository.
 data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_ subgroup subgroup_type)  ;
  set edu.metrics_college_subgroup;
  year = 2018;
+ /* suppress values under 30 */
+ if _FREQ_ >= 0 and _FREQ_ < &suppress then share_with_HSdegree = .;
+
+
  no_hs_degree = 1 - share_with_HSdegree;
  interval = 1.96*sqrt((no_hs_degree*share_with_HSdegree)/_FREQ_); /* _FREQ_ is the unweighted count of people 19-20 */
  share_hs_degree_ub = share_with_HSdegree + interval;
  share_hs_degree_lb = share_with_HSdegree - interval;
  if share_hs_degree_ub > 1 then share_hs_degree_ub = 1;
- if share_hs_degree_lb < 0 then share_hs_degree_lb = 0;
+ if share_hs_degree_lb ne . and share_hs_degree_lb < 0 then share_hs_degree_lb = 0;
 
  /* put variables in correct format */
  new_county = put(county,z3.); 
@@ -107,9 +111,9 @@ run;
 data metrics_college_ready;
  retain year state county subgroup_type subgroup  share_hs_degree share_hs_degree_ub share_hs_degree_lb;
  set metrics_college_ready;
- if share_hs_degree = . and _FREQ_ > 0 then share_hs_degree = 0;
- if share_hs_degree_ub = . and _FREQ_ > 0 then share_hs_degree_ub = 0;
- if share_hs_degree_lb = . and _FREQ_ > 0 then share_hs_degree_lb = 0;
+ if share_hs_degree = . and _FREQ_ >= &suppress then share_hs_degree = 0;
+ if share_hs_degree_ub = . and _FREQ_ >= &suppress then share_hs_degree_ub = 0;
+ if share_hs_degree_lb = . and _FREQ_ >= &suppress then share_hs_degree_lb = 0;
  subgroup_type = "race-ethnicity";
 run;
 

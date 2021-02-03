@@ -6,6 +6,8 @@
 %include 'V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\sas\sasbatch.inc';
 %include 'V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\sas\config.inc';
 
+%let suppress = 30;
+
 /* prep */
 %sasbatch(1_initial);                          /*  */
 %sasbatch(2_puma_to_county);                          /*  */
