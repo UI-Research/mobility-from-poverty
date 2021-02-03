@@ -273,4 +273,24 @@ proc freq data=metrics_employment_subgroup_f;
  table employed_quality;
 run;
 
-
+/* checks to see how many got suppressed */
+proc freq data=metrics_college_subgroup_f;
+ where share_hs_degree = .;
+ table subgroup / missing ;
+run;
+proc freq data=metrics_preschool_subgroup_f;
+ where share_in_preschool = .;
+ table share_in_preschool / missing ;
+run;
+proc freq data=metrics_famstruc_subgroup_f;
+ where famstruc_2par_married = .;
+ table famstruc_2par_married / missing ;
+run;
+proc freq data=metrics_income_subgroup_f;
+ where pctl_80 = .;
+ table pctl_80 / missing ;
+run;
+proc freq data=metrics_employment_subgroup_f;
+ where share_employed = .;
+ table share_employed / missing;
+run;
