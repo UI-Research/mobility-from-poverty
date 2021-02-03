@@ -106,21 +106,27 @@ data &structure. (keep = year county state subgroup subgroup_type &structure &st
  set all_structure;
  year = 2018;
  subgroup_type = "race-ethnicity";
+
+  /* suppress values less than 30 */
+ if _FREQ_ >= 0 and _FREQ_ < &suppress then &structure = .;
+
  inverse_&structure = 1 - &structure;
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
  &structure._lb = &structure - interval;
  if &structure._ub > 1 then &structure._ub =1;
- if &structure._lb < 0 then &structure._lb =0; 
+ if &structure._lb ne . and &structure._lb < 0 then &structure._lb =0; 
 
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
  rename new_county = county;
 
- if &structure = . and _FREQ_ > 0 then &structure = 0;
- if &structure._ub = . and _FREQ_ > 0 then &structure._ub = 0;
- if &structure._lb = . and _FREQ_ > 0 then &structure._lb = 0;
+ if &structure = . and _FREQ_ >= &suppress then &structure = 0;
+ if &structure._ub = . and _FREQ_ >= &suppress then &structure._ub = 0;
+ if &structure._lb = . and _FREQ_ >= &suppress then &structure._lb = 0;
+
+
 run;
 %mend fam_struc;
 %fam_struc(structure = famstruc_2par_married)
