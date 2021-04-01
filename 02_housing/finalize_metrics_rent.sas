@@ -33,7 +33,7 @@ data rent_missing_HI_&year (keep = year state county share_burdened_30_ami share
  rename new_county = county;
  
 
- /* computer ub and lb */
+ /* compute ub and lb */
  %macro bounds(ami);
  inverse_&ami = 1-share_burdened_&ami;
  interval_&ami = 1.96*sqrt((inverse_&ami*share_burdened_&ami)/below_&ami);

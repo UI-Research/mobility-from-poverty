@@ -28,14 +28,14 @@ run;
 
 proc sort data=FMR_Income_levels_2014; by statefip county; run;
 
-/* calculate rent burden */
+/* calculate rent burden for each AMI group */
 data desktop.renters_&year;
   merge &microdata_file.(in=a where=(pernum=1 and ownershp=2)) FMR_Income_Levels_&year(in=b keep=statefip county L50_4 L80_4 ELI_4);
-  by statefip county;
+  by statefip county; /*bring in heads of household for renters */
   if a;
   if L80_4 ne . then do;
     below_80_ami = hhincome < L80_4;  
-	if below_80_ami = 1 and ((rentgrs*12) > (hhincome/2)) then rent_burden_80AMI = 1;
+	if below_80_ami = 1 and ((rentgrs*12) > (hhincome/2)) then rent_burden_80AMI = 1; /*is rent > 50% of income? */
 	 else rent_burden_80AMI = 0;
   end;
   if L50_4 ne . then do;
