@@ -24,7 +24,7 @@ libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_ho
 %macro finalize_rent(year);
 data rent_missing_HI_&year (keep = year state county share_burdened_30_ami share_burdened_50_ami share_burdened_80_ami
 								share_burdened_30_ami_lb share_burdened_30_ami_ub share_burdened_50_ami_lb share_burdened_50_ami_ub
-								share_burdened_80_ami_lb share_burdened_80_ami_ub);
+								share_burdened_80_ami_lb share_burdened_80_ami_ub unwgt_below_30_ami unwgt_below_50_ami unwgt_below_80_ami);
  set paul.metrics_rent_&year;
  year = &year;
  new_county = put(county,z3.); 
@@ -36,7 +36,7 @@ data rent_missing_HI_&year (keep = year state county share_burdened_30_ami share
  /* compute ub and lb */
  %macro bounds(ami);
  inverse_&ami = 1-share_burdened_&ami;
- interval_&ami = 1.96*sqrt((inverse_&ami*share_burdened_&ami)/below_&ami);
+ interval_&ami = 1.96*sqrt((inverse_&ami*share_burdened_&ami)/unwgt_below_&ami);
  share_burdened_&ami._ub = share_burdened_&ami + interval_&ami;
  share_burdened_&ami._lb = share_burdened_&ami- interval_&ami;
  %mend bounds;
@@ -44,8 +44,10 @@ data rent_missing_HI_&year (keep = year state county share_burdened_30_ami share
  %bounds(ami = 50_ami);
  %bounds(ami = 80_ami);
 
-
 run;
+
+
+
 
 /* add missing HI county so that there is observation for every county */
 
@@ -57,11 +59,20 @@ data rent_&year;
   state = "15";
   county = "005";
   share_burdened_30_ami = .;
-  share_burdened_50_ami = .;
-  share_burdened_80_ami = .;
+   share_burdened_50_ami = .;
+    share_burdened_80_ami = .;
+  share_burdened_30_ami_lb =.;
+  share_burdened_30_ami_ub =.;
+    share_burdened_50_ami_lb =.;
+  share_burdened_50_ami_ub =.;
+    share_burdened_80_ami_lb =.;
+  share_burdened_80_ami_ub =.;
   output;
  end;
 run;
+
+
+
 
 /* sort final data set and order variables*/
 
@@ -84,7 +95,8 @@ run;
 proc append base=rent data=rent_2018;
 run;
 
-data paul.metrics_rent;
+data paul.metrics_rent (keep = year state county share_burdened_80_ami share_burdened_80_ami_ub share_burdened_80_ami_lb share_burdened_50_ami 
+		share_burdened_50_ami_ub share_burdened_50_ami_lb share_burdened_30_ami share_burdened_30_ami_ub share_burdened_30_ami_lb);
  retain year state county share_burdened_80_ami share_burdened_80_ami_ub share_burdened_80_ami_lb share_burdened_50_ami 
 		share_burdened_50_ami_ub share_burdened_50_ami_lb share_burdened_30_ami share_burdened_30_ami_ub share_burdened_30_ami_lb;
  set rent;

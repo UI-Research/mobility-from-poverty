@@ -53,7 +53,7 @@ run;
 
 /* summarize by county */
 proc means data=desktop.renters_&year noprint; 
-  output out=renters_summed_&year(drop=_type_) sum=;
+  output out=renters_summed_wgt_&year(drop=_type_ _FREQ_) sum=;
   by statefip county;
   var below_80_ami rent_burden_80AMI below_50_ami rent_burden_50AMI below_30_ami rent_burden_30AMI;
   weight hhwt;
@@ -66,6 +66,27 @@ data &metrics_file.;
   if below_30_ami ne . then share_burdened_30_AMI = rent_burden_30AMI/below_30_ami;
 run;
 
+/* get unweighted count in each county for each metric */
+proc means data=desktop.renters_&year noprint; 
+  output out=renters_unwgt_&year(drop=_type_ _FREQ_) sum=;
+  by statefip county;
+  var below_80_ami below_50_ami below_30_ami;
+run;
+
+
+/* change names so they do not overlap with weighted var names */
+data renters_unwgt_&year (drop = below_80_ami below_50_ami below_30_ami);
+ set renters_unwgt_&year;
+ unwgt_below_80_ami = below_80_ami;
+ unwgt_below_50_ami = below_50_ami;
+ unwgt_below_30_ami = below_30_ami;
+run;
+
+/* merge on unweighted */
+data renters_summed_&year;
+ merge renters_summed_wgt_&year renters_unwgt_&year;
+ by statefip county;
+run;
 %mend compute_metrics_rent;
 /* this is for 2018 */
 %compute_metrics_rent(lib2018.microdata, housing.metrics_rent_2018,year=2018);
