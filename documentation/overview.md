@@ -31,6 +31,8 @@ h2 {
 
 # <ins>Metrics</ins>
 
+**Note:** This document is a work-in-progress.
+
 ## Income
 
 ### Overview
