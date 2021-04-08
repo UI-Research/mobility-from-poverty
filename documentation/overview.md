@@ -6,6 +6,8 @@ h2 {
 
 # <ins>Index</ins>
 
+Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to the README.
+
 * [Income](#income)
 * [Financial Security](#financial-security)
 * [Affordable housing](#affordable-housing)
