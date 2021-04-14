@@ -42,9 +42,8 @@ This metric is the share of people who are poor in a county who live in census t
 3. Count the number of people in poverty who live in Census tracts with poverty > 40% in each county. 
 4. Summarize the tract data to the county-level.
 5. Divide the number from 2. by the total number of people in poverty in each Census tract. 
-6. Split the data into an “All” file and a “Subgroups” file
-7. Validation
-8. Data quality flags
+6. Validation
+7. Data quality flags
 
 All numbers come for the Census API. The documentation for the Census API is available [here](https://api.census.gov/data/2018/acs/acs5/profile/variables.html). We pull all of the race/ethnicity counts for 2018 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced above. 
 
@@ -464,30 +463,6 @@ stopifnot(
 
 ```
 
-### 6. Split the data into an “All” file and a “Subgroups” file
-
-```{r}
-# create a long version of the subgroup data
-counties_summary_subgroups <- counties_summary %>%
-  select(state, county, contains("exposure")) %>%
-  pivot_longer(c(-state, -county), names_to = "subgroup", values_to = "poverty_exposure") %>%
-  mutate(subgroup = 
-           recode(
-             subgroup,
-             poverty_exposure = "All",
-             poverty_exposure_black = "Black, Non-Hispanic",
-             poverty_exposure_hispanic = "Hispanic",
-             poverty_exposure_other_races = "Other Races and Ethnicities", 
-             poverty_exposure_white_nonhispanic = "White, Non-Hispanic"
-           )
-  )
-
-# check the bounds of the poverty exposure metric
-stopifnot(min(counties_summary_subgroups$poverty_exposure) >= 0)
-stopifnot(max(counties_summary_subgroups$poverty_exposure) <= 1)
-
-```
-
 ### 6. Validation
 
 #### "All" file
@@ -556,7 +531,24 @@ counties_summary %>%
 #### Subgroups File
 
 ```{r validation-plots-subgroups}
-counties_summary_subgroups %>%
+counties_summary_subgroups_plots <- counties_summary %>%
+  select(state, county, contains("exposure")) %>%
+  # pivot to very long
+  pivot_longer(c(-state, -county), names_to = "subgroup", values_to = "poverty_exposure") %>%
+  # clean up names
+  mutate(subgroup = 
+           recode(
+             subgroup,
+             poverty_exposure = "All",
+             poverty_exposure_black = "Black",
+             poverty_exposure_hispanic = "Hispanic",
+             poverty_exposure_other_races = "Other Races and Ethnicities", 
+             poverty_exposure_white_nonhispanic = "White, Non-Hispanic"
+           )
+  )
+
+
+counties_summary_subgroups_plots %>%
   filter(subgroup != "All") %>%
   ggplot(aes(poverty_exposure)) +
   geom_histogram() +
@@ -566,7 +558,7 @@ counties_summary_subgroups %>%
   labs(title = "Most Counties in 2018 Have No Poverty Exposure",
        subtitle = "The Distribution of Poverty Exposure")
 
-counties_summary_subgroups_plots <- left_join(counties_summary_subgroups, select(counties_summary, -poverty_exposure), by = c("state", "county"))
+counties_summary_subgroups_plots <- left_join(counties_summary_subgroups_plots, select(counties_summary, -poverty_exposure), by = c("state", "county"))
 
 counties_summary_subgroups_plots %>%
   filter(subgroup!= "All") %>%
@@ -714,7 +706,7 @@ counties_summary %>%
   filter(poverty_black_cv >= 0.4) %>%
   ggplot(aes(poverty_black, poverty_black_cv, color = poverty_black <= 30)) +
   geom_point(alpha = 0.2) +
-  labs(title = "Black, non-Hispanic: The Worst CVs Will be Dropped for n <= 30",
+  labs(title = "Black: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "poverty_black <= 30 in yellow") +
   scatter_grid()
   
@@ -814,7 +806,10 @@ final_data <- left_join(all_counties, counties_summary, by = c("state", "county"
   select(year,
          state,
          county,
-         poverty_exposure)
+         poverty_exposure,
+         poverty_exposure_quality)
+
+stopifnot(nrow(final_data) == 3142)
 
 write_csv(final_data,
           here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure.csv"))
@@ -824,16 +819,60 @@ write_csv(final_data,
 #### Subgroup File
 
 ```{r}
+# create a long version of the subgroup data
+counties_summary_subgroups <- counties_summary %>%
+  select(state, county, contains("exposure")) %>%
+  # pivot to very long
+  pivot_longer(c(-state, -county), names_to = "subgroup", values_to = "poverty_exposure") %>%
+  # create new variable names
+  mutate(variable = if_else(str_detect(subgroup, "_quality"), 
+                            "poverty_exposure_quality", 
+                            "poverty_exposure")) %>%
+  mutate(subgroup = str_replace(subgroup, "_quality", "")) %>%
+  # pivot to long
+  pivot_wider(names_from = variable, values_from = poverty_exposure) %>%
+  # clean up names
+  mutate(subgroup = 
+           recode(
+             subgroup,
+             poverty_exposure = "All",
+             poverty_exposure_black = "Black",
+             poverty_exposure_hispanic = "Hispanic",
+             poverty_exposure_other_races = "Other Races and Ethnicities", 
+             poverty_exposure_white_nonhispanic = "White, Non-Hispanic"
+           )
+  )
+
+# check the bounds of the poverty exposure metric
+stopifnot(min(counties_summary_subgroups$poverty_exposure, na.rm = TRUE) >= 0)
+stopifnot(max(counties_summary_subgroups$poverty_exposure, na.rm = TRUE) <= 1)
+
+```
+
+```{r}
 counties_summary_subgroups <- counties_summary_subgroups %>%
   mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
 
-final_data_race_ethnicity <- left_join(all_counties, counties_summary_subgroups, by = c("state", "county")) %>%
+# create a frame with all possible rows
+all_counties_subgroups <- 
+  expand_grid(
+    all_counties, 
+    subgroup = c("All", "Black", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+  ) %>%
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
+
+final_data_race_ethnicity <- left_join(all_counties_subgroups, 
+                                       counties_summary_subgroups, 
+                                       by = c("state", "county", "subgroup_type", "subgroup")) %>%
   select(year,
          state,
          county,
          subgroup_type,
          subgroup,
-         poverty_exposure)
+         poverty_exposure,
+         poverty_exposure_quality)
+
+stopifnot(nrow(final_data_race_ethnicity) == 15710)
 
 write_csv(final_data_race_ethnicity,
           here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"))
