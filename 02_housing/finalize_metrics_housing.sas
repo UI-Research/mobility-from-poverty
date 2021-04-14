@@ -25,13 +25,14 @@ libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_ho
 /* I turned this into a macro so it can easily read both the 2014 and 2018 data */
 
 %macro finalize_housing(year);
-data housing_missing_HI_&year (keep = year state county share_affordable_50_ami share_affordable_80_ami);
+data housing_missing_HI_&year (keep = year state county share_affordable_30_ami share_affordable_50_ami share_affordable_80_ami);
  set paul.metrics_housing_&year;
  year = &year;
  new_county = put(county,z3.); 
  state = put(statefip,z2.);
  drop county statefip;
  rename new_county = county;
+ rename share_affordable_30AMI = share_affordable_30_ami;
  rename share_affordable_50AMI = share_affordable_50_ami;
  rename share_affordable_80AMI = share_affordable_80_ami;
 run;
@@ -45,6 +46,7 @@ data housing_&year;
   year = &year;
   state = "15";
   county = "005";
+  share_affordable_30_ami = .;
   share_affordable_50_ami = .;
   share_affordable_80_ami = .;
   output;
