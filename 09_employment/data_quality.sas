@@ -103,7 +103,7 @@ proc means data=households_&year noprint;
   by year statefip county;
   var Below50AMI_unw household ;
 run;
-%mend;
+%mend number_of_hhs;
 %number_of_hhs(year=2014);
 %number_of_hhs(year=2018);
 
@@ -126,6 +126,41 @@ run;
 /* create income metric that right now just has the number of total households */
 data metrics_income (keep = statefip county household);
  set number_hhs_2018;
+run;
+
+/* get total number of rental households that are ELI for the rental metric */
+%macro number_of_eli_renters(year);
+data renters_&year (keep = statefip county Below30AMI_unw household year);
+  set desktop.renters_&year; /* this file should be output by the program compute_metrics_rent.sas */
+  if ELI_4 ne . then do;
+    Below30AMI_unw = hhincome < ELI_4;  
+  end;
+  household = 1;
+run;
+
+proc means data=renters_&year noprint; 
+  output out=number_renters_&year(drop=_type_) sum=;
+  by year statefip county;
+  var Below30AMI_unw household ;
+run;
+%mend number_of_eli_renters;
+%number_of_eli_renters(year=2014);
+%number_of_eli_renters(year=2018);
+
+/* get state and county in same format */
+data house.metrics_rent;
+ set house.metrics_rent;
+ new_county = input(county, 8.); 
+ new_statefip = input(state, 8.);
+ drop county state;
+ rename new_county = county;
+ rename new_statefip = statefip;
+run;
+
+/* add number of ELI retners to rent metric */
+data metrics_rent;
+ merge house.metrics_rent number_renters_2014 number_renters_2018;
+ by year statefip county;
 run;
 
  
@@ -154,8 +189,9 @@ run;
 %metric(lib = work, dataset = metrics_housing, denominator = Below50AMI_unw);
 %metric(lib = edu, dataset = metrics_preschool, denominator = _FREQ_);
 %metric(lib = work, dataset = metrics_income, denominator = household);
+%metric(lib = work, dataset = metrics_rent, denominator = Below30AMI_unw);
 
-/* add a year variable for all datasets except Housing. This is needed for a later merge, and will allow more years
+/* add a year variable for all datasets except Housing and Rent. This is needed for a later merge, and will allow more years
 	of data to be added more easily */
 %macro add_year(lib= , dataset= );
 data &dataset.;
@@ -188,6 +224,7 @@ run;
 
 proc sort data = metrics_preschool; by statefip county; run;
 proc sort data = metrics_housing; by statefip county; run;
+proc sort data = metrics_rent; by statefip county; run;
 
 /* this creates the quality metric. Per email from Greg on 9/18/20, 
 only ACS metrics with sample size < 30 should be be marked as "3"
@@ -226,6 +263,7 @@ run;
 %flag(dataset = metrics_housing, metric = housing);
 %flag(dataset = metrics_preschool, metric = preschool);
 %flag(dataset = metrics_income, metric = pctl);
+%flag(dataset = metrics_rent, metric = rent);
 
 /*
 proc print data=metrics_housing_flag;
@@ -276,6 +314,7 @@ run;
 %output(dataset = metrics_famstruc, folder = 03_family\); 
 %output(dataset = metrics_income, folder = 01_financial-well-being\); 
 %output(dataset = metrics_housing, folder = 02_housing\); 
+%output(dataset = metrics_rent, folder = 02_housing\); 
 %output(dataset = metrics_employment, folder = 09_employment\); 
 
 
@@ -299,7 +338,23 @@ proc means data = metrics_college sum ;
 run;
 
 /* 119258. Wooo, they match */
+proc means data = metrics_rent;
+ var share_burdened_30_ami share_burdened_50_ami share_burdened_80_ami;
+run;
 
-proc freq data=metrics_preschool_final;
- table quality;
+proc univariate data=metrics_rent;
+  var share_burdened_80_ami;;
+  histogram;
+run;
+proc univariate data=metrics_rent;
+  var  share_burdened_50_ami ;;
+  histogram;
+run;
+proc univariate data=metrics_rent;
+  var share_burdened_30_ami  ;;
+  histogram;
+run;
+
+proc print data=metrics_rent;
+ where share_burdened_50_ami > .8;
 run;

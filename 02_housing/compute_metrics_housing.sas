@@ -21,6 +21,14 @@ proc import datafile="&networkDir.\FY&year._4050_FMRs_rev.csv" out=FMR_pop_&year
   guessingrows=100;
   datarow=2;
 run;
+
+data FMR_Income_levels_2014;
+ set FMR_Income_levels_2014;
+ if state = 2 and county = 270 then county = 158;
+run;
+
+proc sort data=FMR_Income_levels_2014; by fips2010; run;
+
 *Convert the FMR code on the population file from a character string to a number,
  and add the population variable onto the income level file;
 /*data FMR_pop;
@@ -52,7 +60,7 @@ run;
  by the FMR population.*/
 proc means data=FMR_Income_Levels_&year nway noprint;
  class statefip county;
- var L50_1-L50_8 L80_1-L80_8;
+ var L50_1-L50_8 ELI_1-ELI_8 L80_1-L80_8 ;
  weight pop2010;
  output out=County_income_limits_&year n=num_of_FMRs mean=;
 run;
@@ -65,7 +73,7 @@ run;
 	 (again, for a family of 4!!!). For owners, use the housing cost, and for renters, use the gross rent.
 NOTE: in the merge statement, (where=pernum=1) gets one obs for each hh;
 data desktop.households_&year;
-  merge &microdata_file.(in=a where=(pernum=1)) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4);
+  merge &microdata_file.(in=a where=(pernum=1)) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4 ELI_4);
   by statefip county;
   if a;
   if L80_4 ne . then do;
@@ -80,6 +88,12 @@ data desktop.households_&year;
     else if ownershp = 2 then Affordable50AMI = (rentgrs*12) <= (L50_4*0.30);  
 	else put "error: " ownershp=;
   end;
+  if ELI_4 ne . then do;
+    Below30AMI = hhincome < ELI_4;  
+    if ownershp = 1 then Affordable30AMI = (owncost*12) <= (ELI_4*0.30);  
+    else if ownershp = 2 then Affordable30AMI = (rentgrs*12) <= (ELI_4*0.30);  
+	else put "error: " ownershp=;
+  end;
 run;
 
 *Need to account for vacant units as well.
@@ -88,7 +102,7 @@ run;
  value for gross rent, use that for the costs.  Otherwise, if there is a valid house value, use the housing
  cost that was calcualted in the "prepare_vacant" macro.;
 data vacant;
-  merge &vacant_file.(in=a) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4);
+  merge &vacant_file.(in=a) County_income_limits_&year(in=b keep=statefip county L50_4 L80_4 ELI_4);
   by statefip county;
   if a;
   if L80_4 ne . then do;
@@ -99,26 +113,31 @@ data vacant;
     if rentgrs>0 then Affordable50AMI = (rentgrs*12) <= (L50_4*0.30);  
     else if valueh ne 9999999 then Affordable50AMI = (total_monthly_cost*12) <= (L50_4*0.30);
   end;
+  if ELI_4 ne . then do;
+    if rentgrs>0 then Affordable30AMI = (rentgrs*12) <= (ELI_4*0.30);  
+    else if valueh ne 9999999 then Affordable30AMI = (total_monthly_cost*12) <= (ELI_4*0.30);
+  end;
 run;
 
 *Summarize by county, combine households and vacant units, and compute metrics;
 proc means data=desktop.Households_&year noprint; 
-  output out=households_summed(drop=_type_) sum=;
+  output out=households_summed_&year(drop=_type_) sum=;
   by statefip county;
-  var Below80AMI Affordable80AMI Below50AMI Affordable50AMI;
+  var Below80AMI Affordable80AMI Below50AMI Affordable50AMI Below30AMI Affordable30AMI;
   weight hhwt;
 run;
 proc means data=vacant noprint; 
-  output out=vacant_summed(drop=_type_) sum=Affordable80AMI_vacant Affordable50AMI_vacant;
+  output out=vacant_summed_&year(drop=_type_) sum=Affordable80AMI_vacant Affordable50AMI_vacant Affordable30AMI_vacant;
   by statefip county;
-  var  Affordable80AMI Affordable50AMI;
+  var  Affordable80AMI Affordable50AMI Affordable30AMI;
   weight hhwt;
 run;
 data &metrics_file.;
-  merge households_summed vacant_summed;
+  merge households_summed_&year vacant_summed_&year;
   by statefip county;
   if Below80AMI ne . then share_affordable_80AMI = (Affordable80AMI+Affordable80AMI_vacant)/Below80AMI;
   if Below50AMI ne . then share_affordable_50AMI = (Affordable50AMI+Affordable50AMI_vacant)/Below50AMI;
+  if Below30AMI ne . then share_affordable_30AMI = (Affordable30AMI+Affordable30AMI_vacant)/Below30AMI;
 run;
 %mend compute_metrics_housing;
 
@@ -129,11 +148,11 @@ run;
 %compute_metrics_housing(lib2014.microdata,lib2014.vacant,housing.metrics_housing_2014,year=2014);
 
 proc means data=housing.metrics_housing_2014;
-var share_affordable_80AMI share_affordable_50AMI;
+var share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
 title '2014';
 run;
 
 proc means data=housing.metrics_housing_2018;
-var share_affordable_80AMI share_affordable_50AMI;
+var share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
 title '2018';
 run;
