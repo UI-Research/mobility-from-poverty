@@ -44,7 +44,7 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * **Final data name(s):** `metrics_income.csv`
 * **Data Source(s):** ACS 1-yr for original and ACS 5-yr for subgroup.
 * **Notes:** I used the `quantreg` procedure to get the percentiles. The three programs beginning `1_`, `2_`, and `3_` must be run before computing these metrics. These programs `infile` some .csv files which can be found on Box under "ACS-based metrics." For the subgroup analysis, I have changed from the `quantreg` procedure to `proc means`. I get the percentiles for each state-county-race combination with proc means. To run the subgroup programs, you must run the programs `1_`, `2_`, and then `3_prepate_microdata_5_year`. 
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
 * **Missingness:** 
 
@@ -84,7 +84,7 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 * **Final data name(s):** `metrics_housing.csv`
 * **Data Source(s):** ACS 1-year
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:** Counties 89 and 119 in state 36 (NY) had some missing data and may not be reliable. 
 * **Missingness:** Metrics are missing for county 05 in Hawaii.
 
@@ -123,7 +123,7 @@ Counts of students experiencing homelessness are downloaded from the EDFacts web
 * **Final data name(s):** `metrics_famstruc.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup. 
 * **Notes:** 
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
 * **Missingness:** 
 
@@ -658,7 +658,7 @@ A codebook with definitions for the original arrest data used can be found here:
 * **Final data name(s):** `metrics_preschool.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:** This metric uses Paul Johnson's method of finding county FIPS code from PUMAs. PUMAs can sometimes span counties, which is adjusted for with weights.
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
 * **Missingness:** Hawaii county 05 is missing. It is very low population.
 
@@ -738,7 +738,7 @@ Outline the process for creating the data: Schools were flagged as having 40% or
 * **Final data name(s):** `metrics_college.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
 * **Missingness:** 
 
@@ -761,7 +761,7 @@ original metric.
 * **Final data name(s):** `metrics_employment.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis.
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
 * **Missingness:** County 05 in HI is missing
 
@@ -784,7 +784,7 @@ The process for the subgroup analysis is the same. You must run the file `3_prep
 * **Final data name(s):** `metrics_wage_ratio.csv`
 * **Data Source(s):** QCEW and MIT Living Wage Calculator 
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** `1` means the annual average establishment count is greater than or equal to 30. The quality index is a `3` otherwise.
 * **Limitations:**
 * **Missingness:** County 05 in HI is missing. County 3 in State 19 (Iowa) is missing average wage data, so it shows up as a 0 in the ratio.
 
