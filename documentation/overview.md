@@ -44,13 +44,21 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * **Final data name(s):** `metrics_income.csv`
 * **Data Source(s):** ACS 1-yr for original and ACS 5-yr for subgroup.
 * **Notes:** I used the `quantreg` procedure to get the percentiles. The three programs beginning `1_`, `2_`, and `3_` must be run before computing these metrics. These programs `infile` some .csv files which can be found on Box under "ACS-based metrics." For the subgroup analysis, I have changed from the `quantreg` procedure to `proc means`. I get the percentiles for each state-county-race combination with proc means. To run the subgroup programs, you must run the programs `1_`, `2_`, and then `3_prepate_microdata_5_year`. 
-* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing
 
 ### Process
 
-The data comes from IPUMS. It is cleaned and counties are added with Paul's method. Then I use the `quantreg` procedure to get the needed percentiles. Finally it is output as a .csv. The process for the subgroup analysis is the same, except I create the percentiles with proc means. I do not create confidence intervals. 
+The data comes from IPUMS. For this metric as well as housing affordability, family structure college readiness, pre-school access, and employment, there are three files that need to be run first:
+
+1. `1_initial.sas` sets working directories and macros
+2. `2_puma_to_county.sas` creates the crosswalk from public use microdata areas (PUMAs) to counties. Counties that do not match up exactly with PUMAs are weighted by the population that does come from the county in question. This lack of perfect overlap is taken into account in the data quality index. 
+3. `3_prepare_microdata.sas` (or `3_prepare_microdata_5_year.sas` for the subgroup analysis) merges the counties onto the main dataset and also adds other variables.
+After the initial programs have been run, I use the quantreg procedure to get the 80th, 50th and 20th percentiles of income. Finally, it is output as a .csv. The process for the subgroup analysis is the same, except I create the percentiles with proc means instead of the quantreg procedure. I do not create confidence intervals for either the main or subgroup datasets for this metric.
+
+Please note that all of the metrics mentioned above use data_quality (or data_quality_5_year) to produce their data quality indices.
+
 
 ---
 
@@ -90,7 +98,16 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 
 ### Process
 
-First of all, it requires extra data --- Section-8 FMR area income levels, and the population of each FMR area.  This info is imported at the beginning of the program (I'm not sure where this data was obtained, but I think it came from HUD's website), and then combined and made ready for merging with the microdata file. Once it is merged we can determine which households have incomes under 80% and under 40% of the AMI, and which live in "affordable" housing. Note that, regardless of the household size, the AMI for a family of 4 is always used. After this, we also need to account for the affordability of vacant units.  This uses a file ("vacant") produced by the program `prepare_vacant` macro. The final metrics are a combination of the results from the microdata file and the results from the vacant file.
+First of all, this metric requires extra data — Section-8 FMR area income levels, and the population of each FMR area. This data comes from the Department of Housing and Urban Development’s website.
+
+* The population data can be downloaded from here: https://www.huduser.gov/portal/datasets/il.html#2018_data
+    * Click on the link next to "Data for Section 8 Income Limits"
+*	The section 8 income levels can be downloaded from here: https://www.huduser.gov/portal/datasets/fmr.html#2018_data
+    *	Click on "County Level Data"
+*	You will need to rename both files so that they said "FY2018" instead of just "FY18"
+
+This info is imported at the beginning of the program and then combined and made ready for merging with the microdata file. Once it is merged, we first determine which households have household incomes under 80% and under 50%, and 30% of the area median income (AMI) for a family of four  and whether or not each housing units costs less than 30% of 80%, 50%, and 30% AMI.. Note that, regardless of the household size, the AMI for a family of 4 is always used. After this, we also need to account for the affordability of vacant units through the same process. This uses a file ("vacant") produced by the program prepare_vacant macro. The final metrics are a combination of the results from the microdata file and the results from the vacant file. In each county for each income definition, the final variable the produces is a ratio of households that meet the income definition and the number of housing units that are affordable to a household of that income definition. We produce this metric for 2018 and 2014. 
+
 
 ---
 
@@ -123,18 +140,32 @@ Counts of students experiencing homelessness are downloaded from the EDFacts web
 * **Final data name(s):** `metrics_famstruc.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup. 
 * **Notes:** 
-* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing
 
 ### Process
 
 The `compute_` program calculates the percent of children in each family structure, while the finalize_ calculates the confidence intervals and outputs the .csv. NOTE: to run this code, you must first run the `1_`, `2_`, and `3_` programs in the income folder. (For the subgroup analysis, run `3_create_microdata_5_year`.)
 
-The data comes from IPUMS. It is cleaned and counties are added with Paul's method. The `compute_` code then finds the percent of children in each family structure. The `finalize_` program then calculates confidence intervals a outputs as a .csv.
+The data comes from IPUMS. It is cleaned and counties are added with the same method as described for the financial well-being metric
+ The compute_ code then finds the percent of children in each family structure. It does this by first identifying children, defined as anyone 17 or under. The code then looks for any parent or other non-parent adult in the household of the child. Based on the number of adults, their marital status, and their relationship to the chlld, the code assigns the child to one of the pre-defined family structures. These are either:
+ 
+*	Two married parents
+*	Two unmarried parents
+*	One parent plus other adult(s)
+*	One parent with no other adults
+*	No parents but at least one other adult
+*	No parents and no other adults
 
-The process for the subgroup analysis is the same as above, except every county has four rows,
-one for each race/ethnicity subgroup.
+From there, we determine what percentage of kids are in each of the family structures.
+The finalize_ program then calculates confidence intervals for the percentage of kids in each structure and outputs the dataset as a .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-fam_struture)*(fam_structure)/_unweighted_number_of_kids_in_structure_);
+
+That interval is then added and subtracted from the percentage of kids in each family structure to create the upper and lower bounds of the confidence interval, respectively. 
+
+The process for the subgroup analysis is the same as above, except every county has four rows, one for each race/ethnicity subgroup.
 
 ---
 
@@ -658,15 +689,21 @@ A codebook with definitions for the original arrest data used can be found here:
 * **Final data name(s):** `metrics_preschool.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:** This metric uses Paul Johnson's method of finding county FIPS code from PUMAs. PUMAs can sometimes span counties, which is adjusted for with weights.
-* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** Hawaii county 05 is missing. It is very low population.
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing. It is very low population.
 
 ### Process
 
-Data was downloaded from IPUMS. Then cleaned in the main program. Then I created county FIPS using Paul's method. Then, I calculated the number of 3 and 4 year olds, the number of children in pre school, and divided them. 
+Data was downloaded from IPUMS. Then cleaned in the main program. Counties were matched with the same method as described for the financial well-being metric. After getting the data prepared, I calculated the number of 3 and 4 year-olds in each county and the number of 3 and 4 year-olds in pre-school in each county.To create the final metric, I divide the number in preschool by the total number. 
 
+I also calculate confidence intervals for the percentage of kids in preschool and outputs the dataset as a .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-% in preschool)*(% in pre school)/_unweighted_number_of_kids))
+
+That interval is then added and subtracted from the percentage of kids in preschool in each county to create the upper and lower bounds of the confidence interval, respectively. 
 The process for creating the subgroup metric is the same as the process for creating the original metric.
+
 
 ---
 
@@ -738,17 +775,25 @@ Outline the process for creating the data: Schools were flagged as having 40% or
 * **Final data name(s):** `metrics_college.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:**
-* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Hawaii county 05 is missing. It is very low population.
 
 ### Process
 
-The compute_ code computes the metrics. The finalize_ code computes the confidence intervals and outputs the .csv. NOTE: must run the `1_`, `2_`, and `3_` code in the income subfolder first.  For subgroup analysis, you must run the program `3_prepare_microdata_5_year`.
+The compute_ code computes the metrics. The process was much the same as for the preschool metric. Data was downloaded from IPUMS and cleaned. Then I created county FIPS using the methods described previously. 
 
-Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created county FIPS using Paul's method. Then, we calculated the number of 19-20 year olds,  the number with a high school degree and divided them. 
-The process for creating the subgroup metric is the same as the process for creating the
-original metric. 
+After that, I calculated the number of 19-20 year-olds in each county and the number of 19-20 year-olds with a high school degree. To create the metric, I divided the number with a high school degree with the number overall. 
+
+The finalize_ code computes the confidence intervals and outputs the .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96*sqrt(((1-%_hs_degree)*(% hs_degree)/unweighted_number_with_hs_degree))
+
+That interval is then added and subtracted from the percentage with a high school degree in each county to create the upper and lower bounds of the confidence interval, respectively
+
+NOTE: must run the 1_, 2_, and 3_ code in the income subfolder first. For subgroup analysis, you must run the program 3_prepare_microdata_5_year. 
+
+The process for creating the subgroup metric is the same as the process for creating the original metric.
 
 ---
 
@@ -761,16 +806,22 @@ original metric.
 * **Final data name(s):** `metrics_employment.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis.
 * **Notes:**
-* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** County 05 in HI is missing
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. County 05 in HI is missing
 
 ### Process
 
 NOTE: must run the `1_`, `2_`, and `3_` code in the income subfolder first.
 	
-The data are downloaded from IPUMS and cleaned with the `1_`, `2_`, and `3_` code. That code also adds the the county FIPS. The `compute_` code finds the employment rate of 25-54 year olds. The finalize_ code calculates the confidence intervals and outputs the csv.  
+The process was much the same as for the previous metric. Data was downloaded from IPUMS and cleaned. Then I created county FIPS using the methods described previously. The compute_ code first calculates the number of 25-54 year-olds in each county. It then finds the number of 25-54 year-olds in each county who are employed. Finally, it finds the employment rate of 25-54 year-olds in each county by dividing those two numbers. 
 
+The `finalize_` code calculates the confidence intervals and outputs the csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-%_employed)*(% employed)/_unweighted_number_25-54_year_olds))
+
+That interval is then added and subtracted from the percentage employed in each county to create the upper and lower bounds of the confidence interval, respectively
+  
 The process for the subgroup analysis is the same. You must run the file `3_prepare_microdata_5_year`.
 
 ---
@@ -790,8 +841,19 @@ The process for the subgroup analysis is the same. You must run the file `3_prep
 
 ### Process
 
-This data comes from two sources. The average weekly wage comes from the QCEW: https://www.bls.gov/cew/downloadable-data-files.htm The row where the ownership variable equals "Total Covered" is used for each county. The living wage data is scraped from the MIT website using the scrape-living-wages R program. There are three .csvs: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly. For 2018, the ratio is just the 2018 QCEW data divided by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014, and then divide the QCEW by the  deflated value. 
+This metric shows the living wage in each county. 
 
-The living wage is a FULL TIME worker wage, while the average weekly wage includes part time workers.
 
-We use the living wage level for one adult and two children. 
+* The average weekly wage comes from the QCEW: https://www.bls.gov/cew/downloadable-data-files.htm 
+    * The data is in the first column “Excel Files” in the table
+    * You must download the data nd save it as a .csv
+    * Important: Make sure you edit the variables you are going to use so that there are no commas in the numbers. If you don't, they will not read in properly
+    * The row where the ownership variable equals “Total Covered” is used for each county.
+*	The living wage data is scraped from the MIT website using the scrape-living-wages R program. 
+
+There are three .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
+
+For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
+
+Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
+
