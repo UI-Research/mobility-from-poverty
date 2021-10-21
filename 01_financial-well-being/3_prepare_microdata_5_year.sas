@@ -14,6 +14,32 @@ It will need to be downloaded and unzipped.
 
 options fmtsearch=(lib2018);
 
+*merge rent and ownership variables;
+data addons (keep = sample serial pernum rentgrs ownershp);
+ set lib2018.microdata_5_year_addons;
+ if GQ >= 3 then delete;
+run;
+
+
+data lib2018.usa_00014;
+ merge lib2018.usa_00014 addons;
+ by sample serial pernum ;
+ if year = . then delete;
+run;
+
+*merge on variables for Ramsey;
+data ramsey_addons (keep = sample serial pernum famunit famsize UHRSWORK INCTOT FTOTINC WKSWORK2 INCWAGE) ;
+ set lib2018.microdata_5_year_ramsey;
+ if GQ >= 3 then delete;
+run;
+
+data lib2018.usa_00014;
+ merge lib2018.usa_00014 ramsey_addons;
+ by sample serial pernum ;
+ if year = . then delete;
+run;
+
+
 
 %macro prepare_microdata(input_file,output_file);
 
