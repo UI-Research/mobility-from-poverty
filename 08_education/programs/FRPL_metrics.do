@@ -5,7 +5,7 @@
 
 clear all
 
-global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\08_education\2022 File"
 global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2018
 
