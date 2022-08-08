@@ -1,13 +1,13 @@
 ** FREE AND REDUCED PRICE LUNCH: the share of students attending schools where 40% or more students receive FRPL **
-** E Blom **
-** 2020/08/04 **
+** E Blom ** Updated by E Gutierez
+** 2022/08/08 **
 ** Instructions: only lines 8-10 need to be edited for the latest year of data **
 
 clear all
 
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\08_education\2022 File"
-global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
-global year=2018
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+*global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
+global year=2020
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 
@@ -22,8 +22,8 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-
-** Import county file **
+/* waiting to have 2019-2020
+** Import county file ** 
 import delimited ${countyfile}, clear
 drop population state_name county_name
 
@@ -37,29 +37,30 @@ replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
 
 save "intermediate/countyfile.dta", replace
-
+*/
 
 ** get CCD enrollment **
-educationdata using "school ccd enrollment race", sub(year=${year}) csv clear
-save "Raw\ccd_enr_${year}.dta", replace
+*add if, else command once decide how to deal with future iterations
+educationdata using "school ccd enrollment race", sub(year=2014:${year}) csv clear
+save "raw\ccd_enr_2014-${year}.dta", replace
 
 keep if grade==99 & sex==99
 drop leaid ncessch_num grade sex fips
 reshape wide enrollment, i(year ncessch) j(race)
-save "Intermediate\ccd_enr_${year}_wide.dta", replace
+save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
 
 
 ** get CCD directory data **
-educationdata using "school ccd directory", sub(year=${year}) csv clear
-save "raw\ccd_dir_${year}.dta", replace
+educationdata using "school ccd directory", sub(year=2014:${year}) csv clear
+save "raw\ccd_dir_2014-${year}.dta", replace
 
-merge 1:1 year ncessch using "intermediate\ccd_enr_${year}_wide.dta"
+merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 
-save "intermediate/combined_${year}.dta", replace
+save "intermediate/combined_2014-${year}.dta", replace
 
 
 ** county-level rates **
-use "intermediate/combined_${year}.dta", clear
+use "intermediate/combined_2014-${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
 
@@ -139,7 +140,7 @@ keep if year==$year
 gsort -year state county
 
 export delimited using "built/FRPL.csv", replace
-export delimited using "${boxfolder}/FRPL.csv", replace
+*export delimited using "${boxfolder}/FRPL.csv", replace
 export delimited using "${gitfolder}\08_education\FRPL.csv", replace
 
 
