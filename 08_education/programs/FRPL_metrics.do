@@ -65,6 +65,7 @@ use "intermediate/combined_2014-${year}.dta", clear
 drop if enrollment==. | enrollment==0
 
 ** CAUTION: SEVERAL STATES DO NOT REPORT FRPL **
+	*there are also -3, -2, and -1, not just "." in years prior to 2018
 gen no_frpl = free_or_reduced==.
 gen no_dc = direct_cert==.
 
