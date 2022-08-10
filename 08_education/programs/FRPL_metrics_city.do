@@ -60,13 +60,12 @@ save "intermediate/combined_2014-${year}.dta", replace
 
 
 ** county-level rates **
-use "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\08_education\data\intermediate/combined_2014-${year}.dta", clear
+use "intermediate/combined_2014-${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
 
 ** CAUTION: SEVERAL STATES DO NOT REPORT FRPL **
-	*there are also -3 suppressed, -2 N/A, and -1 missing, not just "." in years prior to 2018
-	*also free/red == 0 generally means not reported - ask kristin
+	*there are also -3, -2, and -1, not just "." in years prior to 2018
 gen no_frpl = free_or_reduced==.
 gen no_dc = direct_cert==.
 
@@ -109,7 +108,6 @@ gen poverty_measure_used = "FRPL" if frpl_used>0 & frpl_used!=. & dc_used==0
 replace poverty_measure_used = "DC" if frpl_used==0 & dc_used>0 & dc_used!=.
 replace poverty_measure_used = "Both" if frpl_used>0 & frpl_used!=. & dc_used>0 & dc_used!=.
 
-*is "Both" supposed to be a bad thing and that's why its in the below code?
 gen frpl40_total_quality = 1 if enrollment>=30 & poverty_measure_used!="Both" & frpl40_total!=.
 replace frpl40_total_quality = 2 if enrollment>=15 & poverty_measure_used!="Both" & frpl40_total_quality==. & frpl40_total!=.
 replace frpl40_total_quality = 3 if frpl40_total_quality==. & frpl40_total!=.
