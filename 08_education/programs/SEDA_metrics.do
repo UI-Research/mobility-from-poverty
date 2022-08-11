@@ -57,6 +57,7 @@ gen county = sedacounty
 gen learning_rate=.
 gen se=.
 
+*EG: this only gives 2018-2018? should it be 2014-2018?
 qui levelsof county, local(counties)
 local year=${year}
 forvalues cohort = `year'/`year' { 
