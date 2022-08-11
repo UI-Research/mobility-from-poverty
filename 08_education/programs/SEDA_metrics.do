@@ -7,9 +7,9 @@ clear all
 set maxvar 10000
 set matsize 10000
 
-global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
-global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
-global year=2016
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+*global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
+global year=2018
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 
@@ -24,7 +24,7 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-
+/*
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name
@@ -39,14 +39,13 @@ replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
 
 save "intermediate/countyfile.dta", replace
+*/
 
-
-** NOTE: If the following doesn't work, download data in manually from SEDA website: https://cepa.stanford.edu/content/seda-data **
-** or https://edopportunity.org/get-the-data/seda-archive-downloads/ **
-** exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta **
+** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
+** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" for 2009-2018 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta" "raw/seda_county_long_gcs_v30.dta", replace
-use "raw/seda_county_long_gcs_v30.dta", clear
+cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" "raw/seda_county_long_gcs_4.1.dta"
+use "raw/seda_county_long_gcs_4.1.dta", clear
 
 keep if subject=="ela"
 
@@ -54,14 +53,14 @@ keep if subject=="ela"
 ** in 6th grade in 2014, etc **
 gen cohort = year - grade + 8
 
-destring countyid, gen(county)
+gen county = sedacounty
 gen learning_rate=.
 gen se=.
 
 qui levelsof county, local(counties)
 local year=${year}
 forvalues cohort = `year'/`year' { 
-	reg mn_all c.grade#county i.county if cohort==`cohort' [aw=totgyb_all]
+	reg gcs_mn_all c.grade#county i.county if cohort==`cohort' [aw=totgyb_all]
 	foreach county of local counties {
 		cap n replace learning_rate = _b[c.grade#`county'.county] if county==`county' & cohort==`cohort'
 		cap n replace se = _se[c.grade#`county'.county] if county==`county' & cohort==`cohort'
