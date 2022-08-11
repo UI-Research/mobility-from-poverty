@@ -47,7 +47,7 @@ save "intermediate/countyfile.dta", replace
 cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" "raw/seda_county_long_gcs_4.1.dta"
 use "raw/seda_county_long_gcs_4.1.dta", clear
 
-keep if subject=="ela"
+keep if subject=="rla"
 
 ** define cohort as the year a cohort reaches 8th grade. Eg, the 2016 cohort is the cohort that is in 8th grade in 2016, in 7th grade in 2015,
 ** in 6th grade in 2014, etc **
@@ -67,7 +67,7 @@ forvalues cohort = `year'/`year' {
 	}
 }
 
-bysort cohort county: egen num_grades_included = count(mn_all)
+bysort cohort county: egen num_grades_included = count(gcs_mn_all)
 bysort cohort county: egen total_sample_size = sum(totgyb_all)
 bysort cohort county: egen min_sample_size = min(totgyb_all)
 
@@ -78,8 +78,11 @@ keep if cohort>=2014 & cohort!=.
 drop year
 rename cohort year
 
-replace countyid = substr(countyid,3,5)
-assert strlen(countyid)==3
+*
+tostring sedacounty, replace
+replace sedacounty = "0" + sedacounty if strlen(sedacounty)==4
+replace sedacounty = substr(sedacounty,3,5)
+assert strlen(sedacounty)==3
 
 tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
@@ -89,12 +92,12 @@ save "intermediate/SEDA_all.dta", replace
 
 use "intermediate/SEDA_all.dta", clear
 
-keep year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
-order year fips countyid learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
+keep year fips sedacounty learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
+order year fips sedacounty learning_rate learning_rate_lb learning_rate_ub num_grades_included min_sample_size
 duplicates drop
 
 rename fips state
-rename countyid county
+rename sedacounty county
 
 replace year = year - 1 // changed so that the year reflects the fall of the academic year 
 
