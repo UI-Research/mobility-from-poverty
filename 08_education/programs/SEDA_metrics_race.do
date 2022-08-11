@@ -8,9 +8,9 @@ clear all
 set maxvar 10000
 set matsize 10000
 
-global gitfolder "K:\EDP\EDP_shared\gates-mobility-metrics"
-global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
-global year=2016
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+*global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
+global year=2018
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 
@@ -25,7 +25,7 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-
+/*
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name
@@ -49,34 +49,32 @@ restore
 append using `additionalyears'
 
 save "intermediate/countyfile.dta", replace
-
-
-** NOTE: If the following doesn't work, download data in manually from SEDA website: https://cepa.stanford.edu/content/seda-data **
-** or https://edopportunity.org/get-the-data/seda-archive-downloads/ **
-** exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta **
+*/
+** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
+** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" for 2009-2018 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta" "raw/seda_county_long_gcs_v30.dta", replace
-use "raw/seda_county_long_gcs_v30.dta", clear
+cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" "raw/seda_county_long_gcs_4.1.dta"
+use "raw/seda_county_long_gcs_4.1.dta", clear
 
-keep if subject=="ela"
+keep if subject=="rla"
 
 ** define cohort as the year a cohort reaches 8th grade. Eg, the 2016 cohort is the cohort that is in 8th grade in 2016, in 7th grade in 2015,
 ** in 6th grade in 2014, etc **
 gen cohort = year - grade + 8
 keep if cohort>=2014 & cohort!=.
 
-destring countyid, gen(county)
+gen county = sedacounty
 
 ** create "other" group as sum of Asian students and Native Americans **
-count if mn_asn==. & totgyb_asn!=.
+count if gcs_mn_asn==. & totgyb_asn!=.
 assert `r(N)'==0
 
-count if mn_nam==. & totgyb_nam!=.
+count if gcs_mn_nam==. & totgyb_nam!=.
 assert `r(N)'==0
 
 egen totgyb_oth = rowtotal(totgyb_asn totgyb_nam)
-gen temp_asn = mn_asn*totgyb_asn
-gen temp_nam = mn_nam*totgyb_nam
+gen temp_asn = gcs_mn_asn*totgyb_asn
+gen temp_nam = gcs_mn_nam*totgyb_nam
 egen mn_oth = rowtotal(temp_asn temp_nam)
 replace mn_oth = mn_oth/totgyb_oth
 
@@ -90,7 +88,7 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	local year=${year}
 	forvalues cohort = 2014/`year' { 
 	    ** calculate learning rate as county-specific grade coefficient for each subgroup and cohort ** 
-		reg mn_`subgroup' c.grade#county i.county if cohort==`cohort' [aw=totgyb_`subgroup']
+		reg gcs_mn_`subgroup' c.grade#county i.county if cohort==`cohort' [aw=totgyb_`subgroup']
 		foreach county of local counties {
 			cap n replace learning_rate_`subgroup' = _b[c.grade#`county'.county] if county==`county' & cohort==`cohort'
 			cap n replace se_`subgroup' = _se[c.grade#`county'.county] if county==`county' & cohort==`cohort'
@@ -131,19 +129,22 @@ rename cohort year
 replace year = year - 1 // changed so that the year reflects the fall of the academic year 
 
 ** generate fips county and state codes to merge onto crosswalk **
-replace countyid = substr(countyid,3,5)
-assert strlen(countyid)==3
+tostring sedacounty, replace
+replace sedacounty = "0" + sedacounty if strlen(sedacounty)==4
+replace sedacounty = substr(sedacounty,3,5)
+assert strlen(sedacounty)==3
+
 
 tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
 assert strlen(fips)==2
 
-keep fips countyid year learning_rate_* 
+keep fips sedacounty year learning_rate_* 
 
 duplicates drop
 
 rename fips state
-rename countyid county
+rename sedacounty county
 gsort -year state county
 
 ** merge on crosswalk **
