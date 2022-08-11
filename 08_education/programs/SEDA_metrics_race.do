@@ -3,6 +3,7 @@
 ** 2020/08/04 **
 ** Instructions: lines 11-13 need to be edited for the latest year of data, and new data downloaded manually to the data/raw folder (currently saved on Box in the education folder) **
 ** this file creates learning rate estimates for years 2013, 2014, 2015 and subgroups by economic disadvantage, race, and gender. however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
+*2018 is most recently available year from SEDA as of 8/11/2022
 
 clear all
 set maxvar 10000
