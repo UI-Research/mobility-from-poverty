@@ -76,8 +76,8 @@ assert `r(N)'==0
 egen totgyb_oth = rowtotal(totgyb_asn totgyb_nam)
 gen temp_asn = gcs_mn_asn*totgyb_asn
 gen temp_nam = gcs_mn_nam*totgyb_nam
-egen mn_oth = rowtotal(temp_asn temp_nam)
-replace mn_oth = mn_oth/totgyb_oth
+egen gcs_mn_oth = rowtotal(temp_asn temp_nam)
+replace gcs_mn_oth = gcs_mn_oth/totgyb_oth
 
 ** calculate growth estimates for each subgroup **
 ** NOTE: This loop takes a long time to run (4-8 hours or more).
@@ -97,7 +97,7 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	}
 
 	** count number of grades included in each regression **
-	bysort cohort county: egen num_grades_included_`subgroup' = count(mn_`subgroup')
+	bysort cohort county: egen num_grades_included_`subgroup' = count(gcs_mn_`subgroup')
 	
 	** determine smallest class size used in each regression **
 	bysort cohort county: egen min_sample_size_`subgroup' = min(totgyb_`subgroup')
@@ -124,6 +124,8 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 
 	drop min_sample_size_`subgroup' num_grades_included_`subgroup'
 }
+*EG: start here once have crosswalk
+save "intermediate/seda_race_postreg", replace
 	
 drop year
 rename cohort year
@@ -185,15 +187,15 @@ order year state county subgroup_type subgroup learning_rate learning_rate_lb le
 gsort -year state county subgroup_type subgroup
 
 ** export data **
-export delimited using "built/SEDA_all_subgroups.csv", replace
-export delimited using "${boxfolder}/SEDA_all_subgroups.csv", replace
-export delimited using "${gitfolder}\08_education\SEDA_all_subgroups.csv", replace
+*export delimited using "built/SEDA_all_subgroups.csv", replace
+*export delimited using "${boxfolder}/SEDA_all_subgroups.csv", replace
+export delimited using "${gitfolder}\08_education\SEDA_all_subgroups_2018.csv", replace
 
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
-export delimited using "built/SEDA_years_only.csv", replace
-export delimited using "${boxfolder}/SEDA_years_only.csv", replace
+*export delimited using "built/SEDA_years_only.csv", replace
+*export delimited using "${boxfolder}/SEDA_years_only.csv", replace
 export delimited using "${gitfolder}\08_education\SEDA_years_only.csv", replace
 
 
