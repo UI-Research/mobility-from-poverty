@@ -1,7 +1,7 @@
 /*************************/
   air qaulity program: 
-  created by: rebecca marx
-  updated on: august 5, 2022
+  created by: Rebecca Marx
+  updated on: August 12, 2022
 Description: 
 (1)creates tract-level indicators of poverty and race for counties in US
 */
@@ -52,7 +52,14 @@ epa_aqi_data <- epa_aqi_data %>%
   colnames (fips_data) <- c("state_code", "state", "county_code","county")
   
 ####STEP 3: JOIN FIPS AND EPA DATA FOR FIPS IDS####
-  aqi_fips2 <- left_join(fips_data,epa_aqi_data, by=c("state","county"))
-  aqi_fips1 <- merge(fips_data,epa_aqi_data,by=c('state','county'))
+  #keep only the columns in FIPs form
+  
+  aqi_fips <- left_join(fips_data,epa_aqi_data, by=c("state","county")) %>% 
+    select(state_code, county_code, year, aqi) 
+  colnames (aqi_fips) <- c("state","county","year","aqi")
+  
+  test_aqi_fips <- na.omit(aqi_fips)
+  tst_epa_aqi_data <- na.omit(epa_aqi_data)
+
   
       
