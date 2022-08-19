@@ -138,7 +138,7 @@ merge 1:1 year state county using "Intermediate/countyfile.dta"
 drop if _merge==1 // drops territories
 drop _merge
 
-keep if year==$year
+*keep if year==$year
 
 gsort -year state county
 
