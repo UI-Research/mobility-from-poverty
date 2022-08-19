@@ -2,14 +2,12 @@
 ** E Blom ** Updated by E Gutierez
 ** 2022/08/08 **
 ** Instructions: only lines 8-10 need to be edited for the latest year of data **
+*Makes city level estimates by aggregating school data to the city location of the school
 
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-*global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
 global year=2020
-
-global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
 
 cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
@@ -21,23 +19,6 @@ cap n mkdir "built"
 ** install educationdata command **
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
-
-/* waiting to have 2019-2020
-** Import county file ** 
-import delimited ${countyfile}, clear
-drop population state_name county_name
-
-tostring county, replace
-replace county = "0" + county if strlen(county)<3
-replace county = "0" + county if strlen(county)<3
-assert strlen(county)==3
-
-tostring state, replace
-replace state = "0" + state if strlen(state)==1
-assert strlen(state)==2
-
-save "intermediate/countyfile.dta", replace
-*/
 
 ** get CCD enrollment **
 *add if, else command once decide how to deal with future iterations
@@ -59,13 +40,14 @@ merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 save "intermediate/combined_2014-${year}.dta", replace
 
 
-** county-level rates **
-use "intermediate/combined_2014-${year}.dta", clear
+** city-level rates **
+use "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\08_education\data\intermediate/combined_2014-${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
 
 ** CAUTION: SEVERAL STATES DO NOT REPORT FRPL **
-	*there are also -3, -2, and -1, not just "." in years prior to 2018
+	*there are also -3 suppressed, -2 N/A, and -1 missing, not just "." in years prior to 2018
+	*also free/red == 0 generally means not reported - ask kristin
 gen no_frpl = free_or_reduced==.
 gen no_dc = direct_cert==.
 
@@ -89,15 +71,15 @@ forvalues i=1/3 {
 	gen numerator`i' = enrollment`i'
 	replace numerator`i' = 0 if frpl_40 == 0
 } 
-
+/*
 _strip_labels county_code
 tostring county_code, replace
 replace county_code = "0" + county_code if strlen(county_code)==4
 gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
 gen county = substr(county_code,3,5)
 assert strlen(county)==3
-
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator* frpl_used dc_used, by(year state county)
+*/
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator* frpl_used dc_used, by(year fips city_location)
 
 gen frpl40_total = numerator/enrollment
 gen frpl40_white = numerator1/enrollment1
@@ -108,6 +90,7 @@ gen poverty_measure_used = "FRPL" if frpl_used>0 & frpl_used!=. & dc_used==0
 replace poverty_measure_used = "DC" if frpl_used==0 & dc_used>0 & dc_used!=.
 replace poverty_measure_used = "Both" if frpl_used>0 & frpl_used!=. & dc_used>0 & dc_used!=.
 
+*is "Both" supposed to be a bad thing and that's why its in the below code?
 gen frpl40_total_quality = 1 if enrollment>=30 & poverty_measure_used!="Both" & frpl40_total!=.
 replace frpl40_total_quality = 2 if enrollment>=15 & poverty_measure_used!="Both" & frpl40_total_quality==. & frpl40_total!=.
 replace frpl40_total_quality = 3 if frpl40_total_quality==. & frpl40_total!=.
@@ -126,23 +109,24 @@ replace frpl40_hispanic_quality = 3 if frpl40_hispanic_quality==. & frpl40_hispa
 
 drop enrollment* numerator* frpl_used dc_used
 
-keep year state county frpl40_total poverty_measure_used frpl40_total_quality ///
+keep year fips city_location frpl40_total poverty_measure_used frpl40_total_quality ///
 frpl40_white frpl40_white_quality frpl40_black frpl40_black_quality frpl40_hispanic frpl40_hispanic_quality
-order year state county frpl40_total poverty_measure_used frpl40_total_quality ///
+order year fips city_location frpl40_total poverty_measure_used frpl40_total_quality ///
 frpl40_white frpl40_white_quality frpl40_black frpl40_black_quality frpl40_hispanic frpl40_hispanic_quality
 duplicates drop
 
+/*
 merge 1:1 year state county using "Intermediate/countyfile.dta"
 drop if _merge==1 // drops territories
 drop _merge
+*/
+*keep if year==$year
 
-keep if year==$year
+gsort -year fips city_location
 
-gsort -year state county
-
-export delimited using "built/FRPL.csv", replace
+export delimited using "built/FRPL_city.csv", replace
 *export delimited using "${boxfolder}/FRPL.csv", replace
-export delimited using "${gitfolder}\08_education\FRPL.csv", replace
+export delimited using "${gitfolder}\08_education\FRPL_city.csv", replace
 
 
 /* Suggest removing footnotes since replaced with flags.
