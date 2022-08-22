@@ -69,6 +69,7 @@ foreach year in $years {
 
 
 ** Download EDFacts data **
+*https://www2.ed.gov/about/inits/ed/edfacts/data-files/school-status-data.html
 foreach year in $years {
 	local nextyear = `year' - 2000 + 1
 	if `year'== 2018 copy "https://www2.ed.gov/about/inits/ed/edfacts/data-files/lea-homeless-enrolled-sy`year'-`nextyear'-wide.csv" "raw/EDFacts Homelessness `year'.csv", replace
