@@ -33,11 +33,37 @@ save "intermediate/gleaid_13-17.dta", replace
 
 use "intermediate/gleaid_13-17.dta", clear
 *are cities consistent within gleaids?
-gen diff = 0
+gen num_diff_cities = 0
+tab year if gleaid=="" // individual schools missing gleaids
 sort year gleaid city_location
-bysort year gleaid: replace diff=1 if city_location!=city_location[_n+1]
-bysort year gleaid: egen sum_diff = sum(diff)
-brow year gleaid city_location diff sum_diff
+bysort year gleaid: replace num_diff_cities=1 if city_location!=city_location[_n+1]
+brow year gleaid city_location num_diff_cities
+
+preserve
+collapse (sum) num_diff_cities, by(year gleaid fips)
+replace num_diff_cities=num_diff_cities-1 if num_diff_cities!=0 // to account for the last observation
+replace num_diff_cities =4 if num_diff_cities>=4 & num_diff_cities<.
+tab num
+
+/*    (sum) |
+num_diff_ci |
+       ties |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |     45,206       68.01       68.01 68% have same city within gleaid
+          1 |     11,271       16.96       84.96 17% have more than 1
+          2 |      4,618        6.95       91.91  7% have more than 2
+          3 |      2,111        3.18       95.08  3% have more than 3
+          4 |      3,268        4.92      100.00  5% have more than 4 or more
+------------+-----------------------------------
+      Total |     66,474      100.00
+*/
+
+*keep year gleaid city_location //add the city most used city name if we can use gleaids
+*save "intermediate/gleaid_13-17_edited.dta", replace
+
+restore
+
+
 *merge later
 
 /*
