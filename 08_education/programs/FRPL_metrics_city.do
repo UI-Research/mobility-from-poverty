@@ -79,6 +79,7 @@ gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not 
 gen county = substr(county_code,3,5)
 assert strlen(county)==3
 */
+*EG: city_location missing (-1) for 5,940 observations in 2015
 collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator* frpl_used dc_used, by(year fips city_location)
 
 gen frpl40_total = numerator/enrollment

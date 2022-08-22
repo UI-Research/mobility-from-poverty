@@ -92,7 +92,7 @@ forvalues i=1/3 {
 } 
 
 _strip_labels county_code
-tostring county_code, replace
+tostring county_code, replace // EG: 112 county codes observations have county_code==-2 [not applicable] (2015), 331 missing (2014/2015)
 replace county_code = "0" + county_code if strlen(county_code)==4
 gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
 gen county = substr(county_code,3,5)
@@ -135,14 +135,17 @@ frpl40_white frpl40_white_quality frpl40_black frpl40_black_quality frpl40_hispa
 duplicates drop
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
-drop if _merge==1 // drops territories
+*drop if _merge==1 // drops territories EG: add this back in when countyfile updated
+	drop if _merge==1 & year>=2014 & year<=2018
 drop _merge
 
 *keep if year==$year
 
 gsort -year state county
 
-export delimited using "built/FRPL.csv", replace
+bysort year: sum
+
+export delimited using "built/FRPL_2014-2020.csv", replace
 *export delimited using "${boxfolder}/FRPL.csv", replace
 export delimited using "${gitfolder}\08_education\FRPL.csv", replace
 
@@ -154,3 +157,6 @@ Other states with <1% reporting DC instead of FRPL: Pennsylviana, Indiana, Arizo
 States with 100% DC: Massachusetts, Tennessee, DC, Delaware
 */
 
+*EG: compare to old 
+cd "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\08_education"
+import delimited using "FRPL.csv", clear
