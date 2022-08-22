@@ -126,6 +126,7 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 }
 *EG: start here once have crosswalk
 save "intermediate/seda_race_postreg", replace
+use "intermediate/seda_race_postreg", clear
 	
 drop year
 rename cohort year
@@ -153,7 +154,7 @@ gsort -year state county
 ** merge on crosswalk **
 merge 1:1 year state county using "intermediate/countyfile.dta"
 
-drop if _merge==1 | year<2013 | year>=$year
+drop if _merge==1 | year<2013 | year>$year
 drop _merge
 
 ** make the data long **

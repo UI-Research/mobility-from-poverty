@@ -3,7 +3,7 @@
 ** 2020/08/04 **
 ** Instructions: lines 10-12 need to be edited for the latest year of data, and new data downloaded manually to the data/raw folder (currently saved on Box in the education folder) **
 
-*creates city level estimates. uses school level and aggregates to school city location, but doesn't have breakdowns by race/ethnicity
+*creates city level estimates. uses gleaid 
 
 clear all
 set maxvar 10000
@@ -27,27 +27,30 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 ** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
 ** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" for 2009-2018 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-cap n copy "" "raw/seda_school_pool_gcs_4.1.dta"
-use "raw/seda_school_pool_gcs_4.1.dta", clear
+cap n copy  "https://stacks.stanford.edu/file/druid:db586ns4974/seda_geodist_long_gcs_4.1.dta" "raw/seda_geodist_long_gcs_4.1.dta"
+use "raw/seda_geodist_long_gcs_4.1.dta", clear
 
 keep if subject=="rla"
+
+*EG: need to match to urban's gleaids for city_location variable
 
 ** define cohort as the year a cohort reaches 8th grade. Eg, the 2016 cohort is the cohort that is in 8th grade in 2016, in 7th grade in 2015,
 ** in 6th grade in 2014, etc **
 gen cohort = year - grade + 8
 
-gen county = sedacounty
+*gen county = sedacounty
+gen gleaid = sedalea
 gen learning_rate=.
 gen se=.
 
-*EG: this only gives 2018-2018? should it be 2014-2018?
-qui levelsof county, local(counties)
+*EG: this only gives 2018-2018? should it be 2014-2018? - the maxvar & matsize are too small for this
+qui levelsof gleaid, local(gleaid)
 local year=${year}
 forvalues cohort = `year'/`year' { 
-	reg gcs_mn_all c.grade#county i.county if cohort==`cohort' [aw=totgyb_all]
-	foreach county of local counties {
-		cap n replace learning_rate = _b[c.grade#`county'.county] if county==`county' & cohort==`cohort'
-		cap n replace se = _se[c.grade#`county'.county] if county==`county' & cohort==`cohort'
+	reg gcs_mn_all c.grade#gleaid i.gleaid if cohort==`cohort' [aw=totgyb_all]
+	foreach gleaid of local gleaid {
+		cap n replace learning_rate = _b[c.grade#`gleaid'.gleaid] if gleaid==`gleaid' & cohort==`cohort'
+		cap n replace se = _se[c.grade#`gleaid'.gleaid] if gleaid==`gleaid' & cohort==`cohort'
 	}
 }
 
