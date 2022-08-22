@@ -26,9 +26,10 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
+*EG ADD 2012 TO THIS
 *bring in gleaid city_location crosswalk - uses fall so 2017 instead of 2018
 clear
-educationdata using "school nhgis census-2010", sub(year=2013:2017) csv
+educationdata using "school nhgis census-2010", sub(year=2012:2017) csv
 save "intermediate/gleaid_13-17.dta", replace
 
 use "intermediate/gleaid_13-17.dta", clear
@@ -57,6 +58,8 @@ num_diff_ci |
 ------------+-----------------------------------
       Total |     66,474      100.00
 */
+
+tab num year, col
 
 *keep year gleaid city_location //add the city most used city name if we can use gleaids
 *save "intermediate/gleaid_13-17_edited.dta", replace
