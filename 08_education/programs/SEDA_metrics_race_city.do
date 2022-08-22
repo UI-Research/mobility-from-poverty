@@ -26,6 +26,20 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
+*bring in gleaid city_location crosswalk - uses fall so 2017 instead of 2018
+clear
+educationdata using "school nhgis census-2010", sub(year=2013:2017) csv
+save "intermediate/gleaid_13-17.dta", replace
+
+use "intermediate/gleaid_13-17.dta", clear
+*are cities consistent within gleaids?
+gen diff = 0
+sort year gleaid city_location
+bysort year gleaid: replace diff=1 if city_location!=city_location[_n+1]
+bysort year gleaid: egen sum_diff = sum(diff)
+brow year gleaid city_location diff sum_diff
+*merge later
+
 /*
 ** Import county file **
 import delimited ${countyfile}, clear
