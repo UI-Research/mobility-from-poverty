@@ -128,7 +128,7 @@ foreach year in $years {
 	
 rename total homeless
 
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian mig  { // 
+foreach var in homeless  { // 
 	di "`var'"
 	gen supp_`var' = 1 if `var'=="S"
 	replace `var'="1" if `var'=="S"
@@ -142,7 +142,19 @@ foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep a
 	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
 }
 
-keep year leaid *homeless* *hotels_motels* *unsheltered* *sheltered* *doubled_up* *cwd* *lep* *amin_an* *black* *hispanic* *white* *twomore* *nh_pi* *asian*
+foreach var in hotels_motels unsheltered sheltered doubled_up cwd lep black hispanic white twomore nh_pi asian amin_an mig  { // 
+	di "`var'"
+	gen supp_`var' = 1 if `var'=="S"
+	replace `var'="1" if `var'=="S"
+	destring `var', replace
+}
+
+*collapsing American Indian/Alaskan Native,  two/more, Native Hawaiian/Pacific Islander, and Asian to other
+egen other = rowtotal(twomore nh_pi asian amin_an) 
+drop twomore nh_pi asian amin_an
+
+
+keep year leaid *homeless* *hotels_motels* *unsheltered* *sheltered* *doubled_up* *cwd* *lep* *black* *hispanic* *white* *other*
 tostring leaid, replace
 replace leaid = "0" + leaid if strlen(leaid)!=7
 assert strlen(leaid)==7
@@ -161,16 +173,16 @@ foreach year in $years {
 *EG: is this really what we want?
 replace enrollment=0 if enrollment<0 | enrollment==.
 
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless {
 replace `var'=0 if enrollment==0
 }
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless  {
 replace `var'_upper_ci=0 if enrollment==0
 }
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless  {
 replace `var'_lower_ci=0 if enrollment==0
 }
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless  {
 replace supp_`var'=0 if enrollment==0
 }
 
@@ -178,9 +190,9 @@ replace supp_`var'=0 if enrollment==0
 gen enroll_nonsupp = enrollment if supp_homeless!=1
 gen enroll_supp = enrollment if supp_homeless==1
 
-collapse (sum) *homeless* *hotels_motels* *sheltered* *doubled_up* *cwd* *lep* *amin_an* *black* *hispanic* *white* *twomore* *nh_pi* *asian* enrollment enroll_nonsupp enroll_supp, by(year state county)
+collapse (sum) *homeless* *hotels_motels* *sheltered* *doubled_up* *cwd* *lep* *black* *hispanic* *other* *white* enrollment enroll_nonsupp enroll_supp, by(year state county)
 
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless  {
 rename `var' `var'_count
 rename `var'_lower_ci `var'_count_lb
 rename `var'_upper_ci `var'_count_ub
@@ -198,7 +210,7 @@ sum coverage, d, if homeless_quality==1
 sum coverage, d, if homeless_quality==2
 sum coverage, d, if homeless_quality==3
 
-foreach var in homeless hotels_motels unsheltered sheltered doubled_up cwd lep amin_an black hispanic white twomore nh_pi asian {
+foreach var in homeless {
 drop `var'_districts_suppress
 }
 drop enrollment coverage enroll_supp enroll_nonsupp
@@ -216,11 +228,11 @@ bysort year: egen maxmerge=max(_merge)
 keep if maxmerge==3
 drop _merge maxmerge
 */
-order year state county *homeless* *hotels_motels* *sheltered* *doubled_up* *cwd* *lep* *amin_an* *black* *hispanic* *white* *twomore* *nh_pi* *asian* 
+order year state county *homeless* *hotels_motels* *sheltered* *doubled_up* *cwd* *lep* *other* *black* *hispanic* *white* 
 
 gsort -year state county
 
-*export delimited using "built/homelessness_all.csv", replace
+export delimited using "built/homelessness_all.csv", replace
 *export delimited using "${gitfolder}\02_housing\homelessness_all.csv", replace
 *export delimited using "${boxfolder}/homelessness_all.csv", replace
 
