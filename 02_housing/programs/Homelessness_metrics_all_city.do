@@ -119,7 +119,7 @@ assert strlen(leaid)==7
 
 save "intermediate/homelessness_all_years.dta", replace
 
-
+*THURSDAY MTG
 ** Using leaid to calculate homelessness share **
 use "intermediate/homelessness_all_years.dta", clear
 foreach year in $years {
@@ -127,6 +127,15 @@ foreach year in $years {
 	drop if _merge==2
 	drop _merge
 }
+
+/*Explore how bad it would be to use school district for city level
+bysort year: distinct leaid
+bysort year fips city_location: gen dup=_N
+tab year dup, col
+
+
+
+
 
 *EG: is this really what we want?
 replace enrollment=0 if enrollment<0 | enrollment==.

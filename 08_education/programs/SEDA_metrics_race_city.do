@@ -32,13 +32,17 @@ clear
 educationdata using "school nhgis census-2010", sub(year=2012:2017) csv
 save "intermediate/gleaid_13-17.dta", replace
 
+*THURSDAY
 use "intermediate/gleaid_13-17.dta", clear
 *are cities consistent within gleaids?
 gen num_diff_cities = 0
 tab year if gleaid=="" // individual schools missing gleaids
+drop if gleaid==""
+tab year if city_location==""
+drop if city_location==""
 sort year gleaid city_location
 bysort year gleaid: replace num_diff_cities=1 if city_location!=city_location[_n+1]
-brow year gleaid city_location num_diff_cities
+*brow year gleaid city_location num_diff_cities
 
 preserve
 collapse (sum) num_diff_cities, by(year gleaid fips)
@@ -60,12 +64,18 @@ num_diff_ci |
 */
 
 tab num year, col
+restore
 
 *keep year gleaid city_location //add the city most used city name if we can use gleaids
 *save "intermediate/gleaid_13-17_edited.dta", replace
 
-restore
+*keep the name that appears most often
+keep year gleaid city_location state_fips_geo 
+bysort year gleaid city_location: gen num_city_obs=_N
+bysort year gleaid: egen num_city_obs_max = max(num_city_obs)
+keep if num_city_obs==num_city_obs_max
 
+collapse  num_city_obs num_city_obs_max, by(year gleaid city_location state_fips_geo )
 
 *merge later
 
@@ -121,6 +131,13 @@ gen temp_asn = gcs_mn_asn*totgyb_asn
 gen temp_nam = gcs_mn_nam*totgyb_nam
 egen gcs_mn_oth = rowtotal(temp_asn temp_nam)
 replace gcs_mn_oth = gcs_mn_oth/totgyb_oth
+
+******
+*do the city level weighting magic 
+
+
+
+
 
 ** calculate growth estimates for each subgroup **
 ** NOTE: This loop takes a long time to run (4-8 hours or more).
