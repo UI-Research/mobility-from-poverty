@@ -1,7 +1,7 @@
 library(tidyverse)
 library(censusapi)
 
-source("R/census_api_key.R")
+source(here::here("geographic-crosswalks", "census_api_key.R"))
 
 #' Pull all US tracts in a given year
 #'
@@ -40,4 +40,14 @@ tracts <- get_tracts(year = 2018) %>%
 tracts %>%
   arrange(year, state, county, tract) %>%
   select(year, state, county, tract) %>%
-  write_csv("geographic-crosswalks/data/crosswalk.csv")
+  write_csv("geographic-crosswalks/data/tract-county-crosswalk_2018.csv")
+
+# pull the 2020 tracts
+tracts <- get_tracts(year = 2020) %>%
+  select(-B01003_001E)
+
+# sort rows and columns and save as a csv
+tracts %>%
+  arrange(year, state, county, tract) %>%
+  select(year, state, county, tract) %>%
+  write_csv("geographic-crosswalks/data/tract-county-crosswalk_2020.csv")
