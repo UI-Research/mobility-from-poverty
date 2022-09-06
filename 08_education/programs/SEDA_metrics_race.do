@@ -1,19 +1,18 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
-** E Blom **
+** Updated by: Emily Gutierrez **
 ** 2020/08/04 **
-** Instructions: lines 11-13 need to be edited for the latest year of data, and new data downloaded manually to the data/raw folder (currently saved on Box in the education folder) **
-** this file creates learning rate estimates for years 2013, 2014, 2015 and subgroups by economic disadvantage, race, and gender. however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
-*2018 is most recently available year from SEDA as of 8/11/2022
+** this file creates learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
+** however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
+** 2017-18 is most recently available year from SEDA as of 9/6/22
 
 clear all
 set maxvar 10000
 set matsize 10000
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-*global boxfolder "D:\Users\EBlom\Box Sync\Metrics Database\Education"
-global year=2018
+global year=2018 // refers to spring of the school year
 
-global countyfile "${gitfolder}\geographic-crosswalks\data\county-file.csv"
+global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
 cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
@@ -26,7 +25,6 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-/*
 ** Import county file **
 import delimited ${countyfile}, clear
 drop population state_name county_name
@@ -43,14 +41,14 @@ assert strlen(state)==2
 ** create additional older years **
 preserve
 replace year = year - 4
+drop if year>2013
 tempfile additionalyears
 save `additionalyears'
 restore
 
 append using `additionalyears'
-
 save "intermediate/countyfile.dta", replace
-*/
+
 ** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
 ** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" for 2009-2018 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
