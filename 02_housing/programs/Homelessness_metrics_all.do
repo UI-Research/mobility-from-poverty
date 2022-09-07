@@ -51,7 +51,7 @@ save "intermediate/countyfile.dta", replace
 
 ** Get CCD district data **
 foreach year in $years {
-	educationdata using "district ccd directory", sub(year=`year') col(year leaid county_code enrollment) clear
+	educationdata using "district ccd directory ", sub(year=`year') col(year leaid county_code enrollment)  clear
 
 	_strip_labels county_code
 	tostring county_code, replace
@@ -62,6 +62,33 @@ foreach year in $years {
 	drop county_code
 
 	save "intermediate/ccd_lea_`year'.dta", replace
+}
+
+foreach year in $years {
+	educationdata using "district ccd enrollment race ", sub(year=`year' grade==99) col(year leaid grade enrollment race sex) csv clear
+	drop sex grade
+	collapse (sum) enrollment, by(race leaid year)
+	reshape wide enrollment, i(leaid year) j(race)
+	rename enrollment1 enroll_white
+	rename enrollment2 enroll_black
+	rename enrollment3 enroll_hisp
+	rename enrollment4 enroll_asian
+	rename enrollment5 enroll_amin_na
+	rename enrollment6 enroll_nh_pi
+	rename enrollment7 enroll_twomore
+	drop enrollment99 
+	
+	if year>=2016 {
+	rename enrollment9 enroll_unknown
+	egen enroll_other = rowtotal(enroll_twomore enroll_nh_pi enroll_asian enroll_amin_na enroll_unknown) 
+	drop enroll_twomore enroll_nh_pi enroll_asian enroll_amin_na enroll_unknown
+	}
+	else {
+	*these are collapsed to "other"
+	egen enroll_other = rowtotal(enroll_twomore enroll_nh_pi enroll_asian enroll_amin_na ) 
+	drop enroll_twomore enroll_nh_pi enroll_asian enroll_amin_na 
+	}
+	save "intermediate/ccd_lea__race_`year'.dta", replace
 }
 
 
@@ -113,7 +140,7 @@ foreach year in $years {
 rename total homeless
 
 *extra variables only for homeless/total for data quality variables
-foreach var in homeless  { // 
+foreach var in homeless black hispanic white twomore nh_pi asian amin_an { // 
 	di "`var'"
 	gen supp_`var' = 1 if `var'=="S"
 	replace `var'="1" if `var'=="S"
@@ -127,18 +154,11 @@ foreach var in homeless  { //
 	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
 }
 
-*create flag for race/ethnicity variables
-foreach var in black hispanic white twomore nh_pi asian amin_an  { // 
-	di "`var'"
-	replace `var'="1" if `var'=="S"
-	destring `var', replace
-}
-
 *collapsing American Indian/Alaskan Native,  two/more, Native Hawaiian/Pacific Islander, and Asian to other
 egen other = rowtotal(twomore nh_pi asian amin_an) 
 drop twomore nh_pi asian amin_an 
  
-keep year leaid *homeless* black hispanic white other 
+keep year leaid *homeless* *black* *hispanic* *white* *other* 
 tostring leaid, replace
 replace leaid = "0" + leaid if strlen(leaid)!=7
 assert strlen(leaid)==7
@@ -152,23 +172,27 @@ foreach year in $years {
 	merge m:1 year leaid using "intermediate/ccd_lea_`year'.dta", update
 	drop if _merge==2
 	drop _merge
+	merge m:1 year leaid using "intermediate/ccd_lea__race_`year'.dta", update
+	drop if _merge==2
+	drop _merge
 }
 
 *replaces missing enrollments with zeros
 replace enrollment=0 if enrollment<0 | enrollment==.
 
-foreach var in homeless {
+foreach var in homeless black white hispanic other {
 replace `var'=0 if enrollment==0
 replace `var'_upper_ci=0 if enrollment==0
 replace `var'_lower_ci=0 if enrollment==0
 replace supp_`var'=0 if enrollment==0
 }
 
-*EG: since this refers to homeless as total and enrollment, I think this doesn't need the subgroups
-gen enroll_nonsupp = enrollment if supp_homeless!=1
-gen enroll_supp = enrollment if supp_homeless==1
+foreach var in homeless black white hispanic other {
+gen enroll_nonsupp_`var' = enrollment if supp_`var'!=1
+gen enroll_supp_`var' = enrollment if supp_`var'==1
+}
 
-collapse (sum) *homeless* black hispanic other white enrollment enroll_nonsupp enroll_supp, by(year state county)
+collapse (sum) *homeless* *black* *hispanic* *other* *white* *enrollment* *enroll_nonsupp* *enroll_supp*, by(year state county)
 
 foreach var in homeless  {
 rename `var' `var'_count
