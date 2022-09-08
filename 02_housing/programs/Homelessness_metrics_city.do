@@ -2,7 +2,7 @@
 ** E Blom **
 ** 2020/08/04 **
 *Updated Septmeber 2022 by Emily Gutierrez
-*Creates the number and share of homeless students by county for 2014-15 through 2019-20
+*Creates the number and share of homeless students by city for 2014-15 through 2019-20
 	*Creates the number and share of homeless by race/ethnicity for 2019-20
 
 
@@ -12,9 +12,6 @@ clear all
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global years 2014 2015 2016 2017 2018 2019 // refers to 2019-20 school year - most recent data
 global raceyears 2019 // enrollment by race data starts in 2019-20
-
-
-global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
 cd "${gitfolder}\02_housing\data"
@@ -27,45 +24,19 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-	** Import county file **
-	import delimited ${countyfile}, clear
-	drop population state_name county_name
-
-	tostring county, replace
-	replace county = "0" + county if strlen(county)<3
-	replace county = "0" + county if strlen(county)<3
-	assert strlen(county)==3
-
-	tostring state, replace
-	replace state = "0" + state if strlen(state)==1
-	assert strlen(state)==2
-
-	** create additional older years **
-	preserve
-	replace year = year - 4
-	tempfile additionalyears
-	drop if year>2013 // so that there aren't duplicates after appending
-	save `additionalyears'
-	restore
-
-	append using `additionalyears'
-
-	save "intermediate/countyfile.dta", replace
-
-
 ** Get CCD district data - total enrollment and county_codes**
 foreach year in $years {
-	educationdata using "district ccd directory ", sub(year=`year') col(year leaid county_code enrollment)  clear
+	educationdata using "district ccd directory ", sub(year=`year') col(year leaid county_code city_location enrollment)  clear
 
 	_strip_labels county_code
 	tostring county_code, replace
 	replace county_code = "0" + county_code if strlen(county_code)==4
 	gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
-	gen county = substr(county_code,3,5)
-	drop if strlen(county)!=3
+	*gen county = substr(county_code,3,5)
+	*drop if strlen(county)!=3
 	drop county_code
 
-	save "intermediate/ccd_lea_`year'.dta", replace
+	save "intermediate/ccd_lea_`year'_city.dta", replace
 }
 
 ** Get CCD district data - enrollment by race** data availability starts in 2019-20
@@ -183,7 +154,7 @@ save "intermediate/homelessness_all_years.dta", replace
 ** Using district office location to locate LEAs into counties and calculate homelessness share **
 use "intermediate/homelessness_all_years.dta", clear
 foreach year in $years {
-	merge m:1 year leaid using "intermediate/ccd_lea_`year'.dta", update
+	merge m:1 year leaid using "intermediate/ccd_lea_`year'_city.dta", update
 	drop if _merge==2
 	drop _merge
 	}
@@ -207,7 +178,7 @@ gen enroll_nonsupp_`var' = enrollment if supp_`var'!=1
 gen enroll_supp_`var' = enrollment if supp_`var'==1
 }
 
-collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state county)
+collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state city_location)
 
 foreach var in homeless black white hispanic other {
 rename `var' `var'_count
@@ -242,22 +213,11 @@ drop `var'_districts_suppress
 }
 drop enrollment coverage* enroll_*
 
-*EG:changes for 20154 - this was part of the original code, not sure why its here
-replace county="102" if state=="46" & county=="113"
-
-merge 1:1 year state county using "intermediate/countyfile.dta"
-tab year _merge 
-drop if _merge==1 // Puerto Rico
-
-bysort year: egen maxmerge=max(_merge)
-keep if maxmerge==3
-drop _merge maxmerge
-
 *these variables are not in the 2014/2018 data
 drop min_* count_supp_* 
-order year state county *homeless* black* hispanic* other* white*
+order year state city_location *homeless* black* hispanic* other* white*
 
-gsort -year state county
+gsort -year state city_location
 
 *race/ethnicity variables missing before 2019
 foreach var in ///
@@ -269,6 +229,6 @@ other_count other_count_lb other_count_ub other_share other_quality ///
 replace `var' = . if year<2019
 }
 
-export delimited using "built/homelessness_county.csv", replace // EG: 2014 & 2018 match old data
+export delimited using "built/homelessness_city.csv", replace // EG: 2014 & 2018 match old data
 *export delimited using "${gitfolder}\02_housing\homelessness_all.csv", replace
 *export delimited using "${boxfolder}/homelessness_all.csv", replace
