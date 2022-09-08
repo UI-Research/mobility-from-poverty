@@ -242,7 +242,7 @@ drop `var'_districts_suppress
 }
 drop enrollment coverage* enroll_*
 
-*EG:changes for 20154 - this was part of the original code, not sure why its here
+*EG:changes for 2014 - this was part of the original code, not sure why its here
 replace county="102" if state=="46" & county=="113"
 
 merge 1:1 year state county using "intermediate/countyfile.dta"
