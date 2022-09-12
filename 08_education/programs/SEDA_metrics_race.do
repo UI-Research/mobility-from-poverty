@@ -3,14 +3,14 @@
 ** 2020/08/04 **
 ** this file creates learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
 ** however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
-** 2017-18 is most recently available year from SEDA as of 9/6/22
+** 2017-18 is most recently available year from SEDA as of 9/12/22
 
 clear all
 set maxvar 10000
 set matsize 10000
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global year=2018 // refers to spring of the school year
+global year=2018 // refers to spring of the school year (2017-2018)
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
@@ -64,12 +64,12 @@ keep if cohort>=2014 & cohort!=.
 
 gen county = sedacounty
 
-** create "other" group as sum of Asian students and Native Americans **
-count if gcs_mn_asn==. & totgyb_asn!=.
-assert `r(N)'==0
-
-count if gcs_mn_nam==. & totgyb_nam!=.
-assert `r(N)'==0
+/* create "other" group as sum of Asian students and Native Americans **
+	count if gcs_mn_asn==. & totgyb_asn!=.
+	assert `r(N)'==0
+	count if gcs_mn_nam==. & totgyb_nam!=.
+	assert `r(N)'==0 
+*/	
 
 egen totgyb_oth = rowtotal(totgyb_asn totgyb_nam)
 gen temp_asn = gcs_mn_asn*totgyb_asn
@@ -78,7 +78,7 @@ egen gcs_mn_oth = rowtotal(temp_asn temp_nam)
 replace gcs_mn_oth = gcs_mn_oth/totgyb_oth
 
 ** calculate growth estimates for each subgroup **
-** NOTE: This loop takes a long time to run (4-8 hours or more).
+** NOTE: This loop takes a long time to run (4-8+ hours or more).
 foreach subgroup in all wht blk hsp nec ecd mal fem {
 	gen learning_rate_`subgroup'=.
 	gen se_`subgroup'=.
@@ -136,7 +136,6 @@ replace sedacounty = "0" + sedacounty if strlen(sedacounty)==4
 replace sedacounty = substr(sedacounty,3,5)
 assert strlen(sedacounty)==3
 
-
 tostring fips, replace
 replace fips = "0" + fips if strlen(fips)==1
 assert strlen(fips)==2
@@ -152,7 +151,7 @@ gsort -year state county
 ** merge on crosswalk **
 merge 1:1 year state county using "intermediate/countyfile.dta"
 
-drop if _merge==1 | year<2013 | year>$year
+drop if _merge==1 | year<2013 | year>$year - 1
 drop _merge
 
 ** make the data long **
@@ -180,21 +179,30 @@ replace subgroup = "Female" if subgroup=="_fem"
 replace subgroup = "Economically Disadvantaged" if subgroup=="_ecd"
 replace subgroup = "Not Economically Disadvantaged" if subgroup=="_nec"
 
+*missingness
+tab year if subgroup=="All" & learning_rate==.
+tab year if subgroup=="Black, Non-Hispanic" & learning_rate==.
+tab year if subgroup=="Economically Disadvantaged" & learning_rate==.
+tab year if subgroup=="Female" & learning_rate==.
+tab year if subgroup=="Hispanic" & learning_rate==.
+tab year if subgroup=="Male" & learning_rate==.
+tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
+tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
 
 order year state county subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
 
 gsort -year state county subgroup_type subgroup
 
 ** export data **
-*export delimited using "built/SEDA_all_subgroups.csv", replace
+export delimited using "built/SEDA_all_subgroups_county.csv", replace // 2013,14,15 don't exactly match but its updated underlying data
 *export delimited using "${boxfolder}/SEDA_all_subgroups.csv", replace
-export delimited using "${gitfolder}\08_education\SEDA_all_subgroups_2018.csv", replace
+*export delimited using "${gitfolder}\08_education\SEDA_all_subgroups.csv", replace 
 
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
-*export delimited using "built/SEDA_years_only.csv", replace
+export delimited using "built/SEDA_all_county.csv", replace
 *export delimited using "${boxfolder}/SEDA_years_only.csv", replace
-export delimited using "${gitfolder}\08_education\SEDA_years_only.csv", replace
+*export delimited using "${gitfolder}\08_education\SEDA_years_only.csv", replace
 
 
