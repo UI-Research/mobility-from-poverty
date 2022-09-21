@@ -2,8 +2,8 @@
 * Ancestor program: $gitfolder/neonatal_health_code.do 				   
 * Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder/04_health/data      				   
 * Description: Program to create gates mobility metrics on neonatal health  
-* Author: Emily M. Johnston												   
-* Date: August 14, 2020; Updated September 16, 2020; Updated December 11, 2020; Updated December 21, 2020.	
+* Authors: Emily M. Johnston, Julia Long 												   
+* Date: September 2, 2022	
 * (1)  download data from CDC WONDER											
 * (2)  import, clean, and merge CDC WONDER files					   
 * (3)  intermediate file data cleaning										   
@@ -12,10 +12,15 @@
 * (6)  create neonatal health share lowbirthweight metric
 * (7) assess data quality
 * (8) construct 95 percent confidence intervals
-* (9) final file cleaning and export to csv file									   
+* (9) final file cleaning and export to csv file	
+* more steps that start with taking the final county file
+	*sum the numerators/denoms 
+	*use the same confidence interval formula. 
 ****************************************************************************
+clear all 
+pause on 
 
-global gitfolder = "K:/Hp/EJohnston/Git/gates-mobility-metrics"	// update path as necessary to the local mobility metrics repository folder
+global gitfolder = "H:\mobility-from-poverty"	// update path as necessary to the local mobility metrics repository folder
 global sub = "nhblack hisp nhother nhwhite"
 global data = "all raceth"
 
@@ -118,11 +123,11 @@ foreach data in $data {
 use "$gitfolder/04_health/data/neonatal_health_intermediate_`data'.dta", clear
 
 *year
-generate year = 2018												// all data are 2018
+generate year = 2020												// all data are 2020
 
 *state and county fips
 	format fips %05.0f												// adds leading zero, fips is now consistently 5 digits
-gen state_s = substr(string(fips,"%05.0f"),1,2)					// generates state-only fips,
+gen state_s = substr(string(fips,"%05.0f"),1,2)						// generates state-only fips,
 gen county_s = substr(string(fips,"%05.0f"),3,3)					// generates county-only fips
 destring state_s county_s, generate (state county)					// converts new fips variables to integer variables
 	format state %02.0f												// formats state fips as 2 digits
@@ -165,7 +170,7 @@ save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replac
 * clean crosswalk
 import delimited using "$gitfolder/geographic-crosswalks/data/county-file.csv", clear
 	keep year state county county_name				// keep only variables needed to crosswalk 
-	keep if year==2018								// keep only current year
+	keep if year==2020								// keep only current year
 		format state %02.0f		
 		format county %03.0f	
 keep year state county county_name	
@@ -193,14 +198,16 @@ save "$gitfolder/04_health/data/clean_county_crosswalk_raceth.dta", replace
 //// all births
 use "$gitfolder/04_health/data/neonatal_health_intermediate_all.dta", clear
 merge 1:1 state county using "$gitfolder/04_health/data/clean_county_crosswalk.dta"
-tab _merge															
+tab _merge	
+													
 // correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
 save "$gitfolder/04_health/data/neonatal_health_intermediate_all.dta", replace
 
 //// race/ethnicity
 use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", clear
 merge 1:1 state county subgroup using "$gitfolder/04_health/data/clean_county_crosswalk_raceth.dta"
-tab _merge															
+tab _merge
+													
 // correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
 save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replace
 
@@ -222,6 +229,7 @@ assert lbw_births!=. if unidentified_county_flag==.
 assert nomiss_births!=. if unidentified_county_flag==.
 
 
+
 * assign unidentified county value to missing counties: lbw births
 sort state county
 by state: gen unidentified_lbw=lbw_births if county==999		//create new variable with unidentified counties value
@@ -237,6 +245,7 @@ replace lbw_births=unidentified_lbw if unidentified_county_flag==1  //replaces a
 
 assert lbw_births!=. if unidentified_county_flag==1		//test to confirm no missing values for unidentified counties
 	drop unidentified_lbw
+	
 
 * assign unidentified county value to missing counties: nomiss births
 sort state county
@@ -253,6 +262,7 @@ replace nomiss_births=unidentified_nomiss if unidentified_county_flag==1  //repl
 
 assert nomiss_births!=. if unidentified_county_flag==1	//test to confirm no missing values for unidentified counties
 	drop unidentified_nomiss
+	
 
 *drop unidentified county observations because each unidentified county now has its own observation
 drop if county==999
@@ -283,6 +293,7 @@ assert nomiss_births==. if unidentified_county_flag==1
 assert (lbw_births==.|nomiss_births==.) if suppressed_county_flag==1
 assert lbw_births!=. if unidentified_county_flag==. & suppressed_county_flag==.
 assert nomiss_births!=. if unidentified_county_flag==. & suppressed_county_flag==.
+
 
 
 * assign unidentified county value to missing counties: lbw births
@@ -319,6 +330,7 @@ drop county_name							// no longer need two county name variables
 	
 save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replace
 
+
 *(6) create neonatal health share low birthweight metric
 
 /// all births
@@ -344,10 +356,10 @@ save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replac
 /// all births
 use "$gitfolder/04_health/data/neonatal_health_intermediate_all.dta", clear
 
-*generate data quality flag						// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
+*generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
 	replace lbw_quality = 1 if unidentified_county_flag==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
-	replace lbw_quality = 2 if lbw_births<30												// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	replace lbw_quality = 2 if lbw_births<30					// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag==1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
 		label var lbw_quality "share low birthweight births: quality flag"
 save "$gitfolder/04_health/data/neonatal_health_intermediate_all.dta", replace
@@ -355,10 +367,10 @@ save "$gitfolder/04_health/data/neonatal_health_intermediate_all.dta", replace
 /// race/ethnicity
 use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", clear
 
-*generate data quality flag						// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
+*generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
-	replace lbw_quality = 1 if unidentified_county_flag==. & suppressed_county_flag==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
-	replace lbw_quality = 2 if lbw_births<30												// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	replace lbw_quality = 1 if unidentified_county_flag==. & suppressed_county_flag==.	// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
+	replace lbw_quality = 2 if lbw_births<30											// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag==1 | suppressed_county_flag==1	// assigning a quality score of 3 to all counties flagged as "unassigned counties" or "suppressed"
 		label var lbw_quality "share low birthweight births: quality flag"
 save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replace
@@ -488,4 +500,5 @@ by subgroup: sum lbw															// checking share lowbirthweight by subgroup
 sort year state county subgroup_type subgroup									// final sort
 
 save "$gitfolder/04_health/data/neonatal_health_subgroup.dta", replace
-export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup.csv", replace
+export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup.csv", replace 
+
