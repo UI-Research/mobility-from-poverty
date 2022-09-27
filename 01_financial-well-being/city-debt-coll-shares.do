@@ -5,9 +5,10 @@
 * Data & Program Source: credit bureau data, financial health dashboard
 * Description: Calculate city-level debt in collections shares, overall and by race subgroups
 [1] Setup
-[2] Import and prep microdata
-[3] Create city-level shares
-[4] Export
+[2] Prep PUMA-City crosswalk
+[3] Import and prep microdata
+[4] Create city-level shares
+[5] Export
 ************************************************/
 
 **# [1] Setup -----------------------------------
@@ -24,12 +25,34 @@ assert "$root" != ""
 global pull 2021
 
 
-**# [2] Import and prep microdata ---------------
+**# [2] Prep PUMA-City crosswalk ----------------
+import excel "$root\Data\city_puma_crosswalk_all_cities.xlsx", firstrow clear
+
+* keep cities with 2+ best matching PUMAs, parse PUMAs
+keep if CountofBestMatchingPUMAsw >= 2
+split BestMatchingPUMAs, p(", ") gen("puma")
+
+* reshape long 
+keep StateFIPSCode IPUMSCITYLabel puma*
+reshape long puma, i(StateFIPSCode IPUMSCITYLabel) j(count) string
+drop if mi(puma)
+
+* clean, prep for merge
+gen state_puma = StateFIPSCode + puma
+ren IPUMSCITYLabel city_name
+replace city_name = strtrim(stritrim(city_name))
+keep state_puma city_name
+
+* save tempfile
+tempfile xw
+save `xw', replace
+
+
+**# [3] Import and prep microdata ---------------
 use "$root\Temp\debt01a_$pull.dta", clear
 
-* puma-city crosswalk
-merge m:1 state_puma using "$root\Temp\puma_city_crosswalk.dta", keep(3) nogen
-keep if city_name != ""
+* apply puma-city crosswalk
+merge m:1 state_puma using `xw', keep(3) nogen
 
 * create non-white share
 gen comcol_share = black_share + hispanic_share + asian_share + pacific_share + other_share + aian_share + mixed_share
@@ -53,7 +76,7 @@ foreach race of local races{
 }
 
 
-**# [3] Create city-level shares ---------------- 
+**# [4] Create city-level shares ---------------- 
 gen share_debt_coll = has_tot_collect
 gen share_debt_coll_n = has_tot_collect
 collapse (count) share_debt_coll_n (mean) share_debt_coll, by(state_cd city_name race)
@@ -67,7 +90,7 @@ gen share_debt_coll_quality = 3 if share_debt_coll_n < 50
 drop share_debt_coll_n
 
 
-**# [4] Export ----------------------------------
+**# [5] Export ----------------------------------
 * prep fields
 gen year = $pull
 gen subgroup_type = "race-ethnicity"
