@@ -98,8 +98,8 @@ if (!file.exists(mit_data)) {
 
 # I'm not sure what the actual process is for getting the above API link that directly downloads
 # the data. I replaced the "3641280" from the original link with the file ID for the 2020 
-# version based on the landing page for the data ("6104822"). That seemed to work, but does not
-# the method we want to use for future iterations of the project.
+# version based on the landing page for the data ("6104822"). That seemed to work, but probably
+# not the method we want to use for future iterations of the project.
 
 ```
 
@@ -121,7 +121,7 @@ mit <- mit %>%
 
 [Shannon County, South Dakota (FIPS 46113) changed to Oglala Lakota County, South Dakota (FIPS 46102) in 2015.](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.html) The MIT data have the correct county name but they do not have the correct FIPS code.
 
-In 2019 there were 3,220 counties in the US including Washington DC and Puerto Rico. In 2020, the Valdez-Cordova Census Area in Alaska (FIPS 02261) has been split into two new Census Areas/FIPS: Copper River Census Area (FIPS 02066) and Chugach Census Area (FIPS 02063), so there are now [3,221 counties.](https://www.esri.com/arcgis-blog/products/arcgis-living-atlas/mapping/acs-2016-2020-updated-boundaries/) However, as discussed later, Alaska is reported as Districts instead of counties and all that county FIPS codes get changed so we don't need to worry about this
+In 2019 there were 3,220 counties in the US including Washington DC and Puerto Rico. In 2020, the Valdez-Cordova Census Area in Alaska (FIPS 02261) has been split into two new Census Areas/FIPS: Copper River Census Area (FIPS 02066) and Chugach Census Area (FIPS 02063), so there are now [3,221 counties.](https://www.esri.com/arcgis-blog/products/arcgis-living-atlas/mapping/acs-2016-2020-updated-boundaries/) However, as discussed later, Alaska is reported as Districts instead of counties, so we standardize the FIPS codes for all Alaska districts to "02000" - thus, we don't need to worry about the county change in Alaska.
 
 ```{r}
 mit %>%
@@ -132,7 +132,7 @@ mit <- mit %>%
 
 ```
 
-There are nine observations without FIPS codes. Five of these observations are District of Columbia, which has a FIPS code of 11001, so we correct the missing FIPS for DC. The other four observations are Rhode Island, where the county name is "FEDERAL PRECINCT." Rhode Island has five counties, all of which are included in the data. I couldn't find documentation for the data that might explain these cases, so I drop them for now. XX come back to this.
+There are nine observations without FIPS codes. Five of these observations are District of Columbia, which has a FIPS code of 11001, so we correct the missing FIPS for DC. The other four observations are Rhode Island, where the county name is "FEDERAL PRECINCT." Rhode Island has five counties, all of which are included in the data. The four RI observations where county name is "FEDERAL PRECINCT" all have a `totalvotes` value of 1374. I elect to drop these observations.
 
 ```{r}
 mit %>%
@@ -164,8 +164,7 @@ mit %>%
 
 ```
 
-Alaska is reported as Districts instead of counties. We drop these. 
-XX come back to this. Alaska is reported as districts for 2020, but need to see how districts relate to counties
+Alaska is reported as Districts instead of counties. We replace the FIPS codes for all Alaska observations with `02000`. 
 ```{r}
 mit <- mit %>%
   mutate(FIPS = if_else(state == "ALASKA", "02000", FIPS))
@@ -173,6 +172,9 @@ mit <- mit %>%
 mit %>%
   filter(state == "ALASKA") %>%
   select(state, FIPS)
+
+# XX would it be worth it to see how districts relate to counties?
+# Also, for the 2018 data, Aaron said "Alaska is reported as Districts instead of counties. We drop these." but I think the more accurate wording is that we replace the FIPS codes for all Alaska districts with "02000" because we are not actually dropping the observations (in 2018 or 2020).
 ```
 
 There are no places where the summarized candidate votes don't sum to the county votes.
@@ -224,7 +226,7 @@ wiki_votes <- wiki %>%
   as.numeric()
 
 # the name column in the data doesn't scrape well so we manually state it
-state <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "subset", "subset", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "subset", "subset", "subset", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",      "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island","South Carolina", "South Dakota", "Tennessee", "Texas", "Utah",      "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")     
+state <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "subset", "subset", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "subset", "subset", "subset", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island","South Carolina", "South Dakota", "Tennessee", "Texas", "Utah",      "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")     
 
 state_votes <- tibble(state, wiki_votes) %>%
   tidylog::filter(state != "subset")
@@ -233,7 +235,7 @@ rm(wiki, wiki_votes, state)
 
 ```
 
-The totals are very close for most states. Missouri and potentially New York XX are problematic. 
+The totals are very close for most states. Missouri and potentially New York are problematic. 
 
 ```{r}
 # compare the scraped data to the mit data
@@ -258,7 +260,7 @@ mit_counties %>%
 
 <!-- At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely. -->
 
-There are no missing values. Also, I don't think Alaska is excluded? It doesn't look like it was excluded in 2016 either, so not sure what that comment means.
+XX There are no missing values. Also, I don't think Alaska is excluded? It doesn't look like it was excluded in 2016 either, so not sure what that comment means.
 
 ```{r}
 mit_counties %>%
@@ -272,7 +274,7 @@ The denominator for the analysis should be the total age-eligible citizen popula
 
 The US Census Bureau creates a special tabulation of the 2016-2020 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas. 
 
-If the data are not downloaded, the we download and unzip the data.
+If the data are not downloaded, then we download and unzip the data.
 
 ```{r}
 cvap_zip <- here::here("05_local-governance", 
@@ -299,9 +301,9 @@ if (!file.exists(cvap_data)) {
 
 ```
 
-Next, we load and clean the data. The variable of interest is `CVAP_EST`.
+Next, we load and clean the data. The variable of interest is `cvap_est`.
 
-> CVAP_EST: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
+> cvap_est: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
 
 ```{r}
 cvap <- read_csv(here::here("05_local-governance", 
