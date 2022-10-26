@@ -1,5 +1,5 @@
 ************************************************************************
-* Ancestor program: $gitfolder/neonatal_health_code.do 				   
+* Ancestor program: $gitfolder/neonatal_health_code_2018.do 				   
 * Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder/04_health/data      				   
 * Description: Program to create gates mobility metrics on neonatal health  
 * Authors: Emily M. Johnston, Julia Long 												   
@@ -20,7 +20,7 @@
 clear all 
 pause on 
 
-global gitfolder = "H:\mobility-from-poverty"	// update path as necessary to the local mobility metrics repository folder
+global gitfolder = "C:\mobility-from-poverty"	// update path as necessary to the local mobility metrics repository folder
 global sub = "nhblack hisp nhother nhwhite"
 global data = "all raceth"
 
@@ -167,8 +167,8 @@ save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth.dta", replac
 * (4) use crosswalk to add missing counties to data file
 
 /// all births
-* clean crosswalk
-import delimited using "$gitfolder/geographic-crosswalks/data/county-file.csv", clear
+* clean crosswalk 
+import delimited using "$gitfolder/geographic-crosswalks/data/county-populations.csv", clear
 	keep year state county county_name				// keep only variables needed to crosswalk 
 	keep if year==2020								// keep only current year
 		format state %02.0f		
@@ -461,8 +461,8 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 order year state county lbw lbw_lb lbw_ub lbw_quality	// order
 sort year state county									// sort
 
-save "$gitfolder/04_health/data/neonatal_health.dta", replace
-export delimited using "$gitfolder/04_health/final_data/neonatal_health.csv", replace
+save "$gitfolder/04_health/data/neonatal_health_2020.dta", replace
+export delimited using "$gitfolder/04_health/final_data/neonatal_health_2020.csv", replace
 
 
 
@@ -500,5 +500,5 @@ by subgroup: sum lbw															// checking share lowbirthweight by subgroup
 sort year state county subgroup_type subgroup									// final sort
 
 save "$gitfolder/04_health/data/neonatal_health_subgroup.dta", replace
-export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup.csv", replace 
+export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup_2020.csv", replace 
 
