@@ -1,9 +1,9 @@
 ************************************************************************
-* Ancestor program: $gitfolder/neonatal_health_code_2018.do 				   
+* Ancestor program: $gitfolder/neonatal_health_code.do 				   
 * Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder/04_health/data      				   
 * Description: Program to create gates mobility metrics on neonatal health  
-* Authors: Emily M. Johnston, Julia Long 												   
-* Date: September 2, 2022	
+* Author: Emily M. Johnston												   
+* Date: August 14, 2020; Updated October 26, 2022; September 16, 2020; Updated December 11, 2020; Updated December 21, 2020.	
 * (1)  download data from CDC WONDER											
 * (2)  import, clean, and merge CDC WONDER files					   
 * (3)  intermediate file data cleaning										   
@@ -12,15 +12,10 @@
 * (6)  create neonatal health share lowbirthweight metric
 * (7) assess data quality
 * (8) construct 95 percent confidence intervals
-* (9) final file cleaning and export to csv file	
-* more steps that start with taking the final county file
-	*sum the numerators/denoms 
-	*use the same confidence interval formula. 
+* (9) final file cleaning and export to csv file									   
 ****************************************************************************
-clear all 
-pause on 
 
-global gitfolder = "C:\mobility-from-poverty"	// update path as necessary to the local mobility metrics repository folder
+global gitfolder = "C:/mobility-from-poverty"	// update path as necessary to the local mobility metrics repository folder
 global sub = "nhblack hisp nhother nhwhite"
 global data = "all raceth"
 
@@ -35,7 +30,7 @@ cd "${gitfolder}"
 
 /// open and clean data: all births
 *low birth weight births
-import delimited using "$gitfolder/04_health/data/lbw_births_by_county_20.txt", clear
+import delimited using "$gitfolder/04_health/data/lbw_births_by_county_18.txt", clear
 	keep county countycode births									// do not need CDC notes
 	drop if births=="Missing County"								// only keeping observations with birth data	
 		rename county county_name
@@ -44,10 +39,10 @@ import delimited using "$gitfolder/04_health/data/lbw_births_by_county_20.txt", 
 	destring lbw_births, replace force
 	sort fips county_name											// count of low birthweight births
 	keep if fips!=.													// only keeping observations with data
-save "$gitfolder/04_health/data/lbw_births_by_county_20.dta", replace
+save "$gitfolder/04_health/data/lbw_births_by_county_18.dta", replace
 
 *nonmissing birth weight births
-import delimited using "$gitfolder/04_health/data/nomiss_bw_by_county_20.txt", clear
+import delimited using "$gitfolder/04_health/data/nomiss_bw_by_county_18.txt", clear
 	keep county countycode births									// do not need CDC notes	
 	drop if births=="Missing County"								// only keeping observations with birth data	
 	destring births, replace
@@ -57,12 +52,12 @@ import delimited using "$gitfolder/04_health/data/nomiss_bw_by_county_20.txt", c
 	destring nomiss_births, replace force
 	sort fips county_name
 	keep if fips!=.													// only keeping observations with county data	
-save "$gitfolder/04_health/data/nomiss_bw_by_county_20.dta", replace
+save "$gitfolder/04_health/data/nomiss_bw_by_county_18.dta", replace
 
 /// open and clean data: race/ethnicity
 *low birth weight births
 foreach sub in $sub{
-import delimited using "$gitfolder/04_health/data/lbw_births_by_county_`sub'_20.txt", clear
+import delimited using "$gitfolder/04_health/data/lbw_births_by_county_`sub'_18.txt", clear
 	keep county countycode births									// do not need CDC notes
 	drop if births=="Missing County"								// only keeping observations with birth data	
 		rename county county_name
@@ -72,12 +67,12 @@ import delimited using "$gitfolder/04_health/data/lbw_births_by_county_`sub'_20.
 	gen subgroup_type = "race-ethnicity"	
 	sort fips county_name											// count of low birthweight births
 	keep if fips!=.													// only keeping observations with data
-save "$gitfolder/04_health/data/lbw_births_by_county_`sub'_20.dta", replace
+save "$gitfolder/04_health/data/lbw_births_by_county_`sub'_18.dta", replace
 }
 
 *nonmissing birth weight births
 foreach sub in $sub{
-	import delimited using "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_20.txt", clear
+	import delimited using "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_18.txt", clear
 	keep county countycode births									// do not need CDC notes	
 	drop if births=="Missing County"								// only keeping observations with birth data	
 	destring births, replace
@@ -88,46 +83,46 @@ foreach sub in $sub{
 	gen subgroup_type = "race-ethnicity"	
 	sort fips county_name
 	keep if fips!=.													// only keeping observations with county data	
-save "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_20.dta", replace
+save "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_18.dta", replace
 }
 
 
 /// merge files: all births
-use "$gitfolder/04_health/data/lbw_births_by_county_20.dta", clear
-	merge 1:1 fips county_name using "$gitfolder/04_health/data/nomiss_bw_by_county_20.dta"
+use "$gitfolder/04_health/data/lbw_births_by_county_18.dta", clear
+	merge 1:1 fips county_name using "$gitfolder/04_health/data/nomiss_bw_by_county_18.dta"
 		tab _merge
 		drop _merge
-	save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace
+	save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace
 	
 /// merge files: race/ethnicity
 foreach sub in $sub{	
-use "$gitfolder/04_health/data/lbw_births_by_county_`sub'_20.dta", clear
-	merge 1:1 fips county_name using "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_20.dta"
+use "$gitfolder/04_health/data/lbw_births_by_county_`sub'_18.dta", clear
+	merge 1:1 fips county_name using "$gitfolder/04_health/data/nomiss_bw_by_county_`sub'_18.dta"
 		tab _merge
 		drop _merge
 		gen `sub'=1
-	save "$gitfolder/04_health/data/neonatal_health_intermediate_`sub'_20.dta", replace
+	save "$gitfolder/04_health/data/neonatal_health_intermediate_`sub'_18.dta", replace
 }
 
 /// append data: race/ethnicity 
-use "$gitfolder/04_health/data/neonatal_health_intermediate_nhwhite_20.dta", replace
-	append using "$gitfolder/04_health/data/neonatal_health_intermediate_nhblack_20.dta"
-	append using "$gitfolder/04_health/data/neonatal_health_intermediate_hisp_20.dta"
-	append using "$gitfolder/04_health/data/neonatal_health_intermediate_nhother_20.dta"
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
+use "$gitfolder/04_health/data/neonatal_health_intermediate_nhwhite_18.dta", replace
+	append using "$gitfolder/04_health/data/neonatal_health_intermediate_nhblack_18.dta"
+	append using "$gitfolder/04_health/data/neonatal_health_intermediate_hisp_18.dta"
+	append using "$gitfolder/04_health/data/neonatal_health_intermediate_nhother_18.dta"
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 *(3) intermediate file data cleaning	
 
 /// all births and by race/ethnicity
 foreach data in $data {
-use "$gitfolder/04_health/data/neonatal_health_intermediate_`data'_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_`data'_18.dta", clear
 
 *year
-generate year = 2020												// all data are 2020
+generate year = 2018												// all data are 2018
 
 *state and county fips
 	format fips %05.0f												// adds leading zero, fips is now consistently 5 digits
-gen state_s = substr(string(fips,"%05.0f"),1,2)						// generates state-only fips,
+gen state_s = substr(string(fips,"%05.0f"),1,2)					// generates state-only fips,
 gen county_s = substr(string(fips,"%05.0f"),3,3)					// generates county-only fips
 destring state_s county_s, generate (state county)					// converts new fips variables to integer variables
 	format state %02.0f												// formats state fips as 2 digits
@@ -144,12 +139,12 @@ destring state_s county_s, generate (state county)					// converts new fips vari
 *order, sort, and save
 order year state county
 sort state county
-save "$gitfolder/04_health/data/neonatal_health_intermediate_`data'_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_`data'_18.dta", replace
 }
 
 
 /// create subgroups: race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 gen subgroup = .
 	replace subgroup = 1 if nhblack==1
 	replace subgroup = 2 if hisp==1
@@ -162,15 +157,15 @@ drop nhblack hisp nhother nhwhite
 *order, sort, and save
 order year state county subgroup_type subgroup
 sort state county subgroup_type subgroup
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 * (4) use crosswalk to add missing counties to data file
 
 /// all births
-* clean crosswalk 
+* clean crosswalk
 import delimited using "$gitfolder/geographic-crosswalks/data/county-populations.csv", clear
 	keep year state county county_name				// keep only variables needed to crosswalk 
-	keep if year==2020								// keep only current year
+	keep if year==2018								// keep only current year
 		format state %02.0f		
 		format county %03.0f	
 keep year state county county_name	
@@ -180,7 +175,7 @@ rename county_name county_cross_name
 	label var county "county fips"
 	label var county_cross_name "county name from crosswalk"
 
-save "$gitfolder/04_health/data/clean_county_crosswalk_20.dta", replace
+save "$gitfolder/04_health/data/clean_county_crosswalk_18.dta", replace
 
 /// add observations for each subgroup: race/ethnicity
 	gen sub1 = 1		// column for subgroup_type==1
@@ -192,29 +187,27 @@ save "$gitfolder/04_health/data/clean_county_crosswalk_20.dta", replace
 	gen subgroup_type = "race-ethnicity"
 		sort state county subgroup		
 		
-save "$gitfolder/04_health/data/clean_county_crosswalk_raceth_20.dta", replace
+save "$gitfolder/04_health/data/clean_county_crosswalk_raceth_18.dta", replace
 
 * merge crosswalk and analytic file
 //// all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
-merge 1:1 state county using "$gitfolder/04_health/data/clean_county_crosswalk_20.dta"
-tab _merge	
-													
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
+merge 1:1 state county using "$gitfolder/04_health/data/clean_county_crosswalk_18.dta"
+tab _merge															
 // correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace
 
 //// race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
-merge 1:1 state county subgroup using "$gitfolder/04_health/data/clean_county_crosswalk_raceth_20.dta"
-tab _merge
-													
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
+merge 1:1 state county subgroup using "$gitfolder/04_health/data/clean_county_crosswalk_raceth_18.dta"
+tab _merge															
 // correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 * (5) assign "unidentified county" values to counties with missing values
 
 /// all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
 
 * generate flag for "unidentified county"
 gen unidentified_county_flag=.
@@ -227,7 +220,6 @@ assert lbw_births==. if unidentified_county_flag==1
 assert nomiss_births==. if unidentified_county_flag==1
 assert lbw_births!=. if unidentified_county_flag==.
 assert nomiss_births!=. if unidentified_county_flag==.
-
 
 
 * assign unidentified county value to missing counties: lbw births
@@ -245,7 +237,6 @@ replace lbw_births=unidentified_lbw if unidentified_county_flag==1  //replaces a
 
 assert lbw_births!=. if unidentified_county_flag==1		//test to confirm no missing values for unidentified counties
 	drop unidentified_lbw
-	
 
 * assign unidentified county value to missing counties: nomiss births
 sort state county
@@ -262,18 +253,17 @@ replace nomiss_births=unidentified_nomiss if unidentified_county_flag==1  //repl
 
 assert nomiss_births!=. if unidentified_county_flag==1	//test to confirm no missing values for unidentified counties
 	drop unidentified_nomiss
-	
 
 *drop unidentified county observations because each unidentified county now has its own observation
 drop if county==999
 drop county_name							// no longer need two county name variables
 	rename county_cross_name county_name
 	
-save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace	
+save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace	
 	
 
 /// race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 
 * generate flag for "unidentified county"
 gen unidentified_county_flag=.
@@ -293,7 +283,6 @@ assert nomiss_births==. if unidentified_county_flag==1
 assert (lbw_births==.|nomiss_births==.) if suppressed_county_flag==1
 assert lbw_births!=. if unidentified_county_flag==. & suppressed_county_flag==.
 assert nomiss_births!=. if unidentified_county_flag==. & suppressed_county_flag==.
-
 
 
 * assign unidentified county value to missing counties: lbw births
@@ -328,52 +317,51 @@ drop if county==999
 drop county_name							// no longer need two county name variables
 	rename county_cross_name county_name
 	
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
-
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 *(6) create neonatal health share low birthweight metric
 
 /// all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 generate share_lbw_nomiss = lbw_births/nomiss_births
 	sum share_lbw_nomiss, detail
 	assert share_lbw_nomiss<1
 	assert share_lbw_nomiss>0 
-save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace
 	
 /// race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 generate share_lbw_nomiss = lbw_births/nomiss_births
 	sum share_lbw_nomiss, detail
 	assert share_lbw_nomiss<1 if suppressed_county_flag==. & unidentified_county_flag==.
 	assert share_lbw_nomiss>0 
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace	
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace	
 	
 *(7) assess data quality
 
 /// all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
 
-*generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
+*generate data quality flag						// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
 	replace lbw_quality = 1 if unidentified_county_flag==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
-	replace lbw_quality = 2 if lbw_births<30					// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	replace lbw_quality = 2 if lbw_births<30												// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag==1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
 		label var lbw_quality "share low birthweight births: quality flag"
-save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace
 
 /// race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 
-*generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
+*generate data quality flag						// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
-	replace lbw_quality = 1 if unidentified_county_flag==. & suppressed_county_flag==.	// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
-	replace lbw_quality = 2 if lbw_births<30											// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	replace lbw_quality = 1 if unidentified_county_flag==. & suppressed_county_flag==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
+	replace lbw_quality = 2 if lbw_births<30												// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag==1 | suppressed_county_flag==1	// assigning a quality score of 3 to all counties flagged as "unassigned counties" or "suppressed"
 		label var lbw_quality "share low birthweight births: quality flag"
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 
 *(8) construct 95 percent confidence intervals
@@ -381,7 +369,7 @@ save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", rep
 * for more information, see README
 
 /// all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
 
 *generate and test conditions from User Guide:
 gen test_1=share_lbw_nomiss*nomiss_births
@@ -407,10 +395,10 @@ gen lbw_ci_range=lbw_ub-lbw_lb
 	assert lbw_ci_range<1 	// confirms range is a percentage
 	assert lbw_ci_range>0 	// confirms range is a percentage
 
-save "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", replace
 
-/// race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+/// race/ethnicity 
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 
 *generate and test conditions from User Guide:
 gen test_1=share_lbw_nomiss*nomiss_births
@@ -436,12 +424,12 @@ gen lbw_ci_range=lbw_ub-lbw_lb
 	assert lbw_ci_range<1 if suppressed_county_flag==. & unidentified_county_flag==.	// confirms range is a percentage
 	assert lbw_ci_range>0 if suppressed_county_flag==. & unidentified_county_flag==.	// confirms range is a percentage
 
-save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", replace
+save "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", replace
 
 * (9) final file cleaning and export to csv file
 
 // all births
-use "$gitfolder/04_health/data/neonatal_health_intermediate_all_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_all_18.dta", clear
 keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality	// keep only variables needed for final file
 	rename share_lbw_nomiss lbw							// final name		
 		label var lbw "share low birth weight births among births with nonmissing birth weight data"
@@ -461,13 +449,13 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 order year state county lbw lbw_lb lbw_ub lbw_quality	// order
 sort year state county									// sort
 
-save "$gitfolder/04_health/data/neonatal_health_2020.dta", replace
-export delimited using "$gitfolder/04_health/final_data/neonatal_health_2020.csv", replace
+save "$gitfolder/04_health/data/neonatal_health_2018.dta", replace
+export delimited using "$gitfolder/04_health/final_data/neonatal_health_2018.csv", replace
 
 
 
 // race/ethnicity
-use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_20.dta", clear
+use "$gitfolder/04_health/data/neonatal_health_intermediate_raceth_18.dta", clear
 keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality subgroup_type subgroup	// keep only variables needed for final file
 	rename share_lbw_nomiss lbw							// final name		
 		label var lbw "share low birth weight births among births with nonmissing birth weight data"
@@ -487,7 +475,7 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 order year state county subgroup_type subgroup lbw lbw_lb lbw_ub lbw_quality 	// order
 sort year state county subgroup_type subgroup
 
-append using "$gitfolder/04_health/data/neonatal_health_2020.dta"				// append aggregate county-level estimates to subgroup file
+append using "$gitfolder/04_health/data/neonatal_health_2018.dta"					// append aggregate county-level estimates to subgroup file
 
 replace subgroup_type = "all" if subgroup_type==""								// label aggregate county-level estimates as "all" 
 replace subgroup = 0 if subgroup==.												// label aggregate county-level estimates as "all"
@@ -499,6 +487,5 @@ by subgroup: sum lbw															// checking share lowbirthweight by subgroup
 
 sort year state county subgroup_type subgroup									// final sort
 
-save "$gitfolder/04_health/data/neonatal_health_subgroup_2020.dta", replace
-export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup_2020.csv", replace 
-
+save "$gitfolder/04_health/data/neonatal_health_subgroup_2018.dta", replace
+export delimited using "$gitfolder/04_health/final_data/neonatal_health_subgroup_2018.csv", replace
