@@ -63,17 +63,17 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 ## Recent Files
 
 * The recent county file has exactly one year per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations. 
-* The recent city file has... 
+* The recent city file has one year per census place and contains the most recent year for each of the mobility metrics. This file ought to have 486 observations, and contains missing values where metrics were unavailable or not computed.
 
 ## Multi-Year Files
 
 * The multi-year county file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
-* The multi-year city file contains...
+* We are not currently asking for a multi-year city file.
 
 ## Subgroups Files
 
 * The subgroups county files contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
-* The subgroups city files...
+* The subgroups city file contains multiple observations per census place per year. The file is long and the multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
 # Project Organization
 
@@ -129,7 +129,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 ### Joining variables
 
-* The first three variables in every file should be `year`, `state`, and `county`/`city`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `city` formatting is to be determined. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
+* The first three variables in every file should be `year`, `state`, and `county`/`city`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `city` should be a 7-digit concatenated FIPS code with the 2-digit FIPS for the state followed by the 5-digit census place FIPS. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
 
