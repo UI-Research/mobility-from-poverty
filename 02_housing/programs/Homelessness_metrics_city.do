@@ -1,7 +1,7 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-*Updated Septmeber 2022 by Emily Gutierrez
+*Updated September 2022 by Emily Gutierrez
 *Creates the number and share of homeless students by city for 2014-15 through 2019-20
 	*Creates the number and share of homeless by race/ethnicity for 2019-20
 
@@ -23,6 +23,43 @@ cap n mkdir "built"
 ** install educationdata command **
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+	** Import county file **
+	import delimited ${cityfile}, clear
+
+	tostring stateplacefp, replace
+	replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
+	assert strlen(stateplacefp)==7
+
+	tostring statefp, replace
+	replace statefp = "0" + statefp if strlen(statefp)==1
+	assert strlen(statefp)==2
+
+	rename city city_name
+	rename stateplacefp city
+	rename statefp state
+	drop geographicarea cityname population placefp statefips placefips
+
+	*hardcode fixes so names merge
+	replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
+	replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
+	replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
+	replace city_name="Macon" if city_name=="Macon-Bibb County"
+	replace city_name="Honolulu" if city_name=="Urban Honolulu"
+	replace city_name="Boise" if city_name=="Boise City"
+	replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
+	replace city_name="Lexington" if city_name=="Lexington-Fayette"
+	replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
+	replace city_name="Lees Summit" if city_name=="Lee's Summit"
+	replace city_name="Ofallon" if city_name=="O'Fallon"
+	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
+	replace city_name="Ofallon" if city_name=="O'Fallon"
+	replace city_name="Mcallen" if city_name=="McAllen"
+	replace city_name="Mckinney" if city_name=="McKinney"
+	*not found: South Fulton, Georgia
+
+	save "intermediate/cityfile.dta", replace
+
 
 ** Get CCD district data - total enrollment and county_codes**
 foreach year in $years {
