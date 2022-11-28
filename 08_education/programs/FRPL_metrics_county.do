@@ -4,14 +4,14 @@
 ** E Blom ** Updated by E Gutierez
 ** 2022/11/28 **
 ** Uses 2014-2018 data
-** Produces city level data
+** Produces county data
 
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global year=2018
 
-global cityfile "${gitfolder}\geographic-crosswalks\data\census_place_2020population_allFIPS.csv"
+global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
 cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
@@ -25,40 +25,19 @@ cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
 ** Import county file **
-import delimited ${cityfile}, clear
+import delimited ${countyfile}, clear
+drop population state_name county_name
 
-tostring stateplacefp, replace
-replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
-assert strlen(stateplacefp)==7
+tostring county, replace
+replace county = "0" + county if strlen(county)<3
+replace county = "0" + county if strlen(county)<3
+assert strlen(county)==3
 
-tostring statefp, replace
-replace statefp = "0" + statefp if strlen(statefp)==1
-assert strlen(statefp)==2
+tostring state, replace
+replace state = "0" + state if strlen(state)==1
+assert strlen(state)==2
 
-rename city city_name
-rename stateplacefp city
-rename statefp state
-drop geographicarea cityname population placefp statefips placefips
-
-*hardcode fixes so names merge
-replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
-replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
-replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
-replace city_name="Macon" if city_name=="Macon-Bibb County"
-replace city_name="Honolulu" if city_name=="Urban Honolulu"
-replace city_name="Boise" if city_name=="Boise City"
-replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
-replace city_name="Lexington" if city_name=="Lexington-Fayette"
-replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
-replace city_name="Lees Summit" if city_name=="Lee's Summit"
-replace city_name="Ofallon" if city_name=="O'Fallon"
-replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
-replace city_name="Ofallon" if city_name=="O'Fallon"
-replace city_name="Mcallen" if city_name=="McAllen"
-replace city_name="Mckinney" if city_name=="McKinney"
-*not found: South Fulton, Georgia
-
-save "intermediate/cityfile.dta", replace
+save "intermediate/countyfile.dta", replace
 
 ** get CCD enrollment **
 *add if, else command once decide how to deal with future iterations
@@ -88,7 +67,7 @@ drop _merge
 
 save "intermediate/combined_2014-${year}.dta", replace
 
-** city-level rates **
+** county-level rates **
 use "intermediate/combined_2014-${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
@@ -107,19 +86,16 @@ forvalues i=1/3 {
 } 
 
 numlabel, add
-*clean for state variable
 replace county_code=. if county_code==-2
 _strip_labels county_code
 tostring county_code, replace // EG: 112 county codes observations have county_code==-2 [not applicable] (2015), 331 missing (2014/2015)
 replace county_code = "0" + county_code if strlen(county_code)==4
 gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
+gen county = substr(county_code,3,5)
 drop if county_code=="." // get rid of those missing county information
-assert strlen(state)==2
+assert strlen(county)==3
 
-gen city_name=lower(city_location)
-replace city_name = proper(city_name)
-
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator*, by(year state city_name)
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator*, by(year state county)
 
 gen meps20_total = numerator/enrollment
 gen meps20_white = numerator1/enrollment1
@@ -145,22 +121,21 @@ replace meps20_hispanic_quality = 3 if meps20_hispanic_quality==. & meps20_hispa
 
 drop enrollment* numerator* 
 
-keep year state city_name meps20_total meps20_total_quality ///
+keep year state county meps20_total meps20_total_quality ///
 meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
-order year state city_name meps20_total meps20_total_quality ///
+order year state county meps20_total meps20_total_quality ///
 meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
 duplicates drop
 
-merge m:1 state city_name using "Intermediate/cityfile.dta"
+merge 1:1 year state county using "Intermediate/countyfile.dta"
 	drop if _merge==1 & year>=2014 & year<=2018 // drops territories 
-	drop if year>2018 & year!=. // 1 from city file (south fulton georgia) doesn't exist in school dataset
+	drop if year>2018
 	drop _merge
 
-order year state city
-gsort -year state city
+gsort -year state county
 
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
-export delimited using "built/MEPS_2014-2018_city.csv", replace
+export delimited using "built/MEPS_2014-2018_county.csv", replace
