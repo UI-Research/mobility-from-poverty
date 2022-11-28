@@ -270,5 +270,3 @@ replace `var' = . if year<2019
 }
 
 export delimited using "built/homelessness_county.csv", replace // EG: 2014 & 2018 match old data
-*export delimited using "${gitfolder}\02_housing\homelessness_all.csv", replace
-*export delimited using "${boxfolder}/homelessness_all.csv", replace
