@@ -12,6 +12,8 @@ clear all
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global years 2014 2015 2016 2017 2018 2019 // refers to 2019-20 school year - most recent data
 global raceyears 2019 // enrollment by race data starts in 2019-20
+global cityfile "${gitfolder}\geographic-crosswalks\data\census_place_2020population_allFIPS.csv"
+
 
 cap n mkdir "${gitfolder}\02_housing\data"
 cd "${gitfolder}\02_housing\data"
@@ -50,14 +52,18 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 	replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
 	replace city_name="Lexington" if city_name=="Lexington-Fayette"
 	replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
-	replace city_name="Lees Summit" if city_name=="Lee's Summit"
-	replace city_name="Ofallon" if city_name=="O'Fallon"
+	*replace city_name="Lees Summit" if city_name=="Lee's Summit"
+	*replace city_name="Ofallon" if city_name=="O'Fallon"
 	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
-	replace city_name="Ofallon" if city_name=="O'Fallon"
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
-	*not found: South Fulton, Georgia
-
+	
+	*changes specific to this data
+	replace city_name="Port St Lucie" if city_name=="Port St. Lucie"
+	replace city_name="Saint Paul" if city_name=="St. Paul"
+	*replace city_name="Las Vegas" if city_name=="North Las Vegas"
+	*replace city_name="Charleston" if city_name=="North Charleston"
+	
 	save "intermediate/cityfile.dta", replace
 
 
@@ -266,6 +272,24 @@ other_count other_count_lb other_count_ub other_share other_quality ///
 replace `var' = . if year<2019
 }
 
+
+*changes to match city crosswalke
+gen city_name=lower(city_location)
+replace city_name = proper(city_name)
+
+merge m:1 state city_name using "intermediate/cityfile.dta"
+	drop if _merge==1 & year>=2014 & year<=2019 // drops territories 
+	drop if _merge==2 // tried matching these manually, didn't have any matches
+	drop _merge
+
+order year state city
+gsort -year state city
+
+*summary stats to see possible outliers
+bysort year: sum
+bysort state: sum
+
+tab year // total of 486 cities possible
+*2014: 445/486, 2015: 449/486, 2016: 455/486, 2017:450/486, 2018: 464/486, 2019:456/486
+
 export delimited using "built/homelessness_city.csv", replace // EG: 2014 & 2018 match old data
-*export delimited using "${gitfolder}\02_housing\homelessness_all.csv", replace
-*export delimited using "${boxfolder}/homelessness_all.csv", replace

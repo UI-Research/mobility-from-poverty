@@ -154,7 +154,7 @@ duplicates drop
 merge m:1 state city_name using "Intermediate/cityfile.dta"
 	drop if _merge==1 & year>=2014 & year<=2018 // drops territories 
 	drop if year>2018 & year!=. // 1 from city file (south fulton georgia) doesn't exist in school dataset
-	drop _merge
+	drop _merge statename state_abbr
 
 order year state city
 gsort -year state city
@@ -162,5 +162,7 @@ gsort -year state city
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
+
+tab year // 
 
 export delimited using "built/MEPS_2014-2018_city.csv", replace
