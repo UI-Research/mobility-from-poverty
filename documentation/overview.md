@@ -81,6 +81,36 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 
 ### Process
 
+
+---
+
+## Financial security
+
+Metric definition: share of consumers (with credit files) who have derogatory debt, including collections.
+
+Examples of derogatory status include collections, charge-offs, repossessions, and foreclosures. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor’s books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
+
+This metric differs slightly from the debt in collections metric used in Debt in America, which includes external collections and internal collections/charge-offs only. The consumer-level binary indicators under these two approaches are equivalent for 99.89% of observations. For 0.10% of observations, the indicator used here is 1 while the Debt in America indicator is 0. For less than 0.01% of observations, the indicator used here is 0 while the Debt in America indicator is 1. The city-level shares generated under this approach are always greater than or equal to the Debt in America version of shares, with a max difference of 0.9 percentage points, a mean difference of 0.11 percentage points, and median difference of 0.09 percentage points.
+
+Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
+
+### Overview
+
+* **Analyst & Programmer:** Jen Andre, Breno Braga
+* **Year(s):** 2021
+* **Final data name(s):** `city-debt-coll-shares.csv`
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/)
+* **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
+* **Data Quality Index:** Quality flag is a 1 for all observations except for those which are suppressed due to n < 50, which are designated 3.
+* **Limitations:** As described above, this metric differs from Debt in America approach.
+* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50.
+
+### Process
+* Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
+* PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
+* Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
+* Values for three city-subgroup records with fewer than 50 consumers are suppressed due to contract requirements for data suppression.
+
 ---
 
 ## Affordable housing
