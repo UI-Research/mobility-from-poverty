@@ -138,4 +138,7 @@ gsort -year state county
 bysort year: sum
 bysort state: sum
 
+tab year // 3,142 counties each year
+tab year if meps20_total ==. // number of counties missing data each year
+
 export delimited using "built/MEPS_2014-2018_county.csv", replace
