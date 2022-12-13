@@ -5,7 +5,6 @@
 library(tidyverse)
 library(tidycensus)
 
-census_api_key("866122dc573a0f65f0ff4c23130956014a5b480c")
 # Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at
 # https://api.census.gov/data/key_signup.html if you don't have one.
 # census_api_key("YOUR-KEY-HERE")
