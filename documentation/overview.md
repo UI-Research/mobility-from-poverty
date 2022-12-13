@@ -94,22 +94,24 @@ This metric differs slightly from the debt in collections metric used in Debt in
 
 Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
 
+Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. “Financial Health and Wealth Dashboard: A Local Picture of Residents’ Financial Well-Being.” Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
+
 ### Overview
 
 * **Analyst & Programmer:** Jen Andre, Breno Braga
 * **Year(s):** 2021
 * **Final data name(s):** `city-debt-coll-shares.csv`
-* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/)
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt)
 * **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
-* **Data Quality Index:** Quality flag is a 1 for all observations except for those which are suppressed due to n < 50, which are designated 3.
+* **Data Quality Index:** Observations that are suppressed due to small sample size (n < 50) or that do not exist because no communities meet the race/ethnicity threshold for a given subgroup are designated 3. All other observations are designated 1.
 * **Limitations:** As described above, this metric differs from Debt in America approach.
-* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50.
+* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50. Variable also replaced as missing for 19 city-subgroup records for cities that do not have communities meeting the race/ethnicity threshold for a given subgroup.
 
 ### Process
 * Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
 * PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
 * Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
-* Values for three city-subgroup records with fewer than 50 consumers are suppressed due to contract requirements for data suppression.
+
 
 ---
 
