@@ -5,6 +5,11 @@
 library(tidyverse)
 library(tidycensus)
 
+census_api_key("866122dc573a0f65f0ff4c23130956014a5b480c")
+# Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at
+# https://api.census.gov/data/key_signup.html if you don't have one.
+# census_api_key("YOUR-KEY-HERE")
+
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
@@ -38,10 +43,39 @@ pop <- pop %>%
   select(-variable) %>%
   rename(population = value)
 
+# split the detailed place name into place_name and state_name
+pop <- pop %>%
+  mutate(
+    cityname = NAME %>% str_split(",") %>% map_chr(~ .[1]),
+    state_name = NAME %>% str_split(c(", ")) %>% map_chr(~ .[length(.)])
+  )
+
+# pop <- pop %>%
+#   filter(state_name != "Puerto Rico")
+# 
+# # get list of state names with state fips
+# states <- tigris::fips_codes %>%
+#   select(-county_code, -county) %>%
+#   distinct() %>%
+#   filter(!state_code %in% c(60, 66, 69, 72, 74, 78))
+# 
+# pop <- left_join(x = pop,
+#                  y = states,
+#                  by = "state_name")
+# 
+# anti_joined <- anti_join(x = pop,
+#                          y = states,
+#                          by = "state_name")
+
+
+
+
+
+
+
 # generate state from GEOID
 pop <- pop %>%
-  mutate(state = str_sub(GEOID, start = 1, end = 2),
-         # county = str_sub(GEOID, start = 3, end = 5) // 
+  mutate(state = str_sub(GEOID, start = 1, end = 2)
          )
 
 # drop PR
@@ -52,12 +86,13 @@ pop <- pop %>%
 pop <- pop %>%
   mutate(
     cityname = NAME %>% str_split(",") %>% map_chr(~ .[1]),
-    statename = NAME %>% str_split(", ") %>% map_chr(~ .[length(.)]),
+    state_name = NAME %>% str_split(", ") %>% map_chr(~ .[length(.)]),
     statefips = as.numeric(state)
   ) %>%
   rename(geographicarea = NAME,
          stateplacefp = GEOID) %>%
   select(-state)
+
 
 # load in original population-based city file to get our original 486 cities
 og_cityfile <- read_csv(here::here("geographic-crosswalks", "data", "city_state_2020_population.csv")) %>%
@@ -73,9 +108,10 @@ og_cityfile <- read_csv(here::here("geographic-crosswalks", "data", "city_state_
 # join data
 joined_data <- left_join(x = og_cityfile,
                          y = pop,
-                         by = c("geographicarea", "cityname", "statename", "statefips")) %>%
-  arrange(year, statefips, stateplacefp) %>%
-  select(year, geographicarea, cityname, city, statename, state_abbr, population, statefips, stateplacefp)
+                         by = c("geographicarea")) 
+# %>%
+#   arrange(year, statefips, stateplacefp) %>%
+#   select(year, geographicarea, cityname, city, statename, state_abbr, population, statefips, stateplacefp)
 
 # We have 486 cities, so for 5 years we should have 2430 observations.
 # However, South Fulton city, Georgia was incorporated in 2017, so we only
