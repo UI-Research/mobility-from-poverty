@@ -1,111 +1,65 @@
 
 /************************************************
 * Debt in Collections City-Level Shares *
-
-* Data & Program Source: credit bureau data, financial health dashboard
-* Description: Calculate city-level debt in collections shares, overall and by race subgroups
-[1] Setup
-[2] Prep PUMA-City crosswalk
-[3] Import and prep microdata
-[4] Create city-level shares
-[5] Export
+* Data & Program Source: Financial Health & Wealth Dashboard
+*						 State FIPS codes from US Census Bureau
+* Description: Process city-level debt in collections shares, overall and by race subgroups
+[1] Prep state FIPS codes
+[2] Import and process Urban Data Catalog file
+[3] Export
 ************************************************/
 
-**# [1] Setup -----------------------------------
-clear all
-set more off
-capture program drop _all
 
-* set directory path (STATA3)
-* credit bureau microdata must remain on and be accessed via STATA3
-global root "" // removed - fill in path here
-assert "$root" != ""
+global output "" // set output path
+assert !mi("$output")
 
-* set data pull (2021 = August 2021)
-global pull 2021
-
-
-**# [2] Prep PUMA-City crosswalk ----------------
-import excel "$root\Data\city_puma_crosswalk_all_cities.xlsx", firstrow clear
-
-* keep cities with 2+ best matching PUMAs, parse PUMAs
-keep if CountofBestMatchingPUMAsw >= 2
-split BestMatchingPUMAs, p(", ") gen("puma")
-
-* reshape long 
-keep StateFIPSCode IPUMSCITYLabel puma*
-reshape long puma, i(StateFIPSCode IPUMSCITYLabel) j(count) string
-drop if mi(puma)
-
-* clean, prep for merge
-gen state_puma = StateFIPSCode + puma
-ren IPUMSCITYLabel city_name
-replace city_name = strtrim(stritrim(city_name))
-keep state_puma city_name
-
-* save tempfile
-tempfile xw
-save `xw', replace
+**# [1] Prep state FIPS codes -----------------------------------
+* import and prep state abbreviations & FIPS codes from US Census Bureau
+import delimited using "https://www2.census.gov/geo/docs/reference/state.txt", clear
+tostring state, format("%02.0f") replace
+keep state stusab
+tempfile fips
+save `fips', replace
 
 
-**# [3] Import and prep microdata ---------------
-use "$root\Temp\debt01a_$pull.dta", clear
+**# [2] Import and process Urban Data Catalog file -----------------------------------
+* source: Financial Health & Wealth Dashboard
+import excel using "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2022/12/05/3_city_financial_health_metrics_b.xlsx", clear
 
-* apply puma-city crosswalk
-merge m:1 state_puma using `xw', keep(3) nogen
+* keep only city-level debt in collections metrics
+drop if mi(B)
+keep A C AH AI AJ
+ren (A C AH AI AJ) ///
+	(city stusab share_debt_colloverall share_debt_collresidentsofcolor share_debt_collwhite)
+drop if city == "city name"
 
-* create non-white share
-gen comcol_share = black_share + hispanic_share + asian_share + pacific_share + other_share + aian_share + mixed_share
-assert round(comcol_share + white_share) == 1 if comcol_share != .
+* format long and adjust subgroups to match standard
+reshape long share_debt_coll, i(city stusab) j(subgroup) string
 
-* apply 50% zip code threshold for each race subgroup, append subgroups for long format
-gen race = "all"
-local races white comcol
-foreach race of local races{
-	preserve
-	
-	keep if `race'_share > 0.5 & `race'_share != . // 50% threshold
-	replace race = "`race'"
-	
-	tempfile temp_`race'
-	save `temp_`race'', replace
-	
-	restore	
-	
-	append using `temp_`race''
-}
+replace subgroup = "All" if subgroup == "overall"
+replace subgroup = "Majority non-white" if subgroup == "residentsofcolor"
+replace subgroup = "Majority white" if subgroup == "white"
 
-
-**# [4] Create city-level shares ---------------- 
-gen share_debt_coll = has_tot_collect
-gen share_debt_coll_n = has_tot_collect
-collapse (count) share_debt_coll_n (mean) share_debt_coll, by(state_cd city_name race)
-
-* suppress small sample sizes
-replace share_debt_coll = . if share_debt_coll_n < 50
-
-* create data quality flag: 3 for small sample size, else 1
-gen share_debt_coll_quality = 3 if share_debt_coll_n < 50
-	replace share_debt_coll_quality = 1 if share_debt_coll_n >= 50
-drop share_debt_coll_n
-
-
-**# [5] Export ----------------------------------
-* prep fields
-gen year = $pull
 gen subgroup_type = "race-ethnicity"
-gen subgroup = "All"
-	replace subgroup = "Majority white" if race == "white"
-	replace subgroup = "Majority non-white" if race == "comcol"
-drop race
-ren (state_cd city_name) (state city)
 
-format share_debt_coll %06.5f
+* create data quality fields - most 1, some 3 for missing/suppression
+replace share_debt_coll = "" if share_debt_coll == "NA"
+destring share_debt_coll, replace
+gen share_debt_coll_quality = .
+	replace share_debt_coll_quality = 1 if !mi(share_debt_coll)
+	replace share_debt_coll_quality = 3 if mi(share_debt_coll) // suppressed or no subgroup
 
-order year state city share_debt_coll share_debt_coll_quality subgroup_type subgroup
-gsort year state city subgroup_type subgroup
+* merge FIPS codes from US Census Bureau
+merge m:1 stusab using `fips', assert(2 3) keep(3) nogen
+drop stusab
 
-* export
-export delimited using "$root\Output\city-debt-coll-shares.csv", datafmt replace
 
+**# [3] Export -----------------------------------
+gen year = 2021
+
+compress
+order year state city share_debt_coll share_debt_coll_quality subgroup_type subgroup 
+gsort year state city subgroup
+
+export delimited using "$output\city-debt-coll-shares.csv", datafmt replace
 
