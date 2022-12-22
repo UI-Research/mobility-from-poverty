@@ -7,7 +7,7 @@ library(tidycensus)
 
 # Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at
 # https://api.census.gov/data/key_signup.html if you don't have one.
-census_api_key("866122dc573a0f65f0ff4c23130956014a5b480c")
+# census_api_key("YOUR-KEY-HERE")
 
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
@@ -75,7 +75,7 @@ joined_data <- joined_data %>%
 # have population estimates for this city from 2018-2020. Therefore, there
 # are 2428 total observations
 
-write_delim(x = joined_data,
-          file = here::here("geographic-crosswalks/data/place-populations.csv"),
-          delim = ","
+write_csv(x = joined_data,
+          file = here::here("geographic-crosswalks/data/place-populations.csv")
           )
+
