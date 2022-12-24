@@ -42,7 +42,11 @@
 	sort fips placefips
 	order geographicarea cityname city statename state_abbr population2020 statefp placefp fips placefips stateplacefp
 	rename fips statefips
+	
+* add in YEAR variable (to ID the year the Census Places were defined -- 2020)
+	gen year = 2020
+	order year geographicarea cityname city statename state_abbr population2020 statefp placefp statefips placefips stateplacefp
 
 * Save the updated final city file as both Stata and CSV data files
-	save "${mobility}\geographic-crosswalks\data\census_place_2020population_allFIPS.dta"
+*	save "${mobility}\geographic-crosswalks\data\census_place_2020population_allFIPS.dta"
 	export delimited using "${mobility}\geographic-crosswalks\data\census_place_2020population_allFIPS.csv", replace
