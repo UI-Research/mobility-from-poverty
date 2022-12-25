@@ -10,8 +10,8 @@
 # (2)  import and clean the data file				   
 # (3)  merge with the 2010 ZCTA -> 2021 Census Place crosswalk
 # (4)  collapse estimates to unique Places
-# (5)  create data quality marker for number of observations collapsed)
-# (6)  check against official Census Place file & limit to population cutoff Places
+# (5)  check against official Census Place file & limit to population cutoff Places
+# (6)  create data marker
 # (7)  final file cleaning and export to csv file	
 
 ###############################################################################
@@ -27,29 +27,32 @@ library(readr)
 library(tigris)
 
 
-# (1) download data from socialcapital.org
+# (1) Download data from socialcapital.org
 
 #     access via https://data.humdata.org/dataset/social-capital-atlas	
 #     Social Capital Atlas - US Zip Codes is saved in [gitfolder]/06_neighborhoods/social-capital/data
 #     NOTE: in the paper (https://opportunityinsights.org/wp-content/uploads/2022/07/social-capital1_wp.pdf), they state that "Zip Codes" is shorthand for 2010 ZCTA designations
 
 
-# (2) import and clean the file (separate county and state codes, fill in missing zeroes)
+# (2) Import and clean the file (separate county and state codes, fill in missing zeroes)
 
       # open data
       ec_zip_raw <- read.csv("06_neighborhoods/social-capital/data/social_capital_zip.csv")
 
       # add leading zeroes where they are missing (ZCTA codes are 5 digits)
       ec_zip_raw$zip <- sprintf("%05d", as.numeric(ec_zip_raw$zip))
+      
+      #add leading zeroes where they are missing for the concatenated FIPS (2 state + 3 county)
+      ec_zip_raw$county <- sprintf("%05d", as.numeric(ec_zip_raw$county))
 
       # keep only relevant data
-      ec_zip_raw <- ec_zip_raw %>% select(zip, county, ec_zip, ec_se_zip)
+      ec_zip_raw <- ec_zip_raw %>% select(zip, county, ec_zip)
 
       # remove observations with missing data for our EC variable
       ec_zip_raw <- ec_zip_raw %>% drop_na(ec_zip)
-            ### There were 4048 missing observations deleted
+            ### There were 4048 missing observations deleted (23028 minus 18980)
 
-      # rename the FIPS variable to avoid confusion
+      # rename the concatenated FIPS variable to avoid confusion
       ec_zip_raw <- ec_zip_raw %>% 
         rename("totalFIPS" = "county")
 
@@ -69,14 +72,14 @@ library(tigris)
 
       
 
-# (3)  merge with the 2010 ZCTA -> 2021 Census Place crosswalk
+# (3)  Merge with the 2010 ZCTA -> 2021 Census Place crosswalk
       
       # import the 2010 ZCTA -> 2021 Census Place crosswalk file
       ZCTA_Place <- read.csv("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")
       
       # clean up the crosswalk file to prepare for the merge:
       
-      # rename the ZCTA abd state FIPS variables to avoid confusion
+      # rename the ZCTA and state FIPS variables to avoid confusion
       ZCTA_Place <- ZCTA_Place %>% 
         rename("zip" = "ZCTA5CE10")
             # adjust the leading zeroes now
@@ -89,84 +92,105 @@ library(tigris)
       
       ZCTA_Place <- ZCTA_Place %>% 
         rename("place" = "PLACEFP")
+            # adjust the leading zeroes now
+            ZCTA_Place$place <- sprintf("%05d", as.numeric(ZCTA_Place$place))
       
       ZCTA_Place <- ZCTA_Place %>% 
         rename("place_name" = "NAMELSAD")
-            
+      
+      # make an indicator for ZIPs that fall wholly into a Place vs. partially (ZCTAinPlace < 1)
+      ZCTA_Place <- ZCTA_Place %>%
+        mutate(portionin = case_when(ZCTAinPlace == 1 ~ 1,
+                                   ZCTAinPlace < 1 ~ 0))
+      # check how many of these...
+      sum(with(ZCTA_Place, portionin==1))
+          # 2079 of these ZCTAs fall fully into a Census Place
+      
+      # find boundaries (I did not end up using this, but leaving it in)
+      summary(ZCTA_Place)
+          #mean=0.13, Q3=0.072
+      # make an more detailed indicator for portion of ZIPs falling into each census place
+      ZCTA_Place <- ZCTA_Place %>%
+        mutate(mostlyin = case_when(ZCTAinPlace >= 0.5 ~ 1,
+                                      ZCTAinPlace < 0.5 ~ 0))
       
       # keep only the variables we will need
-      ZCTA_Place <- ZCTA_Place %>% select(zip, state, place, place_name, IntersectArea, ZCTAinPlace)
+      ZCTA_Place <- ZCTA_Place %>% select(zip, state, place, place_name, IntersectArea, ZCTAinPlace, portionin, mostlyin)
       
-      
-      # merge the places crosswalk into the ec data file (left join, since places file has more observations)
+      # merge the ZIP/Places crosswalk into the ec data file (left join, since places file has more observations)
       merged_ec_city <- merge(ZCTA_Place, ec_zip_raw, by=c("state", "zip"))
       
+      # check if there are missings after the merge
+      merged_ec_city <- merged_ec_city %>% drop_na(ec_zip)
+          # No missings --> perfect match coverage. Number of obs stayed consistent at 54042
 
-# (4)  collapse estimates to unique Places (include quality marker for number of observations collapsed)
       
+
+# (4)  Collapse estimates to unique Places 
+      
+      # Exploring options for data quality marker
       # create a new variable that tracks the number of ZCTAs falling in each Place (duplicates)
       merged_ec_city <- merged_ec_city %>% group_by(place, place_name) %>%
-        mutate(num_ZCTAs_in_place = 1:n())
+        mutate(num_ZCTAs_in_place = n())
       
-      # create the merged file where the EC variable (and its SE?) are averaged per Place, weighted by the % area of the ZCTA in that Place
-      # and also include a sum of the duplicate tracker variable
+      # create the merged file where the EC variable is averaged per Place (new_ec_zip_), weighted by the % area of the ZCTA in that Place
+      # and also include total ZCTAs in Place & how many of those partially fall outside the Place 
       test2 <- merged_ec_city %>% 
               group_by(state, place_name) %>% 
-              summarize(qual_marker = sum(num_ZCTAs_in_place), new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace), new_ec_se_zip = weighted.mean(ec_se_zip, ZCTAinPlace))
-      
-      
-# (5)  create data quality marker for number of observations collapsed)
-      # (this is based on the quality of the merge/amount of weighting required)
-              # Data Quality 1 = 1 ZCTA in the Place (perfect match)
-              # Data Quality 2 = 2-5 ZCTAs in the Place
-              # Data Quality 3 = 5+ ZCTAs in the Place
-      
-      test2 <- test2 %>%
-        mutate(data_quality = case_when(qual_marker == 1 ~ 1,
-                                        qual_marker > 1 & qual_marker <= 5 ~ 2,
-                                        qual_marker > 5 ~ 3))
-      
-      
+              summarize(zip_total = mean(num_ZCTAs_in_place), zipsin = sum(portionin), new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace))
       
       # drop missing values
       test2 <- test2 %>% drop_na(new_ec_zip)
-          # lost 1650 observations (21625 - 19975)
+          # lost 1915 observations (24967 minus 23052)
       
      
-      
-# (6)  check against Census Place file & limit to population cutoff Places
+# (5) Check against Census Place file & limit to population cutoff Places
 
-      # bring in the population-cutoff Place file
-      places_pop <- read.csv("geographic-crosswalks/data/city_state_2020_population.csv")
-      
-      # rename & adapt variables to prepare for merge (state FIPS is called "state" in the data file, not "fips")
-      places_pop <- places_pop %>% 
-        rename("state" = "fips")
+      # bring in the updated population-cutoff Places file
+      places_pop <- read.csv("geographic-crosswalks/data/place-populations.csv")
+
+      # adapt variables to prepare for merge 
       places_pop$state <- sprintf("%02d", as.numeric(places_pop$state))
-      test2 <- test2 %>%
-        rename("cityname" = "place_name")
+      
+      # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
+      keep = c(2020)
+      places_pop <- filter(places_pop, year %in% keep)
       
       # merge places_pop with data file in order to get final EC city data
-      ec_city_data <- merge(places_pop, test2, by=c("cityname", "state"), all.x=TRUE)
+      ec_city_data <- merge(places_pop, test2, by=c("place_name", "state"), all.x=TRUE)
 
+      # check if there are missings
+      ec_city_data <- ec_city_data %>% drop_na(new_ec_zip)
+          # no missings!
       
+      
+# (6)  create data quality marker
+      # create a ratio value to see how many of the ZIPs we aggregated fell fully into a Census Place boundary 
+      ec_city_data <- ec_city_data %>%
+        mutate(zipratio = zipsin/zip_total)
+      # check the range on this
+      summary(ec_city_data)
+      # zipratio mean = 0, Q1 = 0, Q3 = 0.15
+      
+      # Data Quality 1 = 50% or more of the ZIPs fall mostly (>50%) in the census place 
+      # Data Quality 2 = 23% to 49% of the ZIPs fall mostly (>50%) in the census place
+      ec_city_data <- ec_city_data %>%
+        mutate(data_quality = case_when(zipratio >= 0.15 ~ 1,
+                                        zipratio < 0.15 ~ 2))
 
-# (7)  final file cleaning and export to csv file									   
+# (7)  Final file cleaning and export to csv file									   
 
       # remove the missing data
-      ec_city_data <- ec_city_data %>% drop_na(new_ec_zip)
-            # 168 missing observations (486-318)
+#      ec_city_data <- ec_city_data %>% drop_na(new_ec_zip)
+            # 168 missing observations (486 minus 318)
             # 318 cities for which we have this data
       
       # keep only the variables we want
-      ec_city_data <- ec_city_data %>% select(cityname, state, population2020, statename, state_abbr, new_ec_zip, new_ec_se_zip, data_quality)
-      
+      ec_city_data <- ec_city_data %>% select(year, state, place, place_name, new_ec_zip, data_quality)
       
       # rename the needed variable to avoid confusion
       ec_city_data <- ec_city_data %>% 
         rename("ec_zip" = "new_ec_zip")
-      ec_city_data <- ec_city_data %>% 
-        rename("ec_se_zip" = "new_ec_se_zip")
       
       # explort as .csv
       write_csv(ec_city_data, "06_neighborhoods/social-capital/final_data/economic_connectedness_city_2022.csv")
