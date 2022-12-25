@@ -27,7 +27,7 @@ library(readr)
 
 #     access via https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html
 #     import the text file into Excel to convert to CSV
-#     cbp20co.csv is saved in [gitfolder]/06_neighborhoods/social-capital/data under the tina branch
+#     cbp20co.csv is saved in [gitfolder]/06_neighborhoods/social-capital/data
 
 
 # (2) import and clean the CBP data file 
@@ -129,7 +129,7 @@ library(readr)
         merged_sa <- merged_sa %>% select(year, fipstate, fipscty, socassn, quality)
 
         # export our file as a .csv
-        write_csv(merged_sa, "06_neighborhoods/social-capital/final_data/social_associations_county_2022.csv")
+        write_csv(merged_ec, "06_neighborhoods/social-capital/final_data/social_associations_county_2022.csv")
         
         
         
