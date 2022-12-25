@@ -9,7 +9,8 @@
 # (1)  download data from socialcapital.org											
 # (2)  import and clean the data file				   
 # (3)  use crosswalk to check any missing counties	
-# (4)  final file cleaning and export to csv file	
+# (4)  create a data quality tag
+# (5)  final file cleaning and export to csv file	
 
 ###############################################################################
   
@@ -75,7 +76,7 @@
       # keep the most recent year of population data (not 2022, but 2020)
       county_pop <- filter(county_pop, year > 2019)
       
-      # merge the county file into the ec data file (left join, since county file has more observation)
+      # merge the county file into the ec data file (left join, since county file has more observations)
       merged_ec <- merge(county_pop, ec_raw, by=c("state", "county"), all.x = TRUE)
       
       # check how many missing values (counties without EC data)
@@ -83,10 +84,15 @@
           # 126 counties without EC data
 
       
-# (4)  final file cleaning and export to csv file									   
+# (4)   create data quality tag
+      merged_ec <- merged_ec %>%
+        mutate(data_quality = case_when(ec_county >= 0 ~ 1))
+      
+      
+# (5)   final file cleaning and export to csv file									   
       
       # keep only relevant data (dropping population data, keeping EC data year only)
-      merged_ec <- merged_ec %>% select(state, county, state_name, county_name.x, ec_county, ec_se_county, year.y)
+      merged_ec <- merged_ec %>% select(year.y, state, county, state_name, county_name.x, ec_county, ec_se_county, data_quality)
       
       # rename the needed variable to avoid confusion
       merged_ec <- merged_ec %>% 
