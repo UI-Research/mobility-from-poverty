@@ -11,7 +11,7 @@ clear all
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global year=2018
 
-global cityfile "${gitfolder}\geographic-crosswalks\data\census_place_2020population_allFIPS.csv"
+global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
@@ -31,14 +31,22 @@ tostring stateplacefp, replace
 replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
 assert strlen(stateplacefp)==7
 
-tostring statefp, replace
-replace statefp = "0" + statefp if strlen(statefp)==1
-assert strlen(statefp)==2
+tostring statefips, replace
+replace statefips = "0" + statefips if strlen(statefips)==1
+assert strlen(statefips)==2
 
 rename city city_name
-rename stateplacefp city
-rename statefp state
-drop geographicarea cityname population placefp statefips placefips
+rename statefips state
+drop geographicarea cityname population 
+
+gen city_name_edited = city_name
+replace city_name_edited = subinstr(city_name_edited, " town", "", .)
+replace city_name_edited = subinstr(city_name_edited, " village", "", .)
+replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
+replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+
+drop city_name
+rename city_name_edited city_name
 
 *hardcode fixes so names merge
 replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
@@ -56,7 +64,7 @@ replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan gov
 replace city_name="Ofallon" if city_name=="O'Fallon"
 replace city_name="Mcallen" if city_name=="McAllen"
 replace city_name="Mckinney" if city_name=="McKinney"
-*not found: South Fulton, Georgia
+replace city_name="Anchorage" if city_name=="Anchorage municipality"
 
 save "intermediate/cityfile.dta", replace
 
@@ -151,18 +159,28 @@ order year state city_name meps20_total meps20_total_quality ///
 meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
 duplicates drop
 
-merge m:1 state city_name using "Intermediate/cityfile.dta"
-	drop if _merge==1 & year>=2014 & year<=2018 // drops territories 
-	drop if year>2018 & year!=. // 1 from city file (south fulton georgia) doesn't exist in school dataset
+*city data only available for 2016+ and MEPS only available up to 2018
+keep if year>=2016 & year<=2018
+merge 1:1 year state city_name using "Intermediate/cityfile.dta"
+drop if year>=2019
+tab year _merge
+*2 from city file (south fulton georgia & mount pleasant south carolina) don't exist in school dataset
+brow if _merge==2 // Honolulu doesn't match well
+	drop if _merge==1 // drop district data that doesn't match 
 	drop _merge statename state_abbr
-
-order year state city
-gsort -year state city
-
+	
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
-tab year // 
+*missingness
+tab year
+tab year if meps20_black==.
+tab year if meps20_hispanic==.
+tab year if meps20_white==.
+tab year if meps20_total==.
 
-export delimited using "built/MEPS_2014-2018_city.csv", replace
+order year state city stateplacefp meps20_black* meps20_hispanic* meps20_white* meps20_total*
+gsort -year state city
+
+export delimited using "built/MEPS_2016-2018_city.csv", replace

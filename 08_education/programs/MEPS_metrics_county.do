@@ -132,13 +132,19 @@ merge 1:1 year state county using "Intermediate/countyfile.dta"
 	drop if year>2018
 	drop _merge
 
-gsort -year state county
 
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
-tab year // 3,142 counties each year
-tab year if meps20_total ==. // number of counties missing data each year
+*missingness
+tab year
+tab year if meps20_black==.
+tab year if meps20_hispanic==.
+tab year if meps20_white==.
+tab year if meps20_total==.
+
+sort year state county  meps20_black* meps20_hispanic* meps20_white* meps20_total*
+gsort -year state county 
 
 export delimited using "built/MEPS_2014-2018_county.csv", replace
