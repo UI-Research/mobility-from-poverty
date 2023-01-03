@@ -12,7 +12,7 @@ clear all
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global years 2014 2015 2016 2017 2018 2019 // refers to 2019-20 school year - most recent data
 global raceyears 2019 // enrollment by race data starts in 2019-20
-global cityfile "${gitfolder}\geographic-crosswalks\data\census_place_2020population_allFIPS.csv"
+global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -33,14 +33,22 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 	replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
 	assert strlen(stateplacefp)==7
 
-	tostring statefp, replace
-	replace statefp = "0" + statefp if strlen(statefp)==1
-	assert strlen(statefp)==2
+	tostring statefips, replace
+	replace statefips = "0" + statefips if strlen(statefips)==1
+	assert strlen(statefips)==2
 
 	rename city city_name
-	rename stateplacefp city
-	rename statefp state
-	drop geographicarea cityname population placefp statefips placefips
+	rename statefips state
+	drop geographicarea cityname population 
+
+	gen city_name_edited = city_name
+	replace city_name_edited = subinstr(city_name_edited, " town", "", .)
+	replace city_name_edited = subinstr(city_name_edited, " village", "", .)
+	replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
+	replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+
+	drop city_name
+	rename city_name_edited city_name
 
 	*hardcode fixes so names merge
 	replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
@@ -221,7 +229,11 @@ gen enroll_nonsupp_`var' = enrollment if supp_`var'!=1
 gen enroll_supp_`var' = enrollment if supp_`var'==1
 }
 
-collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state city_location)
+*city_location is all caps for some observations. Fixing here
+gen city_name=lower(city_location)
+replace city_name = proper(city_name)
+
+collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state city_name)
 
 foreach var in homeless black white hispanic other {
 rename `var' `var'_count
@@ -258,9 +270,9 @@ drop enrollment coverage* enroll_*
 
 *these variables are not in the 2014/2018 data
 drop min_* count_supp_* 
-order year state city_location *homeless* black* hispanic* other* white*
+order year state city_name *homeless* black* hispanic* other* white*
 
-gsort -year state city_location
+gsort -year state city_name
 
 *race/ethnicity variables missing before 2019
 foreach var in ///
@@ -272,14 +284,12 @@ other_count other_count_lb other_count_ub other_share other_quality ///
 replace `var' = . if year<2019
 }
 
-
-*changes to match city crosswalke
-gen city_name=lower(city_location)
-replace city_name = proper(city_name)
-
-merge m:1 state city_name using "intermediate/cityfile.dta"
-	drop if _merge==1 & year>=2014 & year<=2019 // drops territories 
-	drop if _merge==2 // tried matching these manually, didn't have any matches
+keep if year>=2016
+merge 1:1 year state city_name using "intermediate/cityfile.dta"
+drop if year==2020
+tab year _merge
+	*those that didn't merge from the city data - they just don't exist in the EdFacts data
+	drop if _merge==1 
 	drop _merge
 
 order year state city
@@ -290,6 +300,9 @@ bysort year: sum
 bysort state: sum
 
 tab year // total of 486 cities possible
-*2014: 445/486, 2015: 449/486, 2016: 455/486, 2017:450/486, 2018: 464/486, 2019:456/486
+tab year if homeless_count==.
+* 2016: 57/485, 2017:58/485, 2018:55/486, 2019:55/486
 
-export delimited using "built/homelessness_city.csv", replace // EG: 2014 & 2018 match old data
+drop _merge
+
+export delimited using "built/homelessness_city.csv", replace 

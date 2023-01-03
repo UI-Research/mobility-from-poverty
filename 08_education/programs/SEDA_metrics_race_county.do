@@ -195,14 +195,10 @@ gsort -year state county subgroup_type subgroup
 
 ** export data **
 export delimited using "built/SEDA_all_subgroups_county.csv", replace // 2013,14,15 don't exactly match but its updated underlying data
-*export delimited using "${boxfolder}/SEDA_all_subgroups.csv", replace
-*export delimited using "${gitfolder}\08_education\SEDA_all_subgroups.csv", replace 
 
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
 export delimited using "built/SEDA_all_county.csv", replace
-*export delimited using "${boxfolder}/SEDA_years_only.csv", replace
-*export delimited using "${gitfolder}\08_education\SEDA_years_only.csv", replace
 
 
