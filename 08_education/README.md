@@ -17,6 +17,7 @@ exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_
 Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., & Chavez, B. (2021). 
 Stanford Education Data Archive (Version 4.1). Retrieved from http://purl.stanford.edu/db586ns4974.
 * Year(s): 2013-14 school year through 2017-2018 school year
+* Final data name(s): SEDA_all_subgroups_metro.csv, SEDA_all_metro.csv, SEDA_all_subgroups_county.csv, SEDA_all_county.csv
 * Notes: 
     * Limitations: Data suppression
     * Missingness: The following years have the following missing data: 
