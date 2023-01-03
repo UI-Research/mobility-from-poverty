@@ -30,13 +30,15 @@ and Asian). Race/ethnicity shares are created as shares of each race/ethnicityâ€
 
 * Final data name(s): Homelessness
 * Analyst(s): Erica Blom and Emily Gutierrez
-* Data source(s): EDFacts homelessness data; Common Core of Data (CCD) to identify counties and cities.
+* Data source(s): EDFacts homelessness data; Common Core of Data (CCD) to identify data for counties and cities.
 * Year(s): County: 2014-15 school year through 2019-20 school year. City: 2016-17 school year through 2019-20 school year
+* Name Final Data: homelessness_city.csv, homelessness_county.csv
 * Notes:
     * Limitations: Data suppression
     * Missingness: 
-		*County: 323/3,142 counties in 2014, 312/3,142 counties in 2015, 267/3,142 counties in 2016, 
-		305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019. 
+	*City	: 2016:57/485, 2017:58/485, 2018:55/486, 2019:55/486
+	*County: 3,142 each year
+		*2014:323, 2015:312, 2016:267, 2017:305, 2018:286, 2019:295.
 
 Outline the process for creating the data: Counts of students experiencing homelessness are downloaded from the EDFacts website,
 including by race/ethnicity subgroups for 2019.

@@ -47,7 +47,7 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 	replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
 	replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
 
-	drop city_name
+	drop city_name statename state_abbr
 	rename city_name_edited city_name
 
 	*hardcode fixes so names merge
@@ -290,10 +290,7 @@ drop if year==2020
 tab year _merge
 	*those that didn't merge from the city data - they just don't exist in the EdFacts data
 	drop if _merge==1 
-	drop _merge
-
-order year state city
-gsort -year state city
+	drop _merge 
 
 *summary stats to see possible outliers
 bysort year: sum
@@ -303,6 +300,7 @@ tab year // total of 486 cities possible
 tab year if homeless_count==.
 * 2016: 57/485, 2017:58/485, 2018:55/486, 2019:55/486
 
-drop _merge
+order year state city stateplacefp
+gsort -year state city
 
 export delimited using "built/homelessness_city.csv", replace 
