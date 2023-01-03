@@ -269,13 +269,14 @@ other_count other_count_lb other_count_ub other_share other_quality ///
 replace `var' = . if year<2019
 }
 
-order year state county
-gsort -year state county
-
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
-tab year 
+tab year // total of 486 cities possible
+tab year if homeless_count==.
+
+order year state county 
+gsort -year state county
 
 export delimited using "built/homelessness_county.csv", replace // EG: 2014 & 2018 match old data
