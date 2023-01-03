@@ -45,3 +45,33 @@ Data quality of "2" requires at least 4 years included with at least 30 students
 Data quality of "3" is assigned to the remainder. These quality flags are determined separately for each subgroup, 
 such that the quality flag for one subgroup in a county or metro may differ from that of another subgroup.
 
+
+
+# Student Poverty Concentration
+Brief Description: This metric reflects the fraction of students in each city/county who attend schools where 20 percent 
+or more of students come from households earning at or below 100% of the Federal Poverty Level.
+
+Overview
+* Analyst & Programmer: Erica Blom & Emily Gutierrez
+* Year(s): City: 2016-17 school year through 2018-19 school year. County: 2014-15 school year through 2018-19 school year.
+* Final data name(s): MEPS_2014-2018_county.csv MEPS_2016-2018_city.csv 
+* Data Source(s): Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
+* Notes:
+	* Data Quality Index:  Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
+	* Limitations: Because traditional proxies for school poverty (i.e., the share of free-and-reduced price meal students; the share of students directly certified for free meals)
+	have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels. 
+	(https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currebtly available for years 2014-2018.
+	* Missingness: Cities: 2016:2/485, 2017:2/485, 2018:2/486 for each. 
+	Counties: Out of 3,142 counties each year:
+		subgroup	2014	2015	2016	2017	2018
+		Black		88	87	92	106	96	
+		Hispanic	23	27	24	23	19
+		White 	6	4	4	4	4
+		Total		5	4	4	4	4
+
+# Process
+Outline the process for creating the data: Schools were flagged as having 20% or more students in poverty if the school's MEPS measure was greater than or equal to 20%. 
+Total enrollment (by race) was summed in these schools and divided by total  enrollment (by race) in the city/county. 
+
+
+
