@@ -11,11 +11,13 @@ NOTE: per email from Greg on 9/10/20, I have removed the confidence interval cod
 
 *************/
 
+%let filepath21 = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_2021.csv;
 %let filepath18 = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_2018.csv;
 %let filepath14 = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_2014.csv;
 
 /* this runs on the microdata file output by 3_prepate_microdata */
 
+libname lib2021 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2021";
 libname lib2018 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2018";
 libname lib2014 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2014";
 
@@ -68,7 +70,7 @@ data metrics_income_&year;
  set metric_income_&year end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = 2021;
   state = "15";
   county = "005";
   pctl_20 = .;
@@ -89,22 +91,15 @@ proc sort data=metrics_income_&year; by year state county; run;
 %mend compute_metrics;
 
 /* this is for 2018 */
-%compute_metrics(lib2018.microdata,year=2018);
-
-/* this is for 2014 */
-%compute_metrics(lib2014.microdata,year=2014);
+%compute_metrics(lib2021.microdata,year=2021);
 
 /* export as csv */
 
-proc export data = metrics_income_2018
-  outfile = "&filepath18"
+proc export data = metrics_income_2021
+  outfile = "&filepath21"
   replace;
 run;
 
-proc export data = metrics_income_2014
-  outfile = "&filepath14"
-  replace;
-run;
 /*tests
 
 proc univariate data=lib2014.microdata;

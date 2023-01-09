@@ -2,7 +2,7 @@
    income households are extremely rent burdened */
 
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+libname desktop "S:\KWerner\Metrics";
 
 options fmtsearch=(lib2018);
 
@@ -21,12 +21,12 @@ data FMR_Income_levels_&year;
  rename state = statefip;
 run;
 
-data FMR_Income_levels_2014;
+/*data FMR_Income_levels_2014;
  set FMR_Income_levels_2014;
  if statefip = 2 and county = 270 then county = 158;
 run;
 
-proc sort data=FMR_Income_levels_2014; by statefip county; run;
+proc sort data=FMR_Income_levels_2014; by statefip county; run;*/
 
 /* calculate rent burden for each AMI group */
 data desktop.renters_&year;
@@ -58,13 +58,7 @@ proc means data=desktop.renters_&year noprint;
   var below_80_ami rent_burden_80AMI below_50_ami rent_burden_50AMI below_30_ami rent_burden_30AMI;
   weight hhwt;
 run;
-data &metrics_file.;
-  set renters_summed_&year;
-  by statefip county;
-  if below_80_ami ne . then share_burdened_80_AMI = rent_burden_80AMI/below_80_ami;
-  if below_50_ami ne . then share_burdened_50_AMI = rent_burden_50AMI/below_50_ami;
-  if below_30_ami ne . then share_burdened_30_AMI = rent_burden_30AMI/below_30_ami;
-run;
+
 
 /* get unweighted count in each county for each metric */
 proc means data=desktop.renters_&year noprint; 
@@ -83,25 +77,25 @@ data renters_unwgt_&year (drop = below_80_ami below_50_ami below_30_ami);
 run;
 
 /* merge on unweighted */
-data renters_summed_&year;
- merge renters_summed_wgt_&year renters_unwgt_&year;
- by statefip county;
+data &metrics_file.;
+  merge renters_summed_wgt_&year renters_unwgt_&year;
+  by statefip county;
+  if below_80_ami ne . then share_burdened_80_AMI = rent_burden_80AMI/below_80_ami;
+  if below_50_ami ne . then share_burdened_50_AMI = rent_burden_50AMI/below_50_ami;
+  if below_30_ami ne . then share_burdened_30_AMI = rent_burden_30AMI/below_30_ami;
 run;
+
 %mend compute_metrics_rent;
-/* this is for 2018 */
-%compute_metrics_rent(lib2018.microdata, housing.metrics_rent_2018,year=2018);
+/* this is for 2021 */
+%compute_metrics_rent(lib2021.microdata, housing.metrics_rent_2021,year=2021);
 
-/* this is for 2014 */
-%compute_metrics_rent(lib2014.microdata, housing.metrics_rent_2014,year=2014);
+/* this is for 2014 
+%compute_metrics_rent(lib2014.microdata, housing.metrics_rent_2014,year=2014);*/
 
 
-proc means data=housing.metrics_rent_2014;
+
+proc means data=housing.metrics_rent_2021;
 var share_burdened_80_AMI share_burdened_50_AMI share_burdened_30_AMI;
-title '2014';
-run;
-
-proc means data=housing.metrics_rent_2018;
-var share_burdened_80_AMI share_burdened_50_AMI share_burdened_30_AMI;
-title '2018';
+title '2021';
 run;
 

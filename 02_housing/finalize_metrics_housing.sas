@@ -18,7 +18,7 @@ Uses the dataset created by compute_metrics_housing as input
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing\metrics_housing.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing\metrics_housing_2021.csv;
 
 libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 
@@ -63,10 +63,9 @@ run;
 proc sort data=housing_&year; by year state county; run;
 
 %mend finalize_housing;
-%finalize_housing(year = 2014);
-%finalize_housing(year = 2018);
+%finalize_housing(year = 2021);
 
-/* append the two datasets together */
+/* append the two datasets together 
 data housing;
  set housing_2014;
 run;
@@ -76,12 +75,12 @@ run;
 
 data paul.metrics_housing;
  set housing;
-run;
+run;*/
 
 
 /* export as csv */
 
-proc export data = housing
+proc export data = housing_2021
   outfile = "&filepath"
   replace;
 run;

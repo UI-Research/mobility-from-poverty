@@ -95,6 +95,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_famstruc;
 
-%compute_metrics_famstruc(lib2018.microdata,family.metrics_famstruc);
+%compute_metrics_famstruc(lib2021.microdata,family.metrics_famstruc_2021);
 proc means data=family.metrics_famstruc;
 run;

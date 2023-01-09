@@ -17,7 +17,7 @@ I put metrics_college in the 08_education subfolder of the repository.
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_college.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_college_2021.csv;
 
 libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
 
@@ -25,8 +25,8 @@ libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_edu
 /***** create confidence interval and correctly format variables *******/
 
 data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_)  ;
- set edu.metrics_college;
- year = 2018;
+ set edu.metrics_college_2021;
+ year = 2021;
  no_hs_degree = 1 - share_with_HSdegree;
  interval = 1.96*sqrt((no_hs_degree*share_with_HSdegree)/_FREQ_); /* _FREQ_ is the unweighted count of people 19-20 */
  share_hs_degree_ub = share_with_HSdegree + interval;
@@ -50,7 +50,7 @@ data metrics_college_ready;
  set college_missing_HI end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = 2021;
   state = "15";
   county = "005";
   share_hs_degree = "";
