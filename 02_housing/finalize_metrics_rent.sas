@@ -15,7 +15,7 @@ Uses the dataset created by compute_metrics_rent as input
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing\metrics_rent.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing\metrics_rent_2021.csv;
 
 libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 
@@ -84,22 +84,22 @@ run;
 proc sort data=rent_&year; by year state county; run;
 
 %mend finalize_rent;
-%finalize_rent(year = 2014);
-%finalize_rent(year = 2018);
+%finalize_rent(year = 2021);
 
-/* append the two datasets together */
+
+/* append the two datasets together 
 data rent;
  set rent_2014;
 run;
 
 proc append base=rent data=rent_2018;
-run;
+run;*/
 
 data paul.metrics_rent (keep = year state county share_burdened_80_ami share_burdened_80_ami_ub share_burdened_80_ami_lb share_burdened_50_ami 
 		share_burdened_50_ami_ub share_burdened_50_ami_lb share_burdened_30_ami share_burdened_30_ami_ub share_burdened_30_ami_lb);
  retain year state county share_burdened_80_ami share_burdened_80_ami_ub share_burdened_80_ami_lb share_burdened_50_ami 
 		share_burdened_50_ami_ub share_burdened_50_ami_lb share_burdened_30_ami share_burdened_30_ami_ub share_burdened_30_ami_lb;
- set rent;
+ set rent_2021;
 run;
 
 

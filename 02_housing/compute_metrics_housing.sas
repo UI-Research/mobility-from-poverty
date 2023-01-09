@@ -2,9 +2,9 @@
 *Compute county-level hosuing metrics;
 *=================================================================;
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+libname desktop "S:\KWerner\Metrics";
 
-options fmtsearch=(lib2018);
+options fmtsearch=(lib2021);
 
 %macro compute_metrics_housing(microdata_file,vacant_file,metrics_file,year);
 * Prepare a file containing HUD income levels for each county. This requires first
@@ -22,12 +22,14 @@ proc import datafile="&networkDir.\FY&year._4050_FMRs_rev.csv" out=FMR_pop_&year
   datarow=2;
 run;
 
+/*
 data FMR_Income_levels_2014;
  set FMR_Income_levels_2014;
  if state = 2 and county = 270 then county = 158;
 run;
 
 proc sort data=FMR_Income_levels_2014; by fips2010; run;
+*/
 
 *Convert the FMR code on the population file from a character string to a number,
  and add the population variable onto the income level file;
@@ -36,7 +38,7 @@ proc sort data=FMR_Income_levels_2014; by fips2010; run;
   fips2010=input(fips2010_char,10.);
 run;*/
 data FMR_Income_Levels_&year;
-  merge FMR_Income_Levels_&year FMR_pop_&year(keep=fips2010 pop2010);
+  merge FMR_Income_Levels_&year FMR_pop_&year(keep=fips2010 pop2017);
   by fips2010;
 run;
 *Make some final adjustments to the income file so it can be matched to the ACS microdata by counties;
@@ -51,8 +53,8 @@ data FMR_Income_Levels_&year;
   if fips2010 in (3608799998,3611999998) then delete;
   /*Provide populations for FMRs missing from population file*/
   /*(Jurisdictions may no longer exist)*/
-  if fips2010=2300742765 and pop2010=. then pop2010=173;
-  if fips2010=2302911755 and pop2010=. then pop2010=26;
+  if fips2010=2300742765 and pop2017=. then pop2017=173;
+  if fips2010=2302911755 and pop2017=. then pop2017=26;
 run;
 /*Most FMRs have a one-to-one correspondence with counties. However, some counties (mainly in New England)
  contain multiple FMRs. For these counties, replace the multiple FMR records with just
@@ -61,7 +63,7 @@ run;
 proc means data=FMR_Income_Levels_&year nway noprint;
  class statefip county;
  var L50_1-L50_8 ELI_1-ELI_8 L80_1-L80_8 ;
- weight pop2010;
+ weight pop2017;
  output out=County_income_limits_&year n=num_of_FMRs mean=;
 run;
 
@@ -141,18 +143,11 @@ data &metrics_file.;
 run;
 %mend compute_metrics_housing;
 
-/* this is for 2018 */
-%compute_metrics_housing(lib2018.microdata,lib2018.vacant,housing.metrics_housing_2018,year=2018);
+/* this is for 2021 */
+%compute_metrics_housing(lib2021.microdata,lib2021.vacant,housing.metrics_housing_2021,year=2021);
 
-/* this is for 2014 */
-%compute_metrics_housing(lib2014.microdata,lib2014.vacant,housing.metrics_housing_2014,year=2014);
 
-proc means data=housing.metrics_housing_2014;
+proc means data=housing.metrics_housing_2021;
 var share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
-title '2014';
-run;
-
-proc means data=housing.metrics_housing_2018;
-var share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
-title '2018';
+title '2021';
 run;

@@ -23,6 +23,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_college;
 
-%compute_metrics_college(lib2018.microdata,edu.metrics_college);
+%compute_metrics_college(lib2021.microdata,edu.metrics_college_2021);
 proc means data=edu.metrics_college;
 run;

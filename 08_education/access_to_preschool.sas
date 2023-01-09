@@ -16,7 +16,7 @@ Programmed by Kevin Werner
    Edit the `filename` command similarly to include the full path (the directory and the data file name).
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_preschool.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education\metrics_preschool_2021.csv;
 
 /* 
 
@@ -24,12 +24,12 @@ Please download the file USA_00012.dat from Box, and unzip in the filename folde
 
 */
 
-filename ASCIIDAT "C:\Users\kwerner\Desktop\Metrics\usa_00012.dat";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+filename ASCIIDAT "S:\KWerner\Metrics\preschool_2021.dat";
+libname desktop "S:\KWerner\Metrics";
 libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
 
 
-proc format cntlout = desktop.usa_00012_f;
+proc format cntlout = edu.usa_00063_f;
 
 value YEAR_f
   1850 = "1850"
@@ -65,9 +65,21 @@ value YEAR_f
   2016 = "2016"
   2017 = "2017"
   2018 = "2018"
+  2019 = "2019"
+  2020 = "2020"
+  2021 = "2021"
 ;
 
 value SAMPLE_f
+  202102 = "2021 PRCS"
+  202101 = "2021 ACS"
+  202004 = "2016-2020, PRCS 5-year"
+  202003 = "2016-2020, ACS 5-year"
+  202001 = "2020 ACS"
+  201904 = "2015-2019, PRCS 5-year"
+  201903 = "2015-2019, ACS 5-year"
+  201902 = "2019 PRCS"
+  201901 = "2019 ACS"
   201804 = "2014-2018, PRCS 5-year"
   201803 = "2014-2018, ACS 5-year"
   201802 = "2018 PRCS"
@@ -408,6 +420,328 @@ value AGE_f
   135 = "135"
 ;
 
+value RACE_f
+  1 = "White"
+  2 = "Black/African American"
+  3 = "American Indian or Alaska Native"
+  4 = "Chinese"
+  5 = "Japanese"
+  6 = "Other Asian or Pacific Islander"
+  7 = "Other race, nec"
+  8 = "Two major races"
+  9 = "Three or more major races"
+;
+
+value RACED_f
+  100 = "White"
+  110 = "Spanish write_in"
+  120 = "Blank (white) (1850)"
+  130 = "Portuguese"
+  140 = "Mexican (1930)"
+  150 = "Puerto Rican (1910 Hawaii)"
+  200 = "Black/African American"
+  210 = "Mulatto"
+  300 = "American Indian/Alaska Native"
+  302 = "Apache"
+  303 = "Blackfoot"
+  304 = "Cherokee"
+  305 = "Cheyenne"
+  306 = "Chickasaw"
+  307 = "Chippewa"
+  308 = "Choctaw"
+  309 = "Comanche"
+  310 = "Creek"
+  311 = "Crow"
+  312 = "Iroquois"
+  313 = "Kiowa"
+  314 = "Lumbee"
+  315 = "Navajo"
+  316 = "Osage"
+  317 = "Paiute"
+  318 = "Pima"
+  319 = "Potawatomi"
+  320 = "Pueblo"
+  321 = "Seminole"
+  322 = "Shoshone"
+  323 = "Sioux"
+  324 = "Tlingit (Tlingit_Haida, 2000/ACS)"
+  325 = "Tohono O Odham"
+  326 = "All other tribes (1990)"
+  328 = "Hopi"
+  329 = "Central American Indian"
+  330 = "Spanish American Indian"
+  350 = "Delaware"
+  351 = "Latin American Indian"
+  352 = "Puget Sound Salish"
+  353 = "Yakama"
+  354 = "Yaqui"
+  355 = "Colville"
+  356 = "Houma"
+  357 = "Menominee"
+  358 = "Yuman"
+  359 = "South American Indian"
+  360 = "Mexican American Indian"
+  361 = "Other Amer. Indian tribe (2000,ACS)"
+  362 = "2+ Amer. Indian tribes (2000,ACS)"
+  370 = "Alaskan Athabaskan"
+  371 = "Aleut"
+  372 = "Eskimo"
+  373 = "Alaskan mixed"
+  374 = "Inupiat"
+  375 = "Yup'ik"
+  379 = "Other Alaska Native tribe(s) (2000,ACS)"
+  398 = "Both Am. Ind. and Alaska Native (2000,ACS)"
+  399 = "Tribe not specified"
+  400 = "Chinese"
+  410 = "Taiwanese"
+  420 = "Chinese and Taiwanese"
+  500 = "Japanese"
+  600 = "Filipino"
+  610 = "Asian Indian (Hindu 1920_1940)"
+  620 = "Korean"
+  630 = "Hawaiian"
+  631 = "Hawaiian and Asian (1900,1920)"
+  632 = "Hawaiian and European (1900,1920)"
+  634 = "Hawaiian mixed"
+  640 = "Vietnamese"
+  641 = "Bhutanese"
+  642 = "Mongolian"
+  643 = "Nepalese"
+  650 = "Other Asian or Pacific Islander (1920,1980)"
+  651 = "Asian only (CPS)"
+  652 = "Pacific Islander only (CPS)"
+  653 = "Asian or Pacific Islander, n.s. (1990 Internal Census files)"
+  660 = "Cambodian"
+  661 = "Hmong"
+  662 = "Laotian"
+  663 = "Thai"
+  664 = "Bangladeshi"
+  665 = "Burmese"
+  666 = "Indonesian"
+  667 = "Malaysian"
+  668 = "Okinawan"
+  669 = "Pakistani"
+  670 = "Sri Lankan"
+  671 = "Other Asian, n.e.c."
+  672 = "Asian, not specified"
+  673 = "Chinese and Japanese"
+  674 = "Chinese and Filipino"
+  675 = "Chinese and Vietnamese"
+  676 = "Chinese and Asian write_in"
+  677 = "Japanese and Filipino"
+  678 = "Asian Indian and Asian write_in"
+  679 = "Other Asian race combinations"
+  680 = "Samoan"
+  681 = "Tahitian"
+  682 = "Tongan"
+  683 = "Other Polynesian (1990)"
+  684 = "1+ other Polynesian races (2000,ACS)"
+  685 = "Chamorro"
+  686 = "Northern Mariana Islander"
+  687 = "Palauan"
+  688 = "Other Micronesian (1990)"
+  689 = "1+ other Micronesian races (2000,ACS)"
+  690 = "Fijian"
+  691 = "Other Melanesian (1990)"
+  692 = "1+ other Melanesian races (2000,ACS)"
+  698 = "2+ PI races from 2+ PI regions"
+  699 = "Pacific Islander, n.s."
+  700 = "Other race, n.e.c."
+  801 = "White and Black"
+  802 = "White and AIAN"
+  810 = "White and Asian"
+  811 = "White and Chinese"
+  812 = "White and Japanese"
+  813 = "White and Filipino"
+  814 = "White and Asian Indian"
+  815 = "White and Korean"
+  816 = "White and Vietnamese"
+  817 = "White and Asian write_in"
+  818 = "White and other Asian race(s)"
+  819 = "White and two or more Asian groups"
+  820 = "White and PI"
+  821 = "White and Native Hawaiian"
+  822 = "White and Samoan"
+  823 = "White and Chamorro"
+  824 = "White and PI write_in"
+  825 = "White and other PI race(s)"
+  826 = "White and other race write_in"
+  827 = "White and other race, n.e.c."
+  830 = "Black and AIAN"
+  831 = "Black and Asian"
+  832 = "Black and Chinese"
+  833 = "Black and Japanese"
+  834 = "Black and Filipino"
+  835 = "Black and Asian Indian"
+  836 = "Black and Korean"
+  837 = "Black and Asian write_in"
+  838 = "Black and other Asian race(s)"
+  840 = "Black and PI"
+  841 = "Black and PI write_in"
+  842 = "Black and other PI race(s)"
+  845 = "Black and other race write_in"
+  850 = "AIAN and Asian"
+  851 = "AIAN and Filipino (2000 1%)"
+  852 = "AIAN and Asian Indian"
+  853 = "AIAN and Asian write_in (2000 1%)"
+  854 = "AIAN and other Asian race(s)"
+  855 = "AIAN and PI"
+  856 = "AIAN and other race write_in"
+  860 = "Asian and PI"
+  861 = "Chinese and Hawaiian"
+  862 = "Chinese, Filipino, Hawaiian (2000 1%)"
+  863 = "Japanese and Hawaiian (2000 1%)"
+  864 = "Filipino and Hawaiian"
+  865 = "Filipino and PI write_in"
+  866 = "Asian Indian and PI write_in (2000 1%)"
+  867 = "Asian write_in and PI write_in"
+  868 = "Other Asian race(s) and PI race(s)"
+  869 = "Japanese and Korean (ACS)"
+  880 = "Asian and other race write_in"
+  881 = "Chinese and other race write_in"
+  882 = "Japanese and other race write_in"
+  883 = "Filipino and other race write_in"
+  884 = "Asian Indian and other race write_in"
+  885 = "Asian write_in and other race write_in"
+  886 = "Other Asian race(s) and other race write_in"
+  887 = "Chinese and Korean"
+  890 = "PI and other race write_in:"
+  891 = "PI write_in and other race write_in"
+  892 = "Other PI race(s) and other race write_in"
+  893 = "Native Hawaiian or PI other race(s)"
+  899 = "API and other race write_in"
+  901 = "White, Black, AIAN"
+  902 = "White, Black, Asian"
+  903 = "White, Black, PI"
+  904 = "White, Black, other race write_in"
+  905 = "White, AIAN, Asian"
+  906 = "White, AIAN, PI"
+  907 = "White, AIAN, other race write_in"
+  910 = "White, Asian, PI"
+  911 = "White, Chinese, Hawaiian"
+  912 = "White, Chinese, Filipino, Hawaiian (2000 1%)"
+  913 = "White, Japanese, Hawaiian (2000 1%)"
+  914 = "White, Filipino, Hawaiian"
+  915 = "Other White, Asian race(s), PI race(s)"
+  916 = "White, AIAN and Filipino"
+  917 = "White, Black, and Filipino"
+  920 = "White, Asian, other race write_in"
+  921 = "White, Filipino, other race write_in (2000 1%)"
+  922 = "White, Asian write_in, other race write_in (2000 1%)"
+  923 = "Other White, Asian race(s), other race write_in (2000 1%)"
+  925 = "White, PI, other race write_in"
+  930 = "Black, AIAN, Asian"
+  931 = "Black, AIAN, PI"
+  932 = "Black, AIAN, other race write_in"
+  933 = "Black, Asian, PI"
+  934 = "Black, Asian, other race write_in"
+  935 = "Black, PI, other race write_in"
+  940 = "AIAN, Asian, PI"
+  941 = "AIAN, Asian, other race write_in"
+  942 = "AIAN, PI, other race write_in"
+  943 = "Asian, PI, other race write_in"
+  944 = "Asian (Chinese, Japanese, Korean, Vietnamese); and Native Hawaiian or PI; and Other"
+  949 = "2 or 3 races (CPS)"
+  950 = "White, Black, AIAN, Asian"
+  951 = "White, Black, AIAN, PI"
+  952 = "White, Black, AIAN, other race write_in"
+  953 = "White, Black, Asian, PI"
+  954 = "White, Black, Asian, other race write_in"
+  955 = "White, Black, PI, other race write_in"
+  960 = "White, AIAN, Asian, PI"
+  961 = "White, AIAN, Asian, other race write_in"
+  962 = "White, AIAN, PI, other race write_in"
+  963 = "White, Asian, PI, other race write_in"
+  964 = "White, Chinese, Japanese, Native Hawaiian"
+  970 = "Black, AIAN, Asian, PI"
+  971 = "Black, AIAN, Asian, other race write_in"
+  972 = "Black, AIAN, PI, other race write_in"
+  973 = "Black, Asian, PI, other race write_in"
+  974 = "AIAN, Asian, PI, other race write_in"
+  975 = "AIAN, Asian, PI, Hawaiian other race write_in"
+  976 = "Two specified Asian  (Chinese and other Asian, Chinese and Japanese, Japanese and other Asian, Korea"
+        "n and other Asian); Native Hawaiian/PI; and Other Race"
+  980 = "White, Black, AIAN, Asian, PI"
+  981 = "White, Black, AIAN, Asian, other race write_in"
+  982 = "White, Black, AIAN, PI, other race write_in"
+  983 = "White, Black, Asian, PI, other race write_in"
+  984 = "White, AIAN, Asian, PI, other race write_in"
+  985 = "Black, AIAN, Asian, PI, other race write_in"
+  986 = "Black, AIAN, Asian, PI, Hawaiian, other race write_in"
+  989 = "4 or 5 races (CPS)"
+  990 = "White, Black, AIAN, Asian, PI, other race write_in"
+  991 = "White race; Some other race; Black or African American race and/or American Indian and Alaska Native"
+        " race and/or Asian groups and/or Native Hawaiian and Other Pacific Islander groups"
+  996 = "2+ races, n.e.c. (CPS)"
+;
+
+value HISPAN_f
+  0 = "Not Hispanic"
+  1 = "Mexican"
+  2 = "Puerto Rican"
+  3 = "Cuban"
+  4 = "Other"
+  9 = "Not Reported"
+;
+
+value HISPAND_f
+  000 = "Not Hispanic"
+  100 = "Mexican"
+  102 = "Mexican American"
+  103 = "Mexicano/Mexicana"
+  104 = "Chicano/Chicana"
+  105 = "La Raza"
+  106 = "Mexican American Indian"
+  107 = "Mexico"
+  200 = "Puerto Rican"
+  300 = "Cuban"
+  401 = "Central American Indian"
+  402 = "Canal Zone"
+  411 = "Costa Rican"
+  412 = "Guatemalan"
+  413 = "Honduran"
+  414 = "Nicaraguan"
+  415 = "Panamanian"
+  416 = "Salvadoran"
+  417 = "Central American, n.e.c."
+  420 = "Argentinean"
+  421 = "Bolivian"
+  422 = "Chilean"
+  423 = "Colombian"
+  424 = "Ecuadorian"
+  425 = "Paraguayan"
+  426 = "Peruvian"
+  427 = "Uruguayan"
+  428 = "Venezuelan"
+  429 = "South American Indian"
+  430 = "Criollo"
+  431 = "South American, n.e.c."
+  450 = "Spaniard"
+  451 = "Andalusian"
+  452 = "Asturian"
+  453 = "Castillian"
+  454 = "Catalonian"
+  455 = "Balearic Islander"
+  456 = "Gallego"
+  457 = "Valencian"
+  458 = "Canarian"
+  459 = "Spanish Basque"
+  460 = "Dominican"
+  465 = "Latin American"
+  470 = "Hispanic"
+  480 = "Spanish"
+  490 = "Californio"
+  491 = "Tejano"
+  492 = "Nuevo Mexicano"
+  493 = "Spanish American"
+  494 = "Spanish American Indian"
+  495 = "Meso American Indian"
+  496 = "Mestizo"
+  498 = "Other, n.s."
+  499 = "Other, n.e.c."
+  900 = "Not Reported"
+;
+
 value GRADEATT_f
   0 = "N/A"
   1 = "Nursery school/preschool"
@@ -452,9 +786,8 @@ value GRADEATTD_f
 
 run;
 
-
 data raw_preschool;
-infile ASCIIDAT pad missover lrecl=97;
+infile ASCIIDAT pad missover lrecl=105;
 
 input
   YEAR        1-4
@@ -471,8 +804,12 @@ input
   PERNUM      78-81
   PERWT       82-91 .2
   AGE         92-94
-  GRADEATT    95-95
-  GRADEATTD   96-97
+  RACE        95-95
+  RACED       96-98
+  HISPAN      99-99
+  HISPAND     100-102
+  GRADEATT    103-103
+  GRADEATTD   104-105
 ;
 
 label
@@ -490,6 +827,10 @@ label
   PERNUM    = "Person number in sample unit"
   PERWT     = "Person weight"
   AGE       = "Age"
+  RACE      = "Race [general version]"
+  RACED     = "Race [detailed version]"
+  HISPAN    = "Hispanic origin [general version]"
+  HISPAND   = "Hispanic origin [detailed version]"
   GRADEATT  = "Grade level attending [general version]"
   GRADEATTD = "Grade level attending [detailed version]"
 ;
@@ -500,6 +841,10 @@ format
   STATEFIP   STATEFIP_f.
   GQ         GQ_f.
   AGE        AGE_f.
+  RACE       RACE_f.
+  RACED      RACED_f.
+  HISPAN     HISPAN_f.
+  HISPAND    HISPAND_f.
   GRADEATT   GRADEATT_f.
   GRADEATTD  GRADEATTD_f.
 ;
@@ -513,6 +858,7 @@ format
 ;
 
 run;
+
 
 
 
@@ -615,7 +961,7 @@ run;
 
 data data_missing_HI (keep = year county state share_in_preschool share_in_preschool_ub share_in_preschool_lb _FREQ_)  ;
  set metrics_preschool_v2;
- year = 2018;
+ year = 2021;
  not_in_pre = 1 - share_in_preschool;
  interval = 1.96*sqrt((not_in_pre*share_in_preschool)/_FREQ_);
  share_in_preschool_ub = share_in_preschool + interval;
@@ -632,11 +978,11 @@ run;
 
 /* add missing HI county so that there is observation for every county */
 
-data edu.metrics_preschool;
+data edu.metrics_preschool_2021;
  set data_missing_HI end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = 2021;
   state = "15";
   county = "005";
   share_in_preschool = "";
@@ -649,18 +995,22 @@ run;
 
 /* sort final data set and order variables*/
 
-data edu.metrics_preschool;
+data edu.metrics_preschool_2021;
  retain year state county share_in_preschool share_in_preschool_ub share_in_preschool_lb;
- set edu.metrics_preschool;
+ set edu.metrics_preschool_2021;
 run;
 
-proc sort data=edu.metrics_preschool; by year state county; run;
+proc sort data=edu.metrics_preschool_2021; by year state county; run;
 
 
 
 /* export as csv */
 
-proc export data = edu.metrics_preschool
+proc export data = edu.metrics_preschool_2021
   outfile = "&filepath"
   replace;
+run;
+
+proc print data = main;
+ where statefip = 19 and county = 15 and age in (3,4);
 run;

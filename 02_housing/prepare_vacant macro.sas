@@ -73,8 +73,8 @@ data &output_file.;
 run;
 %mend prepare_vacant;
 
-/* run this version for 2018 */
-%prepare_vacant(lib2018.usa_00032,lib2018.microdata,lib2018.vacant);
+/* run this version for 2021 */
+%prepare_vacant(lib2021.vacant_2021,lib2021.microdata,lib2021.vacant);
 
-/* run this version for 2014 */
-%prepare_vacant(lib2014.usa_00025,lib2014.microdata,lib2014.vacant);
+/* run this version for 2014 
+%prepare_vacant(lib2014.usa_00025,lib2014.microdata,lib2014.vacant);*/

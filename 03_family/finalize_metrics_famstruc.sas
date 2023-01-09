@@ -16,7 +16,7 @@ as input.
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family\metrics_famstruc.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family\metrics_famstruc_2021.csv;
 
 libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 
@@ -26,8 +26,8 @@ libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_fa
 
 %macro fam_struc(structure= );
 data &structure.(keep = year county state &structure &structure._ub &structure._lb) ;
- set paul.metrics_famstruc;
- year = 2018;
+ set paul.metrics_famstruc_2021;
+ year = 2021;
  inverse_&structure = 1 - &structure;
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
  &structure._ub = &structure + interval;
@@ -59,7 +59,7 @@ data all_structure;
  set all_structure_miss_HI end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = 2021;
   state = "15";
   county = "005";
   famstruc_2par_married = .;
