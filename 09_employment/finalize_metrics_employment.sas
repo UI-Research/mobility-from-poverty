@@ -16,15 +16,15 @@ as input.
 
 */
 
-%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\metrics_employment.csv;
+%let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\metrics_employment_2021.csv;
 
 libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
 
 /* create confidence interval and correctly format variables */
 
 data employment_missing_HI (keep = year county state share_employed share_employed_ub share_employed_lb)  ;
- set paul.metrics_employment;
- year = 2018;
+ set paul.metrics_employment_2021;
+ year = 2021;
  not_employed = 1 - share_employed;
  interval = 1.96*sqrt((not_employed*share_employed)/_FREQ_);
  share_employed_ub = share_employed + interval;
@@ -42,7 +42,7 @@ data employment;
  set employment_missing_HI end=eof;
  output;
  if eof then do;
-  year = 2018;
+  year = 2021;
   state = "15";
   county = "005";
   share_employed = .;

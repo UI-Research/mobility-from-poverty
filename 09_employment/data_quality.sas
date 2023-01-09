@@ -20,9 +20,9 @@ The program does the following:
 */
 
 /* need a library for every metric */
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
+libname desktop "S:\KWerner\Metrics";
 libname puma "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul";
-libname metrics "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2018";
+libname metrics "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2021";
 libname edu "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\08_education";
 libname income "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being";
 libname house "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
@@ -104,28 +104,27 @@ proc means data=households_&year noprint;
   var Below50AMI_unw household ;
 run;
 %mend number_of_hhs;
-%number_of_hhs(year=2014);
-%number_of_hhs(year=2018);
+%number_of_hhs(year=2021);
 
-/* get state and county in same format */
-data house.metrics_housing;
- set house.metrics_housing;
+/* get state and county in same format 
+data house.metrics_housing_2021;
+ set house.metrics_housing_2021;
  new_county = input(county, 8.); 
  new_statefip = input(state, 8.);
  drop county state;
  rename new_county = county;
  rename new_statefip = statefip;
-run;
+run;*/
 
 /* add number of low income households to housing metric */
-data metrics_housing;
- merge house.metrics_housing number_hhs_2014 number_hhs_2018;
- by year statefip county;
+data metrics_housing_2021;
+ merge house.metrics_housing_2021 number_hhs_2021;
+ by /*year*/ statefip county; /************** only need year if dataset has multiple years on it **************/
 run;
 
 /* create income metric that right now just has the number of total households */
-data metrics_income (keep = statefip county household);
- set number_hhs_2018;
+data metrics_income_2021 (keep = statefip county household);
+ set number_hhs_2021;
 run;
 
 /* get total number of rental households that are ELI for the rental metric */
@@ -144,23 +143,22 @@ proc means data=renters_&year noprint;
   var Below30AMI_unw household ;
 run;
 %mend number_of_eli_renters;
-%number_of_eli_renters(year=2014);
-%number_of_eli_renters(year=2018);
+%number_of_eli_renters(year=2021);
 
-/* get state and county in same format */
-data house.metrics_rent;
- set house.metrics_rent;
+/* get state and county in same format 
+data house.metrics_rent_2021;
+ set house.metrics_rent_2021;
  new_county = input(county, 8.); 
  new_statefip = input(state, 8.);
  drop county state;
  rename new_county = county;
  rename new_statefip = statefip;
-run;
+run;*/
 
 /* add number of ELI retners to rent metric */
-data metrics_rent;
- merge house.metrics_rent number_renters_2014 number_renters_2018;
- by year statefip county;
+data metrics_rent_2021;
+ merge house.metrics_rent_2021 number_renters_2021;
+ by /*year*/ statefip county; /************** only need year if dataset has multiple years on it **************/
 run;
 
  
@@ -183,27 +181,29 @@ data &dataset. ;
   else size_flag = 0;
 run;
 %mend metric;
-%metric(lib = edu, dataset = metrics_college, denominator = _FREQ_);
-%metric(lib = fam, dataset = metrics_famstruc, denominator = _FREQ_);
-%metric(lib = employ, dataset = metrics_employment, denominator = _FREQ_);
-%metric(lib = work, dataset = metrics_housing, denominator = Below50AMI_unw);
-%metric(lib = edu, dataset = metrics_preschool, denominator = _FREQ_);
-%metric(lib = work, dataset = metrics_income, denominator = household);
-%metric(lib = work, dataset = metrics_rent, denominator = Below30AMI_unw);
+%metric(lib = edu, dataset = metrics_college_2021, denominator = _FREQ_);
+%metric(lib = fam, dataset = metrics_famstruc_2021, denominator = _FREQ_);
+%metric(lib = employ, dataset = metrics_employment_2021, denominator = _FREQ_);
+%metric(lib = work, dataset = metrics_housing_2021, denominator = Below50AMI_unw);
+%metric(lib = edu, dataset = metrics_preschool_2021, denominator = _FREQ_);
+%metric(lib = work, dataset = metrics_income_2021, denominator = household);
+%metric(lib = work, dataset = metrics_rent_2021, denominator = Below30AMI_unw);
 
 /* add a year variable for all datasets except Housing and Rent. This is needed for a later merge, and will allow more years
 	of data to be added more easily */
 %macro add_year(lib= , dataset= );
 data &dataset.;
  set &dataset.;
- year = 2018;
+ year = 2021;
 run;
 %mend add_year;
-%add_year(dataset = metrics_college);
-%add_year(dataset = metrics_famstruc);
-%add_year(dataset = metrics_employment);
-%add_year(dataset = metrics_preschool);
-%add_year(dataset = metrics_income);
+%add_year(dataset = metrics_college_2021);
+%add_year(dataset = metrics_famstruc_2021);
+%add_year(dataset = metrics_employment_2021);
+%add_year(dataset = metrics_preschool_2021);
+%add_year(dataset = metrics_income_2021);
+%add_year(dataset = metrics_rent_2021);
+%add_year(dataset = metrics_housing_2021);
 
 
 
@@ -213,8 +213,8 @@ data quality metric based on both the SIZE and PUMA flags
 ****/
 
 /* first need to turn statefip and county back into numeric for preschool metric */
-data metrics_preschool;
- set metrics_preschool;
+data metrics_preschool_2021;
+ set metrics_preschool_2021;
  new_county = input(county, 8.); 
  new_statefip = input(state, 8.);
  drop county state;
@@ -222,9 +222,9 @@ data metrics_preschool;
  rename new_statefip = statefip;
 run;
 
-proc sort data = metrics_preschool; by statefip county; run;
-proc sort data = metrics_housing; by statefip county; run;
-proc sort data = metrics_rent; by statefip county; run;
+proc sort data = metrics_preschool_2021; by statefip county; run;
+proc sort data = metrics_housing_2021; by statefip county; run;
+proc sort data = metrics_rent_2021; by statefip county; run;
 
 /* this creates the quality metric. Per email from Greg on 9/18/20, 
 only ACS metrics with sample size < 30 should be be marked as "3"
@@ -257,13 +257,13 @@ run;
 
 %mend flag;
 
-%flag(dataset = metrics_college, metric = hs_degree); 
-%flag(dataset = metrics_famstruc, metric = famstruc);
-%flag(dataset = metrics_employment, metric = employed);
-%flag(dataset = metrics_housing, metric = housing);
-%flag(dataset = metrics_preschool, metric = preschool);
-%flag(dataset = metrics_income, metric = pctl);
-%flag(dataset = metrics_rent, metric = rent);
+%flag(dataset = metrics_college_2021, metric = hs_degree); 
+%flag(dataset = metrics_famstruc_2021, metric = famstruc);
+%flag(dataset = metrics_employment_2021, metric = employed);
+%flag(dataset = metrics_housing_2021, metric = housing);
+%flag(dataset = metrics_preschool_2021, metric = preschool);
+%flag(dataset = metrics_income_2021, metric = pctl);
+%flag(dataset = metrics_rent_2021, metric = rent);
 
 /*
 proc print data=metrics_housing_flag;
@@ -309,13 +309,13 @@ proc export data= &dataset._final
  replace;
 run;
 %mend output;
-%output(dataset = metrics_college, folder = 08_education\); 
-%output(dataset = metrics_preschool, folder = 08_education\); 
-%output(dataset = metrics_famstruc, folder = 03_family\); 
-%output(dataset = metrics_income, folder = 01_financial-well-being\); 
-%output(dataset = metrics_housing, folder = 02_housing\); 
-%output(dataset = metrics_rent, folder = 02_housing\); 
-%output(dataset = metrics_employment, folder = 09_employment\); 
+%output(dataset = metrics_college_2021, folder = 08_education\); 
+%output(dataset = metrics_preschool_2021, folder = 08_education\); 
+%output(dataset = metrics_famstruc_2021, folder = 03_family\); 
+%output(dataset = metrics_income_2021, folder = 01_financial-well-being\); 
+%output(dataset = metrics_housing_2021, folder = 02_housing\); 
+%output(dataset = metrics_rent_2021, folder = 02_housing\); 
+%output(dataset = metrics_employment_2021, folder = 09_employment\); 
 
 
 /* I want to test if the number of people ages 19 and 20

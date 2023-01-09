@@ -4,7 +4,9 @@ county. The file can be edited to read in data from any other year.
 
 Programmed by Kevin Werner
 
-5/28/20
+12/16/22
+
+Living wage data is in 2022 dollars, so it is deflated. 
 ****************************/
 
 local raw "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
@@ -12,9 +14,13 @@ local wages "K:\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment"
 
 /***** save living wage as .dta *****/
 cd `wages'
-import delimited using "mit-living-wage.csv"
+import delimited using "mit-living-wage-2022.csv"
 
-save "mit_living_wages.dta", replace
+*deflate 2022 MIT to 2021 using BLS series CUUR0000SA0. Used first half for 2022, annual for 2021
+
+replace wage = wage* 270.970/288.347	
+
+save "mit_living_wages-2021.dta", replace
 
 clear
 
@@ -22,7 +28,7 @@ clear
 
 cd `raw'
 
-import delimited using "2018_data.csv", numericcols(14 15 16 17 18) clear
+import delimited using "2021_data.csv", numericcols(14 15 16 17 18) clear
 
 /* keep only county totals */
 keep if areatype == "County" & ownership == "Total Covered"
@@ -39,7 +45,7 @@ cd `wages'
 
 /* merge living wage and QCEW data
 Note that county 05 (Kalawao) in Hawaii is missing */
-merge 1:m state county using mit_living_wages.dta
+merge 1:m state county using mit_living_wages-2021.dta
 
 /* drop statewide obs */
 drop if _merge == 1
@@ -85,11 +91,11 @@ data, so it shows up as a 0 in the ratio */
 replace average_to_living_wage_ratio = . if average_to_living_wage_ratio == 0
 replace wage_ratio_quality = . if average_to_living_wage_ratio == .
 
-save "wage_ratio_final.dta",replace
+save "wage_ratio_final_2021.dta",replace
 
 
 keep state county year average_to_living_wage_ratio wage_ratio_quality
 
 order year state county average_to_living_wage_ratio wage_ratio_quality
 
-export delimited using metrics_wage_ratio.csv, replace
+export delimited using metrics_wage_ratio_2021.csv, replace

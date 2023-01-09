@@ -72,14 +72,13 @@ run;
 %mend prepare_microdata;
 
 /* this is used for all of the one-year metrics besides preschool */
-%prepare_microdata(lib2018.usa_00027,lib2018.microdata);
+%prepare_microdata(lib2021.main_2021,lib2021.microdata);
 
-/* this should be run to get the 2014 housing data */
-%prepare_microdata(lib2014.usa_00024,lib2014.microdata);
+/* this should be run to get the 2014 housing data 
+%prepare_microdata(lib2014.usa_00024,lib2014.microdata);*/
 
 /* check to make sure I fixed the county 51515 issue */
 
-proc freq data=lib2018.microdata;
- where statefip = 51;
- table county;
+proc freq data=lib2018.usa_00032;
+ table gq;
 run;
