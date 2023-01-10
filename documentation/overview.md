@@ -44,13 +44,21 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * **Final data name(s):** `metrics_income.csv`
 * **Data Source(s):** ACS 1-yr for original and ACS 5-yr for subgroup.
 * **Notes:** I used the `quantreg` procedure to get the percentiles. The three programs beginning `1_`, `2_`, and `3_` must be run before computing these metrics. These programs `infile` some .csv files which can be found on Box under "ACS-based metrics." For the subgroup analysis, I have changed from the `quantreg` procedure to `proc means`. I get the percentiles for each state-county-race combination with proc means. To run the subgroup programs, you must run the programs `1_`, `2_`, and then `3_prepate_microdata_5_year`. 
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing
 
 ### Process
 
-The data comes from IPUMS. It is cleaned and counties are added with Paul's method. Then I use the `quantreg` procedure to get the needed percentiles. Finally it is output as a .csv. The process for the subgroup analysis is the same, except I create the percentiles with proc means. I do not create confidence intervals. 
+The data comes from IPUMS. For this metric as well as housing affordability, family structure college readiness, pre-school access, and employment, there are three files that need to be run first:
+
+1. `1_initial.sas` sets working directories and macros
+2. `2_puma_to_county.sas` creates the crosswalk from public use microdata areas (PUMAs) to counties. Counties that do not match up exactly with PUMAs are weighted by the population that does come from the county in question. This lack of perfect overlap is taken into account in the data quality index. 
+3. `3_prepare_microdata.sas` (or `3_prepare_microdata_5_year.sas` for the subgroup analysis) merges the counties onto the main dataset and also adds other variables.
+After the initial programs have been run, I use the quantreg procedure to get the 80th, 50th and 20th percentiles of income. Finally, it is output as a .csv. The process for the subgroup analysis is the same, except I create the percentiles with proc means instead of the quantreg procedure. I do not create confidence intervals for either the main or subgroup datasets for this metric.
+
+Please note that all of the metrics mentioned above use data_quality (or data_quality_5_year) to produce their data quality indices.
+
 
 ---
 
@@ -73,6 +81,38 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 
 ### Process
 
+
+---
+
+## Financial security
+
+Metric definition: share of consumers (with credit files) who have derogatory debt, including collections.
+
+Examples of derogatory status include collections, charge-offs, repossessions, and foreclosures. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor’s books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
+
+This metric differs slightly from the debt in collections metric used in Debt in America, which includes external collections and internal collections/charge-offs only. The consumer-level binary indicators under these two approaches are equivalent for 99.89% of observations. For 0.10% of observations, the indicator used here is 1 while the Debt in America indicator is 0. For less than 0.01% of observations, the indicator used here is 0 while the Debt in America indicator is 1. The city-level shares generated under this approach are always greater than or equal to the Debt in America version of shares, with a max difference of 0.9 percentage points, a mean difference of 0.11 percentage points, and median difference of 0.09 percentage points.
+
+Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
+
+Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. “Financial Health and Wealth Dashboard: A Local Picture of Residents’ Financial Well-Being.” Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
+
+### Overview
+
+* **Analyst & Programmer:** Jen Andre, Breno Braga
+* **Year(s):** 2021
+* **Final data name(s):** `city-debt-coll-shares.csv`
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt)
+* **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
+* **Data Quality Index:** Observations that are suppressed due to small sample size (n < 50) or that do not exist because no communities meet the race/ethnicity threshold for a given subgroup are designated 3. All other observations are designated 1.
+* **Limitations:** As described above, this metric differs from Debt in America approach.
+* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50. Variable also replaced as missing for 19 city-subgroup records for cities that do not have communities meeting the race/ethnicity threshold for a given subgroup.
+
+### Process
+* Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
+* PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
+* Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
+
+
 ---
 
 ## Affordable housing
@@ -84,13 +124,22 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 * **Final data name(s):** `metrics_housing.csv`
 * **Data Source(s):** ACS 1-year
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:** Counties 89 and 119 in state 36 (NY) had some missing data and may not be reliable. 
 * **Missingness:** Metrics are missing for county 05 in Hawaii.
 
 ### Process
 
-First of all, it requires extra data --- Section-8 FMR area income levels, and the population of each FMR area.  This info is imported at the beginning of the program (I'm not sure where this data was obtained, but I think it came from HUD's website), and then combined and made ready for merging with the microdata file. Once it is merged we can determine which households have incomes under 80% and under 40% of the AMI, and which live in "affordable" housing. Note that, regardless of the household size, the AMI for a family of 4 is always used. After this, we also need to account for the affordability of vacant units.  This uses a file ("vacant") produced by the program `prepare_vacant` macro. The final metrics are a combination of the results from the microdata file and the results from the vacant file.
+First of all, this metric requires extra data — Section-8 FMR area income levels, and the population of each FMR area. This data comes from the Department of Housing and Urban Development’s website.
+
+* The population data can be downloaded from here: https://www.huduser.gov/portal/datasets/il.html#2018_data
+    * Click on the link next to "Data for Section 8 Income Limits"
+*	The section 8 income levels can be downloaded from here: https://www.huduser.gov/portal/datasets/fmr.html#2018_data
+    *	Click on "County Level Data"
+*	You will need to rename both files so that they said "FY2018" instead of just "FY18"
+
+This info is imported at the beginning of the program and then combined and made ready for merging with the microdata file. Once it is merged, we first determine which households have household incomes under 80% and under 50%, and 30% of the area median income (AMI) for a family of four  and whether or not each housing units costs less than 30% of 80%, 50%, and 30% AMI.. Note that, regardless of the household size, the AMI for a family of 4 is always used. After this, we also need to account for the affordability of vacant units through the same process. This uses a file ("vacant") produced by the program prepare_vacant macro. The final metrics are a combination of the results from the microdata file and the results from the vacant file. In each county for each income definition, the final variable the produces is a ratio of households that meet the income definition and the number of housing units that are affordable to a household of that income definition. We produce this metric for 2018 and 2014. 
+
 
 ---
 
@@ -123,18 +172,32 @@ Counts of students experiencing homelessness are downloaded from the EDFacts web
 * **Final data name(s):** `metrics_famstruc.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup. 
 * **Notes:** 
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing
 
 ### Process
 
 The `compute_` program calculates the percent of children in each family structure, while the finalize_ calculates the confidence intervals and outputs the .csv. NOTE: to run this code, you must first run the `1_`, `2_`, and `3_` programs in the income folder. (For the subgroup analysis, run `3_create_microdata_5_year`.)
 
-The data comes from IPUMS. It is cleaned and counties are added with Paul's method. The `compute_` code then finds the percent of children in each family structure. The `finalize_` program then calculates confidence intervals a outputs as a .csv.
+The data comes from IPUMS. It is cleaned and counties are added with the same method as described for the financial well-being metric
+ The compute_ code then finds the percent of children in each family structure. It does this by first identifying children, defined as anyone 17 or under. The code then looks for any parent or other non-parent adult in the household of the child. Based on the number of adults, their marital status, and their relationship to the chlld, the code assigns the child to one of the pre-defined family structures. These are either:
+ 
+*	Two married parents
+*	Two unmarried parents
+*	One parent plus other adult(s)
+*	One parent with no other adults
+*	No parents but at least one other adult
+*	No parents and no other adults
 
-The process for the subgroup analysis is the same as above, except every county has four rows,
-one for each race/ethnicity subgroup.
+From there, we determine what percentage of kids are in each of the family structures.
+The finalize_ program then calculates confidence intervals for the percentage of kids in each structure and outputs the dataset as a .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-fam_struture)*(fam_structure)/_unweighted_number_of_kids_in_structure_);
+
+That interval is then added and subtracted from the percentage of kids in each family structure to create the upper and lower bounds of the confidence interval, respectively. 
+
+The process for the subgroup analysis is the same as above, except every county has four rows, one for each race/ethnicity subgroup.
 
 ---
 
@@ -184,10 +247,10 @@ Outline the process for creating the data:
 
 ### Overview
 
-* **Analyst & Programmer:** Emily M. Johnston
-* **Year(s):** 2018
-* **Final data name(s):** `neonatal_health.csv`
-* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020. 
+* **Analyst & Programmer:** Emily M. Johnston and Julia Long
+* **Year(s):** 2018, 2020 
+* **Final data name(s):** `neonatal_health_2018.csv`, `neonatal_health_2020.csv`
+* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020 and September 2022. 
 * **Notes:**
   * Low birthweight is defined as less than 2,500 grams
   * County refers to county of mother's legal residence at the time of birth
@@ -225,15 +288,15 @@ Outline the process for creating the data:
 
 1. Begin at https://wonder.cdc.gov/
 2. Select Births (https://wonder.cdc.gov/natality.html)
-3. Select Natality for 2007-2019 
+3. Select Natality for 2007-2020
     * The process below can be repeated for other available periods
         * 2003-2006
         * 1995-2002
 4. Agree to terms of data use
-5. Run queries for county-level metrics in 2018 for all births
+5. Run queries for county-level metrics in 2018 or 2020 for all births
     * Select the following options to run query for births with non-missing birth weight information
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -241,10 +304,11 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for low birth weight births
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -252,13 +316,14 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county.txt"
+        * Once downloaded, rename file "lbw_births_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.  
 6. Run queries for county-level metrics in 2018 by race/ethnicity
     * Select the following options to run query for births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -266,12 +331,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -279,11 +345,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhblack.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -291,12 +358,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_hisp.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -304,12 +372,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhother.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.         
     * Select the following options to run query for low birth weight births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -317,12 +386,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhwhite.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for low birth weight births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -330,11 +400,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhblack.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.     
     * Select the following options to run query for low birth weight births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -342,12 +413,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_hisp.txt"
+        * Once downloaded, rename file "lbw_births_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.        
     * Select the following options to run query for low birth weight births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -355,7 +427,92 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhother.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
+
+
+<u>Checklist for the Contents of Each Raw Data File:<u>
+
+1. “nomiss_bw_by_county_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix. 
+	c. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e.All other selections the same
+
+2. “lbw_births_by_county_xx.txt”
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix
+	c. Section 4: Infant Birth Weight 12 = all options less than 2,500 grams 
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e. All other selections the same
+
+3. “nomiss_bw_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+4. “nomiss_bw_by_county_nhblack_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = Black or African American 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+5. “nomiss_bw_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+6. “nomiss_bw_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+7. “lbw_births_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+8. “lbw_births_by_county_nhblack_xx.txt” 
+	a. Section 4: Year = 2018 or 2020, depending on suffix. 
+	b. Section 1: Group Results By = County 
+	c. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	d. Section 3: Mother’s Single Race = Black or African American 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+9. “lbw_births_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+10. “lbw_births_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams 
+	f. All other selections the same
+
 
 ### Process for calculating 95 percent confidence intervals
 
@@ -658,15 +815,21 @@ A codebook with definitions for the original arrest data used can be found here:
 * **Final data name(s):** `metrics_preschool.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:** This metric uses Paul Johnson's method of finding county FIPS code from PUMAs. PUMAs can sometimes span counties, which is adjusted for with weights.
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** Hawaii county 05 is missing. It is very low population.
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Given the large size of the dataset, we do not think smaller data is reliable. Hawaii county 05 is missing. It is very low population.
 
 ### Process
 
-Data was downloaded from IPUMS. Then cleaned in the main program. Then I created county FIPS using Paul's method. Then, I calculated the number of 3 and 4 year olds, the number of children in pre school, and divided them. 
+Data was downloaded from IPUMS. Then cleaned in the main program. Counties were matched with the same method as described for the financial well-being metric. After getting the data prepared, I calculated the number of 3 and 4 year-olds in each county and the number of 3 and 4 year-olds in pre-school in each county.To create the final metric, I divide the number in preschool by the total number. 
 
+I also calculate confidence intervals for the percentage of kids in preschool and outputs the dataset as a .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-% in preschool)*(% in pre school)/_unweighted_number_of_kids))
+
+That interval is then added and subtracted from the percentage of kids in preschool in each county to create the upper and lower bounds of the confidence interval, respectively. 
 The process for creating the subgroup metric is the same as the process for creating the original metric.
+
 
 ---
 
@@ -738,17 +901,25 @@ Outline the process for creating the data: Schools were flagged as having 40% or
 * **Final data name(s):** `metrics_college.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** 
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. Hawaii county 05 is missing. It is very low population.
 
 ### Process
 
-The compute_ code computes the metrics. The finalize_ code computes the confidence intervals and outputs the .csv. NOTE: must run the `1_`, `2_`, and `3_` code in the income subfolder first.  For subgroup analysis, you must run the program `3_prepare_microdata_5_year`.
+The compute_ code computes the metrics. The process was much the same as for the preschool metric. Data was downloaded from IPUMS and cleaned. Then I created county FIPS using the methods described previously. 
 
-Data was downloaded from IPUMS. Then cleaned with the IPUMS .sas program. Then I created county FIPS using Paul's method. Then, we calculated the number of 19-20 year olds,  the number with a high school degree and divided them. 
-The process for creating the subgroup metric is the same as the process for creating the
-original metric. 
+After that, I calculated the number of 19-20 year-olds in each county and the number of 19-20 year-olds with a high school degree. To create the metric, I divided the number with a high school degree with the number overall. 
+
+The finalize_ code computes the confidence intervals and outputs the .csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96*sqrt(((1-%_hs_degree)*(% hs_degree)/unweighted_number_with_hs_degree))
+
+That interval is then added and subtracted from the percentage with a high school degree in each county to create the upper and lower bounds of the confidence interval, respectively
+
+NOTE: must run the 1_, 2_, and 3_ code in the income subfolder first. For subgroup analysis, you must run the program 3_prepare_microdata_5_year. 
+
+The process for creating the subgroup metric is the same as the process for creating the original metric.
 
 ---
 
@@ -761,16 +932,22 @@ original metric.
 * **Final data name(s):** `metrics_employment.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis.
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** The metrics for the ACS indices included here are based on what percent of data for the county actually came from the county itself, and the sample size in each county. `1` means more than 75% of observations are from the county, `2` means more than 35% of observations are from the county, and `3` means less than 35% of observations are from the county. Metrics with unweighted sample sizes less than 30 (or 100 for the subgroup dataset) are set to `3` regardless of the PUMA-county overlap.
 * **Limitations:**
-* **Missingness:** County 05 in HI is missing
+* **Missingness:** We suppress values that are less than 30 in the subgroup dataset. County 05 in HI is missing
 
 ### Process
 
 NOTE: must run the `1_`, `2_`, and `3_` code in the income subfolder first.
 	
-The data are downloaded from IPUMS and cleaned with the `1_`, `2_`, and `3_` code. That code also adds the the county FIPS. The `compute_` code finds the employment rate of 25-54 year olds. The finalize_ code calculates the confidence intervals and outputs the csv.  
+The process was much the same as for the previous metric. Data was downloaded from IPUMS and cleaned. Then I created county FIPS using the methods described previously. The compute_ code first calculates the number of 25-54 year-olds in each county. It then finds the number of 25-54 year-olds in each county who are employed. Finally, it finds the employment rate of 25-54 year-olds in each county by dividing those two numbers. 
 
+The `finalize_` code calculates the confidence intervals and outputs the csv. The confidence interval is computed first by finding the interval with the following formula:
+
+interval = 1.96\*sqrt(((1-%_employed)*(% employed)/_unweighted_number_25-54_year_olds))
+
+That interval is then added and subtracted from the percentage employed in each county to create the upper and lower bounds of the confidence interval, respectively
+  
 The process for the subgroup analysis is the same. You must run the file `3_prepare_microdata_5_year`.
 
 ---
@@ -784,14 +961,25 @@ The process for the subgroup analysis is the same. You must run the file `3_prep
 * **Final data name(s):** `metrics_wage_ratio.csv`
 * **Data Source(s):** QCEW and MIT Living Wage Calculator 
 * **Notes:**
-* **Data Quality Index:**
+* **Data Quality Index:** `1` means the annual average establishment count is greater than or equal to 30. The quality index is a `3` otherwise.
 * **Limitations:**
 * **Missingness:** County 05 in HI is missing. County 3 in State 19 (Iowa) is missing average wage data, so it shows up as a 0 in the ratio.
 
 ### Process
 
-This data comes from two sources. The average weekly wage comes from the QCEW: https://www.bls.gov/cew/downloadable-data-files.htm The row where the ownership variable equals "Total Covered" is used for each county. The living wage data is scraped from the MIT website using the scrape-living-wages R program. There are three .csvs: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly. For 2018, the ratio is just the 2018 QCEW data divided by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014, and then divide the QCEW by the  deflated value. 
+This metric shows the living wage in each county. 
 
-The living wage is a FULL TIME worker wage, while the average weekly wage includes part time workers.
 
-We use the living wage level for one adult and two children. 
+* The average weekly wage comes from the QCEW: https://www.bls.gov/cew/downloadable-data-files.htm 
+    * The data is in the first column “Excel Files” in the table
+    * You must download the data nd save it as a .csv
+    * Important: Make sure you edit the variables you are going to use so that there are no commas in the numbers. If you don't, they will not read in properly
+    * The row where the ownership variable equals “Total Covered” is used for each county.
+*	The living wage data is scraped from the MIT website using the scrape-living-wages R program. 
+
+There are three .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
+
+For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
+
+Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
+
