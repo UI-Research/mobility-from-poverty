@@ -1,7 +1,15 @@
+# this script pulls US Census Bureau Population Estimation Program and Decennial
+# Census data to create a list of counties with population estimates for 
+# 2014-2020
+
+# In 2014-2019, there are 3,142 counties. In 2020, 
+# Valdez-Cordova Census Area split into 
+# Chugach Census Area and Copper River Census Area
+
 library(tidyverse)
 library(tidycensus)
 
-#' Get population estimates from the US Census Bureau Population Estimation Project
+#' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
 #'
@@ -9,16 +17,24 @@ library(tidycensus)
 #'
 get_pop <- function(year) {
   
-  pop <- get_estimates("county", year = year, var = "POP") %>%
+  pop <- get_estimates("county", year = year, variables = "POP") %>%
     mutate(year = year)
   
   return(pop)
   
 }
 
-# pull state and county for each year 
-pop <- map_df(.x = 2015:2018, 
+# pull county population data for each year from the Population Estimates Program
+pop <- map_df(.x = 2015:2019, 
               .f = ~get_pop(year = .x))
+
+# pull the 2020 decennial census
+census2020 <- get_decennial(geography = "county", year = 2020, variables = "P1_001N") %>%
+  select(NAME, GEOID, variable, value) %>%
+  mutate(year = 2020)
+
+# combine the PEP data and decennial census data
+pop <- bind_rows(pop, census2020)
 
 # drop unnecessary variable and rename the useful variable
 pop <- pop %>%
@@ -41,10 +57,20 @@ pop <- pop %>%
   mutate(state_name = str_trim(state_name)) %>%
   select(-c, -d, -e)
 
-# clean one messy county from New Mexico
+# clean one messy county name from New Mexico
 pop <- pop %>%
   select(year, state, county, state_name, county_name, population) %>%
   arrange(year, state, county) %>%
   mutate(county_name = ifelse(county_name == "DoÃ±a Ana County", "Doña Ana County", county_name))
 
-write_csv(pop, "geographic-crosswalks/data/county-file.csv")
+# add 2014 county names with no population estimate
+# PEP isn't in tidycensus before 2015
+pop <-
+  bind_rows(
+    pop %>%
+      filter(year == 2015) %>%
+      mutate(year = 2014, population = NA),
+    pop
+  )
+
+write_csv(pop, "geographic-crosswalks/data/county-populations.csv")
