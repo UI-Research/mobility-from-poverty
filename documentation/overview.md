@@ -81,6 +81,38 @@ We also calculate 95 percent confidence interval (upper and lower bounds) for th
 
 ### Process
 
+
+---
+
+## Financial security
+
+Metric definition: share of consumers (with credit files) who have derogatory debt, including collections.
+
+Examples of derogatory status include collections, charge-offs, repossessions, and foreclosures. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor’s books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
+
+This metric differs slightly from the debt in collections metric used in Debt in America, which includes external collections and internal collections/charge-offs only. The consumer-level binary indicators under these two approaches are equivalent for 99.89% of observations. For 0.10% of observations, the indicator used here is 1 while the Debt in America indicator is 0. For less than 0.01% of observations, the indicator used here is 0 while the Debt in America indicator is 1. The city-level shares generated under this approach are always greater than or equal to the Debt in America version of shares, with a max difference of 0.9 percentage points, a mean difference of 0.11 percentage points, and median difference of 0.09 percentage points.
+
+Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
+
+Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. “Financial Health and Wealth Dashboard: A Local Picture of Residents’ Financial Well-Being.” Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
+
+### Overview
+
+* **Analyst & Programmer:** Jen Andre, Breno Braga
+* **Year(s):** 2021
+* **Final data name(s):** `city-debt-coll-shares.csv`
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt)
+* **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
+* **Data Quality Index:** Observations that are suppressed due to small sample size (n < 50) or that do not exist because no communities meet the race/ethnicity threshold for a given subgroup are designated 3. All other observations are designated 1.
+* **Limitations:** As described above, this metric differs from Debt in America approach.
+* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50. Variable also replaced as missing for 19 city-subgroup records for cities that do not have communities meeting the race/ethnicity threshold for a given subgroup.
+
+### Process
+* Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
+* PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
+* Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
+
+
 ---
 
 ## Affordable housing
@@ -215,10 +247,10 @@ Outline the process for creating the data:
 
 ### Overview
 
-* **Analyst & Programmer:** Emily M. Johnston
-* **Year(s):** 2018
-* **Final data name(s):** `neonatal_health.csv`
-* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020. 
+* **Analyst & Programmer:** Emily M. Johnston and Julia Long
+* **Year(s):** 2018, 2020 
+* **Final data name(s):** `neonatal_health_2018.csv`, `neonatal_health_2020.csv`
+* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020 and September 2022. 
 * **Notes:**
   * Low birthweight is defined as less than 2,500 grams
   * County refers to county of mother's legal residence at the time of birth
@@ -256,15 +288,15 @@ Outline the process for creating the data:
 
 1. Begin at https://wonder.cdc.gov/
 2. Select Births (https://wonder.cdc.gov/natality.html)
-3. Select Natality for 2007-2019 
+3. Select Natality for 2007-2020
     * The process below can be repeated for other available periods
         * 2003-2006
         * 1995-2002
 4. Agree to terms of data use
-5. Run queries for county-level metrics in 2018 for all births
+5. Run queries for county-level metrics in 2018 or 2020 for all births
     * Select the following options to run query for births with non-missing birth weight information
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -272,10 +304,11 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for low birth weight births
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -283,13 +316,14 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county.txt"
+        * Once downloaded, rename file "lbw_births_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.  
 6. Run queries for county-level metrics in 2018 by race/ethnicity
     * Select the following options to run query for births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -297,12 +331,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -310,11 +345,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhblack.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -322,12 +358,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_hisp.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -335,12 +372,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhother.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.         
     * Select the following options to run query for low birth weight births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -348,12 +386,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhwhite.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for low birth weight births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -361,11 +400,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhblack.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.     
     * Select the following options to run query for low birth weight births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -373,12 +413,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_hisp.txt"
+        * Once downloaded, rename file "lbw_births_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.        
     * Select the following options to run query for low birth weight births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -386,7 +427,92 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhother.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
+
+
+<u>Checklist for the Contents of Each Raw Data File:<u>
+
+1. “nomiss_bw_by_county_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix. 
+	c. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e.All other selections the same
+
+2. “lbw_births_by_county_xx.txt”
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix
+	c. Section 4: Infant Birth Weight 12 = all options less than 2,500 grams 
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e. All other selections the same
+
+3. “nomiss_bw_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+4. “nomiss_bw_by_county_nhblack_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = Black or African American 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+5. “nomiss_bw_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+6. “nomiss_bw_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+7. “lbw_births_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+8. “lbw_births_by_county_nhblack_xx.txt” 
+	a. Section 4: Year = 2018 or 2020, depending on suffix. 
+	b. Section 1: Group Results By = County 
+	c. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	d. Section 3: Mother’s Single Race = Black or African American 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+9. “lbw_births_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+10. “lbw_births_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams 
+	f. All other selections the same
+
 
 ### Process for calculating 95 percent confidence intervals
 
