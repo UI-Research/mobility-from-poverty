@@ -1,9 +1,11 @@
+# Boosting Upward Mobility from Poverty
+
 This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
 
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
 
-Detailed documentation of code and data is available [here](https://ui-research.github.io/gates-mobility-metrics/documentation/overview).
+Detailed documentation of code and data is available [here](https://ui-research.github.io/mobility-from-poverty/documentation/overview).
 
 # Motivation
 
@@ -44,42 +46,39 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 # Repository Contents
 
-todo(aaron): clean up repository contents
-
-| Domain                  |      Metrics      |  Analyst(s) |
-|-------------------------|:-------------:|------:|
-| 01_financial-well-being |   |  |
-| 02_housing              |   |  |
-| 03_family               |   |  |
-| 04_health               |   |  |
-| 05_local-governments    |   |  |
-| 06_neighborhoods        |   |  |
-| 07_safety               |   |  |
-| 08_education            |   |  |
-| 09_employment           |   |  |
+| Domain                  |      Metrics      |
+|:-------------------------|:-------------|
+| 01_financial-well-being | Income <br/> Financial security  | 
+| 02_housing              | Affordable housing <br/> Housing instability and homelessness |
+| 03_family               | Family structure and stability  |
+| 04_health               | Access to and utilization of health services <br/> Neonatal health  |
+| 05_local-governments    | Political participation  |
+| 06_neighborhoods        | Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality  |
+| 07_safety               | Exposure to crime <br/> Overly punitive policing  |
+| 08_education            | Access to preschool <br/> Effective public education <br/> Student poverty concentration <br/> College readiness |
+| 09_employment           | Employment <br/> Access to jobs paying a living wage  |
 
 # File Description
 
-## Recent File
+## Recent Files
 
-The recent file has exactly one year per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations. 
+* The recent county file has exactly one year per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations. 
+* The recent city file has one year per census place and contains the most recent year for each of the mobility metrics. This file ought to have 486 observations, and contains missing values where metrics were unavailable or not computed.
 
-## Multi-Year File
+## Multi-Year Files
 
-The multi-year file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
+* The multi-year county file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
+* We are not currently asking for a multi-year city file.
 
-## Subgroups File
+## Subgroups Files
 
-The subgroups file contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status. 
-
-## Variables
-
-todo(aaron): Include a table with variables and information about the variables. 
+* The subgroups county files contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
+* The subgroups city file contains multiple observations per census place per year. The file is long and the multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
 # Project Organization
 
 * Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
-* Each subdirectory for a domain should include a README.md. The README.md should include all information outlined in the README.md for each file created in the subdirectory. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
+* The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * If possible, download your data with code or pull your data from an API with code. 
@@ -90,9 +89,9 @@ todo(aaron): Include a table with variables and information about the variables.
 
 ## GitHub Standards
 
-* Do not work on the `master` branch. 
+* Do not work on the `main` branch. 
 * **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
-* Regularly pull from the remote `master` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
+* Regularly pull from the remote `main` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts. 
 * The use of [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) is encouraged. 
 
 ## GitHub Basics
@@ -102,7 +101,7 @@ An Urban Institute-focused introduction to GitHub including installation instruc
 After installing Git and setting up a GitHub account, follow these steps to get started on Windows:
 
 1. Right click and select "Git Bash Here" where you want to copy the repository (main folder) on your computer. 
-2. Submit `git clone https://github.com/UI-Research/gates-mobility-metrics.git`. You will need to enter your user email and password. Everything will then copy to your computer.
+2. Submit `git clone https://github.com/UI-Research/mobility-from-poverty.git`. You will need to enter your user email and password. Everything will then copy to your computer.
 3. Close Git Bash. 
 4. Enter the `gates-mobility-metrics` folder, right click, and select "Git Bash Here". 
 5. Submit `git checkout -b aaron` but replace `aaron` with your name.
@@ -116,8 +115,8 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
 2. Commit changes regularly with detailed commit messages. 
 3. Regularly push your code to your remote branch on GitHub. 
-4. To contribute to the `master` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
-5. Aaron R. Williams will review and incorporate changes into the `master` branch. He may ask you to make changes. 
+4. To contribute to the `main` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
+5. Aaron R. Williams will review and incorporate changes into the `main` branch. He may ask you to make changes. 
 
 **Please reach out Aaron with any questions.** The only thing he loves more than version control is helping people learn version control. 
 
@@ -130,7 +129,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 ### Joining variables
 
-* The first three variables in every file should be `year`, `state`, and `county`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code, `county` should be a three character FIPS code. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
+* The first three variables in every file should be `year`, `state`, and `county`/`city`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `city` should be a 7-digit concatenated FIPS code with the 2-digit FIPS for the state followed by the 5-digit census place FIPS. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
 
@@ -138,7 +137,7 @@ The final combined subgroup dataset will contain a subset of metrics in the orig
 
 ### Values
 
-* Include all counties even if a county is all missing values. Every join to the master file should be one-to-one within a year.
+* Include all counties/cities even if a county is all missing values. Every join to the master file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between 0 and 1 inclusive with a leading zero. (75% should be 0.75)
 * Missing values should be coded as empty cells.
@@ -147,8 +146,8 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 
 ### Sorting
 
-* All files should be sorted by `year`, `state`, and `county`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
-* Subgroup files should be sorted by `year`, `state`, `county`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
+* All files should be sorted by `year`, `state`, and `county`/`city`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
+* Subgroup files should be sorted by `year`, `state`, `county`/`city`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
 
 ### Standard Errors
 
@@ -166,7 +165,7 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 | 1  |  The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.  | 
 | 2  |    There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.     | 
 | 3  | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information.  | 
-|  | It was not possible to calculate a metric for the county. |
+|  | It was not possible to calculate a metric for the county or city. |
 
 * Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`. 
 
@@ -252,17 +251,17 @@ Our code review process will be handled through GitHub, which has powerful tools
 
 ### 1. Request
 
-In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `master` is handled through pull requests. 
+In our workflow, every analyst will push his or her code to the repository on its own branch named after the first name of the analyst. The process of reconciling these different branches into one branch called `main` is handled through pull requests. 
 
-For example, I will put in a pull request from `aaron` to `master`. At this point, a reviewer will be requested in the pull request. Aaron and Claudia will flag the reviewers. 
+For example, I will put in a pull request from `aaron` to `main`. At this point, a reviewer will be requested in the pull request. Aaron and Claudia will flag the reviewers. 
 
 <img src="images/request-review.png" width="400" height="200">
 
 ### 2. Review
 
-The code will not be merged to master until the reviewer(s) approve the pull request. 
+The code will not be merged to `main` until the reviewer(s) approve the pull request. 
 
-GitHub will generate a line-by-line comparison of every line that is added or removed from `aaron` to `master`. 
+GitHub will generate a line-by-line comparison of every line that is added or removed from `aaron` to `main`. 
 
 <img src="images/line-by-line.png" width="800" height="300">
 
@@ -276,7 +275,7 @@ Reviewers can also add overall comments before approving or requesting changes f
 
 <img src="images/approve-review.png" width="300" height="200">
 
-Once the code is approved, the branch can be merged into the `master` branch where it can referenced and used for subsequent analyses. 
+Once the code is approved, the branch can be merged into the `main` branch where it can referenced and used for subsequent analyses. 
 
 ## Code Branching for Reviewers
 
@@ -286,7 +285,7 @@ Suppose you are reviewing code from branch `malcolm`. You need to "fetch" the `m
 
 1. Open up Git Bash in the directory by right clicking in the `gates-mobility-metrics` directory and and selecting Git Bash Here (on Windows).
 2. Submit `git status` and ensure that you don't have any tracked changes that have not been commited. 
-3. Use `git branch` to see your current branch and other available branches. You should at least see `master`. 
+3. Use `git branch` to see your current branch and other available branches. You should at least see `main`. 
 4. Submit `git fetch` to getch remote branches. 
 5. Submit `git checkout --track origin/malcolm` to switch to the `malcolm` branch. Submit `git branch` to confirm the change. 
 
