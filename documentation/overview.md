@@ -872,23 +872,23 @@ SEDA data are manually downloaded and read in, and a regression of mean assessme
 
 ## Student poverty concentration
 
-This metric reflects the fraction of students in each county who attend
-schools where 40 percent or more of students receive free or reduced-price lunch (FRPL). 
+This metric reflects the fraction of students in each city/county who attend
+schools where 20 percent or more of students come from households living below 100% of the Federal Poverty Level. 
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom
-* **Year(s):** 2018 (2018-19 school year)
-* **Final data name(s):** `FRPL.csv`
-* **Data Source(s):** Common Core of Data via Education Data Portal
+* **Analyst & Programmer:** Emily Gutierrez
+* **Year(s):** 2014-2018 (2018-19 school year)
+* **Final data name(s):** `MEPS_2014-2018_city.csv` and `MEPS_2014-2018_county.csv`
+* **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires at least 30 students in the county and for the poverty_measure_used to be either "FRPL" or "DC", but not "Both". Data quality of "2" requires at least 15 students in the county and a poverty_measure_used flag of "FRPL" or "DC". The remainder receive a data quality flag of "3".
-* **Limitations:** Not all states report FRPL; some instead report the number of students directly certified (DC). FRPL is "The unduplicated number of students who are eligible  to participate in the Free Lunch and Reduced Price Lunch Programs under the National  School Lunch Act of 1946." DC is "The unduplicated count of students in membership  whose National School Lunch Program (NSLP) eligibility has been determined through  direct certification." (https://www2.ed.gov/about/inits/ed/edfacts/eden/non-xml/fs033-14-1.docx) In 2018, the states reporting DC instead of FRPL are Massachusetts, Tennessee, Delaware,  and the District of Columbia. In addition, Alaska and Ohio report either FRPL or DC  for a substantial number of schools in 2018. 
-* **Missingness:** 4/3,142 counties
+* **Data Quality Index:** Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
+* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free-and-reduced price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels. (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currebtly available for years 2014-2018.
+* **Missingness:** 5/3,142 counties in 2014 and 4/3,142 counties for 2015-2018.
 
 ### Process
 
-Outline the process for creating the data: Schools were flagged as having 40% or more FRPL if either the number of students receiving FRPL or the number of DC students was greater than 40%. Each county is assigned a flag (poverty_measure_used) that indicates whether all schools have a higher number of students reported under "FRPL" or "DC"; if there is a mix, the county is assigned "Both". Total enrollment (by race) was summed in these schools and divided by total  enrollment (by race) in the county. 
+Outline the process for creating the data: Schools were flagged as having 20% or more students in poverty if the school's MEPS measure was greater than or equal to 20%. Total enrollment (by race) was summed in these schools and divided by total  enrollment (by race) in the county. 
 
 ---
 
