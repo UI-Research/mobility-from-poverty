@@ -35,8 +35,7 @@ See the [United States Elections Project](https://www.electproject.org/2020g) fo
 5. Save the data
 
 ```{r rmarkdown-setup, echo = FALSE}
-knitr::opts_chunk$set(warning = FALSE)
-knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ```{r setup}
@@ -96,7 +95,7 @@ if (!file.exists(mit_data)) {
   
 }
 
-# I'm not sure what the actual process is for getting the above API link that directly downloads
+# XX I'm not sure what the actual process is for getting the above API link that directly downloads
 # the data. I replaced the "3641280" from the original link with the file ID for the 2020 
 # version based on the landing page for the data ("6104822"). That seemed to work, but probably
 # not the method we want to use for future iterations of the project.
@@ -122,7 +121,8 @@ mit <- mit %>%
 [Shannon County, South Dakota (FIPS 46113) changed to Oglala Lakota County, South Dakota (FIPS 46102) in 2015.](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.html) The MIT data have the correct county name but they do not have the correct FIPS code.
 
 In 2019 there were 3,220 counties in the US including Washington DC and Puerto Rico. In 2020, the Valdez-Cordova Census Area in Alaska (FIPS 02261) has been split into two new Census Areas/FIPS: Copper River Census Area (FIPS 02066) and Chugach Census Area (FIPS 02063), so there are now [3,221 counties.](https://www.esri.com/arcgis-blog/products/arcgis-living-atlas/mapping/acs-2016-2020-updated-boundaries/) However, as discussed later, Alaska is reported as Districts instead of counties, so we standardize the FIPS codes for all Alaska districts to "02000" - thus, we don't need to worry about the county change in Alaska.
- 
+
+
 ```{r}
 mit %>%
   filter(FIPS %in% c("46113", "46102"))
@@ -132,7 +132,7 @@ mit <- mit %>%
 
 ```
 
-There are nine observations without FIPS codes. Five of these observations are District of Columbia, which has a FIPS code of 11001, so we correct the missing FIPS for DC. The other four observations are Rhode Island, where the county name is "FEDERAL PRECINCT." Rhode Island has five counties, all of which are included in the data. The four RI observations where county name is "FEDERAL PRECINCT" all have a `totalvotes` value of 1374. I elect to drop these observations.
+There are nine observations without FIPS codes. Five of these observations are District of Columbia, which has a FIPS code of 11001, so we correct the missing FIPS for DC. The other four observations are Rhode Island, where the county name is "FEDERAL PRECINCT." Rhode Island has five counties, all of which are included in the data. The four RI observations where county name is "FEDERAL PRECINCT" all have a `totalvotes` value of 1374. Since I cannot identify which counties these observations should be associated with, and they don't have an exceptionally high number of votes, I elect to drop these observations.
 
 ```{r}
 mit %>%
@@ -146,7 +146,7 @@ mit %>%
 mit <- mit %>%
   mutate(FIPS = case_when(county_name == "DISTRICT OF COLUMBIA"  ~ "11001",
                           TRUE ~ FIPS)) %>%
-  tidylog::filter(!is.na(FIPS))
+  tidylog::filter(!(state == 'RHODE ISLAND' & county_name == 'FEDERAL PRECINCT'))
 
 ```
 
@@ -173,9 +173,9 @@ mit %>%
   filter(state == "ALASKA") %>%
   select(state, FIPS)
 
-# XX would it be worth it to see how districts relate to counties?
-# Also, for the 2018 data, Aaron said "Alaska is reported as Districts instead of counties. We drop these." but I think the more accurate wording is that we replace the FIPS codes for all Alaska districts with "02000" because we are not actually dropping the observations (in 2018 or 2020).
 ```
+
+XX For the 2018 data, Aaron said "Alaska is reported as Districts instead of counties. We drop these." but I think the more accurate wording is that we replace the FIPS codes for all Alaska districts with "02000" because we are not actually dropping the observations (in 2018 or 2020).
 
 There are no places where the summarized candidate votes don't sum to the county votes.
 
@@ -183,9 +183,9 @@ There are no places where the summarized candidate votes don't sum to the county
 mit %>%
   group_by(state, county_name, FIPS) %>%
   summarize(candidatevotes = sum(candidatevotes),
-            totalvotes = max(totalvotes)) %>%
-  filter(totalvotes != candidatevotes) %>%
-  ungroup()
+            totalvotes = max(totalvotes),
+            .groups = 'drop') %>%
+  filter(totalvotes != candidatevotes)
 
 ```
 
@@ -226,7 +226,14 @@ wiki_votes <- wiki %>%
   as.numeric()
 
 # the name column in the data doesn't scrape well so we manually state it
-state <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "subset", "subset", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "subset", "subset", "subset", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island","South Carolina", "South Dakota", "Tennessee", "Texas", "Utah",      "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")     
+state <- c(state.name[1:8],
+           'District of Columbia',
+           state.name[9:19],
+           rep('subset', 2),
+           state.name[20:27],
+           rep('subset', 3),
+           state.name[28:50]
+           )    
 
 state_votes <- tibble(state, wiki_votes) %>%
   tidylog::filter(state != "subset")
@@ -322,7 +329,7 @@ cvap <- cvap %>%
          FIPS = str_c(state, county))
 
 cvap <- cvap %>%
-  tidylog::filter(state != "72") %>%
+  tidylog::filter(state != "72") %>% #Drop Puerto Rico
   select(state, 
          county, 
          FIPS,
@@ -417,7 +424,7 @@ If anything, a stricter threshold is necessary because the estimates are used in
 joined_data <- joined_data %>%
   mutate(
     election_turnout_quality = case_when(
-      is.na(election_turnout) ~ as.numeric(NA),
+      is.na(election_turnout) ~ NA_real_,
       cv >= 0.15 ~ 3,
       cv >= 0.05 ~ 2,
       TRUE ~ 1
