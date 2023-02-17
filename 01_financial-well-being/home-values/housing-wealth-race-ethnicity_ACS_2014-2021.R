@@ -169,7 +169,8 @@ stat.desc(county_hv_raceeth)
 construct_ratio <- function(hvshare, hhshare) {
   
   paste0(format(round(100*hvshare, 1), nsmall = 1),"%", 
-         ":",format(round(100*hhshare, 1), nsmall = 1),"%")
+         ":",format(round(100*hhshare, 1), nsmall = 1),"%") %>%
+    str_squish()
   
 }
 
@@ -192,4 +193,4 @@ county_hh_hw_raceeth <- county_hh_raceeth %>%
 
 
 # Step 7. Export Final Data in CSV Format
-write_csv(county_hh_hw_raceeth, file = "2county_hh_hw_raceeth_2014_2021.csv")
+write_csv(county_hh_hw_raceeth, file = "01_financial-well-being/home-values/county_hh_hw_raceeth_2014_2021.csv")
