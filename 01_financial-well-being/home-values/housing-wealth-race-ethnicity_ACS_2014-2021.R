@@ -106,14 +106,14 @@ county_hv <- acs_ho %>%
   group_by(YEAR, statefip, county) %>% 
   summarize(
     total_hv = sum(VALUEH * weight),
-    black_nh_hv = sum(VALUEH * weight * race_ethnicity == "black_nh"), 
-    black_nh_ho = sum(owner * race_ethnicity == "black_nh"),
-    hispanic_hv = sum(VALUEH * weight * race_ethnicity == "hispanic"), 
-    hispanic_ho = sum(owner * race_ethnicity == "hispanic"),
-    other_nh_hv = sum(VALUEH * weight * race_ethnicity == "other_nh"), 
-    other_nh_ho = sum(owner * race_ethnicity == "other_nh"),
-    white_nh_hv = sum(VALUEH * weight * race_ethnicity == "white_nh"), 
-    white_nh_ho = sum(owner * race_ethnicity == "white_nh")
+    black_nh_hv = sum(VALUEH * weight * (race_ethnicity == "black_nh")), 
+    black_nh_ho = sum(owner * (race_ethnicity == "black_nh")),
+    hispanic_hv = sum(VALUEH * weight * (race_ethnicity == "hispanic")), 
+    hispanic_ho = sum(owner * (race_ethnicity == "hispanic")),
+    other_nh_hv = sum(VALUEH * weight * (race_ethnicity == "other_nh")), 
+    other_nh_ho = sum(owner * (race_ethnicity == "other_nh")),
+    white_nh_hv = sum(VALUEH * weight * (race_ethnicity == "white_nh")), 
+    white_nh_ho = sum(owner * (race_ethnicity == "white_nh"))
   ) %>%
   ungroup() 
 
