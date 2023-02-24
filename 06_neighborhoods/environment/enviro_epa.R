@@ -1,11 +1,11 @@
-/*************************/
-  air qaulity program: 
-  created by: Rebecca Marx
-  updated on: August 12, 2022
-Description: 
-(1)creates tract-level indicators of poverty and race for counties in US
-*/
-  /*************************/
+#/*************************/
+#  air qaulity program: 
+#  created by: Rebecca Marx
+#  updated on: August 12, 2022
+#Description: 
+#(1)creates tract-level indicators of poverty and race for counties in US
+#*/
+#  /*************************/
   
 #install packages
   # install.packages("devtools")
@@ -19,10 +19,11 @@ Description:
   library(rvest)
   library(httr)
 
+  setwd("/C:/Users/rmarx/Documents/GitHub/mobility-from-poverty/mobility-from-poverty/06_neighborhoods/environment/data)
+  
 ####STEP ONE: PULL AIR QUALITY DATA FROM EPA WITH API####
 #request api key 
-#user ID: rmarx@urban.org
-#key: khakibird13
+
 
 #url base <- "https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual"
 
