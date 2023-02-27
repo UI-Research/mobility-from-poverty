@@ -1,7 +1,8 @@
 ###############################################################################
-# Description: Code to create county-level Descriptive Representation denominator 
-# This denominator is the population count at the county level overall and by race/ethnicity groups  
-# Data:  [gitfolder]/06_local_governance/descriptive_representation
+# Description: Code to create county- & City-level Descriptive Representation denominator 
+# This denominator is the population count at the county and city (e.g. Census Place) 
+# level overall and by race/ethnicity groups  
+# Data:  [gitfolder]/06_local-governance/descriptive-representation/data
 # Author: Tina Chelidze	(pulling a lot of advice from Aaron Williams' original code)										   
 # Date: January 20, 2022
 
@@ -16,19 +17,21 @@
 
 # (1) Housekeeping
 
-# Set working directory to [gitfolder]. Update path as necessary to your local metrics repo
-setwd("C:/Users/tchelidze/Documents/GitHub/mobility-from-poverty")
+# Open mobility-from-poverty.Rproj to make sure all file paths will work
+# File > Open Project > select correct one
 
 # Libraries you'll need
-library(sf)
 library(tidyr)
 library(dplyr)
 library(readr)
+library(tidyverse)
 library(censusapi)
 
-# add in your own Census API key or use mine if needed
+# Establish Census API key
 # You can get a Census API key here: https://api.census.gov/data/key_signup.html
-census_api_key("a92cdc14739747a791bb02096d30a82f27f05add", install = TRUE)
+# Your API key is stored in your .Renviron and can be accessed by Sys.getenv("CENSUS_API_KEY") 
+# You can run `readRenviron("~/.Renviron")` or 
+census_api_key("YOURKEYHERE", install = TRUE)
 
 # Figuring out where to pull data from (not necessary to run this code - just a prep step)
 apis <- listCensusApis()
@@ -80,13 +83,17 @@ county_demo <- get_acs(geography = "county",
 # (3) Clean and reshape to move data into the vars we want
 
 # Drop moe before reshape
-places_demo <- places_demo %>% select(GEOID, NAME, variable, estimate)
-county_demo <- county_demo %>% select(GEOID, NAME, variable, estimate)
+places_demo <- places_demo %>% 
+  select(GEOID, NAME, variable, estimate)
+county_demo <- county_demo %>% 
+  select(GEOID, NAME, variable, estimate)
 
 
 # Reshape the datasets so we can see all the population values per row
-wide_county_demo <- county_demo %>% spread(variable, estimate)
-wide_places_demo <- places_demo %>% spread(variable, estimate)
+wide_county_demo <- county_demo %>%
+  pivot_wider(names_from = variable, values_from = estimate)
+wide_places_demo <- places_demo %>%
+  pivot_wider(names_from = variable, values_from = estimate)
 
 
 # Rename vars for clarity
@@ -123,9 +130,15 @@ wide_places_demo <- wide_places_demo %>%
 # Here, we collapse the detailed groups into the same four groups of interest from the above section. 
 
 # Construct asian_other (combined value)
-wide_county_demo$asian_other <- rowSums(wide_county_demo[, c("aian_nh", "asian_nonhispanic", "nhpi_nh", "other_nh", "two_or_more_nh")], na.rm = TRUE)
-wide_places_demo$asian_other <- rowSums(wide_places_demo[, c("aian_nh", "asian_nonhispanic", "nhpi_nh", "other_nh", "two_or_more_nh")], na.rm = TRUE)
+wide_county_demo <- wide_county_demo %>%
+  mutate(
+    asian_other = aian_nh + asian_nonhispanic + nhpi_nh + other_nh + two_or_more_nh,
+  )
 
+wide_places_demo <- wide_places_demo %>%
+  mutate(
+    asian_other = aian_nh + asian_nonhispanic + nhpi_nh + other_nh + two_or_more_nh,
+  )
 
 # Keep only the vars we need
 wide_county_demo <- wide_county_demo %>% select(GEOID, 
@@ -145,7 +158,6 @@ wide_places_demo <- wide_places_demo %>% select(GEOID,
                                                 black_nonhispanic, 
                                                 total_hispanic, 
                                                 white_nonhispanic)
-
 
 
 
@@ -227,21 +239,29 @@ stopifnot(
 # (6) Prepare the data for saving & export final Metrics files
 
 # merge in the final County & Places files to isolate the data we need for each
-county_pop <- read.csv("geographic-crosswalks/data/county-populations.csv")
+county_pop <- read_csv("geographic-crosswalks/data/county-populations.csv")
 
-places_pop <- read.csv("geographic-crosswalks/data/place-populations.csv")
+places_pop <- read_csv("geographic-crosswalks/data/place-populations.csv")
 
 # add in the lost leading zeroes for the state/county FIPs & state/place FIPs
-county_pop$state <- sprintf("%02d", as.numeric(county_pop$state))
-county_pop$county <- sprintf("%03d", as.numeric(county_pop$county))
 
-places_pop$state <- sprintf("%02d", as.numeric(places_pop$state))
-places_pop$place <- sprintf("%05d", as.numeric(places_pop$place))
+county_pop <- county_pop %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+county_pop <- county_pop %>%
+  mutate(county = sprintf("%0.3d", as.numeric(county)))
+
+
+places_pop <- places_pop %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+places_pop <- places_pop %>%
+  mutate(place = sprintf("%0.5d", as.numeric(place)))
 
 # create a concatenated GEOID based on state + county & state + place
 county_pop$GEOID <- paste(county_pop$state,county_pop$county, sep = "")
 
 places_pop$GEOID <- paste(places_pop$state,places_pop$place, sep = "")
+
+
 
 # keep the most recent year of population data (not 2022, but 2020)
 county_pop <- filter(county_pop, year > 2019)
@@ -250,22 +270,26 @@ places_pop <- filter(places_pop, year > 2019)
 
 
 # merge the data files into the population files (left join, since data files have more observations)
-county_pop_by_race <- merge(county_pop, wide_county_demo, by=c("GEOID"), all.x = TRUE)
+county_pop_by_race <- left_join(county_pop, wide_county_demo, by=c("GEOID"))
 
-place_pop_by_race <- merge(places_pop, wide_places_demo, by=c("GEOID"), all.x = TRUE)
+place_pop_by_race <- left_join(places_pop, wide_places_demo, by=c("GEOID"))
 
 
 # Keep only relevant variables before export
-county_pop_by_race <- county_pop_by_race %>% select(GEOID, year, state_name, county_name, total_people, total_nonhisp, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic)
+county_pop_by_race <- county_pop_by_race %>% 
+  select(GEOID, year, state_name, county_name, total_people, total_nonhisp, 
+         asian_other, black_nonhispanic, total_hispanic, white_nonhispanic)
 
-place_pop_by_race <- place_pop_by_race %>% select(GEOID, year, NAME, total_people, total_nonhisp, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic)
+place_pop_by_race <- place_pop_by_race %>% 
+  select(GEOID, year, NAME, total_people, total_nonhisp, asian_other, 
+         black_nonhispanic, total_hispanic, white_nonhispanic)
 
 
 # Export each of the files as CSVs
-view(county_pop_by_race)
-write_csv(county_pop_by_race, "06_local_governance/descriptive_representation/data/descriptive_rep_denominator_county_2022.csv")
+# view(county_pop_by_race)
+write_csv(county_pop_by_race, "05_local-governance/descriptive-representation/data/descriptive_rep_denominator_county_2022.csv")
 
-write_csv(place_pop_by_race, "06_local_governance/descriptive_representation/descriptive_rep_denominator_city_2022.csv")
+write_csv(place_pop_by_race, "05_local-governance/descriptive-representation/data/descriptive_rep_denominator_city_2022.csv")
 
 
 
