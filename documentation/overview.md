@@ -94,22 +94,24 @@ This metric differs slightly from the debt in collections metric used in Debt in
 
 Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
 
+Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. “Financial Health and Wealth Dashboard: A Local Picture of Residents’ Financial Well-Being.” Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
+
 ### Overview
 
 * **Analyst & Programmer:** Jen Andre, Breno Braga
 * **Year(s):** 2021
 * **Final data name(s):** `city-debt-coll-shares.csv`
-* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/)
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt)
 * **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
-* **Data Quality Index:** Quality flag is a 1 for all observations except for those which are suppressed due to n < 50, which are designated 3.
+* **Data Quality Index:** Observations that are suppressed due to small sample size (n < 50) or that do not exist because no communities meet the race/ethnicity threshold for a given subgroup are designated 3. All other observations are designated 1.
 * **Limitations:** As described above, this metric differs from Debt in America approach.
-* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50.
+* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50. Variable also replaced as missing for 19 city-subgroup records for cities that do not have communities meeting the race/ethnicity threshold for a given subgroup.
 
 ### Process
 * Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
 * PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
 * Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
-* Values for three city-subgroup records with fewer than 50 consumers are suppressed due to contract requirements for data suppression.
+
 
 ---
 
@@ -145,19 +147,20 @@ This info is imported at the beginning of the program and then combined and made
 
 ### Overview
 
-* Brief description: This metric is the total number of students experiencing homelessness at some point during the school year.
-* **Analyst & Programmer:** Erica Blom
-* **Year(s):** 2018 (2018-19 school year); 2014 (2014-15 school year)
+* Brief description: This metric is the total number and share of students experiencing homelessness at some point during the school year from 2014-15 through 2019-20. The total number and the share of students experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, and Asian). Race/ethnicity shares are created as shares of each race/ethnicity’s total enrollment. 
+* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
+* **Year(s):** 2014-15 school year through 2019-20 school year
 * **Final data name(s):** `homelessness.csv`
-* **Data Source(s):** EDFacts homelessness data; Common Core of Data (CCD) to identify counties.
+* **Data Source(s):** EDFacts homelessness data; Common Core of Data (CCD) to identify counties and cities.
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires the ratio of the upper bound (`homeless_count_ub`) to the lower bound (`homeless_count_lb`) to be less or equal to than 1.05. Data quality of "2" requires this ratio to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the  largest value of this ratio is 3.5 and that only 6 counties in 2018 and 13 in 2014, each with estimated homeless populations of less than 20, have ratio values at or between 2 to 3.5.
+* **Data Quality Index:** Data quality of "1" requires the ratio of the upper bound (`homeless_count_ub`) to the lower bound (`homeless_count_lb`) to be less or equal to than 1.05. Data quality of "2" requires this ratio to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the largest value of this ratio is 3.5 and those with estimated homeless populations of less than 20 have ratio values at or between 2 to 3.5.
 * **Limitations:** Data suppression
-* **Missingness:** 286/3,142 counties in 2018; 323/3,142 counties in 2014
+* **Missingness:** Counties: 323/3,142 counties in 2014, 312/3,142 counties in 2015, 267/3,142 counties in 2016, 
+305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019. Cities: 
 
 ### Process
 
-Counts of students experiencing homelessness are downloaded from the EDFacts website. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state and subgrant status if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. Districts are assigned to the county where the district office is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
+Counts of students experiencing homelessness are downloaded from the EDFacts website, including by race/ethnicity subgroups for 2019. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state and subgrant status if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. For county level data, districts are assigned to the county where the district office is located (obtained from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
 
 ---
 
@@ -245,10 +248,10 @@ Outline the process for creating the data:
 
 ### Overview
 
-* **Analyst & Programmer:** Emily M. Johnston
-* **Year(s):** 2018
-* **Final data name(s):** `neonatal_health.csv`
-* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020. 
+* **Analyst & Programmer:** Emily M. Johnston and Julia Long
+* **Year(s):** 2018, 2020 
+* **Final data name(s):** `neonatal_health_2018.csv`, `neonatal_health_2020.csv`
+* **Data Source(s):** United States Department of Health and Human Services (US DHHS), Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS), Division of Vital Statistics, Natality public-use data 2007-2019, on CDC WONDER Online Database, available October 2020. Accessed December 2020 and September 2022. 
 * **Notes:**
   * Low birthweight is defined as less than 2,500 grams
   * County refers to county of mother's legal residence at the time of birth
@@ -286,15 +289,15 @@ Outline the process for creating the data:
 
 1. Begin at https://wonder.cdc.gov/
 2. Select Births (https://wonder.cdc.gov/natality.html)
-3. Select Natality for 2007-2019 
+3. Select Natality for 2007-2020
     * The process below can be repeated for other available periods
         * 2003-2006
         * 1995-2002
 4. Agree to terms of data use
-5. Run queries for county-level metrics in 2018 for all births
+5. Run queries for county-level metrics in 2018 or 2020 for all births
     * Select the following options to run query for births with non-missing birth weight information
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -302,10 +305,11 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for low birth weight births
         * Section 1. Group Results by County
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -313,13 +317,14 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county.txt"
+        * Once downloaded, rename file "lbw_births_by_county_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.  
 6. Run queries for county-level metrics in 2018 by race/ethnicity
     * Select the following options to run query for births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -327,12 +332,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -340,11 +346,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhblack.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20. 
     * Select the following options to run query for births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -352,12 +359,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_hisp.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options except (all weights) and (unknown or not stated)]
         * Section 6. Other Options
             * Export Results
@@ -365,12 +373,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "nomiss_bw_by_county_nhother.txt"
+        * Once downloaded, rename file "nomiss_bw_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.         
     * Select the following options to run query for low birth weight births to non-Hispanic white mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select White]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -378,12 +387,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhwhite.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhwhite_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
     * Select the following options to run query for low birth weight births to non-Hispanic Black mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select Black or African American]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -391,11 +401,12 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhblack.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhblack_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.     
     * Select the following options to run query for low birth weight births to Hispanic mothers
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Hispanic or Latino]
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -403,12 +414,13 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_hisp.txt"
+        * Once downloaded, rename file "lbw_births_by_county_hisp_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.        
     * Select the following options to run query for low birth weight births to mothers with other races or ethnicities
         * Section 1. Group Results by County
 	* Section 3. Mother's Hispanic Origin [select Not Hispanic or Latino]
 	* Section 3. Mother's Single Race [select American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race] 
-	* Section 4. Year [select 2018]
+	* Section 4. Year [select 2018 or 2020]
         * Section 4. Infant Birth Weight 12 [select all options <2500 grams]
         * Section 6. Other Options
             * Export Results
@@ -416,7 +428,92 @@ Outline the process for creating the data:
             * Show Zero Values
             * Show Suppressed Values
         * Click Send
-        * Once downloaded, rename file "lbw_births_by_county_nhother.txt"
+        * Once downloaded, rename file "lbw_births_by_county_nhother_xx.txt"
+            * "xx" refers to the 2-digit abbreviation of year, either 18 or 20.       
+
+
+<u>Checklist for the Contents of Each Raw Data File:<u>
+
+1. “nomiss_bw_by_county_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix. 
+	c. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e.All other selections the same
+
+2. “lbw_births_by_county_xx.txt”
+	a. Section 1: Group Results By = County 
+	b. Section 4: Year = 2018 or 2020, depending on suffix
+	c. Section 4: Infant Birth Weight 12 = all options less than 2,500 grams 
+	d. Section 6: export results, show totals, show zero values, show suppressed values
+	e. All other selections the same
+
+3. “nomiss_bw_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+4. “nomiss_bw_by_county_nhblack_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = Black or African American 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. Section 6: export results, show totals, show zero values, show suppressed values
+	g. All other selections the same
+	
+5. “nomiss_bw_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races 
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+6. “nomiss_bw_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix
+	e. Section 4: Infant Birth Weight 12 = all options except ‘unknown’ or ‘all weights’
+	f. All other selections the same
+	
+7. “lbw_births_by_county_nhwhite_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = White
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+8. “lbw_births_by_county_nhblack_xx.txt” 
+	a. Section 4: Year = 2018 or 2020, depending on suffix. 
+	b. Section 1: Group Results By = County 
+	c. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	d. Section 3: Mother’s Single Race = Black or African American 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+9. “lbw_births_by_county_hisp_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Hispanic
+	c. Section 3: Mother’s Single Race = All Races
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams
+	f. All other selections the same
+	
+10. “lbw_births_by_county_nhother_xx.txt” 
+	a. Section 1: Group Results By = County 
+	b. Section 3: Mother’s Hispanic Origin = Not Hispanic or Latino
+	c. Section 3: Mother’s Single Race = American Indian or Alaska Native; Asian; Native Hawaiian or Other Pacific Islander; More than one race
+	d. Section 4: Year = 2018 or 2020, depending on suffix. 
+	e. Section 4: Infant Birth Weight 12 = all options less than 2500 grams 
+	f. All other selections the same
+
 
 ### Process for calculating 95 percent confidence intervals
 
@@ -739,34 +836,33 @@ The process for creating the subgroup metric is the same as the process for crea
 
 ## Effective public education
 
-This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third  grade and eighth grade. For the 2015 cohort (students who were in eighth  grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are  state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed  these to be comparable over time and space.
+This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or metro is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space.
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom
-* **Year(s):** 2015 (2015-16 school year), 2014, and 2013
+* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
+* **Year(s):** 2013-14 school year through 2017-2018 school year
 * **Final data name(s):** `SEDA.csv`
 * **Data Source(s):** 
-  * https://cepa.stanford.edu/content/seda-data
-	* https://edopportunity.org/get-the-data/seda-archive-downloads/ 
-	* exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_v30.dta
-	* Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., Chavez, B., Buontempo, J., & DiSalvo, R. (2019). Stanford Education Data Archive (Version 3.0). http://purl.stanford.edu/db586ns4974.
+  *  https://cepa.stanford.edu/content/seda-data https://edopportunity.org/get-the-data/seda-archive-downloads/ exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta
+	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., & Chavez, B. (2021). 
+	Stanford Education Data Archive (Version 4.1). Retrieved from http://purl.stanford.edu/db586ns4974.
 * Subgroups: all; gender; race/ethnicity; income
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup.
 * **Limitations:** Not all counties report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
-* **Missingness:** missing observations by year and subgroup:
+* **Missingness:** The following years have the following missing data: 
 
-|                      subgroup | 2013 | 2014 | 2015|
-|-------------------------------|-----:|-----:|----:|
-|                           All |   80 |   87 |   80|
-|           Black, Non-Hispanic | 1796 | 1825 | 1839|
-|    Economically Disadvantaged |  199 |  211 |  205|
-|                        Female |  216 |  216 |  223|
-|                      Hispanic | 1778 | 1735 | 1717|
-|                          Male |  199 |  209 |  205|
-|Not Economically Disadvantaged |  308 |  324 |  333|
-|           White, Non-Hispanic |  202 |  210 |  215|
+						County					Metro
+subgroup					2013	2014	2015	2016	2017								2013	2014	2015	2016	2017
+All						81	85	76	75	102		All						0	1	0	0	10
+Black, Non-Hispanic				1784	1812	1821	1844	1855		Black, Non-Hispanic			334	346	346	359	370
+Economically Disadvantaged		211	212	219	223	278		Economically Disadvantaged		5	6	3	4	25
+Female					207	202	207	210	245		Female					0	1	0	0	13
+Hispanic					1757	1706	1694	1653	1659		Hispanic					221	207	205	198	193
+Male						193	196	198	205	237		Male						0	1	0	0	13
+Not Economically Disadvantaged		326	328	344	354	410		Not Economically Disadvantaged	6	7	6	5	30
+White, Non-Hispanic				204	218	216	214	252		White, Non-Hispanic			10	14	12	9	22
 
 ### Process
 
@@ -776,23 +872,23 @@ SEDA data are manually downloaded and read in, and a regression of mean assessme
 
 ## Student poverty concentration
 
-This metric reflects the fraction of students in each county who attend
-schools where 40 percent or more of students receive free or reduced-price lunch (FRPL). 
+This metric reflects the fraction of students in each city/county who attend
+schools where 20 percent or more of students come from households living below 100% of the Federal Poverty level. 
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom
-* **Year(s):** 2018 (2018-19 school year)
-* **Final data name(s):** `FRPL.csv`
-* **Data Source(s):** Common Core of Data via Education Data Portal
+* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
+* **Year(s):** 2014-15 through 2018-19
+* **Final data name(s):** `MEPS_2014-2018_city.csv` `MEPS_2014-2018_county.csv'
+* **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires at least 30 students in the county and for the poverty_measure_used to be either "FRPL" or "DC", but not "Both". Data quality of "2" requires at least 15 students in the county and a poverty_measure_used flag of "FRPL" or "DC". The remainder receive a data quality flag of "3".
-* **Limitations:** Not all states report FRPL; some instead report the number of students directly certified (DC). FRPL is "The unduplicated number of students who are eligible  to participate in the Free Lunch and Reduced Price Lunch Programs under the National  School Lunch Act of 1946." DC is "The unduplicated count of students in membership  whose National School Lunch Program (NSLP) eligibility has been determined through  direct certification." (https://www2.ed.gov/about/inits/ed/edfacts/eden/non-xml/fs033-14-1.docx) In 2018, the states reporting DC instead of FRPL are Massachusetts, Tennessee, Delaware,  and the District of Columbia. In addition, Alaska and Ohio report either FRPL or DC  for a substantial number of schools in 2018. 
-* **Missingness:** 4/3,142 counties
+* **Data Quality Index:** Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
+* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free and reduced-price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currently available for years 2014-2018.  
+* **Missingness:** 5/3,142 counties in 2014 and 4/3,142 counties for 2015-2018
 
 ### Process
 
-Outline the process for creating the data: Schools were flagged as having 40% or more FRPL if either the number of students receiving FRPL or the number of DC students was greater than 40%. Each county is assigned a flag (poverty_measure_used) that indicates whether all schools have a higher number of students reported under "FRPL" or "DC"; if there is a mix, the county is assigned "Both". Total enrollment (by race) was summed in these schools and divided by total  enrollment (by race) in the county. 
+Outline the process for creating the data: Schools were flagged as having 20% or more students in poverty if the school's MEPS measure was greater than or equal to 20%. Total enrollment (by race) was summed in these schools and divided by total  enrollment (by race) in the county. 
 
 ---
 
