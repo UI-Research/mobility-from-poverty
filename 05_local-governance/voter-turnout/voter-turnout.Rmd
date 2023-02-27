@@ -24,19 +24,18 @@ output:
 
 This metric is a county-level estimate of voter turnout. We use Presidential Election turnout as a measure of "Highest Office" for the numerator. We use the Citizen Voting Age Population (CVAP) for the denominator. 
 
-See the [United States Elections Project](http://www.electproject.org/2016g) for more information.
+See the [United States Elections Project](https://www.electproject.org/2020g) for more information.
 
 **Process:**
 
-1. Calculate votes in the 2016 Presidential election
+1. Calculate votes in the 2020 Presidential election
 2. Calculate the Citizen Voting Age Population
 3. Divide 1. by 2. to calculate voter turnout
 4. Add data quality flags
 5. Save the data
 
 ```{r rmarkdown-setup, echo = FALSE}
-knitr::opts_chunk$set(warning = FALSE)
-knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ```{r setup}
@@ -55,18 +54,31 @@ set_urbn_defaults(style = "print")
 
 ### MIT Election Data and Science Lab
 
-We use the MIT Election Data and Science Lab for county-level votes in the 2016 Presidential election ([data here](https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ/HEIJCQ&version=6.0)). First, we download the data. 
+We use the MIT Election Data and Science Lab for county-level votes in the 2020 Presidential election ([data here](https://dataverse.harvard.edu/file.xhtml?fileId=6104822&version=10.0)). First, we download the data. 
 
 ```{r}
+# create a data folder for intermediate data files
+intermediate_files <- here::here("05_local-governance",
+                                 "voter-turnout",
+                                 "data")
+
+if (!dir.exists(intermediate_files)) {
+  
+  dir.create(intermediate_files)
+  
+}
+
 # download the data from the Harvard dataverse
 mit_directory <- here::here("05_local-governance", 
-                        "voter-turnout", 
-                        "mit")
+                            "voter-turnout", 
+                            "data",
+                            "mit")
 
 mit_data <- here::here("05_local-governance", 
-                        "voter-turnout", 
-                        "mit",
-                        "countypres_2000-2016.csv")
+                       "voter-turnout",
+                       "data",
+                       "mit",
+                       "countypres_2000-2020.csv")
 
 if (!dir.exists(mit_directory)) {
   
@@ -77,11 +89,16 @@ if (!dir.exists(mit_directory)) {
 if (!file.exists(mit_data)) {
   
   download.file(
-    "https://dataverse.harvard.edu/api/access/datafile/3641280?format=original&gbrecs=true",
+    "https://dataverse.harvard.edu/api/access/datafile/6104822?format=original&gbrecs=true",
     destfile = mit_data
   )
   
 }
+
+# XX I'm not sure what the actual process is for getting the above API link that directly downloads
+# the data. I replaced the "3641280" from the original link with the file ID for the 2020 
+# version based on the landing page for the data ("6104822"). That seemed to work, but probably
+# not the method we want to use for future iterations of the project.
 
 ```
 
@@ -90,67 +107,85 @@ Next we load and clean the data.
 ```{r}
 mit <- read_csv(here::here("05_local-governance", 
                            "voter-turnout", 
+                           "data",
                            "mit", 
-                           "countypres_2000-2016.csv")) %>%
-  # fix the FIPS codes
-  mutate(FIPS = str_pad(FIPS, width = 5, pad = "0"))
+                           "countypres_2000-2020.csv")) %>%
+  # rename the FIPS code variable to match 2016
+  rename(FIPS = county_fips)
 
 mit <- mit %>%
-  tidylog::filter(year == 2016)
+  tidylog::filter(year == 2020)
 
 ```
 
-[Shannon County, South Dakota changed to Oglala Lakota County, South Dakota in 2015.](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.html) The MIT have the correct county name but they do not have the correct FIPS code. 
+[Shannon County, South Dakota (FIPS 46113) changed to Oglala Lakota County, South Dakota (FIPS 46102) in 2015.](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.html) The MIT data have the correct county name but they do not have the correct FIPS code.
+
+In 2019 there were 3,220 counties in the US including Washington DC and Puerto Rico. In 2020, the Valdez-Cordova Census Area in Alaska (FIPS 02261) has been split into two new Census Areas/FIPS: Copper River Census Area (FIPS 02066) and Chugach Census Area (FIPS 02063), so there are now [3,221 counties.](https://www.esri.com/arcgis-blog/products/arcgis-living-atlas/mapping/acs-2016-2020-updated-boundaries/) However, as discussed later, Alaska is reported as Districts instead of counties, so we standardize the FIPS codes for all Alaska districts to "02000" - thus, we don't need to worry about the county change in Alaska.
+
 
 ```{r}
+mit %>%
+  filter(FIPS %in% c("46113", "46102"))
+
 mit <- mit %>%
   mutate(FIPS = if_else(FIPS == "46113", "46102", FIPS))
 
 ```
 
-There are three localities without FIPS codes. `totalvotes` does not vary for these observations. We elected to drop these observations. 
+There are nine observations without FIPS codes. Five of these observations are District of Columbia, which has a FIPS code of 11001, so we correct the missing FIPS for DC. The other four observations are Rhode Island, where the county name is "FEDERAL PRECINCT." Rhode Island has five counties, all of which are included in the data. The four RI observations where county name is "FEDERAL PRECINCT" all have a `totalvotes` value of 1374. Since I cannot identify which counties these observations should be associated with, and they don't have an exceptionally high number of votes, I elect to drop these observations.
 
 ```{r}
 mit %>%
   filter(is.na(FIPS)) %>%
-  select(state, county, office, candidate, party, candidatevotes, totalvotes)
+  select(state, county_name, office, candidate, party, candidatevotes, totalvotes)
+  
+mit %>%
+  filter(state_po %in% c("DC", "RI"))
 
 
 mit <- mit %>%
-  tidylog::filter(!is.na(FIPS))
+  mutate(FIPS = case_when(county_name == "DISTRICT OF COLUMBIA"  ~ "11001",
+                          TRUE ~ FIPS)) %>%
+  tidylog::filter(!(state == 'RHODE ISLAND' & county_name == 'FEDERAL PRECINCT'))
 
 ```
 
-Bedford County, Virginia is missing for `candidatevotes` and lists `totalvotes` as 0, which is clearly incorrect. We set the zeros to `NA`.
+There are no missing observations for `candidatevotes` or `totalvotes` and no observations for which `totalvotes` is 0.
 
 ```{r}
 mit %>%
   filter(is.na(candidatevotes))
 
-problem_counties <- c("51515") # Bedford County, Virginia
+mit %>% 
+  filter(is.na(totalvotes))
 
-mit <- mit %>%
-  mutate(totalvotes = if_else(FIPS %in% problem_counties, as.numeric(NA), totalvotes),
-         candidatevotes = if_else(FIPS %in% problem_counties, as.numeric(NA), candidatevotes))
+mit %>%
+  filter(totalvotes == 0)
 
 ```
 
-Alaska is reported as Districts instead of counties. We drop these. 
-
+Alaska is reported as Districts instead of counties. We replace the FIPS codes for all Alaska observations with `02000`. 
 ```{r}
 mit <- mit %>%
-  mutate(FIPS = if_else(state == "Alaska", "02000", FIPS))
+  mutate(FIPS = if_else(state == "ALASKA", "02000", FIPS))
+
+mit %>%
+  filter(state == "ALASKA") %>%
+  select(state, FIPS)
+
 ```
 
-There are five places where the summarized candidate votes don't sum to the county votes. The `candidatevotes` variable looks much more accurate than the summed `total` based on the [NYTimes](https://www.nytimes.com/elections/2016/results/president). 
+XX For the 2018 data, Aaron said "Alaska is reported as Districts instead of counties. We drop these." but I think the more accurate wording is that we replace the FIPS codes for all Alaska districts with "02000" because we are not actually dropping the observations (in 2018 or 2020).
+
+There are no places where the summarized candidate votes don't sum to the county votes.
 
 ```{r}
 mit %>%
-  group_by(state, county, FIPS) %>%
+  group_by(state, county_name, FIPS) %>%
   summarize(candidatevotes = sum(candidatevotes),
-            totalvotes = max(totalvotes)) %>%
-  filter(totalvotes != candidatevotes) %>%
-  ungroup()
+            totalvotes = max(totalvotes),
+            .groups = 'drop') %>%
+  filter(totalvotes != candidatevotes)
 
 ```
 
@@ -158,8 +193,12 @@ We sum the candidate votes and create `state` and `county`.
 
 ```{r}
 mit_counties <- mit %>%
-  group_by(year, state, county, FIPS) %>%
+  group_by(year, state, county_name, FIPS) %>%
   summarize(votes = sum(candidatevotes)) %>%
+  # the above step isn't necessary because unlike the 2016 data, there are no
+  # places in 2020 where the summarized candidate votes don't sum to the total
+  # votes. so we could just use `totalvotes`. but leaving this for consistency
+  # between years
   ungroup()
 
 # create state and county
@@ -172,22 +211,29 @@ mit_counties <- mit_counties %>%
          votes)
 ```
 
-We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2016_United_States_presidential_election). This code scrapes the vote count: 
+We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2020_United_States_presidential_election). This code scrapes the vote count: 
 
 ```{r}
 # scrape data from Wikipedia with rvest
-wiki <- read_html("https://en.wikipedia.org/wiki/2016_United_States_presidential_election")
+wiki <- read_html("https://en.wikipedia.org/wiki/2020_United_States_presidential_election")
 
 wiki_votes <- wiki %>%
-  html_nodes("td:nth-child(22)") %>%
+  html_elements("td:nth-child(20)") %>%
   html_text() %>%
   # clean numbers as characters to numerics
   str_replace_all(",", "") %>%
   str_replace_all("\n", "") %>%
   as.numeric()
 
-# the name column int he data doesn't scrape well so we manually state it
-state <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "subset", "subset", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "subset", "subset", "subset", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",      "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island","South Carolina", "South Dakota", "Tennessee", "Texas", "Utah",      "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")     
+# the name column in the data doesn't scrape well so we manually state it
+state <- c(state.name[1:8],
+           'District of Columbia',
+           state.name[9:19],
+           rep('subset', 2),
+           state.name[20:27],
+           rep('subset', 3),
+           state.name[28:50]
+           )    
 
 state_votes <- tibble(state, wiki_votes) %>%
   tidylog::filter(state != "subset")
@@ -196,7 +242,7 @@ rm(wiki, wiki_votes, state)
 
 ```
 
-The totals are very close for most states. Missouri and Washington are problematic. 
+The totals are very close for most states. Missouri and potentially New York are problematic. 
 
 ```{r}
 # compare the scraped data to the mit data
@@ -211,7 +257,7 @@ mit_counties %>%
 
 ```
 
-The aggregated nationwide total is also very close to the 136,669,276 votes reported on Wikipedia. 
+The aggregated nationwide total from MIT is also very close to the 158,383,403 votes reported on Wikipedia. We have 92,933 more votes than Wikipedia.
 
 ```{r}
 mit_counties %>%
@@ -219,7 +265,9 @@ mit_counties %>%
 
 ```
 
-At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely. 
+<!-- At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely. -->
+
+XX There are no missing values. Also, I don't think Alaska is excluded? It doesn't look like it was excluded in 2016 either, so not sure what that comment means.
 
 ```{r}
 mit_counties %>%
@@ -229,70 +277,77 @@ mit_counties %>%
 
 ## 2. Denominator
 
-The denominator for the analysis should be the total age-eligible citizen population ([data here](https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2016.html))
+The denominator for the analysis should be the total age-eligible citizen population ([data here](https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2020.html))
 
-The US Census Bureau creates a special tabulation of the 2012-2016 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas. 
+The US Census Bureau creates a special tabulation of the 2016-2020 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas. 
 
-If the data are not downloaded, the we download and unzip the data.
+If the data are not downloaded, then we download and unzip the data.
 
 ```{r}
-
 cvap_zip <- here::here("05_local-governance", 
                        "voter-turnout",
-                       "CVAP_2012-2016_ACS_csv_files.zip")
+                       "data",
+                       "CVAP_2016-2020_ACS_csv_files.zip")
 
 cvap_data <- here::here("05_local-governance", 
                         "voter-turnout",
-                        "CVAP_2012-2016_ACS_csv_files")
+                        "data",
+                        "CVAP_2016-2020_ACS_csv_files")
 
 if (!file.exists(cvap_data)) {
   
-  download.file(url = "https://www2.census.gov/programs-surveys/decennial/rdo/datasets/2016/2016-cvap/CVAP_2012-2016_ACS_csv_files.zip",
+  download.file(url = "https://www2.census.gov/programs-surveys/decennial/rdo/datasets/2020/2020-cvap/CVAP_2016-2020_ACS_csv_files.zip",
                 destfile = cvap_zip)
   
   unzip(zipfile = cvap_zip,
         exdir = cvap_data)
-    
+  
+  file.remove(cvap_zip)  
+  
 }
 
 ```
 
-Next, we load and clean the data. The variable of interest is `CVAP_EST`.
+Next, we load and clean the data. The variable of interest is `cvap_est`.
 
-> CVAP_EST: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
+> cvap_est: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
 
 ```{r}
 cvap <- read_csv(here::here("05_local-governance", 
                             "voter-turnout",
-                            "CVAP_2012-2016_ACS_csv_files", 
+                            "data",
+                            "CVAP_2016-2020_ACS_csv_files", 
                             "County.csv"))
 
 cvap <- cvap %>%
-  tidylog::filter(LNTITLE == "Total") %>%
-  select(-LNTITLE, -LNNUMBER)
+  tidylog::filter(lntitle == "Total") %>%
+  select(-lntitle, -lnnumber)
 
 cvap <- cvap %>%
-  mutate(state = str_sub(string = GEOID, start = 8, end = 9),
-         county = str_sub(string = GEOID, start = 10, end = 12))
+  mutate(state = str_sub(string = geoid, start = 10, end = 11),
+         county = str_sub(string = geoid, start = 12, end = 14),
+         FIPS = str_c(state, county))
 
 cvap <- cvap %>%
-  tidylog::filter(state != "72") %>%
+  tidylog::filter(state != "72") %>% #Drop Puerto Rico
   select(state, 
          county, 
-         cvap = CVAP_EST,
-         cvap_moe = CVAP_MOE)
+         FIPS,
+         cvap = cvap_est,
+         cvap_moe)
 
 ```
 
 ## 3. Combine and calculate turnout
 
-We combine the data. The join works for all counties except for counties in Alaska and Kalawao, Hawaii.
+We combine the data. The join works for all counties except for counties in Alaska and [Kalawao County, Hawaii (FIPS 15005 which is a judicial district of Maui County (FIPS 15009))](https://en.wikipedia.org/wiki/Kalawao_County,_Hawaii)
 
 ```{r}
 joined_data <- left_join(cvap, mit_counties, by = c("state", "county"))
 
 anti_join(cvap, mit_counties, by = c("state", "county")) %>%
-  count(state)
+count(state)
+
 ```
 
 We calculate turnout and the coefficient of variation for the CVAP estimate. 
@@ -304,7 +359,7 @@ joined_data <- joined_data %>%
 
 ```
 
-Several observations have voter turnout above `1`. This is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
+Six observations have voter turnout above `1`. This is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
 
 ```{r}
 joined_data %>%
@@ -359,9 +414,9 @@ We flag cases with high and very high coefficients of variation in the denominat
 * `2` CV >= 0.05
 * `3` CV >= 0.15
 
-There isn't much concensus on critical values for coefficients of variation. We use `0.15` because it is mentioned [A Compass for Understanding and Using American Community Survey Data](https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf).
+There isn't much consensus on critical values for coefficients of variation. We use `0.15` because it is mentioned [A Compass for Understanding and Using American Community Survey Data](https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf).
 
->  While there is no hard-andfast rule, for the purposes of this handbook, estimates with CVs of more than 15 percent are considered cause for caution when interpreting patterns in the data.
+>  While there is no hard-and-fast rule, for the purposes of this handbook, estimates with CVs of more than 15 percent are considered cause for caution when interpreting patterns in the data.
 
 If anything, a stricter threshold is necessary because the estimates are used in denominators. Thus, we use `0.05` for a `2`. 
 
@@ -369,7 +424,7 @@ If anything, a stricter threshold is necessary because the estimates are used in
 joined_data <- joined_data %>%
   mutate(
     election_turnout_quality = case_when(
-      is.na(election_turnout) ~ as.numeric(NA),
+      is.na(election_turnout) ~ NA_real_,
       cv >= 0.15 ~ 3,
       cv >= 0.05 ~ 2,
       TRUE ~ 1
@@ -393,20 +448,20 @@ joined_data %>%
 ## 5. Save the data
 
 ```{r}
-# load the 2016 county file
-all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-file.csv")) %>%
-  tidylog::filter(year == 2016) %>%
+# load the 2020 county file
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  tidylog::filter(year == 2020) %>%
   select(-year)
 
 all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 
 all_counties <- all_counties %>%
-  mutate(year = 2016) %>%
+  mutate(year = 2020) %>%
   select(year, state, county, election_turnout, election_turnout_quality) 
 
 all_counties %>%
   write_csv(here::here("05_local-governance",
                        "voter-turnout",
-                       "voter-turnout.csv"))
+                       "voter-turnout-2020.csv"))
   
 ```
