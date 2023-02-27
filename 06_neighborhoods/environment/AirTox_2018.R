@@ -22,13 +22,16 @@ library(httr)
 library (dplyr)
 
 
-###Step 1: Import 2018 AirToxScreen Data###
+###Step 1: Import 2018 AirToxScreen Data and 2014 AFFH data 
 #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
 
+cancer_data18 <- read.csv("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.csv")
+neuro_data18 <- read.csv("06_neighborhoods/environment/data/raw/2018_National_NeurHI_by_tract_srcgrp.csv")
+resp_data18 <- read.csv("06_neighborhoods/environment/data/raw/2018_National_RespHI_by_tract_srcgrp.csv")
 
-cancer_data18 <- read.csv("06_neighborhoods/environment/data/2018_National_CancerRisk_by_tract_srcgrp.csv")
-neuro_data18 <- read.csv("06_neighborhoods/environment/data/2018_National_NeurHI_by_tract_srcgrp.csv")
-resp_data18 <- read.csv("06_neighborhoods/environment/data/2018_National_RespHI_by_tract_srcgrp.csv")
+get_acs 
+
+affh20 <- read.csv("06_neighborhoods/environment/data/raw/Solari_AFFH_tract_AFFHT0006_July2020.csv")
 
 #Step 2: Only keep needed variabales##
 
@@ -46,30 +49,54 @@ merge(cancer_data18, neuro_data18, by = Tract)
 
 resp_cancer18 <- merge(x = resp_data18, y = cancer_data18, by = "Tract")
 
-enviro18 <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
+enviro18_int <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
 
-colnames (enviro18) <- c("tract", "resp", "carc","neuro")
+colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 
 ##Step 4: drop rows that are not tracts first row (tract = 0: Total US)# NEED TO DETERMINE WHAT ELSE TO DROP
-enviro18 = enviro18[-1,]
+#enviro18 = enviro18[-1,]
 
-#enviro18$tract <- as.character(enviro18$tract)
-#enviro18$tract <- sprintf("%011d", as.numeric(enviro18$tract))
+enviro18_int$tract <- as.character(enviro18_int$tract)
+#$tract <- sprintf("%011d", as.numeric(enviro18$tract))
+enviro18_int$tract <- str_pad(enviro18_int$tract, 11, side = "left", pad = 0)
 
-#enviro18$tract <- stringr::str_pad(enviro18$tract, 11, side = "left", pad = 0)
 #enviro18 <- enviro18 %>%
  # mutate(tract = str_sub(tract, start = 6, end = 11)) 
   #haz_idx18$tract <- sprintf("%011d", as.numeric(haz_idx18$tract))
 
+#pull in tracts 
+state_fips <- unique(urbnmapr::states$state_fips)
+tracts18 <- get_acs(geography = "tract",
+                      variable = "B02001_001",
+                       state = state_fips,
+                       geometry = FALSE,
+                       year = 2018)
+
+tracts18_2 <- tracts18 %>%
+  select(GEOID)
+colnames(tracts18_2) <- c("tract")
+
+#merge to drop extra rows in AirTox
+enviro18 <- tidylog::left_join(x = tracts18_2, y = enviro18_int, by = "tract")
+enviro18$tract <- as.numeric(enviro18$tract)
+
+#check diff between enviro18_int and enviro18
+not_in_enviro18 <- setdiff(enviro18_int$tract,enviro18$tract)
+not_in_enviro18 = as.data.frame(not_in_enviro18)
+
+#check diff between enviro18 and tracts18_2
+tracts18_not_in <- setdiff(tracts18_2$tract,enviro18_int$tract)
+tracts18_not_in = as.data.frame(tracts18_not_in)
+
 ##Step 5: Calculate means and st. devs and store values##
 
-resp_mean18 <- mean(enviro18$resp)
-carc_mean18 <- mean(enviro18$carc)
-neuro_mean18 <- mean (enviro18$neuro)
+resp_mean18 <- mean(enviro18$resp, na.rm = TRUE)
+carc_mean18 <- mean(enviro18$carc, na.rm = TRUE)
+neuro_mean18 <- mean (enviro18$neuro, na.rm = TRUE)
 
-resp_stdv18 <- sd(enviro18$resp)
-carc_stdv18 <- sd(enviro18$carc)
-neuro_stdv18 <- sd(enviro18$neuro)
+resp_stdv18 <- sd(enviro18$resp, na.rm = TRUE)
+carc_stdv18 <- sd(enviro18$carc, na.rm = TRUE)
+neuro_stdv18 <- sd(enviro18$neuro, na.rm = TRUE)
 
 ##Step 6: Calculate EnvHealth components
 enviro18$resp2 <- (enviro18$resp - resp_mean18)/resp_stdv18
@@ -90,7 +117,8 @@ haz_idx18 <- enviro18 %>%
   select(tract, haz_idx18)
 
 #add leading zeroes 
-haz_idx18$tract <- stringr::str_pad(haz_idx18$tract, 11, side = "left", pad = "0")
+haz_idx18$tract <- str_pad(haz_idx18$tract, 11, side = "left", pad = "0")
+
 
 #keep last six digits?
 #haz_idx18$tract_extra <- haz_idx18 %>%
@@ -165,7 +193,7 @@ haz_idx14 <- enviro14 %>%
 ##COMPARE TO 2014 AFFH##
 
 #Step 10: Import AFFH data and select haz_idx
-affh20 <- read.csv("~/GitHub/mobility-from-poverty/mobility-from-poverty/06_neighborhoods/environment/data/Solari_AFFH_tract_AFFHT0006_July2020.csv")
+affh20 <- read.csv("06_neighborhoods/environment/data/Solari_AFFH_tract_AFFHT0006_July2020.csv")
 
 affh20 <- affh20 %>% 
   select(geoid, haz_idx) 
@@ -221,20 +249,17 @@ non_affh = as.data.frame(non_affh)
 
 #haz_idx18$tract <- sprintf("%011d", as.numeric(haz_idx18$tract))
 
+
+
 ##CROSSWALK## 
 
-setwd("~/GitHub/mobility-from-poverty/mobility-from-poverty/geographic-crosswalks/data/")
-
 #import tract-county-crosswalk_2018.csv
-crosswalk <- read.csv("crosswalk.csv")
-
-#reset working directory
-setwd("~/GitHub/mobility-from-poverty/mobility-from-poverty/environment/data/")
+crosswalk <- read.csv("geographic-crosswalks/data/crosswalk.csv")
 
 #prep crosswalk file by adding leading zeroes to state and county 
-crosswalk$state <- stringr::str_pad(crosswalk$state, 2, side = "left", pad = 0)
+crosswalk$state <- str_pad(crosswalk$state, 2, side = "left", pad = "0")
 
-crosswalk$county <- stringr::str_pad(crosswalk$county, 3, side = "left", pad = 0)
+crosswalk$county <- str_pad(crosswalk$county, 3, side = "left", pad = "0")
 
 #concatenate crosswalk and remove spaces 
 crosswalk$tract2 <- paste(crosswalk$state,crosswalk$county,crosswalk$tract)
@@ -244,12 +269,12 @@ crosswalk <- crosswalk %>%
 colnames(crosswalk) <- c("year", "tract")
 
 #look at difference between crosswalk and haz_idx file
-non_crosswalk <- setdiff(haz_idx18$tract, crosswalk$tract)
-non_crosswalk = as.data.frame(non_crosswalk)
+#non_crosswalk <- setdiff(haz_idx18$tract, crosswalk$tract)
+#non_crosswalk = as.data.frame(non_crosswalk)
 
 #merge hazard and crosswalk files 
-hazidx18_merge <- merge(x = crosswalk, y = haz_idx18, 
-                        by="tract")
+hazidx18_merge <- tidylog::inner_join(x = crosswalk, y = haz_idx18, 
+                        by= "tract")
 
 #split tract into state and county 
 hazidx18_merge <- hazidx18_merge %>%
@@ -258,7 +283,7 @@ hazidx18_merge <- hazidx18_merge %>%
   tract = str_sub(tract, start = 6, end = 11))
 
 #re-order
-environ <- hazidx18_merge[,c(1,3,4,5,2)]
+enviro_haz18 <- hazidx18_merge[,c(1,4,5,2,3)]
 
 ##LOTS OF MISSING, NEED TO FIX##
 
