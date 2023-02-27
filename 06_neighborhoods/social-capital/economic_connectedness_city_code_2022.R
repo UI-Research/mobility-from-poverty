@@ -16,8 +16,7 @@
 
 ###############################################################################
 
-# Set working directory to [gitfolder]. Update path as necessary to your local metrics repo
-setwd("C:/Users/tchelidze/Documents/GitHub/mobility-from-poverty")
+# Set working directory to [gitfolder]: Open mobility-from-poverty.Rproj to make sure all file paths will work
 
 # Libraries you'll need
 library(sf)
