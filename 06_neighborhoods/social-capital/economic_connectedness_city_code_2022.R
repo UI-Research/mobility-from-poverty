@@ -29,27 +29,40 @@ library(tigris)
 
 # (1) Download data from socialcapital.org
 
-#     access via https://data.humdata.org/dataset/social-capital-atlas	
-#     Social Capital Atlas - US Zip Codes is saved in [gitfolder]/06_neighborhoods/social-capital/data
+#     accessible via https://data.humdata.org/dataset/social-capital-atlas	
 #     NOTE: in the paper (https://opportunityinsights.org/wp-content/uploads/2022/07/social-capital1_wp.pdf), they state that "Zip Codes" is shorthand for 2010 ZCTA designations
+#     access via https://data.humdata.org/dataset/social-capital-atlas	
+
+# Specify URL where source data file is online
+url <- "https://data.humdata.org/dataset/85ee8e10-0c66-4635-b997-79b6fad44c71/resource/ab878625-279b-4bef-a2b3-c132168d536e/download/social_capital_zip.csv"
+
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfile <- "06_neighborhoods/social-capital/temp/social_capital_zip.csv"
+
+# Import the data file & save locally
+download.file(url, destfile)
 
 
 # (2) Import and clean the file (separate county and state codes, fill in missing zeroes)
 
       # open data
-      ec_zip_raw <- read.csv("06_neighborhoods/social-capital/data/social_capital_zip.csv")
+      ec_zip_raw <- read.csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
 
       # add leading zeroes where they are missing (ZCTA codes are 5 digits)
-      ec_zip_raw$zip <- sprintf("%05d", as.numeric(ec_zip_raw$zip))
+      ec_zip_raw <- ec_zip_raw %>%
+        mutate(zip = sprintf("%0.5d", as.numeric(zip)))
       
       #add leading zeroes where they are missing for the concatenated FIPS (2 state + 3 county)
-      ec_zip_raw$county <- sprintf("%05d", as.numeric(ec_zip_raw$county))
+      ec_zip_raw <- ec_zip_raw %>%
+        mutate(county = sprintf("%0.5d", as.numeric(county)))
 
       # keep only relevant data
-      ec_zip_raw <- ec_zip_raw %>% select(zip, county, ec_zip)
+      ec_zip_raw <- ec_zip_raw %>% 
+        select(zip, county, ec_zip)
 
       # remove observations with missing data for our EC variable
-      ec_zip_raw <- ec_zip_raw %>% drop_na(ec_zip)
+      ec_zip_raw <- ec_zip_raw %>% 
+        drop_na(ec_zip)
             ### There were 4048 missing observations deleted (23028 minus 18980)
 
       # rename the concatenated FIPS variable to avoid confusion
@@ -59,23 +72,25 @@ library(tigris)
       # create a new column for the state FIPS
       ec_zip_raw$state <- as.numeric(substr(ec_zip_raw$totalFIPS, 1, 2))
       # add in the lost leading zeroes
-      ec_zip_raw$state <- sprintf("%02d", as.numeric(ec_zip_raw$state))
+      ec_zip_raw <- ec_zip_raw %>%
+        mutate(state = sprintf("%0.2d", as.numeric(state)))
       # create a new column for the county FIPS
       ec_zip_raw$county <- as.numeric(substr(ec_zip_raw$totalFIPS, 3, 5))
       # add in the lost leading zeroes (county code should have 3 digits)
-      ec_zip_raw$county <- sprintf("%03d", as.numeric(ec_zip_raw$county))
+      ec_zip_raw <- ec_zip_raw %>%
+        mutate(county = sprintf("%0.3d", as.numeric(county)))
       # create a column for the year of this data
       ec_zip_raw$year <- "2022"
 
       # save as temporary data file
-      write.csv(ec_zip_raw,"06_neighborhoods/social-capital/data/social-capital-city-clean.csv", row.names = FALSE)
+      write_csv(ec_zip_raw,"06_neighborhoods/social-capital/temp/social-capital-city-clean.csv")
 
       
 
 # (3)  Merge with the 2010 ZCTA -> 2021 Census Place crosswalk
       
       # import the 2010 ZCTA -> 2021 Census Place crosswalk file
-      ZCTA_Place <- read.csv("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")
+      ZCTA_Place <- read_csv("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")
       
       # clean up the crosswalk file to prepare for the merge:
       
@@ -83,17 +98,20 @@ library(tigris)
       ZCTA_Place <- ZCTA_Place %>% 
         rename("zip" = "ZCTA5CE10")
             # adjust the leading zeroes now
-            ZCTA_Place$zip <- sprintf("%05d", as.numeric(ZCTA_Place$zip))
+            ZCTA_Place <- ZCTA_Place %>%
+              mutate(zip = sprintf("%0.5d", as.numeric(zip)))
       
       ZCTA_Place <- ZCTA_Place %>% 
         rename("state" = "STATEFP")
             # adjust the leading zeroes now
-            ZCTA_Place$state <- sprintf("%02d", as.numeric(ZCTA_Place$state))
+            ZCTA_Place <- ZCTA_Place %>%
+              mutate(state = sprintf("%0.2d", as.numeric(state)))
       
       ZCTA_Place <- ZCTA_Place %>% 
         rename("place" = "PLACEFP")
             # adjust the leading zeroes now
-            ZCTA_Place$place <- sprintf("%05d", as.numeric(ZCTA_Place$place))
+            ZCTA_Place <- ZCTA_Place %>%
+              mutate(place = sprintf("%0.5d", as.numeric(place)))
       
       ZCTA_Place <- ZCTA_Place %>% 
         rename("place_name" = "NAMELSAD")
@@ -118,7 +136,7 @@ library(tigris)
       ZCTA_Place <- ZCTA_Place %>% select(zip, state, place, place_name, IntersectArea, ZCTAinPlace, portionin, mostlyin)
       
       # merge the ZIP/Places crosswalk into the ec data file (left join, since places file has more observations)
-      merged_ec_city <- merge(ZCTA_Place, ec_zip_raw, by=c("state", "zip"))
+      merged_ec_city <- left_join(ZCTA_Place, ec_zip_raw, by=c("state", "zip"))
       
       # check if there are missings after the merge
       merged_ec_city <- merged_ec_city %>% drop_na(ec_zip)
@@ -147,17 +165,18 @@ library(tigris)
 # (5) Check against Census Place file & limit to population cutoff Places
 
       # bring in the updated population-cutoff Places file
-      places_pop <- read.csv("geographic-crosswalks/data/place-populations.csv")
+      places_pop <- read_csv("geographic-crosswalks/data/place-populations.csv")
 
       # adapt variables to prepare for merge 
-      places_pop$state <- sprintf("%02d", as.numeric(places_pop$state))
+      places_pop <- places_pop %>%
+        mutate(state = sprintf("%0.2d", as.numeric(state)))
       
       # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
       keep = c(2020)
       places_pop <- filter(places_pop, year %in% keep)
       
       # merge places_pop with data file in order to get final EC city data
-      ec_city_data <- merge(places_pop, test2, by=c("place_name", "state"), all.x=TRUE)
+      ec_city_data <- left_join(places_pop, test2, by=c("place_name", "state"))
 
       # check if there are missings
       ec_city_data <- ec_city_data %>% drop_na(new_ec_zip)
@@ -173,10 +192,12 @@ library(tigris)
       # zipratio mean = 0, Q1 = 0, Q3 = 0.15
       
       # Data Quality 1 = 50% or more of the ZIPs fall mostly (>50%) in the census place 
-      # Data Quality 2 = 23% to 49% of the ZIPs fall mostly (>50%) in the census place
+      # Data Quality 2 = 15% to 50% of the ZIPs fall mostly (>50%) in the census place
+      # Data Quality 3 = less than 15% of the ZIP falls mostly into the census place
       ec_city_data <- ec_city_data %>%
-        mutate(data_quality = case_when(zipratio >= 0.15 ~ 1,
-                                        zipratio < 0.15 ~ 2))
+        mutate(data_quality = case_when(zipratio >= 0.5 ~ 1,
+                                        zipratio < 0.5 & zipratio > 0.15 ~ 2,
+                                        zipratio < 0.15 ~ 3))
 
 # (7)  Final file cleaning and export to csv file									   
 
@@ -191,8 +212,10 @@ library(tigris)
       # rename the needed variable to avoid confusion
       ec_city_data <- ec_city_data %>% 
         rename("ec_zip" = "new_ec_zip")
+      ec_city_data <- ec_city_data %>% 
+        rename("_quality" = "data_quality")
       
       # explort as .csv
-      write_csv(ec_city_data, "06_neighborhoods/social-capital/final_data/economic_connectedness_city_2022.csv")
+      write_csv(ec_city_data, "06_neighborhoods/social-capital/data/economic_connectedness_city_2022.csv")
       
 
