@@ -277,11 +277,11 @@ place_pop_by_race <- left_join(places_pop, wide_places_demo, by=c("GEOID"))
 
 # Keep only relevant variables before export
 county_pop_by_race <- county_pop_by_race %>% 
-  select(GEOID, year, state_name, county_name, total_people, total_nonhisp, 
+  select(year, state_name, county_name, total_people, total_nonhisp, 
          asian_other, black_nonhispanic, total_hispanic, white_nonhispanic)
 
 place_pop_by_race <- place_pop_by_race %>% 
-  select(GEOID, year, NAME, total_people, total_nonhisp, asian_other, 
+  select(year, NAME, total_people, total_nonhisp, asian_other, 
          black_nonhispanic, total_hispanic, white_nonhispanic)
 
 
