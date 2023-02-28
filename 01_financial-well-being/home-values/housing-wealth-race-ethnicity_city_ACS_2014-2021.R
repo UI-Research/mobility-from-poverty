@@ -17,13 +17,11 @@
 
 # Step 1. Load Packages
 library(tidyverse)
-library(haven)
 library(pastecs)
-library(dplyr)
 
 # Step 2. Read and Merge Data
 ## 2.1. ACS: keep households living not living in gq
-acs2014_21 <- read_csv("01_financial-well-being/home-values/usa_00584.csv") %>% 
+acs2014_21 <- read_csv("01_financial-well-being/home-values/usa_00584.csv.gz") %>% 
   filter(PERNUM==1) %>% 
   filter(GQ!=3 & GQ!=4) %>% 
   # two digit state code
@@ -164,7 +162,7 @@ construct_ratio <- function(hvshare, hhshare) {
   
   paste0(format(round(100*hvshare, 1), nsmall = 1),"%", 
          ":",format(round(100*hhshare, 1), nsmall = 1),"%") %>%
-    str_squish()
+    str_remove_all(pattern = " ")
   
 }
 
@@ -181,10 +179,10 @@ place_hh_hw_raceeth <- place_hh_raceeth %>%
          state = statefip) %>% 
   # order variables according to request
   select(year, state, place, 
-         black_nh_hhshare, black_nh_hvshare, r_black_nh_hv_hh, black_nh_wealth_quality,
-         hispanic_hhshare, hispanic_hvshare, r_hispanic_hv_hh, hispanic_wealth_quality,
-         other_nh_hhshare, other_nh_hvshare, r_other_nh_hv_hh, other_nh_wealth_quality,
-         white_nh_hhshare, white_nh_hvshare, r_white_nh_hv_hh, white_nh_wealth_quality)  
+         r_black_nh_hv_hh, black_nh_wealth_quality,
+         r_hispanic_hv_hh, hispanic_wealth_quality,
+         r_other_nh_hv_hh, other_nh_wealth_quality,
+         r_white_nh_hv_hh, white_nh_wealth_quality)  
 
 # Step 7. Export Final Data in CSV Format
 write_csv(place_hh_hw_raceeth, file = "01_financial-well-being/home-values/place_hh_hw_raceeth_2014_2021.csv")
