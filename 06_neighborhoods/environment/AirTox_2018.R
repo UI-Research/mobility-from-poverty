@@ -45,7 +45,7 @@ resp_data18 <- resp_data18 %>%
   select(Tract, Total.Respiratory..hazard.quotient.) 
 
 ##Step 3: Join Variables and rename##
-merge(cancer_data18, neuro_data18, by = Tract)
+#merge(cancer_data18, neuro_data18, by = 'Tract')
 
 resp_cancer18 <- merge(x = resp_data18, y = cancer_data18, by = "Tract")
 
@@ -56,12 +56,27 @@ colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 ##Step 4: drop rows that are not tracts first row (tract = 0: Total US)# NEED TO DETERMINE WHAT ELSE TO DROP
 #enviro18 = enviro18[-1,]
 
-enviro18_int$tract <- as.character(enviro18_int$tract)
-#$tract <- sprintf("%011d", as.numeric(enviro18$tract))
-enviro18_int$tract <- str_pad(enviro18_int$tract, 11, side = "left", pad = 0)
+#desc(enviro18_int$tract)
+#summarise(enviro18_int) detail
 
-#enviro18 <- enviro18 %>%
- # mutate(tract = str_sub(tract, start = 6, end = 11)) 
+#enviro18_int$tract6 <- enviro18_int %>%
+  #mutate(tract = str_sub(tract, start = -6, end = -1)) 
+
+#enviro18_int$tract.c <- str_pad(enviro18_int$tract, 11, side = "left", pad = 0)
+
+#enviro18_int$tract.c = as.character(enviro18_int$tract.c)
+
+#enviro18_int$tract.0 <- sprintf("%.0f", as.numeric(enviro18_int$tract.c))
+
+
+#for(i in nrow(enviro18_int)){
+  #enviro18_int$tract.0[i] = ifelse(nchar(enviro18_int$tract.c[i]==10),paste("0",enviro18_int$tract.c[i],sep = ""),enviro18_int$tract.c[i])  
+#}
+
+#enviro18_int$tract.0[nchar(enviro18_int$tract.c)==10] = c("0",enviro18_int$tract.c[enviro18_int$tract.c]==10)
+
+#enviro18_int$ <- enviro18 %>%
+ #mutate(tract = str_sub(tract, start = 6, end = 11)) 
   #haz_idx18$tract <- sprintf("%011d", as.numeric(haz_idx18$tract))
 
 #pull in tracts 
@@ -254,12 +269,14 @@ non_affh = as.data.frame(non_affh)
 ##CROSSWALK## 
 
 #import tract-county-crosswalk_2018.csv
-crosswalk <- read.csv("geographic-crosswalks/data/crosswalk.csv")
+crosswalk <- read.csv("geographic-crosswalks/data/tract-county-crosswalk_2018.csv")
 
 #prep crosswalk file by adding leading zeroes to state and county 
 crosswalk$state <- str_pad(crosswalk$state, 2, side = "left", pad = "0")
 
 crosswalk$county <- str_pad(crosswalk$county, 3, side = "left", pad = "0")
+
+crosswalk$tract <- str_pad(crosswalk$tract, 6, side = "left", pad = "0")
 
 #concatenate crosswalk and remove spaces 
 crosswalk$tract2 <- paste(crosswalk$state,crosswalk$county,crosswalk$tract)
@@ -278,12 +295,13 @@ hazidx18_merge <- tidylog::inner_join(x = crosswalk, y = haz_idx18,
 
 #split tract into state and county 
 hazidx18_merge <- hazidx18_merge %>%
-  mutate(state = str_sub(tract, start = 1, end = 2),
-  county = str_sub(tract, start = 3, end = 5),
-  tract = str_sub(tract, start = 6, end = 11))
-
+  mutate(GEOID = str_sub(tract, start = 1, end = 11),
+          state = str_sub(tract, start = 1, end = 2),
+           county = str_sub(tract, start = 3, end = 5),
+           tract = str_sub(tract, start = 6, end = 11))
+ 
 #re-order
-enviro_haz18 <- hazidx18_merge[,c(1,4,5,2,3)]
+enviro_haz18 <- hazidx18_merge[,c(1,5,6,2,3,4)]
 
 ##LOTS OF MISSING, NEED TO FIX##
 
@@ -341,21 +359,23 @@ race_pov <- race_pov %>%
 
 # two county names and fips codes were changed.
 # edit the GEOIDs to match the current fips codes. 
-race_pov <- race_pov %>% 
-  mutate(GEOID = case_when(
-    GEOID ==  "46113940500" ~ "46102940500",
-    GEOID ==  "46113940800" ~ "46102940800",
-    GEOID ==  "46113940900" ~ "46102940900", 
-    GEOID ==  "02270000100" ~ "02158000100",
-    TRUE ~ GEOID
-  ))
+#race_pov <- race_pov %>% 
+  #mutate(GEOID = case_when(
+    #GEOID ==  "46113940500" ~ "46102940500",
+    #GEOID ==  "46113940800" ~ "46102940800",
+    #GEOID ==  "46113940900" ~ "46102940900", 
+    #GEOID ==  "02270000100" ~ "02158000100",
+    #TRUE ~ GEOID
+  #))
 
-##Merge will HazData
+##Merge with enviro_haz18 data 
 
 #puerto rico is available in the affh data but not apart of our analyses. drop all observations in puerto rico:
-enviro_stats<- enviro_stats %>%
-  filter(state_name!= "Puerto Rico")
+enviro_haz18 <- enviro_haz18 %>%
+  filter(state!= "72")
 
-
+#join to race indicator file
+race_enviro <- left_join(race_pov, enviro_haz18, by="GEOID") %>% 
+  mutate(na_pop= if_else(is.na(haz_idx18), total_pop, 0))
 
 
