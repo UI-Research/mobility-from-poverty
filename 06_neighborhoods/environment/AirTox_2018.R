@@ -49,7 +49,7 @@ resp_data18 <- resp_data18 %>%
 
 resp_cancer18 <- merge(x = resp_data18, y = cancer_data18, by = "Tract")
 
-enviro18_int <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
+enviro18 <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
 
 colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 
