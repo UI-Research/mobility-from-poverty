@@ -29,9 +29,12 @@ library(censusapi)
 
 # Establish Census API key
 # You can get a Census API key here: https://api.census.gov/data/key_signup.html
-# Your API key is stored in your .Renviron and can be accessed by Sys.getenv("CENSUS_API_KEY") 
-# You can run `readRenviron("~/.Renviron")` or 
-# census_api_key("YOURKEYHERE", install = TRUE)
+# Add key to .Renviron
+# Sys.setenv(CENSUS_KEY="a92cdc14739747a791bb02096d30a82f27f05add")
+# Reload .Renviron
+# readRenviron("~/.Renviron")
+# Check to see that the expected key is output in your R console
+# Sys.getenv("CENSUS_KEY")
 
 # Reload .Renviron
 # readRenviron("~/.Renviron")
@@ -93,7 +96,8 @@ cbp_zip <- cbp_zip %>%
     # no missings (observations still at 28,698)
 
 # aggregate the total # of orgs per ZIP
-cbp_zip <- cbp_zip %>% group_by(zip) %>%
+cbp_zip <- cbp_zip %>% 
+  group_by(zip) %>%
   summarize(est_total = sum(ESTAB))
     # 28,698 observations to 16,594 observations
 
@@ -103,7 +107,10 @@ cbp_zip <- cbp_zip %>%
 
 
 # (d) add the year of the data
-cbp_zip$year <- "2020"
+cbp_zip <- cbp_zip %>%
+  mutate(
+    year = 2020
+  )
 
 
 # (3)  Merge with the 2010 ZCTA -> 2021 Census Place crosswalk
@@ -114,10 +121,10 @@ ZCTA_Place <- read.csv("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_
 # clean up the crosswalk file to prepare for the merge:
 # rename the ZCTA and state FIPS variables to avoid confusion
 ZCTA_Place <- ZCTA_Place %>% 
-  rename("zip" = "ZCTA5CE10",
-         "statefips" = "STATEFP",
-         "place" = "PLACEFP",
-         "place_name" = "NAMELSAD")
+  rename(zip = ZCTA5CE10,
+         statefips = STATEFP,
+         place = PLACEFP,
+         place_name = NAMELSAD)
 
 # adjust the leading zeroes now
 ZCTA_Place <- ZCTA_Place %>%
@@ -174,7 +181,7 @@ test2 <- test2 %>% drop_na(new_est_zip)
 # (5) Check against Census Place file & limit to population cutoff Places
 
 # bring in the updated population-cutoff Places file
-places_pop <- read.csv("geographic-crosswalks/data/place-populations.csv")
+places_pop <- read_csv("geographic-crosswalks/data/place-populations.csv")
 
 # adapt variables to prepare for merge 
 places_pop <- places_pop %>%
@@ -182,7 +189,7 @@ places_pop <- places_pop %>%
          place = sprintf("%0.5d", as.numeric(place)))
 
 # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
-keep = c(2020)
+keep <- c(2020)
 places_pop <- filter(places_pop, year %in% keep)
 
 test2 <- test2 %>%
@@ -197,11 +204,10 @@ sa_city_data <- left_join(places_pop, test2, by=c("place", "statefips"))
 # create the Social Associations ratio metric (socassn)
 # The original calls for "Number of membership associations per 10,000 population"
 # so we first divide the population by 10,000
-sa_city_data$popratio <- as.numeric(as.character(sa_city_data$population)) / 10000
-
-# now the final ratio
+# and then calculate the final ratio
 sa_city_data <- sa_city_data %>%
-  mutate(socassn = new_est_zip/popratio)
+  mutate(popratio = population/10000,
+         socassn = new_est_zip/popratio)
 
 # round the ratio metric to one decimal point (as they do in County Health Rankings)
 sa_city_data$socassn <- round(sa_city_data$socassn, digits = 1) 
@@ -213,26 +219,26 @@ sa_city_data$socassn <- round(sa_city_data$socassn, digits = 1)
 # create a ratio value to see how many of the ZIPs we aggregated fell fully into a Census Place boundary 
 sa_city_data <- sa_city_data %>%
   mutate(zipratio = zipsin/zip_total)
-# check the range on this
+# check the range on this variable 
 summary(sa_city_data)
 # zipratio: mean = 0.09, Q1 = 0, Q3 = 0.13
 
 # Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place 
 # Data Quality 2 = less than 10% of the ZIPs fall mostly in the census place
 sa_city_data <- sa_city_data %>%
-  mutate(data_quality = case_when(zipratio >= 0.1 ~ 1,
+  mutate(socassn_quality = case_when(zipratio >= 0.1 ~ 1,
                                   zipratio < 0.1 ~ 2))
 
 # create appropriate place code
 sa_city_data$GEOID <- paste(sa_city_data$statefips,sa_city_data$place, sep = "")
 
 # keep what we need
-sa_city_data <- sa_city_data %>% select(year, GEOID, socassn, data_quality)
+sa_city_data <- sa_city_data %>% 
+  select(year, GEOID, socassn, socassn_quality)
 
 # rename vars as needed
 sa_city_data <- sa_city_data %>% 
-  rename("_quality" = "data_quality",
-         "place" = "GEOID")
+  rename(place = GEOID)
 
 # export our file as a .csv
 write_csv(sa_city_data, "06_neighborhoods/social-capital/data/social_associations_city_2022.csv")
