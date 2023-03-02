@@ -31,7 +31,7 @@ library(censusapi)
 # You can get a Census API key here: https://api.census.gov/data/key_signup.html
 # Your API key is stored in your .Renviron and can be accessed by Sys.getenv("CENSUS_API_KEY") 
 # You can run `readRenviron("~/.Renviron")` or 
-census_api_key("YOURKEYHERE", install = TRUE)
+# census_api_key("YOURKEYHERE", install = TRUE)
 
 # Figuring out where to pull data from (not necessary to run this code - just a prep step)
 apis <- listCensusApis()
