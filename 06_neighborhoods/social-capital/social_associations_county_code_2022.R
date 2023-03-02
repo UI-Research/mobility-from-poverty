@@ -99,16 +99,16 @@ library(readr)
         pop_20 <- pop_20 %>%
           mutate(state = sprintf("%0.2d", as.numeric(state)))
         pop_20 <- pop_20 %>% 
-          rename("fipstate" = "state")
+          rename(fipstate = state)
         
         # add in the lost leading zeroes for county FIP & rename for merge
         pop_20 <- pop_20 %>%
           mutate(county = sprintf("%0.3d", as.numeric(county)))
         pop_20 <- pop_20 %>% 
-          rename("fipscty" = "county")
+          rename(fipscty = county)
         
         # keep the year we want
-        keepyr = c(2020)
+        keepyr <- c(2020)
         pop_20 <- filter(pop_20, year %in% keepyr)
         
         # keep the variables we want
@@ -125,13 +125,13 @@ library(readr)
         merged_sa <- merged_sa %>% 
           select(year.x, fipstate, fipscty, est, population)
         merged_sa <- merged_sa %>% 
-          rename("year" = "year.x")
+          rename(year = year.x)
         
         # create the Social Associations ratio metric (socassn)
             # The original calls for "Number of membership associations per 10,000 population"
             # so we first divide the population by 10,000
             merged_sa <- merged_sa %>%
-              mutate(popratio = as.numeric(as.character(merged_sa$population)) / 10000,
+              mutate(popratio = population/10000,
                      socassn = est/popratio)
         
         # round the ratio metric to one decimal point (as they do in County Health Rankings)
@@ -148,9 +148,11 @@ library(readr)
         # keep what we need
         merged_sa <- merged_sa %>% select(year, fipstate, fipscty, socassn, socassn_quality)
         
-        # rename as needed
+        # rename before exporting
         merged_sa <- merged_sa %>% 
-          rename("_quality" = "socassn_quality")
+          rename(state = fipstate,
+                 county = fipscty,
+                 )
 
         # export our file as a .csv
         write_csv(merged_sa, "06_neighborhoods/social-capital/data/social_associations_county_2022.csv")

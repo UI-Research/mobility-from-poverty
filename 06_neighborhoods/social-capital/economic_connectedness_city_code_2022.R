@@ -24,6 +24,7 @@ library(tidyr)
 library(dplyr)
 library(readr)
 library(tigris)
+library(stringr)
 
 
 # (1) Download data from socialcapital.org
@@ -66,20 +67,15 @@ download.file(url, destfile)
 
       # rename the concatenated FIPS variable to avoid confusion
       ec_zip_raw <- ec_zip_raw %>% 
-        rename("totalFIPS" = "county")
+        rename(totalFIPS = county)
 
-      # create a new column for the state FIPS
-      ec_zip_raw$state <- as.numeric(substr(ec_zip_raw$totalFIPS, 1, 2))
-      # add in the lost leading zeroes
+      # create a new columns for the state FIPS & county FIPS
       ec_zip_raw <- ec_zip_raw %>%
-        mutate(state = sprintf("%0.2d", as.numeric(state)))
-      # create a new column for the county FIPS
-      ec_zip_raw$county <- as.numeric(substr(ec_zip_raw$totalFIPS, 3, 5))
-      # add in the lost leading zeroes (county code should have 3 digits)
-      ec_zip_raw <- ec_zip_raw %>%
-        mutate(county = sprintf("%0.3d", as.numeric(county)))
-      # create a column for the year of this data
-      ec_zip_raw$year <- "2022"
+        mutate(
+          state = str_sub(totalFIPS, start = 1, end = 2),
+          county = str_sub(totalFIPS, start = 3, end = 5),
+          year = 2022
+        )
 
       # save as temporary data file
       write_csv(ec_zip_raw,"06_neighborhoods/social-capital/temp/social-capital-city-clean.csv")
@@ -95,25 +91,25 @@ download.file(url, destfile)
       
       # rename the ZCTA and state FIPS variables to avoid confusion
       ZCTA_Place <- ZCTA_Place %>% 
-        rename("zip" = "ZCTA5CE10")
+        rename(zip = ZCTA5CE10)
             # adjust the leading zeroes now
             ZCTA_Place <- ZCTA_Place %>%
               mutate(zip = sprintf("%0.5d", as.numeric(zip)))
       
       ZCTA_Place <- ZCTA_Place %>% 
-        rename("state" = "STATEFP")
+        rename(state = STATEFP)
             # adjust the leading zeroes now
             ZCTA_Place <- ZCTA_Place %>%
               mutate(state = sprintf("%0.2d", as.numeric(state)))
       
       ZCTA_Place <- ZCTA_Place %>% 
-        rename("place" = "PLACEFP")
+        rename(place = PLACEFP)
             # adjust the leading zeroes now
             ZCTA_Place <- ZCTA_Place %>%
               mutate(place = sprintf("%0.5d", as.numeric(place)))
       
       ZCTA_Place <- ZCTA_Place %>% 
-        rename("place_name" = "NAMELSAD")
+        rename(place_name = NAMELSAD)
       
       # make an indicator for ZIPs that fall wholly into a Place vs. partially (ZCTAinPlace < 1)
       ZCTA_Place <- ZCTA_Place %>%
@@ -132,13 +128,15 @@ download.file(url, destfile)
                                       ZCTAinPlace < 0.5 ~ 0))
       
       # keep only the variables we will need
-      ZCTA_Place <- ZCTA_Place %>% select(zip, state, place, place_name, IntersectArea, ZCTAinPlace, portionin, mostlyin)
+      ZCTA_Place <- ZCTA_Place %>% 
+        select(zip, state, place, place_name, IntersectArea, ZCTAinPlace, portionin, mostlyin)
       
       # merge the ZIP/Places crosswalk into the ec data file (left join, since places file has more observations)
       merged_ec_city <- left_join(ZCTA_Place, ec_zip_raw, by=c("state", "zip"))
       
       # check if there are missings after the merge
-      merged_ec_city <- merged_ec_city %>% drop_na(ec_zip)
+      merged_ec_city <- merged_ec_city %>% 
+        drop_na(ec_zip)
           # No missings --> perfect match coverage. Number of obs stayed consistent at 54042
 
       
@@ -147,17 +145,23 @@ download.file(url, destfile)
       
       # Exploring options for data quality marker
       # create a new variable that tracks the number of ZCTAs falling in each Place (duplicates)
-      merged_ec_city <- merged_ec_city %>% group_by(place, place_name) %>%
+      merged_ec_city <- merged_ec_city %>% 
+        group_by(place, place_name) %>%
         mutate(num_ZCTAs_in_place = n())
       
       # create the merged file where the EC variable is averaged per Place (new_ec_zip_), weighted by the % area of the ZCTA in that Place
       # and also include total ZCTAs in Place & how many of those partially fall outside the Place 
       test2 <- merged_ec_city %>% 
               group_by(state, place_name) %>% 
-              summarize(zip_total = mean(num_ZCTAs_in_place), zipsin = sum(portionin), new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace))
+              summarize(
+                zip_total = mean(num_ZCTAs_in_place), 
+                zipsin = sum(portionin), 
+                new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace)
+                )
       
       # drop missing values
-      test2 <- test2 %>% drop_na(new_ec_zip)
+      test2 <- test2 %>% 
+        drop_na(new_ec_zip)
           # lost 1915 observations (24967 minus 23052)
       
      
@@ -168,17 +172,20 @@ download.file(url, destfile)
 
       # adapt variables to prepare for merge 
       places_pop <- places_pop %>%
-        mutate(state = sprintf("%0.2d", as.numeric(state)))
+        mutate(
+          state = str_sub(state, start = 1, end = 2)
+          )
       
       # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
-      keep = c(2020)
+      keep <- c(2020)
       places_pop <- filter(places_pop, year %in% keep)
       
       # merge places_pop with data file in order to get final EC city data
       ec_city_data <- left_join(places_pop, test2, by=c("place_name", "state"))
 
       # check if there are missings
-      ec_city_data <- ec_city_data %>% drop_na(new_ec_zip)
+      ec_city_data <- ec_city_data %>% 
+        drop_na(new_ec_zip)
           # no missings!
       
       
@@ -206,15 +213,16 @@ download.file(url, destfile)
             # 318 cities for which we have this data
       
       # keep only the variables we want
-      ec_city_data <- ec_city_data %>% select(year, state, place, place_name, new_ec_zip, data_quality)
+      ec_city_data <- ec_city_data %>% 
+        select(year, state, place, place_name, new_ec_zip, data_quality)
       
       # rename the needed variable to avoid confusion
       ec_city_data <- ec_city_data %>% 
-        rename("ec_zip" = "new_ec_zip")
+        rename(ec_zip = new_ec_zip)
       ec_city_data <- ec_city_data %>% 
-        rename("_quality" = "data_quality")
+        rename(ec_zip_quality = data_quality)
       
-      # explort as .csv
+      # export as .csv
       write_csv(ec_city_data, "06_neighborhoods/social-capital/data/economic_connectedness_city_2022.csv")
       
 

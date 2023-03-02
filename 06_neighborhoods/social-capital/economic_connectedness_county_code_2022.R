@@ -56,20 +56,15 @@
 
      # rename the FIPS variable to avoid confusion
       ec_raw <- ec_raw %>% 
-        rename("totalFIPS" = "county")
+        rename(totalFIPS = county)
 
-     # create a new column for the state FIPS
-      ec_raw$state <- as.numeric(substr(ec_raw$totalFIPS, 1, 2))
-     # add in the lost leading zeroes
+     # create a new column for the state & county FIPS & create year variable
       ec_raw <- ec_raw %>%
-        mutate(state = sprintf("%0.2d", as.numeric(state)))
-     # create a new column for the county FIPS
-      ec_raw$county <- as.numeric(substr(ec_raw$totalFIPS, 3, 5))
-     # add in the lost leading zeroes
-      ec_raw <- ec_raw %>%
-        mutate(county = sprintf("%0.3d", as.numeric(county)))
-     # create a column for the year of this data
-      ec_raw$year <- "2022"
+        mutate(
+          state = str_sub(totalFIPS, start = 1, end = 2),
+          county = str_sub(totalFIPS, start = 3, end = 5),
+          year = 2022
+        )
       
      # save as temporary data file in the same .gitignore folder
       write_csv(ec_raw,"06_neighborhoods/social-capital/temp/social-capital-county-clean.csv")
@@ -93,9 +88,8 @@
       # merge the county file into the ec data file (left join, since county file has more observations)
       merged_ec <- left_join(county_pop, ec_raw, by=c("state", "county"))
       # sort by state county
-      merged_ec <- merged_ec[
-        with(merged_ec, order(state, county)),
-      ]
+      merged_ec <- merged_ec %>%
+        arrange(state, county)
       
       # check how many missing values (counties without EC data)
       sum(is.na(merged_ec$ec_county))
@@ -115,13 +109,13 @@
       
       # rename the needed variable to avoid confusion
       merged_ec <- merged_ec %>% 
-        rename("county_name" = "county_name.x")
+        rename(county_name = county_name.x)
       merged_ec <- merged_ec %>% 
-        rename("year" = "year.y")
+        rename(year = year.y)
       merged_ec <- merged_ec %>% 
-        rename("_quality" = "data_quality")
+        rename(ec_county_quality = data_quality)
       
-      # explort as .csv
+      # export as .csv
       write_csv(merged_ec, "06_neighborhoods/social-capital/data/economic_connectedness_county_2022.csv")
       
       
