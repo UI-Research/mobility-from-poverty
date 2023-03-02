@@ -77,8 +77,3 @@ run;
 /* this should be run to get the 2014 housing data 
 %prepare_microdata(lib2014.usa_00024,lib2014.microdata);*/
 
-/* check to make sure I fixed the county 51515 issue */
-
-proc freq data=lib2018.usa_00032;
- table gq;
-run;
