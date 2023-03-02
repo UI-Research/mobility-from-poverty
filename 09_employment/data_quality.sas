@@ -127,6 +127,11 @@ data metrics_income_2021 (keep = statefip county household);
  set number_hhs_2021;
 run;
 
+/* create digital access metric that right now just has the number of total households */
+data metrics_access_2021 (keep = statefip county household);
+ set number_hhs_2021;
+run;
+
 /* get total number of rental households that are ELI for the rental metric */
 %macro number_of_eli_renters(year);
 data renters_&year (keep = statefip county Below30AMI_unw household year);
@@ -187,6 +192,7 @@ run;
 %metric(lib = work, dataset = metrics_housing_2021, denominator = Below50AMI_unw);
 %metric(lib = edu, dataset = metrics_preschool_2021, denominator = _FREQ_);
 %metric(lib = work, dataset = metrics_income_2021, denominator = household);
+%metric(lib = work, dataset = metrics_access_2021, denominator = household);
 %metric(lib = work, dataset = metrics_rent_2021, denominator = Below30AMI_unw);
 
 /* add a year variable for all datasets except Housing and Rent. This is needed for a later merge, and will allow more years
@@ -202,6 +208,7 @@ run;
 %add_year(dataset = metrics_employment_2021);
 %add_year(dataset = metrics_preschool_2021);
 %add_year(dataset = metrics_income_2021);
+%add_year(dataset = metrics_access_2021);
 %add_year(dataset = metrics_rent_2021);
 %add_year(dataset = metrics_housing_2021);
 
@@ -263,6 +270,7 @@ run;
 %flag(dataset = metrics_housing_2021, metric = housing);
 %flag(dataset = metrics_preschool_2021, metric = preschool);
 %flag(dataset = metrics_income_2021, metric = pctl);
+%flag(dataset = metrics_access_2021, metric = access);
 %flag(dataset = metrics_rent_2021, metric = rent);
 
 /*
@@ -316,28 +324,15 @@ run;
 %output(dataset = metrics_housing_2021, folder = 02_housing\); 
 %output(dataset = metrics_rent_2021, folder = 02_housing\); 
 %output(dataset = metrics_employment_2021, folder = 09_employment\); 
+%output(dataset = metrics_access_2021, folder = 06_neighborhoods\); 
 
 
 /* I want to test if the number of people ages 19 and 20
 in the microdata file is the same as the sum of the _FREQ_
 variable in the metrics_college file. They should equal */
 
-data college_test (keep = age_19_20);
- set metrics.microdata;
- if age in (19,20) then age_19_20 = 1;
-  else age_19_20 = 0;
-run;
 
-proc freq data = college_test;
- table age_19_20;
-run;
-/* 119258 */
-
-proc means data = metrics_college sum ;
- var _FREQ_;
-run;
-
-/* 119258. Wooo, they match */
+/* 119258. Wooo, they match 
 proc means data = metrics_rent;
  var share_burdened_30_ami share_burdened_50_ami share_burdened_80_ami;
 run;
