@@ -30,16 +30,17 @@ acs2014_21 <- read_csv("01_financial-well-being/home-values/usa_00584.csv.gz") %
 ## 2.2. Crosswalk
 puma_place <- read_csv("01_financial-well-being/home-values/puma_to_place_geocorr2012.csv") %>% 
   # two digit state code
-  mutate(state = str_pad(state, width = 2, pad = "0", side = "left")) 
+  mutate(state = str_pad(state, width = 2, pad = "0", side = "left")) %>% 
+  mutate(place = str_pad(place, width = 5, pad = "0", side = "left"))
 
 ## 2.3. Join Data
 acs_hh <- acs2014_21 %>% 
-  left_join(puma_place, by = c("statefip" = "state", "PUMA" = "puma12"))
+  left_join(puma_place, by = c("statefip" = "state", "PUMA" = "puma12"))  
 
 # Detailed methods of caculating afact_sum can be found in Kevin's code: I used below stata codes saved the data to excel file 
-  ## gen afact_product= afact (pumatoplace allocation) * afact2 (placetopuma allocation)
-  ## bysort countyfip: egen afact_sum=total(afact_product)
-  ## place is selected from 2020 Census data based on the population of the city (over 50,000)
+## gen afact_product= afact (pumatoplace allocation) * afact2 (placetopuma allocation)
+## bysort countyfip: egen afact_sum=total(afact_product)
+## place is selected from 2020 Census data based on the population of the city (over 50,000)
 
 # Step 3. Data Cleaning
 ## 3.1. Household Data
@@ -186,5 +187,3 @@ place_hh_hw_raceeth <- place_hh_raceeth %>%
 
 # Step 7. Export Final Data in CSV Format
 write_csv(place_hh_hw_raceeth, file = "01_financial-well-being/home-values/place_hh_hw_raceeth_2014_2021.csv")
-
-
