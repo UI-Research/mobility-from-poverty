@@ -231,10 +231,13 @@ stopifnot(
 
 
 # (5) Create a data quality flag
-# Need advice on this -- should I bring back the moe? the question is then how to handle asian_other...
+wide_county_demo <- wide_county_demo %>%
+  mutate(total_people_quality = 1, total_nonhisp_quality = 1, asian_other_quality = 1, 
+         black_nonhispanic_quality = 1, total_hispanic_quality = 1, white_nonhispanic_quality = 1)
 
-
-
+wide_places_demo <- wide_places_demo %>%
+  mutate(total_people_quality = 1, total_nonhisp_quality = 1, asian_other_quality = 1, 
+         black_nonhispanic_quality = 1, total_hispanic_quality = 1, white_nonhispanic_quality = 1)
 
 # (6) Prepare the data for saving & export final Metrics files
 
@@ -278,11 +281,15 @@ place_pop_by_race <- left_join(places_pop, wide_places_demo, by=c("GEOID"))
 # Keep only relevant variables before export
 county_pop_by_race <- county_pop_by_race %>% 
   select(year, state_name, county_name, total_people, total_nonhisp, 
-         asian_other, black_nonhispanic, total_hispanic, white_nonhispanic)
+         asian_other, black_nonhispanic, total_hispanic, white_nonhispanic,
+         total_people_quality, total_nonhisp_quality, asian_other_quality, 
+         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality)
 
 place_pop_by_race <- place_pop_by_race %>% 
   select(year, NAME, total_people, total_nonhisp, asian_other, 
-         black_nonhispanic, total_hispanic, white_nonhispanic)
+         black_nonhispanic, total_hispanic, white_nonhispanic,
+         total_people_quality, total_nonhisp_quality, asian_other_quality, 
+         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality)
 
 
 # Export each of the files as CSVs
