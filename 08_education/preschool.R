@@ -98,7 +98,7 @@ metrics_preschool <- metrics_preschool %>%
                                (num_3_and_4 >= 30) ~ 0))
 
 # bring in the PUMA flag file
-# puma_place <- read_csv("C:/Users/tchelidze/Downloads/puma_place.csv")
+# puma_place <- read_csv("data/temp/puma_place.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
 metrics_preschool <- left_join(metrics_preschool, puma_place, by=c("statefip","place"))

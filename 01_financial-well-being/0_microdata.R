@@ -24,6 +24,13 @@ library(readr)
 library(tidyverse)
 library(ipumsr)
 
+# Download needed microdata from IPUMS:
+#  Sample Selection: ACS 2021 (1-year)
+#  Variables: HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
+#             VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE
+# Right-click "DDI" under "Codebook", "Save link as", save .xml file to directory
+# Download .dat file to your directory as well (names should match)
+
 ###################################################################
 
 # (2) Prepare the Census Place to PUMA crosswalk
