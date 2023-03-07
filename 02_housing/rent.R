@@ -40,13 +40,13 @@ library(tidyverse)
 url <- "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile <- "C:/Users/tchelidze/Downloads/FMR_Income_Levels_2021.xlsx"
+destfile <- "data/temp/FMR_Income_Levels_2021.xlsx"
 
 # Import the data file & save locally
 download.file(url, destfile, mode="wb")
 
 # Import the data file as a dataframe
-FMR_Income_Levels_2021 <- read_excel("C:/Users/tchelidze/Downloads/FMR_Income_Levels_2021.xlsx")
+FMR_Income_Levels_2021 <- read_excel("data/temp/FMR_Income_Levels_2021.xlsx")
 
 
 
@@ -57,13 +57,13 @@ FMR_Income_Levels_2021 <- read_excel("C:/Users/tchelidze/Downloads/FMR_Income_Le
 url_FMR <- "https://www.huduser.gov/portal/datasets/fmr/fmr2021/FY21_4050_FMRs_rev.xlsx"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile_FMR <- "C:/Users/tchelidze/Downloads/FMR_pop_2021.xlsx"
+destfile_FMR <- "data/temp/FMR_pop_2021.xlsx"
 
 # Import the data file & save locally
 download.file(url_FMR, destfile_FMR, mode="wb")
 
 # Import the data file as a dataframe
-FMR_pop_2021 <- read_excel("C:/Users/tchelidze/Downloads/FMR_pop_2021.xlsx")
+FMR_pop_2021 <- read_excel("data/temp/FMR_pop_2021.xlsx")
 
 
 # sort the data file (FMR_Income_Levels_2021) by fips2010
@@ -80,7 +80,7 @@ FMR_Income_Levels_2021 <- left_join(FMR_Income_Levels_2021, FMR_pop_2021, by=c("
 # add in the lost leading zeroes for the state and county FIPs
 FMR_Income_Levels_2021 <- FMR_Income_Levels_2021 %>%
   mutate(county = sprintf("%0.3d", as.numeric(County)),
-         state = sprintf("%0.2d", as.numeric(State))
+         statefip = sprintf("%0.2d", as.numeric(State))
   )
 
 ###################################################################
@@ -98,7 +98,7 @@ microdata <- acs2021clean %>%
 # 5,369,803 obs
 
 # bring in place-county crosswalk
-county_place <- read_csv("C:/Users/tchelidze/Downloads/geocorr2022_county_place.csv")
+county_place <- read_csv("geographic-crosswalks/data/geocorr2022_county_place.csv")
 
 # prep merge variable (add lost leading zeroes and rename matching vars)
 county_place <- county_place %>%
@@ -114,7 +114,7 @@ places <- read_csv("geographic-crosswalks/data/place-populations.csv")
 places <- places %>%
   filter(year > 2019)
 places <- places %>%
-  rename(statefip = state)
+  dplyr::rename(statefip = state)
 # left join to get rid of irrelevant places data
 microdata <- left_join(places, microdata, by=c("statefip","place"))
 
@@ -208,7 +208,7 @@ renters_summed_2021 <- renters_summed_2021 %>%
 
 # (4) Add Data Quality marker(s)
 
-# For Rent Burden metric: number of HH that fall in each category
+# For Rent Burden metric: number of unweightedHH in each AMI cat
 renters_summed_2021 <- renters_summed_2021 %>% 
   mutate(size_flag_80 = case_when((unwgt_below_80_ami < 30) ~ 1,
                                   (unwgt_below_80_ami >= 30) ~ 0),
@@ -219,7 +219,7 @@ renters_summed_2021 <- renters_summed_2021 %>%
                                   )
 
 # bring in the PUMA flag file
-# puma_place <- read_csv("C:/Users/tchelidze/Downloads/puma_place.csv")
+# puma_place <- read_csv("data/temp/puma_place.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
 renters_summed_2021 <- left_join(renters_summed_2021, puma_place, by=c("statefip","place"))
@@ -268,6 +268,5 @@ renters_summed_2021 <- renters_summed_2021 %>%
          share_burdened_30_ami, share_burdened_30_ami_ub, share_burdened_30_ami_lb, share_burdened_30_ami_quality)
 
 # export our file as a .csv
-# write_csv(renters_summed_2021, "08_education/data/rent_burden_city_2021.csv")  
-write_csv(renters_summed_2021, "C:/Users/tchelidze/Downloads/rent_burden_city_2021.csv")
+ write_csv(renters_summed_2021, "08_education/rent_burden_city_2021.csv")  
 
