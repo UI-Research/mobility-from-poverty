@@ -183,4 +183,10 @@ tab year if meps20_total==.
 order year state city stateplacefp meps20_black* meps20_hispanic* meps20_white* meps20_total*
 gsort -year state city
 
+gen place = substr(stateplacefp, -5, 5)
+drop city_name stateplacefp
+
+order year state place
+gsort -year state place
+
 export delimited using "built/MEPS_2016-2018_city.csv", replace
