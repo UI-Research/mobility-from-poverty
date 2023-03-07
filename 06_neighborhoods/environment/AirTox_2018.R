@@ -21,7 +21,6 @@ library(rvest)
 library(httr)
 library (dplyr)
 
-
 ###Step 1: Import 2018 AirToxScreen Data and 2014 AFFH data 
 #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
 
@@ -49,25 +48,37 @@ resp_data18 <- resp_data18 %>%
 
 resp_cancer18 <- merge(x = resp_data18, y = cancer_data18, by = "Tract")
 
-enviro18 <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
+enviro18_int <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
 
 colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 
-##Step 4: drop rows that are not tracts first row (tract = 0: Total US)# NEED TO DETERMINE WHAT ELSE TO DROP
-#enviro18 = enviro18[-1,]
+###STEP 4###: DROP ROWS THAT ARE NOT TRACTS
+#Rows where the last 6 digist are "0" are not tracts 
 
-#desc(enviro18_int$tract)
-#summarise(enviro18_int) detail
+#drop first row ("0")
+enviro18_int = enviro18_int[-1,]
 
-#enviro18_int$tract6 <- enviro18_int %>%
+#Add leading zero 
+enviro18_int$tract1 <- str_pad(enviro18_int$tract, 11, side = "left", pad = 0)
+
+#Pull out tract only (last 6 digits)
+enviro18_int <- enviro18_int %>%
+  mutate(tract1 = str_sub(tract1, start = 6, end = 11)) 
+
+#Format tract1 as number 
+enviro18_int$tract1 <- as.numeric(enviro18_int$tract1)
+
+#Drop if not tract "000000" 
+enviro18_int <- enviro18_int %>%
+  subset(tract1 != "000000")
+
+#Pull out last 6 digits
+#enviro18_int$tract2 <- enviro18_int %>%
   #mutate(tract = str_sub(tract, start = -6, end = -1)) 
 
-#enviro18_int$tract.c <- str_pad(enviro18_int$tract, 11, side = "left", pad = 0)
-
 #enviro18_int$tract.c = as.character(enviro18_int$tract.c)
-
 #enviro18_int$tract.0 <- sprintf("%.0f", as.numeric(enviro18_int$tract.c))
-
+#haz_idx18$tract1 <- sprintf("%011d", as.numeric(haz_idx18$tract))
 
 #for(i in nrow(enviro18_int)){
   #enviro18_int$tract.0[i] = ifelse(nchar(enviro18_int$tract.c[i]==10),paste("0",enviro18_int$tract.c[i],sep = ""),enviro18_int$tract.c[i])  
@@ -75,9 +86,7 @@ colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 
 #enviro18_int$tract.0[nchar(enviro18_int$tract.c)==10] = c("0",enviro18_int$tract.c[enviro18_int$tract.c]==10)
 
-#enviro18_int$ <- enviro18 %>%
- #mutate(tract = str_sub(tract, start = 6, end = 11)) 
-  #haz_idx18$tract <- sprintf("%011d", as.numeric(haz_idx18$tract))
+
 
 #pull in tracts 
 state_fips <- unique(urbnmapr::states$state_fips)
