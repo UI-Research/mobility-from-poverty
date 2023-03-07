@@ -22,22 +22,31 @@ the microdata file and the results from the vacant file.
 
 # Homelessness
 
-Brief description: This metric is the total number of students experiencing homelessness at some
-point during the school year.
+Brief description: This metric is the total number and share of students experiencing homelessness at some
+point during the school year.from 2014-15 through 2019-20. The total number and the share of students
+ experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, 
+Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, 
+and Asian). Race/ethnicity shares are created as shares of each race/ethnicity’s total enrollment. 
 
 * Final data name(s): Homelessness
-* Analyst(s): Erica Blom
-* Data source(s): EDFacts homelessness data; Common Core of Data (CCD) to identify counties.
-* Year(s): 2018 (2018-19 school year); 2014 (2014-15 school year)
+* Analyst(s): Erica Blom and Emily Gutierrez
+* Data source(s): EDFacts homelessness data; Common Core of Data (CCD) to identify data for counties and cities.
+* Year(s): County: 2014-15 school year through 2019-20 school year. City: 2016-17 school year through 2019-20 school year
+* Name Final Data: homelessness_city.csv, homelessness_county.csv
 * Notes:
     * Limitations: Data suppression
-    * Missingness: 286/3,142 counties in 2018; 323/3,142 counties in 2014
+    * Missingness: 
+	*City	: 2016:57/485, 2017:58/485, 2018:55/486, 2019:55/486
+	*County: 3,142 each year
+		*2014:323, 2015:312, 2016:267, 2017:305, 2018:286, 2019:295.
 
-Outline the process for creating the data: Counts of students experiencing homelessness are downloaded from the EDFacts website.
+Outline the process for creating the data: Counts of students experiencing homelessness are downloaded from the EDFacts website,
+including by race/ethnicity subgroups for 2019.
 Supressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper
 bound, suppressed data are replaced with the smallest non-suppressed value by state and subgrant
 status if there are two or fewer suppressed values by state and subgrant status, per the documentation,
-and 2 otherwise. Districts are assigned to the county where the district office is located (obtained
+and 2 otherwise. Four county level data, districts are assigned to the county where the district office is located (obtained
+from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained 
 from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on)
 the location of the district office, with enrollment counts also from CCD data). A flag indicates the
 number of districts with suppressed data that are included in each county's estimate.
