@@ -303,4 +303,37 @@ tab year if homeless_count==.
 order year state city stateplacefp
 gsort -year state city
 
-export delimited using "built/homelessness_city.csv", replace 
+*save "all" separately
+preserve
+keep year state city_name stateplacefp homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
+export delimited using "built/homessness_all_city.csv", replace
+restore
+
+rename homeless* all*
+
+rename all_* *All
+rename black_* *Black
+rename hispanic_* *Hispanic
+rename other_* *Other
+rename white_* *White
+
+reshape long count count_lb count_ub share quality, i(year state city_name stateplace) j(subgroup) string
+
+gen subgroup_type = ""
+replace subgroup_type = "all" if subgroup=="All"
+replace subgroup_type = "race-ethnicity" if subgroup!="All"
+
+order year state city_name stateplacefp subgroup_type subgroup
+gsort -year state city subgroup_type subgroup 
+
+replace subgroup = "Black, Non-Hispanic" if subgroup=="Black"
+replace subgroup = "White, Non-Hispanic" if subgroup=="White"
+replace subgroup = "Other Races and Ethnicities" if subgroup=="Other"
+rename count homeless_count
+rename count_lb homeless_count_lb
+rename count_ub homeless_count_ub
+rename share homeless_share
+rename quality homeless_quality
+
+
+export delimited using "built/homelessness_all_subgroups_city.csv", replace 
