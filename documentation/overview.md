@@ -28,6 +28,8 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * [College readiness](#college-readiness)
 * [Employment](#employment)
 * [Access to jobs paying a living wage](#access-to-jobs-paying-a-living-wage)
+* [Social Capital](#social-capital)
+* [Descriptive Representation](#descriptive-representation)
 
 ---
 
@@ -982,4 +984,77 @@ There are three .csvs that are read into the Stata .do file: 2014 QCEW data, 201
 For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
 
 Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
+
+
+---
+
+## Social Capital
+
+### Overview
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `social_associations_geography_2022.csv`
+* **Data Source(s):** Census County Business Patterns (CBP) Survey 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
+* **Missingness:** 152 missing observations for county-level data. No missing observations for city-level data.
+
+### Process
+
+This metric shows the number of membership associations per 10,000 people in each county and city. 
+
+
+* The social organization counts come from the CBP: https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html
+    * The data must be isolated to the following NAICS organization codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920. These are the codes/associations included in the County Health Rankings metric -- see here for more: https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022
+
+
+These data, once downloaded, are combined with population data from the ACS. The social association (metric) ratio is constructed with the count of appropriate social organizations as the numerator, and the denominator is the population divided by 10000. For the city-level data, ZIP-code level data is re-aggregated to the Census Place geography using a ZCTA to Place crosswalk. Values are weighted by the percent of the area of the ZCTA that falls into each Census Place.
+
+	
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `economic_connectedness_geography_2022.csv.csv`
+* **Data Source(s):** Social Capital Atlas data for Economic Connectedness 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 50% or more of the ZIPs fall mostly (>50%) in the census place, `2' means 15% to 50% of the ZIPs fall mostly (>50%) in the census place, and `3' means less than 15% of the ZIP falls mostly into the census place.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place, unlike the county-level data which is already calculated at the county level.
+* **Missingness:** 168 missing observations for city-level data. No missing observations for city-level data. 126 missing observations for county-level data.
+
+### Process
+
+This metric shows the level of economic connectedness, or the ratio of Facebook friends with higher socioeconomic status to Facebook friends with lower socioeconomic status, in each county and city. 
+
+
+* The economic connectedness data comes from the Social Capital Atlas: https://data.humdata.org/dataset/social-capital-atlas
+    * The data must be downloaded at the county level to calculate the county-level metric, and at the ZIP code (2010 ZCTA) level to calculate the city metric.
+
+
+For the city-level metric, these data, once downloaded, are combined with a ZIP to Census Place crosswalk to re-aggregate the data at the right geography. The economic connectedness variable is averaged by Census Place, weighted by the percent of the area of the ZCTA in that Place.
+
+---
+
+## Descriptive Representation 
+
+### Overview
+
+This metric is a county-level and city-level estimate of population count by racial subgroup, which is meant to be used as the denominator for the Descriptive Representation mobility metric.
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `descriptive_rep_denominator_geography_2022.csv`
+* **Data Source(s):** 2017-2021 5-year ACS estimates
+* **Notes:**
+* **Data Quality Index:** `1` means this metric is reliable calculated at the geography.
+* **Limitations:** None
+* **Missingness:** None 
+
+### Process
+
+1. Pull demographics for Census Places and Census Counties from ACS 5-year 2021
+2. Clean and reshape to move data into the race variables accordingly
+3. Test for errors
+4. Add data quality flags
+5. Save the data  
 

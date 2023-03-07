@@ -30,12 +30,6 @@ library(censusapi)
 # Establish Census API key
 # You can get a Census API key here: https://api.census.gov/data/key_signup.html
 # Add key to .Renviron
-# Sys.setenv(CENSUS_KEY="a92cdc14739747a791bb02096d30a82f27f05add")
-# Reload .Renviron
-# readRenviron("~/.Renviron")
-# Check to see that the expected key is output in your R console
-# Sys.getenv("CENSUS_KEY")
-
 # Reload .Renviron
 # readRenviron("~/.Renviron")
 # Check to see that the expected key is output in your R console
@@ -239,6 +233,9 @@ sa_city_data <- sa_city_data %>%
 # rename vars as needed
 sa_city_data <- sa_city_data %>% 
   rename(place = GEOID)
+
+# check how many missing
+sum(is.na(sa_city_data$socassn))
 
 # export our file as a .csv
 write_csv(sa_city_data, "06_neighborhoods/social-capital/data/social_associations_city_2022.csv")
