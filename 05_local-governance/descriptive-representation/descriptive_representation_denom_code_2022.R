@@ -8,7 +8,7 @@
 
 # Steps:
 # (1) Housekeeping
-# (2) Pull demographics for Census Places and Census Counties from ACS 5-year 2020
+# (2) Pull demographics for Census Places and Census Counties from ACS 5-year 2021
 # (3) Clean and reshape to move data into the vars we want
 # (4) Test for errors
 # (5) Create a data quality flag
@@ -37,7 +37,7 @@ library(censusapi)
 apis <- listCensusApis()
 View(apis)
 
-acs5_vars <- listCensusMetadata(name="2020/acs/acs5", type = "variables")
+acs5_vars <- listCensusMetadata(name="2021/acs/acs5", type = "variables")
 head(acs5_vars)
 
 
@@ -73,11 +73,11 @@ myvars <- c(
 # Pull ACS data at the Census Place and Census County levels
 places_demo <- get_acs(geography = "place",
                        variables = myvars,
-                       year = 2020)
+                       year = 2021)
 
 county_demo <- get_acs(geography = "county",
                        variables = myvars,
-                       year = 2020)
+                       year = 2021)
 
 
 # (3) Clean and reshape to move data into the vars we want

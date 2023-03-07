@@ -153,6 +153,9 @@ library(readr)
           rename(state = fipstate,
                  county = fipscty,
                  )
+        
+        # check how many missing
+        sum(is.na(merged_sa$socassn))
 
         # export our file as a .csv
         write_csv(merged_sa, "06_neighborhoods/social-capital/data/social_associations_county_2022.csv")
