@@ -5,7 +5,7 @@ This repository contains code to construct 26 county-level metrics across 9 doma
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
 
-Detailed documentation of code and data is available [here](https://ui-research.github.io/mobility-from-poverty/documentation/overview).
+Detailed documentation of code and data is available [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md).
 
 # Motivation
 
