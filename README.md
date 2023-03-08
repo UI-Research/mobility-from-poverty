@@ -62,13 +62,13 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 ## Recent Files
 
-* The recent county file has exactly one year per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations. 
-* The recent city file has one year per census place and contains the most recent year for each of the mobility metrics. This file ought to have 486 observations, and contains missing values where metrics were unavailable or not computed.
+* The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations and contain missing values where metrics were unavailable or not computed.
+* The recent city file has one row per census place and contains the most recent year for each of the mobility metrics. This file should have 486 observations and contain missing values where metrics were unavailable or not computed.
 
 ## Multi-Year Files
 
 * The multi-year county file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
-* We are not currently asking for a multi-year city file.
+* The multi-year city file contains one observations per large city per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 486 observations per year. 
 
 ## Subgroups Files
 
@@ -127,10 +127,11 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 * Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
 * Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
 * Important intermediate files should be added to Box. Final data files should be added to Box and the GitHub repository.
+* FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits. 
 
 ### Joining variables
 
-* The first three variables in every file should be `year`, `state`, and `county`/`city`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `city` should be a 7-digit concatenated FIPS code with the 2-digit FIPS for the state followed by the 5-digit census place FIPS. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
+* The first three variables in every file should be `year`, `state`, and `county`/`place`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `place` should the 5-digit census place FIPS. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
 
@@ -147,8 +148,8 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 
 ### Sorting
 
-* All files should be sorted by `year`, `state`, and `county`/`city`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
-* Subgroup files should be sorted by `year`, `state`, `county`/`city`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
+* All files should be sorted by `year`, `state`, and `county`/`place`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block). 
+* Subgroup files should be sorted by `year`, `state`, `county`/`place`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that “Black, Non-Hispanic” appears first and “White, Non-Hispanic” appears last. 
 
 ### Standard Errors
 
