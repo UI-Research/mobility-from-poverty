@@ -24,7 +24,7 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-** Import county file **
+** Import city file **
 import delimited ${cityfile}, clear
 
 tostring stateplacefp, replace
