@@ -12,7 +12,7 @@ set matsize 10000
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
 global year=2018 // refers to spring of the school year (2017-2018)
 
-global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
+global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\08_education\data"
 cd "${gitfolder}\08_education\data"
@@ -25,6 +25,51 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
+***********************************************************
+** Import county file **
+import delimited  ${cityfile}, clear
+
+tostring stateplacefp, replace
+replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
+assert strlen(stateplacefp)==7
+
+tostring statefips, replace
+replace statefips = "0" + statefips if strlen(statefips)==1
+assert strlen(statefips)==2
+
+rename city city_name
+rename statefips state
+drop geographicarea cityname population 
+
+gen city_name_edited = city_name
+replace city_name_edited = subinstr(city_name_edited, " town", "", .)
+replace city_name_edited = subinstr(city_name_edited, " village", "", .)
+replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
+replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+
+drop city_name
+rename city_name_edited city_name
+
+*hardcode fixes so names merge
+replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
+replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
+replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
+replace city_name="Macon" if city_name=="Macon-Bibb County"
+replace city_name="Honolulu" if city_name=="Urban Honolulu"
+replace city_name="Boise" if city_name=="Boise City"
+replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
+replace city_name="Lexington" if city_name=="Lexington-Fayette"
+replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
+replace city_name="Lees Summit" if city_name=="Lee's Summit"
+replace city_name="Ofallon" if city_name=="O'Fallon"
+replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
+replace city_name="Ofallon" if city_name=="O'Fallon"
+replace city_name="Mcallen" if city_name=="McAllen"
+replace city_name="Mckinney" if city_name=="McKinney"
+replace city_name="Anchorage" if city_name=="Anchorage municipality"
+
+save "intermediate/cityfile.dta", replace
+***********************************************************
 
 
 ** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
@@ -101,7 +146,7 @@ drop year
 rename cohort year
 replace year = year - 1 // changed so that the year reflects the fall of the academic year 
 
-keep sedametro year learning_rate_* 
+keep sedametro year learning_rate_* sedametroname
 
 duplicates drop
 
@@ -110,9 +155,28 @@ gsort -year metro
 
 drop if year<2013 | year>$year - 1
 
+*******************************************
+*fix names 
+gen state = substr(sedametroname, -2, 2)
+statastates, abbreviation(state)
+drop _merge state_name state
+tostring(state_fips), replace
+replace state_fips = "0"+state_fips if strlen(state_fips)==1
+rename state_fips state
+
+gen city_name = substr(sedametroname, 1, strpos(sedametroname,",")-1)
+
+merge 1:1  city_name state year using "intermediate/cityfile.dta"
+tab year _merge
+	keep if year==2016 | year==2017 // city crosswalk is 2016-2020, and this data spans 2013-2017 - keeping 16 & 17
+	drop if _merge==1
+*******************************************
+
+gen place = substr(stateplacefp, -5, 5)
+drop city_name stateplacefp statename state_abbr _merge sedametro metro
 
 ** make the data long **
-reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quality, i(year metro) j(subgroup) string
+reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quality, i(year place state) j(subgroup) string
 
 ** label subgroups **
 gen subgroup_type=""
@@ -146,9 +210,10 @@ tab year if subgroup=="Male" & learning_rate==.
 tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
 tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
 
-order year metro subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
+order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
 
-gsort -year metro subgroup_type subgroup
+gsort -year state place  subgroup_type subgroup
+
 
 ** export data **
 export delimited using "built/SEDA_all_subgroups_metro.csv", replace // 2013,14,15 don't exactly match but its updated underlying data
