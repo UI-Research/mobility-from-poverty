@@ -220,11 +220,7 @@ rm(moes, values)
 # keep MOE for non-zero estimates and keep the largest MOE for zero estimates
 other_moe <- other_moe %>%
   group_by(state, county, tract) %>%
-  mutate(moe_rank = row_number(desc(moe))) %>%
-  mutate(moe_rank = if_else(value == 0, moe_rank, 5L)) %>%
-  mutate(moe_rank = ifelse(moe_rank == min(moe_rank), moe_rank, 0L)) %>%
-  filter(value != 0 | moe_rank != 0) %>%
-  select(-moe_rank) 
+  mutate(moe = if_else(value == 0, max(moe), moe))
 
 # combine the margins of error
 other_moe <- other_moe %>%
@@ -234,29 +230,55 @@ other_moe <- other_moe %>%
 # append to the original data set
 tracts <- left_join(tracts, other_moe, by = c("state", "county", "tract"))
 
+```
+
+We convert margins of error to standard errors using 1.645 as the critical value ([page 3](https://www2.census.gov/programs-surveys/acs/tech_docs/accuracy/2018_ACS_Accuracy_Document_Worked_Examples.pdf?))
+
+```{r}
 tracts <- tracts %>%
-  select(state, 
-         county, 
-         tract, 
-         people, 
-         poverty,
-         poverty_black, 
-         poverty_hispanic, 
-         poverty_other_races, 
-         poverty_white_nonhispanic, 
-         poverty_moe,
-         poverty_black_moe, 
-         poverty_hispanic_moe, 
-         poverty_other_races_moe, 
-         poverty_white_nonhispanic_moe) 
+  mutate(
+    poverty_se = poverty_moe / 1.645,
+    poverty_black_se = poverty_black_moe / 1.645, 
+    poverty_hispanic_se = poverty_hispanic_moe / 1.645, 
+    poverty_other_races_se = poverty_other_races_moe / 1.645, 
+    poverty_white_nonhispanic_se = poverty_white_nonhispanic_moe / 1.645
+  )
 
 ```
 
-Look at the margins of error. A large share of the Other Races and Ethnicities have coefficients of variation greater than 0.4.
+Drop all of the extra variables. 
+
+```{r}
+tracts <- tracts %>%
+  select(
+    state, 
+    county, 
+    tract, 
+    people, 
+    poverty,
+    poverty_black, 
+    poverty_hispanic, 
+    poverty_other_races, 
+    poverty_white_nonhispanic, 
+    poverty_se,
+    poverty_black_se, 
+    poverty_hispanic_se, 
+    poverty_other_races_se, 
+    poverty_white_nonhispanic_se,
+    poverty_moe,
+    poverty_black_moe, 
+    poverty_hispanic_moe, 
+    poverty_other_races_moe, 
+    poverty_white_nonhispanic_moe
+  ) 
+
+```
+
+Look at the standard errors. A large share of the Other Races and Ethnicities have coefficients of variation greater than 0.4.
 
 ```{r}
 tracts %>%
-  summarize(mean(poverty_other_races_moe / poverty_other_races > 0.4))
+  summarize(mean(poverty_other_races_se / poverty_other_races > 0.4))
 
 ```
 
@@ -264,37 +286,37 @@ Let's look at the margins of error in relation to the counts of people in each r
 
 ```{r}
 tracts %>%
-  ggplot(aes(poverty_black, poverty_black_moe)) +
+  ggplot(aes(poverty_black, poverty_black_se)) +
   geom_point(alpha = 0.1, size = 0.5) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
-  labs(title = "Most Black Estimates Have Large MOE",
+  labs(title = "Most Black Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
   scatter_grid()
 
 tracts %>%
-  ggplot(aes(poverty_hispanic, poverty_hispanic_moe)) +
+  ggplot(aes(poverty_hispanic, poverty_hispanic_se)) +
   geom_point(alpha = 0.1, size = 0.5) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +
-  labs(title = "Most Hispanic Estimates Have Large MOE",
+  labs(title = "Most Hispanic Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +
   coord_equal() +
   scatter_grid()
 
 tracts %>%
-  ggplot(aes(poverty_other_races, poverty_other_races_moe)) +
+  ggplot(aes(poverty_other_races, poverty_other_races_se)) +
   geom_point(alpha = 0.1, size = 0.5) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
-    labs(title = "Most Other Races and Ethnicities Estimates Have Large MOE",
+    labs(title = "Most Other Races and Ethnicities Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +
   coord_equal() +
   scatter_grid()
 
 tracts %>%
-  ggplot(aes(poverty_white_nonhispanic, poverty_white_nonhispanic_moe)) +
+  ggplot(aes(poverty_white_nonhispanic, poverty_white_nonhispanic_se)) +
   geom_point(alpha = 0.1, size = 0.5) +
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
-  labs(title = "Most White, non-Hispanic Estimates Have Large MOE",
+  labs(title = "Most White, non-Hispanic Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
   scatter_grid()
@@ -363,18 +385,17 @@ counties_summary <- tracts %>%
     high_poverty_hispanic = sum(high_poverty_hispanic),
     high_poverty_other_races = sum(high_poverty_other_races),
     high_poverty_white_nonhispanic = sum(high_poverty_white_nonhispanic),
-    # MOE
-    poverty_moe = sqrt(sum(poverty_moe ^ 2)),
-    poverty_black_moe = sqrt(sum(poverty_black_moe ^ 2)),
-    poverty_hispanic_moe = sqrt(sum(poverty_hispanic_moe ^ 2)),
-    poverty_other_races_moe = sqrt(sum(poverty_other_races_moe ^ 2)),
-    poverty_white_nonhispanic_moe = sqrt(sum(poverty_white_nonhispanic_moe ^ 2))
+    # standard errors
+    poverty_se = sqrt(sum(poverty_moe ^ 2)) / 1.645,
+    poverty_black_se = sqrt(sum(poverty_black_moe ^ 2)) / 1.645,
+    poverty_hispanic_se = sqrt(sum(poverty_hispanic_moe ^ 2)) / 1.645,
+    poverty_other_races_se = sqrt(sum(poverty_other_races_moe ^ 2)) / 1.645,
+    poverty_white_nonhispanic_se = sqrt(sum(poverty_white_nonhispanic_moe ^ 2)) / 1.645
   ) %>%
   ungroup()
 
 counties_summary <- counties_summary %>%
   mutate(poverty_rate = poverty / people)
-
 
 ```
 
@@ -681,11 +702,11 @@ We need to add data quality flags with `1`, `2`, or `3`. The values are outlined
 ```{r}
 counties_summary <- counties_summary %>%
   mutate(
-    poverty_cv = poverty_moe / poverty,
-    poverty_black_cv = poverty_black_moe / poverty_black,
-    poverty_hispanic_cv = poverty_hispanic_moe / poverty_hispanic, 
-    poverty_other_races_cv = poverty_other_races_moe / poverty_other_races,
-    poverty_white_nonhispanic_cv = poverty_white_nonhispanic_moe / poverty_white_nonhispanic
+    poverty_cv = poverty_se / poverty,
+    poverty_black_cv = poverty_black_se / poverty_black,
+    poverty_hispanic_cv = poverty_hispanic_se / poverty_hispanic, 
+    poverty_other_races_cv = poverty_other_races_se / poverty_other_races,
+    poverty_white_nonhispanic_cv = poverty_white_nonhispanic_se / poverty_white_nonhispanic
   ) 
 
 counties_summary %>%
@@ -794,7 +815,8 @@ We need to include all counties in the published data even if we don't have a me
 ```{r save-data}
 # load the 2020 county file
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
-  filter(year == 2020)
+  filter(year == 2020) %>%
+  mutate(year = 2021)
 
 final_data <- left_join(all_counties, counties_summary, by = c("state", "county")) %>%
   select(year,
@@ -807,7 +829,7 @@ stopifnot(nrow(final_data) == 3143)
 # This was 3142 for 2018, but we did not remove Rio Arriba County, NM this time because there was not a data collection error that impacted the 2017-2021 5-year file
 
 write_csv(final_data,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_2020.csv"))
 
 ```
 
@@ -823,7 +845,7 @@ counties_summary_subgroups <- counties_summary %>%
   mutate(variable = if_else(str_detect(subgroup, "_quality"), 
                             "poverty_exposure_quality", 
                             "poverty_exposure")) %>%
-  mutate(subgroup = str_replace(subgroup, "_quality", "")) %>%
+  mutate(subgroup = str_remove(subgroup, "_quality")) %>%
   # pivot to long
   pivot_wider(names_from = variable, values_from = poverty_exposure) %>%
   # clean up names
@@ -870,6 +892,6 @@ final_data_race_ethnicity <- left_join(all_counties_subgroups,
 stopifnot(nrow(final_data_race_ethnicity) == 15715)
 
 write_csv(final_data_race_ethnicity,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_2020.csv"))
 
 ```
