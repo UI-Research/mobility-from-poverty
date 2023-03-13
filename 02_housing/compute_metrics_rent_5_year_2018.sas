@@ -4,11 +4,9 @@
 5 year data used for race metrics*/
 
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
-libname desktop "C:\Users\kwerner\Desktop\Metrics";
 
 options fmtsearch=(lib2018);
 
-options fmtsearch=(lib2018);
 
  Proc format;
   Value subgroup_f ( default = 30)
@@ -31,12 +29,18 @@ proc import datafile="&networkDir.\Section8-FY2018.csv" out=FMR_Income_Levels_20
   guessingrows=100;
   datarow=2;
 run;
-data FMR_Income_levels_2018 (keep=multyear statefip county L50_4 L80_4 ELI_4);
+data FMR_Income_levels_2018 (keep=year statefip county L50_4 L80_4 ELI_4);
  set FMR_Income_levels_2018;
  rename state = statefip;
- multyear = 2018;
+ year = 2018;
 run;
 
+/*note that in previous metric I imported FMR limits for each year in the 5-year file
+  I don't think this is actually necessary because the income variables are adjusted for
+  inflation to the last year in the 5-year file.
+*/
+	
+/*
 *2017;
 proc import datafile="&networkDir.\Section8-FY2017.csv" out=FMR_Income_Levels_2017 dbms=csv replace;
   getnames=yes;
@@ -94,16 +98,17 @@ proc append base=FMR_Income_levels_2018 data=FMR_Income_levels_2015;
 run;
 proc append base=FMR_Income_levels_2018 data=FMR_Income_levels_2014;
 run;
+*/
 
-proc sort data = lib2018.microdata_5_year; by multyear statefip county; run;
-proc sort data = FMR_Income_Levels_2018; by multyear statefip county; run;
+proc sort data = lib2018.microdata_5_year; by year statefip county; run;
+proc sort data = FMR_Income_Levels_2018; by year statefip county; run;
 
 %macro compute_metrics_rent(microdata_file,metrics_file);
 
 
 /* calculate rent burden for each AMI group */
 data desktop.renters_5_year;
-  merge &microdata_file.(in=a where=(pernum=1 and ownershp=2)) FMR_Income_Levels_2018(in=b keep=multyear statefip county L50_4 L80_4 ELI_4);
+  merge &microdata_file.(in=a where=(pernum=1 and ownershp=2)) FMR_Income_Levels_2018(in=b keep=year statefip county L50_4 L80_4 ELI_4);
   by multyear statefip county; /*bring in heads of household for renters */
   if a;
   if L80_4 ne . then do;
@@ -169,8 +174,9 @@ data housing.metrics_rent_5_year;
 run;
 %mend compute_metrics_rent;
 /* this is for 2018 */
-%compute_metrics_rent(lib2018.microdata_5_year, housing.metrics_rent_5_year);
+%compute_metrics_rent(lib2018.microdata_5_year, housing.metrics_rent_5_year_2018);
 
+/*
 proc means data=housing.metrics_rent_5_year;
 var share_burdened_80_AMI share_burdened_50_AMI share_burdened_30_AMI;
 where subgroup =.;
@@ -197,3 +203,4 @@ proc means data=desktop.renters_5_year noprint;
   var below_80_ami rent_burden_80AMI below_50_ami rent_burden_50AMI below_30_ami rent_burden_30AMI;
   where statefip = 27 and county = 123;
 run;
+*/

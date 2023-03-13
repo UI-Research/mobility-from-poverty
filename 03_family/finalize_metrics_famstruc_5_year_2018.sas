@@ -1,19 +1,13 @@
 /*************
-
 This code reads in the family structure metrics created by Paul, adds confidence intervals,
 put it in the right format, and outputs it as a csv
-
 Kevin Werner
-
 12/1/20
-
 *************/
 
 /*
-
 This code uses the SAS dataset output from Paul's compute_metric_famstruc
 as input.
-
 */
 
 options fmtsearch=(lib2018);

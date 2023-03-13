@@ -108,4 +108,3 @@ run;
 %mend compute_metrics_famstruc;
 
 %compute_metrics_famstruc(lib2018.microdata_5_year,family.metrics_famstruc_subgroup);
-
