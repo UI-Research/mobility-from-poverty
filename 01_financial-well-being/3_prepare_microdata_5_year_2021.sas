@@ -4,10 +4,10 @@
 
 /*
 
-The input files USA_00014 and puma_to_county are created by the preceeding SAS programs,
+The input files USA_00069 and puma_to_county are created by the preceeding SAS programs,
 1_init.sas and 2_puma_to_county
 
-USA_00014 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/5_year.
+USA_00069 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/5_year.
 It will need to be downloaded and unzipped. 
 
 */
@@ -43,7 +43,7 @@ run;
 
 %macro prepare_microdata(input_file,output_file);
 
-*Map PUMAs to counties (this consolidates records for multi-PUMAs counties, and expands records for PUMAs that span counties);
+*Map PUMAs to counties (this  records for PUMAs that span counties);
 proc sql; 
  create table add_county as 
  select  
@@ -141,5 +141,5 @@ run;
 %mend prepare_microdata;
 
 
-%prepare_microdata(lib2021.usa_00014,lib2021.microdata_5_year);
+%prepare_microdata(lib2021.usa_00069,lib2021.microdata_5_year);
 
