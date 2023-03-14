@@ -40,6 +40,15 @@ summarize_metric <- function(.data, var, quality_var, decimals = 2) {
   cat("\n")
   
   dplyr::count(.data, {{ quality_var }}) %>%
+    dplyr::mutate(
+      quality_label = case_when(
+        {{ quality_var }} == 1 ~ "Strong",
+        {{ quality_var }} == 2 ~ "Marginal",
+        {{ quality_var }} == 3 ~ "Weak",
+        TRUE ~ NA_character_
+      )       
+    ) %>%
+    dplyr::select({{ quality_var }}, quality_label, n) %>%
     gt::gt() %>%
     gt::opt_css(
       css = "
