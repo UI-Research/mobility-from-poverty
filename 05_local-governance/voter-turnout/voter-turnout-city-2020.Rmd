@@ -1,0 +1,672 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+    css: !expr here::here("05_local-governance", "www", "web_report.css")
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(plyr)
+library(tidyverse)
+library(tidyselect)
+library(urbnthemes)
+library(sf)
+library(tigris)
+library(areal)
+
+set_urbn_defaults(style = "print")
+
+```
+
+
+## 1. 2020 Precinct-Level Election Results/Shapefile and Census Place Shapefile
+We use the 2020 Precinct-Level Election Results from the the Voting and Election Science Team at University of Florida and Wichita State University, accessed via the Harvard Dataverse ([data here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/K7760H)), for state-by-state ESRI shapefiles of 2020 precinct-level general election results.
+
+First, we download the precinct-level shapefiles with election result data.
+
+For more information on how VEST collected election result data and precinct shapefiles, please see their documentation [here](https://dataverse.harvard.edu/file.xhtml?fileId=6550201&version=40.0). Kentucky and New Jersey did not always report results at the precinct level. For these states, VEST apportioned election results from larger geographies to individual precincts based on the average of the vote from the 2016 Presidential election results. Votes for each candidate on the 2020 ballot were distributed from 2020 reporting units to the precincts that comprise those reporting units based on the share of the average 2016 vote from each precinct that was cast for that party's candidate or for the most ideologically similar minor party candidate. Read more in the documentation linked above.
+
+```{r}
+# Create df for all states except KY and NJ
+states1 <- tribble(
+  ~state, ~statefip, ~id,
+  "al", "01", 4751074,
+  "ak", "02", 6550198,
+  "az", "04", 4864722,
+  "ar", "05", 4931787,
+  "ca", "06", 5206371,
+  "co", "08", 4863166,
+  "ct", "09", 4986646,
+  "de", "10", 4773531,
+  "dc", "11", 4750435,
+  "fl", "12", 6696063,
+  "ga", "13", 4863164,
+  "hi", "15", 4750434,
+  "id", "16", 4789401,
+  "il", "17", 4773525,
+  "in", "18", 5143396,
+  "ia", "19", 4789403,
+  "ks", "20", 6696064,
+  "la", "22", 5739918,
+  "me", "23", 5739920,
+  "md", "24", 5111331,
+  "ma", "25", 5007849,
+  "mi", "26", 5739924,
+  "mn", "27", 4499011,
+  "ms", "28", 5706487,
+  "mo", "29", 5007850,
+  "mt", "30", 4773527,
+  "ne", "31", 5739922,
+  "nv", "32", 4863168,
+  "nh", "33", 4499009,
+  "nm", "35", 5425599,
+  "ny", "36", 5259468,
+  "nc", "37", 4863162,
+  "nd", "38", 5342900,
+  "oh", "39", 4499012,
+  "ok", "40", 5790364,
+  "or", "41", 5194704,
+  "pa", "42", 5595329,
+  "ri", "44", 4789406,
+  "sc", "45", 4789402,
+  "sd", "46", 6082788,
+  "tn", "47", 5746909,
+  "tx", "48", 4931788,
+  "ut", "49", 4863167,
+  "vt", "50", 5739919,
+  "va", "51", 6174181,
+  "wa", "53", 5007851,
+  "wv", "54", 6418344,
+  "wi", "55", 4773528,
+  "wy", "56", 4789404
+)
+
+# Create df for KY and NJ
+states2 <- tribble(
+  ~state, ~statefip, ~id,
+  "ky", "21", 6550199,
+  "nj", "34", 6492876,
+)
+
+```
+
+Download precinct-level election turnout and shapefile data
+```{r}
+# Create vector of URLs for all states except KY and NJ
+my_URL1 <- paste0("https://dataverse.harvard.edu/api/access/datafile/",
+                 states1$id,
+                 "?format=original&gbrecs=true")
+
+# Create vector of URLs for KY and NJ
+my_URL2 <- paste0("https://dataverse.harvard.edu/api/access/datafile/",
+                 states2$id,
+                 "?format=original&gbrecs=true")
+
+# Create object for VEST directory, and create the directory if it doesn't exist. "vest" is the acronym for the Voting and Election Science Team at University of Florida and Wichita State
+vest_directory <- here::here("05_local-governance/voter-turnout/data/vest/")
+
+if (!dir.exists(vest_directory)) {
+
+  dir.create(vest_directory)
+
+}
+
+# Create object for VEST data, and download the zip file for each state if it isn't downloaded
+# All states except KY and NJ
+vest_data1 <- here::here(paste0("05_local-governance/voter-turnout/data/vest/",
+                                    states1$state,
+                                    "_2020.zip"
+)
+)
+
+if (!file.exists(vest_data1)) {
+
+  download.file(my_URL1,
+                destfile = vest_data1)
+
+}
+
+# KY and NJ
+vest_data2 <- here::here(paste0("05_local-governance/voter-turnout/data/vest/",
+                                    states2$state,
+                                    "_2020_vtd_estimates.zip"
+)
+)
+
+if (!file.exists(vest_data2)) {
+
+  download.file(my_URL2,
+                destfile = vest_data2)
+
+}
+
+# # Now need to unzip the files and read the shp files into R
+# # list all the zip files
+# zip_files <- list.files(path = vest_directory,
+#                         pattern = ".*.zip",
+#                         full.names = TRUE)
+# 
+# # unzip all files
+# plyr::ldply(.data = zip_files,
+#             .fun = unzip,
+#             exdir = vest_directory)
+
+# # XX Listing all the zip files and unzipping them both give an error, but they still do what I expect them to (unzip the files). The errors are preventing the document from knitting though, so I've commented them out after running them. Once we address the cause of the error, we should add `zip_files()` to the `rm()` call below.
+
+rm(my_URL1, my_URL2, vest_directory, vest_data1, vest_data2)
+```
+
+
+Read in the precinct shapefiles and voting results data for each state. We read Kentucky and New Jersey separately because the naming conventions of the files are different. Each data set has several variables that begin with `G20PRE` that indicate the number of votes each presidential candidate received in that precinct. We sum these variables to create a new variable called `total_votes`, and only keep this variable and the geometry. We append all states together and create a `GEOID` variable based on row number which we will need for interpolation later.
+```{r}
+# Read all states except KY and NJ
+precincts1 <- map_df(states1$state,
+                        ~{st_read(here::here(
+                          paste0("05_local-governance/voter-turnout/data/shapefiles/", .x, "_2020.shp"))) %>%
+                            dplyr::mutate(total_votes = across(starts_with('G20PRE')) %>% rowSums) %>%
+                            dplyr::select(total_votes, geometry) %>%
+                            sf::st_transform(crs = 6549)
+                        }
+)
+
+# Read KY and NJ
+precincts2 <- map_df(states2$state,
+                        ~{st_read(here::here(
+                          paste0("05_local-governance/voter-turnout/data/shapefiles/", .x,
+                                 "_2020_vtd_estimates.shp"))) %>%
+                            dplyr::mutate(total_votes = across(starts_with('G20PRE')) %>% rowSums) %>%
+                            dplyr::select(total_votes, geometry) %>%
+                            sf::st_transform(crs = 6549)
+                        }
+)
+
+# Append KY and NJ to the other states, create unique GEOID for interpolation
+precincts <- bind_rows(precincts1, precincts2) %>%
+  dplyr::mutate(GEOID20 = row_number())
+
+# Remove the separate precinct files now that we have an appended version
+rm(precincts1, precincts2)
+
+```
+
+Load the census place shapefiles from `library(tigris)` and filter down to our 486 cities. Because KY and NJ precinct files had naming conventions that differed from other states, we read in the place shapefiles for these states separately and then append both files.
+```{r}
+# Read all states except KY and NJ
+places1 <- map_df(states1$statefip,
+                 ~{tigris::places(state = .x,
+                                  cb = TRUE,
+                                  year = 2020,
+                                  progress_bar = FALSE) %>%
+                     select(GEOID, geometry) %>%
+                     sf::st_transform(crs = 6549)
+                 }
+)
+
+# Read KY and NJ
+places2 <- map_df(states2$statefip,
+                 ~{tigris::places(state = .x,
+                                  cb = TRUE,
+                                  year = 2020,
+                                  progress_bar = FALSE) %>%
+                     select(GEOID, geometry) %>%
+                     sf::st_transform(crs = 6549)
+                 }
+)
+
+# Append KY and NJ to other states
+all_places <- bind_rows(places1, places2)
+
+# Read in our 486 places for 2020 and join shapefiles
+my_places <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  filter(year == 2020) %>%
+  mutate(GEOID = str_c(state, place)) %>%
+  left_join(y = all_places, by = "GEOID") %>%
+  st_as_sf()
+
+# Remove separate place files now that we have an appended version
+rm(places1, places2, states1, states2)
+
+```
+
+The precinct shapefiles do not all form a closed linestring (i.e., the polygons in these shapefiles do not all have identical start and endpoints). Therefore the geometries are not valid and `aw_interpolate()` does not work.
+
+Furthermore, several of the precinct geometries include Z and/or M dimensions. Z-values are most commonly used to represent elevations, but they can also represent other measurements such as annual rainfall or air quality. M-values are used to interpolate distances along linear features, such as roads, streams, and pipelines (two commonly used M-values are milepost distance from a set location, such as county line, and distance from a reference marker). See [here](https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/feature-class-basics.htm) for more information about Z and M values.
+```{r}
+# # If we try using `aw_interpolate()`, we get the following: "Evaluation error: IllegalArgumentException: Points of LinearRing do not form a closed linestring."
+# interpolated <- aw_interpolate(.data = places,
+#                                tid = GEOID,
+#                                source = precincts,
+#                                sid = GEOID20,
+#                                weight = "total",
+#                                output = "sf",
+#                                extensive = "total_votes")
+
+# # If we try to check which observations are invalid, we get the following: "GEOS does not support XYM or XYZM geometries; use st_zm() to drop M"
+# test <- st_is_valid(precincts)
+```
+
+We drop Z/M values from precinct geometries and assign flag for observations with Z/M values. There are 40,674 observations this applies to. 
+```{r}
+# Create a dummy data set with corrected geometries
+test <- precincts %>%
+  st_zm(drop = TRUE)
+
+# Anti-join the corrected geometries to the original precinct data to identify which observations had Z/M values. Create a variable to flag these observations. There are 40,674 observations this applies to. 
+anti_joined <- anti_join(as.data.frame(precincts), as.data.frame(test), by = "geometry") %>%
+  mutate(zm_flag = 1) %>%
+  select(-geometry)
+
+anti_joined %>%
+  nrow()
+
+# Now correct geometries in original precinct data
+precincts <- precincts %>%
+  st_zm(drop = TRUE)
+
+# Join the flags for Z/M values onto our original precinct data and check number of ZM flags
+precincts <- left_join(precincts, anti_joined, by = c("GEOID20", "total_votes"))
+
+as.data.frame(precincts) %>%
+  dplyr::count(zm_flag)
+
+# Replace `NA` values for observations that didn't receive a Z/M flag with `0`, then check number of ZM flags
+precincts <- precincts %>%
+  mutate(zm_flag = case_when(is.na(zm_flag) ~ 0,
+                                  zm_flag == 1 ~ 1))
+
+as.data.frame(precincts) %>%
+  dplyr::count(zm_flag)
+
+# Remove obsolete data sets
+rm(test, anti_joined)
+```
+
+We still cannot interpolate yet because there are still 417 invalid geometries for the following reasons: "Nested shells," "Ring Self-intersection," "Self-intersection," and "Too few points in geometry component." We identify and flag the observations with invalid geometries, and then validate them to perform the interpolation.
+```{r}
+# # If we try using `aw_interpolate()`, we get the following: "Evaluation error: TopologyException: Input geom 0 is invalid: Self-intersection at -4246267.6594204018 982769.49896414403."
+# interpolated <- aw_interpolate(.data = places,
+#                                tid = GEOID,
+#                                source = precincts,
+#                                sid = GEOID20,
+#                                weight = "total",
+#                                output = "sf",
+#                                extensive = "total_votes")
+
+# Isolate invalid geometries
+invalid_geom <- precincts %>%
+  filter(!st_is_valid(precincts))
+
+# Check reasons for invalid geometries
+as.data.frame(st_is_valid(invalid_geom, reason = TRUE)) %>%
+  mutate(reason = str_extract(string = st_is_valid(invalid_geom, reason = TRUE),
+                              pattern = ".*\\[")) %>%
+  dplyr::count(reason)
+
+# Create a variable to flag these observations
+invalid_geom <- invalid_geom %>%
+  mutate(invalid_flag = 1) %>%
+  as.data.frame() %>%
+  select(-geometry, -zm_flag)
+
+# Join the flags for invalid geometries onto our original precinct data and check number of invalid geometries
+precincts <- left_join(precincts, invalid_geom, by = c("GEOID20", "total_votes"))
+
+as.data.frame(precincts) %>%
+  dplyr::count(invalid_flag)
+
+# Replace `NA` values for observations that didn't receive an invalid flag with `0`, then check number of invalid flags
+precincts <- precincts %>%
+  mutate(invalid_flag = case_when(is.na(invalid_flag) ~ 0,
+                                  invalid_flag == 1 ~ 1))
+
+as.data.frame(precincts) %>%
+  dplyr::count(invalid_flag)
+
+# Now that we've flagged which geometries are invalid, we can make them valid to proceed with the interpolation
+precincts <- st_make_valid(precincts)
+
+# Remove obsolete data sets
+rm(invalid_geom)
+
+```
+
+
+```{r}
+# # I also interpolated using the full places list and then filtering to our 486, which got same result.
+# Interpolate using only our 486 cities
+result <- aw_interpolate(.data = my_places,
+                         tid = GEOID,
+                         source = precincts,
+                         sid = GEOID20,
+                         weight = "total",
+                         output = "sf",
+                         extensive = c("total_votes", "zm_flag", "invalid_flag"))
+
+```
+
+
+# Quality Checks
+
+Compare the VEST precinct-level election returns used in our interpolation to the MIT Election Lab precinct-level returns
+```{r}
+mit <- read_csv(here::here("05_local-governance", 
+                           "voter-turnout", 
+                           "data",
+                           "mit", 
+                           "precinctpres_2000-2020.csv"))
+
+mit <- mit %>%
+  # XX I can't tell if overvotes and undervotes should be counted in the total votes for each precinct. The readme file doesn't tell me and there is nothing to indicate whether they're counted in the VEST data
+  filter(!candidate %in% c("OVERVOTES", "UNDERVOTES")) %>%
+  group_by(precinct, county_fips) %>%
+  summarize(mit_votes = sum(votes))
+
+# XX There is no way to directly compare this to the VEST precinct data because each precinct does not have identical GEOIDs across the two data sets. I was thinking maybe we can look at the distributions? 
+
+```
+
+
+Interpolate the precinct-level election returns data to the county instead of place. Compare these results to the MIT Election Lab county-level returns.
+```{r}
+# Load MIT Election Lab county-level returns. This code is copied directly from `voter-turnout.Rmd` which used the same data
+mit <- read_csv(here::here("05_local-governance", 
+                           "voter-turnout", 
+                           "data",
+                           "mit", 
+                           "countypres_2000-2020.csv")) %>%
+  rename(FIPS = county_fips) %>%
+  tidylog::filter(year == 2020) %>%
+  mutate(FIPS = if_else(FIPS == "46113", "46102", FIPS)) %>% 
+  mutate(FIPS = case_when(county_name == "DISTRICT OF COLUMBIA"  ~ "11001",
+                          TRUE ~ FIPS)) %>%
+  tidylog::filter(!(state == 'RHODE ISLAND' & county_name == 'FEDERAL PRECINCT')) %>%
+  mutate(FIPS = if_else(state == "ALASKA", "02000", FIPS))
+  
+mit_counties <-  mit %>%
+  group_by(year, state, county_name, FIPS) %>%
+  summarize(mit_votes = sum(candidatevotes)) %>%
+  ungroup() %>%
+  mutate(state = str_sub(FIPS, 1, 2),
+         county = str_sub(FIPS, 3, 5)) %>%
+  select(year, 
+         state, 
+         county,
+         FIPS,
+         mit_votes)
+  
+# Now we load a county-level shapefile and join this to the MIT election returns
+counties <- tigris::counties(state = NULL,
+                             cb = TRUE,
+                             year = 2020,
+                             progress_bar = FALSE) %>%
+  select(STATEFP, COUNTYFP, GEOID, NAME) %>%
+  # Dropping Alaska for ease since we change all counties to 02000 in MIT data
+  filter(!STATEFP %in% c("02", "60", "66", "69", "72", "78")) %>%
+  rename(FIPS = GEOID,
+         state = STATEFP,
+         county = COUNTYFP) %>%
+  left_join(y = mit_counties, by = c("state", "county", "FIPS"))
+
+# Remove obsolete files
+rm(mit, mit_counties)
+
+# Interpolate to county and check values against MIT values
+st_crs(precincts)
+st_crs(counties)
+counties <- st_transform(counties, crs = 6549)
+
+# # XX When using `aw_interpolate()` below, I got an error: "CBR: result (after common-bits addition) is INVALID: Self-intersection at or near point..." but the function still gave a result...
+# ar_validate(source = precincts,
+#             target = counties,
+#             varList = c("total_votes", "zm_flag", "invalid_flag"),
+#             verbose = TRUE)
+
+test_result <- aw_interpolate(.data = counties,
+                              tid = FIPS,
+                              source = precincts,
+                              sid = GEOID20,
+                              weight = "total",
+                              output = "sf",
+                              extensive = c("total_votes", "zm_flag", "invalid_flag"))
+
+# Calculate percentage difference between county-level MIT votes and VEST votes aggregated from precincts
+# XX I'm not sure how useful this is because the results were not identical at the precinct level to begin with
+test_result <- test_result %>%
+  mutate(pct_diff = (abs(total_votes - mit_votes) / ((total_votes + mit_votes)/2)) * 100)
+
+# Kalawao County, HI is missing
+quantile(test_result$pct_diff, na.rm = TRUE)
+
+# XX Maybe identify counties in the top quartile of percentage difference and flag each place in those counties for quality? Will be annoying because places cross county lines
+
+```
+
+
+
+## 2. Denominator
+
+The denominator for the analysis should be the total age-eligible citizen population ([data here](https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2020.html))
+
+The US Census Bureau creates a special tabulation of the 2016-2020 ACS that includes county-level estimates of the total number of United States citizens 18 years of age or older. They also report estimates for subgroups within counties and for other geographic areas. 
+
+If the data are not downloaded, then we download and unzip the data.
+
+```{r}
+cvap_zip <- here::here("05_local-governance",
+                       "voter-turnout",
+                       "data",
+                       "CVAP_2016-2020_ACS_csv_files.zip")
+
+cvap_data <- here::here("05_local-governance",
+                        "voter-turnout",
+                        "data",
+                        "CVAP_2016-2020_ACS_csv_files")
+
+if (!file.exists(cvap_data)) {
+
+  download.file(url = "https://www2.census.gov/programs-surveys/decennial/rdo/datasets/2020/2020-cvap/CVAP_2016-2020_ACS_csv_files.zip",
+                destfile = cvap_zip)
+
+  unzip(zipfile = cvap_zip,
+        exdir = cvap_data)
+
+  file.remove(cvap_zip)
+
+}
+
+```
+
+Next, we load and clean the data. The variable of interest is `cvap_est`.
+
+> cvap_est: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
+
+```{r}
+cvap <- read_csv(here::here("05_local-governance", 
+                            "voter-turnout",
+                            "data",
+                            "CVAP_2016-2020_ACS_csv_files", 
+                            "Place.csv"))
+
+cvap <- cvap %>%
+  tidylog::filter(lntitle == "Total") %>%
+  select(-lntitle, -lnnumber)
+
+cvap <- cvap %>%
+  mutate(state = str_sub(string = geoid, start = 10, end = 11),
+         place = str_sub(string = geoid, start = -5, end = -1),
+         GEOID = str_c(state, place))
+
+cvap <- cvap %>%
+  tidylog::filter(state != "72") %>% #Drop Puerto Rico
+  select(state, 
+         place, 
+         GEOID,
+         cvap = cvap_est,
+         cvap_moe)
+
+```
+
+## 3. Combine and calculate turnout
+
+We combine the data. The join works for all places.
+
+```{r}
+joined_data <- left_join(result, cvap, by = c("GEOID", "state", "place"))
+
+```
+
+We calculate turnout and the coefficient of variation for the CVAP estimate. 
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(election_turnout = total_votes / cvap) %>%
+  mutate(cv = cvap_moe / cvap)
+
+```
+
+No observations have voter turnout above `1`.
+
+```{r}
+joined_data %>%
+  filter(total_votes > cvap)
+
+# # If any observations had voter turnout above `1` it would likely be because of sampling error in the denominator. We would set these values to one and all of these cases would be flagged. 
+# joined_data <- joined_data %>%
+#   mutate(election_turnout = if_else(condition = election_turnout > 1, true = 1, false = election_turnout))
+
+```
+
+**Check:** Is voter turnout bounded by 0 and 1 inclusive
+
+```{r}
+stopifnot(
+  max(joined_data$election_turnout, na.rm = TRUE) <= 1
+)
+
+stopifnot(
+  min(joined_data$election_turnout, na.rm = TRUE) >= 0
+)
+
+```
+
+```{r}
+joined_data %>%
+  ggplot(aes(total_votes, election_turnout)) +
+  geom_point(alpha = 0.1) +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 1),
+                     expand = expansion(mult = c(0, 0.1))) +
+  scatter_grid() +
+  labs(title = "There Isn't Much Relationship Between Turnout and Votes")
+
+joined_data %>%
+  ggplot(aes(cvap, election_turnout)) +
+  geom_point(alpha = 0.1) +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 1),
+                     expand = expansion(mult = c(0, 0.1))) +
+  scatter_grid() +
+  labs(title = "There Isn't Much Relationship Between CVAP and Votes")
+
+```
+
+## 4. Quality flags
+
+The quality of the numerator may be a concern for precincts with Z/M features in their geometry or with an invalid geometry. We already created flags for these cases. Sampling error in the denominator is definitely a concern for small places. 
+
+We flag cases with high and very high coefficients of variation in the denominator. 
+
+* `1` No issue
+* `2` CV >= 0.05
+* `3` CV >= 0.15
+
+There isn't much consensus on critical values for coefficients of variation. We use `0.15` because it is mentioned [A Compass for Understanding and Using American Community Survey Data](https://www.census.gov/content/dam/Census/library/publications/2009/acs/ACSstateLocal.pdf).
+
+>  While there is no hard-and-fast rule, for the purposes of this handbook, estimates with CVs of more than 15 percent are considered cause for caution when interpreting patterns in the data.
+
+If anything, a stricter threshold is necessary because the estimates are used in denominators. Thus, we use `0.05` for a `2`. 
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(
+    election_turnout_quality = case_when(
+      is.na(election_turnout) ~ NA_real_,
+      cv >= 0.15 ~ 3,
+      cv >= 0.05 ~ 2,
+      TRUE ~ 1
+    )
+  )
+
+dplyr::count(joined_data, election_turnout_quality)
+
+```
+
+```{r}
+joined_data %>%
+  ggplot(aes(factor(election_turnout_quality), election_turnout)) +
+  geom_point(alpha = 0.1) +
+  scale_y_continuous(limits = c(0, 1),
+                     expand = expansion(mult = c(0, 0.1))) +
+  scatter_grid() +
+  labs(title = "Very High Turnout is Not Associated with Poor Data Quality")
+
+```
+
+
+## 5. Save the data
+
+```{r}
+joined_data %>%
+  as.data.frame() %>%
+  mutate(year = 2020) %>%
+  select(year, state, place, election_turnout, election_turnout_quality, zm_flag, invalid_flag) %>%
+  write_csv(here::here("05_local-governance",
+                       "voter-turnout",
+                       "voter-turnout-city-2020.csv"))
+  
+```
+
+
+
+
+## Sources
+[MIT Election Lab Tweet](https://twitter.com/mitelectionlab/status/1100421480129617920?lang=ca)
+
+[Mismatched: The Trouble with Making a National Precinct Return Shapefile](https://medium.com/mit-election-lab/mismatched-the-trouble-with-making-a-national-precinct-return-shapefile-fc16a3d3ff94)
+
+[2020 Precinct-Level Election Results from the Voting and Election Science Team at University of Florida and Wichita State University](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/K7760H)
+
+[Documentation for above data](https://dataverse.harvard.edu/file.xhtml?fileId=6550201&version=39.0)
+
+[sf:: cheat sheet](https://github.com/rstudio/cheatsheets/blob/main/sf.pdf)
+
+[Geocomputation with R - Spatial data operations](https://geocompr.robinlovelace.net/spatial-operations.html#incongruent)
+
+[Areal Weighted Interpolation](https://cran.r-project.org/web/packages/areal/vignettes/areal-weighted-interpolation.html)
+
+[Precinct-Level Election Data Project](https://web.stanford.edu/~jrodden/jrhome_files/electiondata.htm)
