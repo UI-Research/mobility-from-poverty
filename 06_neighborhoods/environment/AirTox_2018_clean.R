@@ -28,7 +28,7 @@ library(readxl)
 ##Import 2018 AirToxScreen Data and 2014 AFFH data##
 #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
 
-cancer_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.xlsx")
+cancer_data18_2 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.xlsx")
 neuro_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_NeurHI_by_tract_srcgrp.xlsx")
 resp_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_RespHI_by_tract_srcgrp.xlsx")
 
@@ -43,11 +43,16 @@ neuro_data18 <- neuro_data18 %>%
 resp_data18 <- resp_data18 %>% 
   select(Tract, `Total Respiratory (hazard quotient)`)   
 
-##Join Variables and rename##
+##Join Variables and rename## [try left_join %>%]
 
-resp_cancer18 <- merge(x = resp_data18, y = cancer_data18, by = "Tract")
+enviro18_int <- left_join(resp_data18, cancer_data18, by = "Tract") %>%
+  left_join(neuro_data18, by = "Tract")
 
-enviro18_int <- merge(x = resp_cancer18, y = neuro_data18, by = "Tract")
+enviro18_test <- enviro18_int %>%
+  mutate(GEOID = str_sub(tract, start = 1, end = 11),
+         state = str_sub(tract, start = 1, end = 2),
+         county = str_sub(tract, start = 3, end = 5),
+         tract = str_sub(tract, start = 6, end = 11))
 
 colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 
@@ -57,11 +62,8 @@ colnames (enviro18_int) <- c("tract", "resp", "carc","neuro")
 #create a new varibale for filtering (Pull out last 6 digits)
 enviro18_int$tract1 <- str_sub(enviro18_int$tract, start = 6, end = 11)
 
-#filter to keep only tracts(tract1 != "000000")
-enviro18 <- filter(enviro18_int, tract1 != "000000")
-
-#drop tract1
-enviro18 <- enviro18 %>% 
+#filter to keep only tracts(tract1 != "000000") and drop tract1
+enviro18 <- filter(enviro18_int, tract1 != "000000") %>%
   select(tract, resp, carc, neuro) 
 
 ##Calculate means and st. devs and store values##
@@ -74,12 +76,14 @@ resp_stdv18 <- sd(enviro18$resp, na.rm = TRUE)
 carc_stdv18 <- sd(enviro18$carc, na.rm = TRUE)
 neuro_stdv18 <- sd(enviro18$neuro, na.rm = TRUE)
 
-##Calculate EnvHealth components##
+##Calculate EnvHealth Indicator##
+
+#calculate EnvHealth components
 enviro18$resp2 <- (enviro18$resp - resp_mean18)/resp_stdv18
 enviro18$carc2 <- (enviro18$carc - carc_mean18)/carc_stdv18
 enviro18$neuro2 <- (enviro18$neuro - neuro_mean18)/neuro_stdv18
 
-##Calculate EnvHealth Indicator##
+#multiply the sums by -1
 enviro18$envhealth18 <- (enviro18$carc2 + enviro18$resp2 + enviro18$neuro2)*-1
 
 #percentile rank caculated values
@@ -103,7 +107,7 @@ cancer_data14 <- read_excel("06_neighborhoods/environment/data/raw/nata2014v2_na
 neuro_data14 <- read_excel("06_neighborhoods/environment/data/raw/nata2014v2_national_neurhi_by_tract_srcgrp.xlsx")
 resp_data14 <- read_excel("06_neighborhoods/environment/data/raw/nata2014v2_national_resphi_by_tract_srcgrp.xlsx")
 
-#Step 2: Only keep needed variabales##
+#only keep needed variabales##
 
 cancer_data14 <- cancer_data14 %>% 
   select(Tract, `Total Cancer Risk (per million)`) 
@@ -114,23 +118,18 @@ neuro_data14 <- neuro_data14 %>%
 resp_data14 <- resp_data14 %>% 
   select(Tract, `Total Respiratory (hazard quotient)`) 
 
-##Join Variables and rename##
+##Join variables and rename##
 
-resp_cancer14 <- merge(x = resp_data14, y = cancer_data14, by = "Tract")
-
-enviro14_int <- merge(x = resp_cancer14, y = neuro_data14, by = "Tract")
+enviro14_int <- left_join(resp_data14, cancer_data14, by = "Tract") %>%
+  left_join(neuro_data14, by = "Tract")
 
 colnames (enviro14_int) <- c("tract", "resp", "carc","neuro")
-
 
 #create a new varibale for filtering (Pull out last 6 digits)
 enviro14_int$tract1 <- str_sub(enviro14_int$tract, start = 6, end = 11)
 
-#filter to keep only tracts(tract1 != "000000")
-enviro14 <- filter(enviro14_int, tract1 != "000000")
-
-#drop tract1
-enviro14 <- enviro14 %>% 
+#filter to keep only tracts(tract1 != "000000") and drop tract1
+enviro14 <- filter(enviro14_int, tract1 != "000000")%>%
   select(tract, resp, carc, neuro) 
 
 ##Calculate means and st. devs and store values##
@@ -203,21 +202,22 @@ haz_idx14 <- enviro14 %>%
 ##CROSSWALK## 
 
 #import tract-county-crosswalk_2018.csv
-crosswalk <- read.csv("geographic-crosswalks/data/tract-county-crosswalk_2018.csv")
+crosswalk_cnty <- read.csv("geographic-crosswalks/data/tract-county-crosswalk_2018.csv")
+#use county-populations ?
 
 #prep crosswalk file by adding leading zeroes to state and county 
-crosswalk$state <- str_pad(crosswalk$state, 2, side = "left", pad = "0")
+crosswal_cnty$state <- str_pad(crosswal_cnty$state, 2, side = "left", pad = "0")
 
-crosswalk$county <- str_pad(crosswalk$county, 3, side = "left", pad = "0")
+crosswalk_cnty$county <- str_pad(crosswalk_cnty$county, 3, side = "left", pad = "0")
 
-crosswalk$tract <- str_pad(crosswalk$tract, 6, side = "left", pad = "0")
+crosswalk_cnty$tract <- str_pad(crosswalk_cnty$tract, 6, side = "left", pad = "0")
 
 #concatenate crosswalk and remove spaces to join with AirTox  
-crosswalk$tract2 <- paste(crosswalk$state,crosswalk$county,crosswalk$tract)
-crosswalk$tract2 <- gsub(" ", "", crosswalk$tract2)
-crosswalk <- crosswalk %>%
+crosswalk_cnty$tract2 <- paste(crosswalk_cnty$state,crosswalk_cnty$county,crosswalk_cnty$tract)
+crosswalk_cnty$tract2 <- gsub(" ", "", crosswalk_cnty$tract2)
+crosswalk_cnty <- crosswalk_cnty %>%
   select(year,tract2)
-  colnames(crosswalk) <- c("year", "tract")
+  colnames(crosswalk_cnty) <- c("year", "tract")
 
 #look at difference between crosswalk and haz_idx file
 #non_crosswalk <- setdiff(haz_idx18$tract, crosswalk$tract)
@@ -225,7 +225,7 @@ crosswalk <- crosswalk %>%
 
 ##merge hazard and crosswalk files## 
 ##2018 file##
-hazidx18_merge <- tidylog::left_join(x = crosswalk, y = haz_idx18, 
+hazidx18_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx18, 
                         by= "tract")
 
 #check which did not join 
@@ -241,7 +241,7 @@ hazidx18_merge <- hazidx18_merge %>%
 #re-order to match code standards
 enviro_haz18 <- hazidx18_merge[,c(1,5,6,2,3,4)]
 
-##2014 File##
+##Merge 2014 file with crosswalk##
 hazidx14_merge <- tidylog::left_join(x = crosswalk, y = haz_idx14, 
                                      by= "tract")
 
@@ -392,6 +392,7 @@ race_pov14 <- race_pov14 %>%
 race_enviro14 <- left_join(race_pov14, enviro_haz14, by="GEOID") %>% 
   mutate(na_pop= if_else(is.na(haz_idx), total_pop, 0))
 
+
 #Append 2014 and 2018
 race_enviro <- rbind(race_enviro18, race_enviro14)
 
@@ -509,6 +510,100 @@ haz_by_race_exp <- left_join(expand_race, haz_by_race, by=c("geoid", "race_ind")
   left_join(state_county, by = "geoid") %>%
   rename(subgroup = race_ind) %>%
   mutate(subgroup_type = "race-ethnicity")
+
+###APPEND DATA###
+final_dat <- all_environment %>%
+  bind_rows(pov_environment_exp) %>%
+  bind_rows(haz_by_race_exp)
+
+###Match File to Data Standards###
+
+final_dat_cnty <- final_dat %>%
+  select(-geoid) %>%
+  filter(year != "NA") %>%
+  #creat quality variable where quality is 2 if value is missing by more than 5 percent
+  mutate(environmental_quality = if_else(na_perc >= .05,2,1)) %>%
+  select(-na_perc) %>%
+  arrange(year,
+          state,
+          county,
+          subgroup_type,
+          subgroup) %>%
+  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality)
+  
+#check 
+final_14 <- final_dat %>%
+  filter(year == "2014")
+
+final_18 <- final_dat %>%
+  filter(year == "2018")
+
+quality_2_3 <- final_dat %>%
+  filter (environmental_quality != 1)
+
+
+##City File##
+# Description: Code to create city-level Environmental Qulaity indicators
+
+#(1) import city-level crosswalk
+#(2) merge with tract-level data
+#(3) 
+
+#pull in city crosswalk 
+crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_place.csv")
+
+#clean crosswalk to prepare for merge 
+
+  #county should be 3 digits (remove leading zero)
+  crosswalk_city$county <- str_sub(crosswalk_city$county, start = 2, end = 4)
+
+  #add leading zero to state
+  crosswalk_city$state <- str_pad(crosswalk_city$state, 2, side = "left", pad = "0")
+
+  #remove period (".") from tract, add end zero then and add a leading zero
+  crosswalk_city$tract2 <- str_replace(crosswalk_city$tract, "[.]","") 
+  crosswalk_city$tract2 <- str_pad(crosswalk_city$tract2, 5, side = "right", pad = "0") 
+  crosswalk_city$tract2 <- str_pad(crosswalk_city$tract2, 6, side = "left", pad = "0") 
+  
+  #concatenate state, county, tract to match the haz_idx file 
+  crosswalk_city$tract3 <- paste(crosswalk_city$state,crosswalk_city$county,crosswalk_city$tract2)
+  crosswalk_city$tract3 <- gsub(" ", "", crosswalk_city$tract3)
+  crosswalk_city <- crosswalk_city %>%
+    select(place,tract3)
+  colnames(crosswalk_city) <- c("place", "tract")
+
+#merge tracts to places (source data with the crosswalk)
+  
+  #2018 merge
+  hazidx18_city_merge <- tidylog::left_join(x = crosswalk_city, y = haz_idx18, 
+                                       by= "tract")
+  
+  #check which didn't merge
+  hazidx18_city_nomerge <- anti_join(crosswalk_city, haz_idx18, by = "tract")
+  
+  #2014 merge
+
+  #collapse estimates to unique places
+
+#check against the census place file and limit our data to the 486 population-cutoff places 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
