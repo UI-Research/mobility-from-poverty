@@ -1,55 +1,17 @@
 ---
 title: ""
-author: ""
-date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
-output:
-  html_document:
-    number_sections: false
-    self_contained: TRUE
-    code_folding: show
-    toc: TRUE
-    toc_float: TRUE
-    css: !expr here::here("04_health", "www", "web_report.css")
-    editor_options:
-      chunk_output_type: console
+author: "Vincent Pancini"
 ---
 
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
 
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
-
-# Access to Health Services
-This metric is a county-level estimate of access to health services, defined as the ratio of population to primary care physicians. We pull this data from the 2022 County Health Rankings, which uses 2019 data from the Area Health Resource File.
-
-See the [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/measures-data-sources/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians) for more information.
-
-**TODO:**
-
-1. Add data quality flags - no confidence interval available, just z-score
-
-
-**Process:**
-
-1. Download Excel files for county-level data from each state
-
-2. Add data quality flags
-
-3. Save the data
 
 ```{r rmarkdown-setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ```{r setup}
-options(scipen = 999)
-
 library(urbnthemes)
 library(tidyverse)
-library(readxl)
-library(writexl)
-
 library(rvest)
 library(glue)
 library(fs)
@@ -127,37 +89,30 @@ walk2(state_data_url, out_state, download_data)
 ```{r}
 physicians <- map_dfr(out_state,
                      ~{readxl::read_excel(path = here::here(
-                       paste0("04_health/access-health-services/data/", .x, ".xlsx")),
-                       sheet = "Ranked Measure Data",
+                       paste0('04_health/access-health-services/data/', .x, '.xlsx')),
+                       sheet = 'Ranked Measure Data',
                        skip = 1
                      ) %>%
                          select(fips = 'FIPS',
-                                # number_pc_phys = '# Primary Care Physicians',
-                                # pc_phys_rate = 'Primary Care Physicians Rate',
                                 pc_phys_ratio = 'Primary Care Physicians Ratio'
                                 ) %>%
                          filter(!str_detect(fips, '000$')) %>%
                          mutate(state = str_sub(fips, 1, 2),
                                 county = str_sub(fips, 3, 5)
-                                # pop_per_1_pcp = gsub(':1', '', pc_phys_ratio),
-                                # pop_per_1_pcp = gsub(':0', '', 0)
                                 )
                      }
 )
 
-physicians[c('antecedent', 'consequent')] <- str_split_fixed(physicians$pc_phys_ratio, ':', 2)
-
 physicians <- physicians %>%
+  separate(col = pc_phys_ratio,
+           into = c('antecedent', 'consequent'),
+           remove = FALSE) %>%
   mutate(pc_phys_ratio = case_when(consequent == "1" ~ pc_phys_ratio,
                                    consequent == "0" ~ "0",
                                    is.na(pc_phys_ratio) ~ "0"),
-         year = 2020
+         year = 2019
          ) %>%
   select(year, state, county, pc_phys_ratio)
-
-physicians <- physicians %>%
-  arrange("year", "state", "county")
-
 
 ```
 
@@ -173,21 +128,22 @@ physicians <- physicians %>%
 ```{r}
 # Is this join necessary?
 
-# all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
-#   tidylog::filter(year == 2020) %>%
-#   select(-year)
-# 
-# all_counties <- left_join(all_counties, physicians, by = c("state", "county"))
-# 
-# test <- anti_join(all_counties, physicians, by = c("state", "county"))
-# 
-# all_counties <- all_counties %>%
-#   mutate(year = 2020) %>%
-#   select(year, state, county, pop_per_1_pcp)
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  tidylog::filter(year == 2020) %>%
+  select(-year)
 
-physicians %>%
+joined_data <- left_join(physicians, all_counties, by = c("state", "county"))
+
+test <- anti_join(all_counties, physicians, by = c("state", "county"))
+
+joined_data <- joined_data %>%
+  mutate(year = 2019) %>%
+  select(year, state, county, pc_phys_ratio, population) %>%
+  arrange(year, state, county)
+
+joined_data %>%
   write_csv(here::here("04_health",
                        "access-health-services",
-                       "access-health-services-2020.csv"))
+                       "access-health-services-2019.csv"))
 ```
 
