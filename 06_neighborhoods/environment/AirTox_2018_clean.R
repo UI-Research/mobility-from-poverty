@@ -28,7 +28,7 @@ library(readxl)
 ##Import 2018 AirToxScreen Data and 2014 AFFH data##
 #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
 
-cancer_data18_2 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.xlsx")
+cancer_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.xlsx")
 neuro_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_NeurHI_by_tract_srcgrp.xlsx")
 resp_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_RespHI_by_tract_srcgrp.xlsx")
 
@@ -95,6 +95,8 @@ enviro18$haz_idx <- round(enviro18$envhrank18*100,0)
 #keep only the needed variables
 haz_idx18 <- enviro18 %>% 
   select(tract, haz_idx)
+
+#Save File? [CHECK]
 
 
 ##Repeat for 2014##
@@ -206,7 +208,7 @@ crosswalk_cnty <- read.csv("geographic-crosswalks/data/tract-county-crosswalk_20
 #use county-populations ?
 
 #prep crosswalk file by adding leading zeroes to state and county 
-crosswal_cnty$state <- str_pad(crosswal_cnty$state, 2, side = "left", pad = "0")
+crosswalk_cnty$state <- str_pad(crosswalk_cnty$state, 2, side = "left", pad = "0")
 
 crosswalk_cnty$county <- str_pad(crosswalk_cnty$county, 3, side = "left", pad = "0")
 
@@ -242,7 +244,7 @@ hazidx18_merge <- hazidx18_merge %>%
 enviro_haz18 <- hazidx18_merge[,c(1,5,6,2,3,4)]
 
 ##Merge 2014 file with crosswalk##
-hazidx14_merge <- tidylog::left_join(x = crosswalk, y = haz_idx14, 
+hazidx14_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx14, 
                                      by= "tract")
 
 #check which did not join 
@@ -512,13 +514,13 @@ haz_by_race_exp <- left_join(expand_race, haz_by_race, by=c("geoid", "race_ind")
   mutate(subgroup_type = "race-ethnicity")
 
 ###APPEND DATA###
-final_dat <- all_environment %>%
+final_dat_cnty <- all_environment %>%
   bind_rows(pov_environment_exp) %>%
   bind_rows(haz_by_race_exp)
 
 ###Match File to Data Standards###
 
-final_dat_cnty <- final_dat %>%
+final_dat_cnty <- final_dat_cnty %>%
   select(-geoid) %>%
   filter(year != "NA") %>%
   #creat quality variable where quality is 2 if value is missing by more than 5 percent
@@ -531,14 +533,16 @@ final_dat_cnty <- final_dat %>%
           subgroup) %>%
   select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality)
   
+#save file 
+
 #check 
-final_14 <- final_dat %>%
+final_14 <- final_dat_cnty %>%
   filter(year == "2014")
 
-final_18 <- final_dat %>%
+final_18 <- final_dat_cnty %>%
   filter(year == "2018")
 
-quality_2_3 <- final_dat %>%
+quality_2_3 <- final_dat_cnty %>%
   filter (environmental_quality != 1)
 
 
@@ -547,13 +551,12 @@ quality_2_3 <- final_dat %>%
 
 #(1) import city-level crosswalk
 #(2) merge with tract-level data
-#(3) 
+#(3) collapse estimates to unique places 
 
 #pull in city crosswalk 
 crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_place.csv")
 
-#clean crosswalk to prepare for merge 
-
+#clean crosswalk to prepare for merge
   #county should be 3 digits (remove leading zero)
   crosswalk_city$county <- str_sub(crosswalk_city$county, start = 2, end = 4)
 
@@ -572,32 +575,69 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
     select(place,tract3)
   colnames(crosswalk_city) <- c("place", "tract")
 
-#merge tracts to places (source data with the crosswalk)
+  #count the number of tracts that fall in each place (n) 
+  #then make indicator for tracts ths fall wholly in a place (haz_idx18 < 1)
+  crosswalk_city <- crosswalk_city  %>%
+    add_count(tract)%>%
+    mutate(allin = case_when(n == 1 ~ 1,
+                                n > 1 ~ 0)) %>%
+    mutate(portionin = 1/n)  #CHECK -- was portionin and <1 in Tina code 
   
-  #2018 merge
-  hazidx18_city_merge <- tidylog::left_join(x = crosswalk_city, y = haz_idx18, 
+  #check how many fall into a place (44,512)
+  sum(with(crosswalk_city,allin==1))
+  
+  #2018 merge tract hazard indicators to places - left join since places (city crosswalk) has more observations
+  hazidx18_city_merge <- tidylog::left_join(x = crosswalk_city, y = haz_idx18, #pull in data with population
                                        by= "tract")
+ 
+  #add population data 
+  acs18 <- acs18 %>%
+    rename(tract = GEOID)
   
-  #check which didn't merge
-  hazidx18_city_nomerge <- anti_join(crosswalk_city, haz_idx18, by = "tract")
+  hazidx18_city_merge <- tidylog::left_join(x = acs18 , y = hazidx18_city_merge, #pull in data with population
+                                            by= "tract")
   
-  #2014 merge
+  #drop those missing hazard indicators 
+  hazidx18_city_merge <- hazidx18_city_merge %>%
+    drop_na(haz_idx)
+  
+  #separate into state, county, tract
+  hazidx18_city_merge <- hazidx18_city_merge %>%
+    mutate(GEOID = str_sub(tract, start = 1, end = 11),
+           state = str_sub(tract, start = 1, end = 2),
+           county = str_sub(tract, start = 3, end = 5),
+           tract = str_sub(tract, start = 6, end = 11)) 
+  
+# (2) collapse estimates to unique places##
+  
+  #calculate place means - CHECK - [do these need to be population weighted or no?]
+  place_means <- hazidx18_city_merge %>%
+    group_by(state, place) %>%
+    summarize(
+    haz_place_mean = weighted.mean(haz_idx,total_popE, by = GEOID, na.rm = FALSE)  ##CHECK - Should be popoluation weighted?
+    )
+  
+  #Or wieght by portion in? 
+  #place_means2 <- hazidx18_city_merge %>%  
+    #group_by(state, place) %>%
+    #summarize(
+      #haz_place_mean2 = weighted.mean(haz_idx,portionin, by = GEOID, na.rm = FALSE)  ##CHECK - Should be popoluation weighted?
+    #)
+  
+   #join place means file 
+  hazidx18_city_merge2 <- tidylog::left_join(x = hazidx18_city_merge, y = place_means, 
+                                            by= c("state","place"))
+                                            
 
-  #collapse estimates to unique places
-
-#check against the census place file and limit our data to the 486 population-cutoff places 
-
-
-
-
+  #make variable to keep only unique places/states
+  
+  
+  #keep only the 486 places 
+  hazidx18_city_test <- hazidx18_city[!duplicated(hazidx18_city[c("state","place")]),]
 
 
-
-
-
-
-
-
+  hazidx18_city_merge2$state_place <- paste(hazidx18_city_merge2$state,hazidx18_city_merge2$place)
+  hazidx18_city_merge2$state_place <- gsub(" ", "", hazidx18_city_merge2$state_plac)
 
 
 
