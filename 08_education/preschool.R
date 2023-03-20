@@ -48,27 +48,19 @@ library(readr)
 # Isolate the data to only children 3-4 yrs old
 microdata_preschool_age <- acs2021clean %>% 
   filter(AGE==3|AGE==4) 
-# 1,193,945 obs
+# 44,367 obs
 
 # collapse PERWT by place, create a variable for count per place in the collapse
-num_3_and_4 <- microdata_preschool_age %>% 
+# also create a collapse var for children 3-4 AND in pre-school (GRADEATT =1)
+# these vars needed to calculate metric: share of kids in pre-school
+metrics_preschool2 <- microdata_preschool_age %>% 
   dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_3_and_4 = sum(PERWT),
-            n = n()
+  dplyr::summarize(
+    num_3_and_4 = sum(PERWT),
+    num_in_preschool = sum((GRADEATT == 1) * PERWT),
+    n = n()
   )
 
-# Isolate further to children 3-4 AND in pre-school 
-microdata_preschool <- acs2021clean %>% 
-  dplyr::filter((AGE==3|AGE==4) & GRADEATT == 1) 
-
-# collapse PERWT by place
-num_in_preschool <- microdata_preschool %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_in_preschool = sum(PERWT))
-
-
-# Combine the two files to get the ratio we need: share of kids in pre-school
-metrics_preschool <- left_join(num_3_and_4, num_in_preschool, by=c("statefip", "place"))
 
 # Compute the ratio (share of 3-4 yo kids in preschool)
 metrics_preschool <- metrics_preschool %>%
@@ -84,9 +76,9 @@ metrics_preschool <- metrics_preschool %>%
 
 
 # adjust ub & lb values 
-metrics_preschool$share_in_preschool_ub[metrics_preschool$share_in_preschool_ub > 1] <- 1
-metrics_preschool$share_in_preschool_lb[metrics_preschool$share_in_preschool_lb < 0] <- 0
-
+metrics_preschool <- metrics_preschool %>% 
+  mutate(share_in_preschool_ub = pmin(1, pmax(0, share_in_preschool_ub)),
+         share_in_preschool_lb = pmax(0, pmin(1, share_in_preschool_lb)))
 
 ###################################################################
 
@@ -98,10 +90,10 @@ metrics_preschool <- metrics_preschool %>%
                                (num_3_and_4 >= 30) ~ 0))
 
 # bring in the PUMA flag file
-# puma_place <- read_csv("data/temp/puma_place.csv")
+# place_puma <- read_csv("data/temp/place_puma.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_preschool <- left_join(metrics_preschool, puma_place, by=c("statefip","place"))
+metrics_preschool <- left_join(metrics_preschool, place_puma, by=c("statefip","place"))
 
 # Generate the quality var
 metrics_preschool <- metrics_preschool %>% 
@@ -116,20 +108,9 @@ metrics_preschool <- metrics_preschool %>%
 
 # Limit to the Census Places we want 
 
-# rename to prep for merge to places file
+# rename vars as needed
 metrics_preschool <- metrics_preschool %>%
   dplyr::rename(state = statefip)
-
-# first, bring in the places crosswalk (place-populations.csv)
- places <- read_csv("geographic-crosswalks/data/place-populations.csv")
-# keep only the relevant year (for this, 2020)
-places <- places %>%
-  filter(year > 2019)
-
-# left join to get rid of irrelevant places data
-metrics_preschool <- left_join(places, metrics_preschool, by=c("state","place"))
-metrics_preschool <- metrics_preschool %>% 
-  distinct(year, state, place, share_in_preschool, .keep_all = TRUE)
 
 # add a variable for the year of the data
 metrics_preschool <- metrics_preschool %>%
