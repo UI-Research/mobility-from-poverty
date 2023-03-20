@@ -1,15 +1,14 @@
 ###################################################################
 
-# ACS Code: Digital Access metric, non-subgroup
+# Digital Access metric, non-subgroup
 # Tina Chelidze 2022-2023
-# Using IPUMS extract for ACS 2021
-# Based on processes developed by Paul Johnson and Kevin Werner in SAS
+# Using ACS 2021 tables
 # Process:
 # (1) Housekeeping
-# (2) Prepare relevant PUMA-City crosswalk
-# (3) Bring in the relevant ACS microdata & create Digital Access indicator
-# (4) Merge & create Digital Access metric
-# (5) Create the Data Quality variable
+# (2) Pull demographics for Census Places and Census Counties
+# (3) Clean and reshape to move data into the vars we want
+# (4) Calculate the digital access metric
+# (5) Create a data quality flag
 # (6) Cleaning and export
 
 ###################################################################
@@ -18,264 +17,389 @@
 # Set working directory to [gitfolder]: Open mobility-from-poverty.Rproj to make sure all file paths will work
 
 # Libraries you'll need
-library(tidyr)
-library(dplyr)
-library(readr)
+library(censusapi)
+library(tidycensus)
 library(tidyverse)
-library(ipumsr)
 
 ###################################################################
+# (1) Housekeeping
 
-# (2) Prepare relevant PUMA-City crosswalk
+# Explore where to pull data from
+apis <- listCensusApis()
+View(apis)
 
-# Open crosswalk data
-puma_city_2020 <- read_csv("geographic-crosswalks/data/geocorr2012_PUMA_Places_2020.csv")
-# Note:
-# afact = how much of the Census Place is in the PUMA
-# afact2 = how much of the PUMA is in the Census Place
+acs5_vars <- listCensusMetadata(name="2021/acs/acs5", type = "variables")
+head(acs5_vars)
 
-# rename variables and rework for future merge
-puma_city_2020 <- puma_city_2020 %>% 
-  dplyr::rename(puma = puma12)
-puma_city_2020 <- puma_city_2020 %>%
-  mutate(statefip = sprintf("%02d", as.numeric(statefip)),
-         puma = sprintf("%05d", as.numeric(puma)),
-         place = sprintf("%05d", as.numeric(place)))
+acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geography")
 
-# create a concatenated GEOID for each city(e.g. census place)
-puma_city_2020$GEOID <- paste(puma_city_2020$statefip,puma_city_2020$place, sep = "")
 
-# drop observations where the weight adjustment is zero (these are PUMAs where 0 of the PUMA is in the Place)
-puma_city_2020 <- puma_city_2020[puma_city_2020$afact != 0.000, ]
-# Note: 37810 to 37538 obs
+# Here are all the codes we need for the population denominator(s): 
 
-# merge in place population file (to isolate to the places we want)
-place_file <- read_csv("geographic-crosswalks/data/place-populations.csv")
-place_file <- filter(place_file, year == 2020)
-place_file$GEOID <- paste(place_file$state,place_file$place, sep = "")
+# RACE variables
+# B03002_003E # Not Hispanic or Latino, White Alone
+# B03002_004E # Not Hispanic or Latino, Black of African American Alone
+# B03002_005E # Not Hispanic or Latino, American Indian and Alaska Native alone
+# B03002_006E # Not Hispanic or Latino, Asian Alone
+# B03002_007E # Not Hispanic or Latino, Native Hawaiian and Other Pacific Islander alone
+# B03002_008E # Not Hispanic or Latino, some other race alone
+# B03002_009E # Not Hispanic or Latino, two or more races
 
-puma_city <- place_file %>% left_join(puma_city_2020, 
-                                      by=c('GEOID'))
-# Note: 1698 observations for 486 Census Places
+# RACE variables that will match the ones that are available for digital access (see below)
+# we cannot use the set above, because broadband access not split out by non-hispanic racial subgroups, only totals
+# B02001_002E # White Alone
+# B02001_003E # Black or African American Alone
+# B02001_004E # American Indian and Alaska Native Alone
+# B02001_005E # Asian Alone
+# B02001_006E # Native Hawaiian and Other Pacific Islander Alone
+# B02001_007E # Some other race alone
+# B02001_008E # Two or more races
+# B03001_003E # Hispanic or Latino (total)
 
-# sort final crosswalk file by statefip GEOID
-puma_city <- puma_city %>%
-  arrange(statefip, GEOID)
 
-# create a variable that assigns a weight to each Census Place (City) based on total 2020 population
-# First, create a variable for the total population
-puma_city <- puma_city %>%
-  mutate(totpop = sum(population))
-
-# Then, create the weight variable for each Census Place (City)
-puma_city <- puma_city %>%
-  mutate(citywgt=population/totpop)
-
-# keep only the variables we will need
-puma_city <- puma_city %>% 
-  select(year, state, puma, GEOID, population, afact, afact2, totpop, citywgt)
+# PRESENCE OF A COMPUTER AND TYPE OF BROADBAND INTERNET SUBSCRIPTION IN HOUSEHOLD, by races (9 vars)
+# B28009A_004E # White Alone
+# B28009B_004E # Black or African American Alone
+# B28009C_004E # American Indian and Alaska Native Alone
+# B28009D_004E # Asian Alone
+# B28009E_004E # Native Hawaiian and other Pacific Islander Alone
+# B28009F_004E # Some Other Race Alone
+# B28009G_004E # Two or More Races
+# B28009H_004E # White Alone, not Hispanic or Latino (won't use this since not consistent, it's the only one)
+# B28009I_004E # Hispanic or Latino
 
 
 ###################################################################
+# (2) Pull demographics for Census Places and Census Counties
 
-# (3) Bring in the relevant ACS microdata & create Digital Access indicator
+# First, list & save variables of interest as a vector
+popvars <- c(
+  "B02001_002E",
+  "B02001_003E", 
+  "B02001_004E",
+  "B02001_005E",
+  "B02001_006E",
+  "B02001_007E",
+  "B02001_008E",
+  "B03001_003E"
+)
 
-# ACS 2021 1-year data for Digital Access
-# How to download from IPUMS:
-# Select Samples -> ACS 1-year, 2021
-# Following variables:
-# STATEFIP - state FIPs code
-# PUMA - PUMA ID code
-# HHWT - Household weight
-# CIHISPEED - household subscription to high-speed Internet
+digitalvars <- c(
+  "B28009A_004E",
+  "B28009B_004E", 
+  "B28009C_004E",
+  "B28009D_004E",
+  "B28009E_004E",
+  "B28009F_004E",
+  "B28009G_004E",
+  "B28009I_004E"
+)
 
-# Right-click "DDI" under "Codebook", "Save link as", save .xml file to directory
-# Download .dat file to your directory as well (names should match)
 
-# Import the ACS microdata
-ddi <- read_ipums_ddi("data/temp/usa_00008.xml")
-data <- read_ipums_micro(ddi)
-# 3,252,599 observations
+# Pull ACS data at the Census Place and Census County levels
+# first, all the demographic populations
+places_pop <- get_acs(geography = "place",
+                      variables = popvars,
+                      year = 2021)
 
-# summing up HHWT will give you aggregate household-level counts
-# NOTE: if you are using an extract that has microdata at the individual level (vs HH level),
-# AKA a rectangularized sample, select only one person (e.g., PERNUM = 1) to isolate unique households.
+county_pop <- get_acs(geography = "county",
+                      variables = popvars,
+                      year = 2021)
 
-# Limit our analysis to actual households (e.g. GQ should equal 1 or 2)
-digital_microdata <- filter(data, GQ == 1 | GQ == 2)
-# 3,092,079 observations
+# now all the digital access data
+places_digital <- get_acs(geography = "place",
+                          variables = digitalvars,
+                          year = 2021)
 
-# Checking out the high-speed internet access variable
-digital_microdata %>% 
-  select(CIHISPEED) %>% 
-  summary()
-# CIHISPEED value = 10 means YES
-# CIHISPEED value = 20 means NO
-# CIHISPEED value = 0 mean N/A (GQ)
+county_digital <- get_acs(geography = "county",
+                          variables = digitalvars,
+                          year = 2021)
 
-# Create the digital access indicator (hspd_int meaning high speed internet)
-digital_microdata <- digital_microdata %>%
+
+###################################################################
+# (3) Clean and reshape to move data into the vars we want
+
+# Drop moe before reshape
+places_pop <- places_pop %>% 
+  select(GEOID, NAME, variable, estimate)
+county_pop <- county_pop %>% 
+  select(GEOID, NAME, variable, estimate)
+
+places_digital <- places_digital %>% 
+  select(GEOID, NAME, variable, estimate)
+county_digital <- county_digital %>% 
+  select(GEOID, NAME, variable, estimate)
+
+
+# Reshape the datasets so we can see all the population values per row
+wide_county_pop <- county_pop %>%
+  pivot_wider(names_from = variable, values_from = estimate)
+wide_places_pop <- places_pop %>%
+  pivot_wider(names_from = variable, values_from = estimate)
+
+wide_county_digital <- county_digital %>%
+  pivot_wider(names_from = variable, values_from = estimate)
+wide_places_digital <- places_digital %>%
+  pivot_wider(names_from = variable, values_from = estimate)
+
+
+
+# Rename vars for clarity
+wide_county_pop <- wide_county_pop %>% 
+  rename(
+    "white" = "B02001_002",
+            "black" = "B02001_003", 
+            "aian" = "B02001_004",
+            "asian" = "B02001_005",
+            "nhpi" = "B02001_006",
+            "other" = "B02001_007",
+            "two_or_more" = "B02001_008",
+            "hispanic" = "B03001_003"
+  )
+
+wide_places_pop <- wide_places_pop %>% 
+  rename(
+    "white" = "B02001_002",
+            "black" = "B02001_003", 
+            "aian" = "B02001_004",
+            "asian" = "B02001_005",
+            "nhpi" = "B02001_006",
+            "other" = "B02001_007",
+            "two_or_more" = "B02001_008",
+            "hispanic" = "B03001_003"
+  )
+
+
+
+wide_county_digital <- wide_county_digital %>% 
+  rename(
+    "white_digital" = "B28009A_004",
+    "black_digital" = "B28009B_004", 
+    "aian_digital" = "B28009C_004",
+    "asian_digital" = "B28009D_004",
+    "nhpi_digital" = "B28009E_004",
+    "other_digital" = "B28009F_004",
+    "two_or_more_digital" = "B28009G_004",
+    "hispanic_digital" = "B28009I_004"
+  )
+
+wide_places_digital <- wide_places_digital %>% 
+  rename(
+    "white_digital" = "B28009A_004",
+    "black_digital" = "B28009B_004", 
+    "aian_digital" = "B28009C_004",
+    "asian_digital" = "B28009D_004",
+    "nhpi_digital" = "B28009E_004",
+    "other_digital" = "B28009F_004",
+    "two_or_more_digital" = "B28009G_004",
+    "hispanic_digital" = "B28009I_004"
+  )
+
+# Collapse the detailed groups into the same four racial groups of interest from the above section
+
+# Construct asian_other & total (combined values)
+wide_county_pop <- wide_county_pop %>%
   mutate(
-    hspd_int = case_when(
-      CIHISPEED == 0 ~ NA_real_,
-      CIHISPEED == 10 ~ 1,
-      CIHISPEED == 20 ~ 0
-    ))
+    asian_other = aian + asian + nhpi + other + two_or_more,
+    total_people = asian_other + hispanic + white + black
+  )
+
+wide_places_pop <- wide_places_pop %>%
+  mutate(
+    asian_other = aian + asian + nhpi + other + two_or_more,
+    total_people = asian_other + hispanic + white + black
+  )
+
+wide_county_digital <- wide_county_digital %>%
+  mutate(
+    asian_other_digital = aian_digital + asian_digital + nhpi_digital + other_digital + two_or_more_digital,
+    total_people_digital = asian_other_digital + hispanic_digital + white_digital + black_digital
+  )
+
+wide_places_digital <- wide_places_digital %>%
+  mutate(
+    asian_other_digital = aian_digital + asian_digital + nhpi_digital + other_digital + two_or_more_digital,
+    total_people_digital = asian_other_digital + hispanic_digital + white_digital + black_digital
+  )
+
+
+
+# Keep only the vars we need
+wide_county_pop <- wide_county_pop %>% select(GEOID, 
+                                              NAME, 
+                                              total_people, 
+                                              asian_other, 
+                                              black, 
+                                              hispanic, 
+                                              white)
+
+wide_places_pop <- wide_places_pop %>% select(GEOID, 
+                                              NAME, 
+                                              total_people, 
+                                              asian_other, 
+                                              black, 
+                                              hispanic, 
+                                              white)
+
+wide_county_digital <- wide_county_digital %>% select(GEOID, 
+                                                      NAME, 
+                                                      total_people_digital, 
+                                                      asian_other_digital, 
+                                                      black_digital, 
+                                                      hispanic_digital, 
+                                                      white_digital)
+
+wide_places_digital <- wide_places_digital %>% select(GEOID, 
+                                                      NAME, 
+                                                      total_people_digital, 
+                                                      asian_other_digital, 
+                                                      black_digital, 
+                                                      hispanic_digital, 
+                                                      white_digital)
 
 
 ###################################################################
+# (4) Calculate the digital access metric
 
-# (4) Merge & create Digital Access metric
+# Merge the geography files together to have all variables together
+digital_access_county <- left_join(wide_county_pop, wide_county_digital, by=c("GEOID"))
+digital_access_city <- left_join(wide_places_pop, wide_places_digital, by=c("GEOID"))
 
-# prep variables for merge
-digital_microdata <- digital_microdata %>% 
-  dplyr::rename("puma" = "PUMA",
-         "state" = "STATEFIP")
-digital_microdata <- digital_microdata %>%
-  mutate(state = sprintf("%02d", as.numeric(state)),
-         puma = sprintf("%05d", as.numeric(puma))
+# Now calculate the metric: share with digital access
+digital_access_county <- digital_access_county %>%
+  mutate(
+    digital_access_total = total_people_digital / total_people,
+    digital_access_asian_other = asian_other_digital / asian_other, 
+    digital_access_black = black_digital / black, 
+    digital_access_hispanic = hispanic_digital / hispanic,
+    digital_access_white = white_digital / white
   )
 
-# merge the microdata to Census Places (Cities)
-# left join because we only want the PUMA microdata that falls into our Cities
-digital_puma_city <- puma_city %>% 
-  left_join(digital_microdata, by=c('state','puma'))
-# 2,130,573 observations
-
-# checking that the merge went the right way
-length(unique(digital_puma_city$GEOID))
-# 486 unique places - good to go 
-
-# create a variable for the number of Census Places (Cities) per PUMA
-digital_puma_city <- digital_puma_city %>%
-  group_by(puma, state) %>%
-  mutate(cities_per_PUMA = n_distinct(GEOID))
-
-# create a variable for the number of PUMAs per Census Place (City) 
-digital_puma_city <- digital_puma_city %>%
-  group_by(GEOID) %>%
-  mutate(PUMAs_per_city = n_distinct(state, puma))
-
-# Adjust HH weight by the amount of the Place that falls into that PUMA
-digital_puma_city <- digital_puma_city %>%
-  mutate(HHWT = HHWT*afact)
-
-
-# Create the Digital Access metric
-# it's a ratio: number of HH with access to broadband/number of HH
-# Number of HH with broadband (hspd_int = 1)
-
-# create a dataset with the count of all the HH with broadband access per city
-# first, weigh our access variable (hspd_int) by HHWT
-digital_puma_city <- digital_puma_city %>%
-  mutate(hspd_int = HHWT*hspd_int)
-
-# collapse (sum) high speed internet (hspd_int) by city (digital_hh will be the count of HH with access)
-# include n as a count of how many observations from the microdata were collapsed for that city
-digital_hh <- digital_puma_city %>% 
-  dplyr::group_by(GEOID) %>% 
-  dplyr::summarize(digital_hh = sum(hspd_int, na.rm=TRUE),
-            n = n(),
-            na.rm=TRUE
+digital_access_city <- digital_access_city %>%
+  mutate(
+    digital_access_total = total_people_digital / total_people,
+    digital_access_asian_other = asian_other_digital / asian_other, 
+    digital_access_black = black_digital / black, 
+    digital_access_hispanic = hispanic_digital / hispanic,
+    digital_access_white = white_digital / white
   )
-
-# create a similar dataset for all HH per city
-# include same n count (should end up with same counts as above)
-all_hh <- digital_puma_city %>% 
-  dplyr::group_by(GEOID) %>% 
-  dplyr::summarize(all_hh = sum(HHWT, na.rm=TRUE),
-            n = n(),
-            na.rm=TRUE
-  )
-
-# Merge the two datasets (digital_hh and all_hh)
-digital_access <- merge(digital_hh, all_hh, by=c("GEOID", "n"), all.x=TRUE)
-
-# Compute the ratio (share of HH with digital access)
-digital_access <- digital_access %>%
-  mutate(share_digital_access = digital_hh/all_hh)
-
-# Create Confidence Interval (CI) and correctly format the variables
-digital_access <- digital_access %>%
-  mutate(no_access = 1 - share_digital_access,
-         interval = 1.96 * sqrt((no_access*share_digital_access)/n),
-         share_digital_access_ub = share_digital_access + interval,
-         share_digital_access_lb = share_digital_access - interval)
 
 
 ###################################################################
+# (5) Create a data quality flag
 
-# (5) Create the Data Quality variable
+# For any ratio that's being calculated with a count of individuals less than 30, make the flag = 1
+digital_access_county <- digital_access_county %>% 
+  mutate(total_size_flag = case_when((total_people_digital < 30 | total_people < 30) ~ 1,
+                                     (total_people_digital >= 30 & total_people >= 30) ~ 0),
+         asian_size_flag = case_when((asian_other_digital < 30 | asian_other < 30) ~ 1,
+                                     (asian_other_digital >= 30 & asian_other >= 30) ~ 0),
+         black_size_flag = case_when((black_digital < 30 | black < 30) ~ 1,
+                                     (black_digital >= 30 & black >= 30) ~ 0),
+         hispanic_size_flag = case_when((hispanic_digital < 30 | hispanic < 30) ~ 1,
+                                        (hispanic_digital >= 30 & hispanic >= 30) ~ 0),
+         white_size_flag = case_when((white_digital < 30 | white < 30) ~ 1,
+                                     (white_digital >= 30 & white >= 30) ~ 0))
 
-# For Digital Access metric: total number of households surveyed
-digital_access <- digital_access %>% 
-  mutate(size_flag = case_when((all_hh < 30) ~ 1,
-                               (all_hh >= 30) ~ 0))
-
-# bring in the PUMA flag file if you have not run "0_microdata.R" before this
- puma_place <- read_csv("data/temp/puma_place.csv")
- puma_place <- transform(puma_place,GEOID=interaction(statefip,place,sep=''))
- puma_place$GEOID <- as.character(puma_place$GEOID)
-
-# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
- digital_access <- digital_access %>% 
-   left_join(puma_place, by=c('GEOID'))
+digital_access_city <- digital_access_city %>% 
+  mutate(total_size_flag = case_when((total_people_digital < 30 | total_people < 30) ~ 1,
+                                     (total_people_digital >= 30 & total_people >= 30) ~ 0),
+         asian_size_flag = case_when((asian_other_digital < 30 | asian_other < 30) ~ 1,
+                                     (asian_other_digital >= 30 & asian_other >= 30) ~ 0),
+         black_size_flag = case_when((black_digital < 30 | black < 30) ~ 1,
+                                     (black_digital >= 30 & black >= 30) ~ 0),
+         hispanic_size_flag = case_when((hispanic_digital < 30 | hispanic < 30) ~ 1,
+                                        (hispanic_digital >= 30 & hispanic >= 30) ~ 0),
+         white_size_flag = case_when((white_digital < 30 | white < 30) ~ 1,
+                                     (white_digital >= 30 & white >= 30) ~ 0))
 
 # Generate the quality var
- digital_access <- digital_access %>% 
-  mutate(share_digital_access_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
-                                                size_flag==0 & puma_flag==2 ~ 2,
-                                                size_flag==0 & puma_flag==3 ~ 3,
-                                                size_flag==1 ~ 3))
+digital_access_county <- digital_access_county %>% 
+  mutate(digital_access_total_quality = case_when((total_size_flag == 1) ~ 2,
+                                                  (total_size_flag == 0) ~ 1),
+         digital_access_asian_other_quality = case_when((asian_size_flag == 1) ~ 2,
+                                                        (asian_size_flag == 0) ~ 1),
+         digital_access_black_quality = case_when((black_size_flag == 1) ~ 2,
+                                                  (black_size_flag == 0) ~ 1),
+         digital_access_hispanic_quality = case_when((hispanic_size_flag == 1) ~ 2,
+                                                     (hispanic_size_flag == 0) ~ 1),
+         digital_access_white_quality = case_when((white_size_flag == 1) ~ 2,
+                                                  (white_size_flag == 0) ~ 1))
 
- ###################################################################
- 
- # (6) Cleaning and export
- 
- 
- # Limit to the Census Places we want 
- 
- # rename to prep for merge to places file
- digital_access <- digital_access %>%
-   dplyr::rename(state = statefip)
- 
- # first, bring in the places crosswalk (place-populations.csv)
- places <- read_csv("geographic-crosswalks/data/place-populations.csv")
- # keep only the relevant year (for this, 2020)
- places <- places %>%
-   filter(year > 2019)
- 
- # left join to get rid of irrelevant places data
- digital_access <- left_join(places, digital_access, by=c("state","place"))
- digital_access <- digital_access %>% 
-   distinct(year, state, place, share_digital_access, 
-            share_digital_access_ub, share_digital_access_lb,
-            share_digital_access_quality, .keep_all = TRUE)
- 
- # add a variable for the year of the data
- digital_access <- digital_access %>%
-   mutate(
-     year = 2021
-   )
- 
- # order & sort the variables how we want
- digital_access <- digital_access %>%
-   select(year, state, place, share_digital_access, 
-          share_digital_access_ub, share_digital_access_lb,
-          share_digital_access_quality)
- 
- # Replace the NaNs with NAs
- digital_access$share_digital_access[is.nan(digital_access$share_digital_access)]<-NA
- digital_access$share_digital_access_ub[is.nan(digital_access$share_digital_access_ub)]<-NA
- digital_access$share_digital_access_lb[is.nan(digital_access$share_digital_access_lb)]<-NA
- 
- # check how many missings
- sum(is.na(digital_access$share_digital_access))
- # 0 missings
 
- # Save as "digital_access.csv"
-  write_csv(digital_access, "08_education/digital_access_city_2021.csv")  
- 
- 
+digital_access_city <- digital_access_city %>% 
+  mutate(digital_access_total_quality = case_when((total_size_flag == 1) ~ 2,
+                                                  (total_size_flag == 0) ~ 1),
+         digital_access_asian_other_quality = case_when((asian_size_flag == 1) ~ 2,
+                                                        (asian_size_flag == 0) ~ 1),
+         digital_access_black_quality = case_when((black_size_flag == 1) ~ 2,
+                                                  (black_size_flag == 0) ~ 1),
+         digital_access_hispanic_quality = case_when((hispanic_size_flag == 1) ~ 2,
+                                                     (hispanic_size_flag == 0) ~ 1),
+         digital_access_white_quality = case_when((white_size_flag == 1) ~ 2,
+                                                  (white_size_flag == 0) ~ 1))
+
+
+###################################################################
+# (6) Prepare the data for saving & export final Metrics files
+
+# merge in the final County & Places files to isolate the data we need for each
+county_file <- read_csv("geographic-crosswalks/data/county-populations.csv")
+
+places_file <- read_csv("geographic-crosswalks/data/place-populations.csv")
+
+# add in the lost leading zeroes for the state/county FIPs & state/place FIPs
+
+county_file <- county_file %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+county_file <- county_file %>%
+  mutate(county = sprintf("%0.3d", as.numeric(county)))
+
+
+places_file <- places_file %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+places_file <- places_file %>%
+  mutate(place = sprintf("%0.5d", as.numeric(place)))
+
+# create a concatenated GEOID based on state + county & state + place
+county_file$GEOID <- paste(county_file$state,county_file$county, sep = "")
+
+places_file$GEOID <- paste(places_file$state,places_file$place, sep = "")
+
+
+# keep the most recent year of population data (not 2022, but 2020)
+county_file <- filter(county_file, year > 2019)
+
+places_file <- filter(places_file, year > 2019)
+
+
+# merge the data files into the population files (left join, since data files have more observations)
+county_digital_access_by_race <- left_join(county_file, digital_access_county, by=c("GEOID"))
+
+place_digital_access_by_race <- left_join(places_file, digital_access_city, by=c("GEOID"))
+
+
+# Keep only relevant variables before export
+county_digital_access_by_race <- county_digital_access_by_race %>% 
+  select(year, state, county, digital_access_total, digital_access_asian_other, 
+         digital_access_black, digital_access_hispanic, digital_access_white,
+         digital_access_total_quality, digital_access_asian_other_quality, 
+         digital_access_black_quality, digital_access_hispanic_quality, 
+         digital_access_white_quality)
+
+place_digital_access_by_race <- place_digital_access_by_race %>% 
+  select(year, state, place, digital_access_total, digital_access_asian_other, 
+         digital_access_black, digital_access_hispanic, digital_access_white,
+         digital_access_total_quality, digital_access_asian_other_quality, 
+         digital_access_black_quality, digital_access_hispanic_quality, 
+         digital_access_white_quality)
+
+
+# Export each of the files as CSVs
+# view(county_digital_access_by_race)
+write_csv(county_digital_access_by_race, "08_education/digital_access_county_2021.csv")
+
+write_csv(place_digital_access_by_race, "08_education/digital_access_city_2021.csv")
+
 
 
