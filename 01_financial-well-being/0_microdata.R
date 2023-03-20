@@ -18,9 +18,6 @@
 # Set working directory to [gitfolder]: Open mobility-from-poverty.Rproj to make sure all file paths will work
 
 # Libraries you'll need
-library(tidyr)
-library(dplyr)
-library(readr)
 library(tidyverse)
 library(ipumsr)
 
@@ -47,18 +44,32 @@ puma_place_2021 <- puma_place_2021 %>%
          place = sprintf("%0.5d", as.numeric(place))
   )
 
+# Limit to the Census Places we want 
+# first, bring in the places crosswalk (place-populations.csv)
+places <- read_csv("geographic-crosswalks/data/place-populations.csv")
+# keep only the relevant year (for this, 2020)
+places <- places %>%
+  filter(year > 2019)
+# rename to prep for merge
+places <- places %>% 
+  dplyr::rename("statefip" = "state")
+
+# left join to get rid of irrelevant places data (this is in an effort to make our working files smaller)
+puma_place_2021 <- left_join(places, puma_place_2021, by=c("statefip","place"))
+# 37583 obs to 1698 obs (35885 obs dropped)
+
 # keep only the variables we will need
 puma_place_2021 <- puma_place_2021 %>% 
   select(statefip, puma, place, pop20, afact, afact2)
 
 # drop observations where the weight adjustment is zero
-puma_place_2021 <- puma_place_2021[puma_place_2021$afact != 0.000, ]
-# 37810 obs to 37538 obs (272 dropped)
-
-
-# sort by statefip place (previously was statefip puma)
 puma_place_2021 <- puma_place_2021 %>%
-  arrange(statefip, place)
+  filter(afact!= 0.000)
+# no drops
+
+# (optional) sort by statefip place (previously was statefip puma)
+#puma_place_2021 <- puma_place_2021 %>%
+#  arrange(statefip, place)
 
 # Create a variable that assigns a weight to each place based on total 2020 population
 # first, create a variable for the total population
@@ -93,11 +104,19 @@ summary(puma_place)
 # Q1 of placepop is 351
 # sum_products mean is 0.09
 puma_place <- puma_place %>%
-  dplyr::mutate(puma_flag = case_when((sum_products >= 0.75) ~ 1,
-                                      (sum_products < 0.75 & sum_products >= 0.35) ~ 2,
-                                      (sum_products < 0.35) ~ 3),
-                small_place = case_when((placepop >= 350) ~ 0,
-                                        (placepop < 350) ~ 1))
+  dplyr::mutate(
+    puma_flag = 
+      case_when(
+        sum_products >= 0.75 ~ 1,
+        sum_products >= 0.35 ~ 2,
+        sum_products < 0.35 ~ 3
+      ),
+    small_place = 
+      case_when(
+        placepop >= 350 ~ 0,
+        placepop < 350 ~ 1
+      )
+  )
 
 # save as "puma_place.csv" in gitignore
 write_csv(puma_place, "data/temp/puma_place.csv")
@@ -121,6 +140,7 @@ acs_2021 <- acs_2021 %>%
 acs_2021 <- acs_2021 %>% 
   dplyr::rename("puma" = "PUMA",
                 "statefip" = "STATEFIP")
+
 acs_2021 <- acs_2021 %>%
   dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
                 puma = sprintf("%0.5d", as.numeric(puma)),
@@ -132,9 +152,12 @@ acs_2021 <- acs_2021 %>%
 # (5) Merge the microdata PUMAs to places
 
 # (left join, since microdata has more observations)
-memory.limit(size=999999)
+# memory.limit(size=999999)
 acs2021clean  <- left_join(acs_2021, puma_place, by=c("statefip","puma"))
-# now have 59,650,363 observations
+# now have 3,252,599 observations
+# run anti_join to see how many cases on the left did not have a match on the right
+test  <- anti_join(acs_2021, puma_place, by=c("statefip","puma"))
+# 1,656,456 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
 
 # create a variable for the number of places per PUMA population per place (e.g., in unique statefip+place pairs)
 #acs2021clean  <- acs2021clean  %>%
@@ -150,15 +173,11 @@ acs2021clean  <- left_join(acs_2021, puma_place, by=c("statefip","puma"))
 
 # Same adjustments as Kevin:
 acs2021clean <- acs2021clean %>%
-  mutate(HHWT = HHWT*afact,
-         HHINCOME = HHINCOME*ADJUST,
-         PERWT = PERWT*afact,
-         RENTGRS = RENTGRS*ADJUST,
-         OWNCOST = OWNCOST*ADJUST)
-
-# sort by statefip place (previously was statefip puma)
-acs2021clean <- acs2021clean %>%
-  arrange(statefip, place)
+  mutate(HHWT = HHWT*afact, # the weight of each household is adjusted by the area of the PUMA that falls into a given Place
+         HHINCOME = HHINCOME*ADJUST, # adjusts the HH income values by the Census's 12-month adjustment factor (converts numbers into calendar year dollars)
+         PERWT = PERWT*afact, # the weight of each person is adjusted by the area of the PUMA that falls into a given Place
+         RENTGRS = RENTGRS*ADJUST, # adjusts gross monthly rental cost for rented housing units into cal-year dollars
+         OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" in gitignore
 write_csv(acs2021clean, "data/temp/2021microdata.csv")
