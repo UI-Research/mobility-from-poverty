@@ -40,13 +40,6 @@ microdata_emp_age <- acs2021clean %>%
   filter(AGE >= 25 & AGE <= 54) 
 # 857,108 observations
 
-# collapse PERWT by place, create a variable for count/freq in the collapse
-num_in_emp_age <- microdata_emp_age %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_25_thru_54 = sum(PERWT),
-            n = n()
-  )
-
 
 # EMPSTAT values:
 #  0		N/A
@@ -64,11 +57,11 @@ metrics_employment <- microdata_emp_age %>%
     num_employed = sum((EMPSTAT == 1) * PERWT),
     n = n()
   )
-
+# 486 obs - good to go
 
 # Compute the ratio (share employed)
 metrics_employment <- metrics_employment %>%
-  mutate(share_employed = num_employed/num_25_thru_54)
+  mutate(share_employed = num_employed/num_in_emp_age)
 
 # Create Confidence Interval (CI) and correctly format the variables
 metrics_employment <- metrics_employment %>%
@@ -88,14 +81,14 @@ metrics_employment <- metrics_employment %>%
 
 # For Employment metric: total number of people 25 to 54 years old
 metrics_employment <- metrics_employment %>% 
-  mutate(size_flag = case_when((num_25_thru_54 < 30) ~ 1,
-                               (num_25_thru_54 >= 30) ~ 0))
+  mutate(size_flag = case_when((num_in_emp_age < 30) ~ 1,
+                               (num_in_emp_age >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
-# puma_place <- read_csv("data/temp/puma_place.csv")
+# place_puma <- read_csv("data/temp/place_puma.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_employment <- left_join(metrics_employment, puma_place, by=c("statefip","place"))
+metrics_employment <- left_join(metrics_employment, place_puma, by=c("statefip","place"))
 
 # Generate the quality var
 metrics_employment <- metrics_employment %>% 
@@ -108,23 +101,9 @@ metrics_employment <- metrics_employment %>%
 
 # (5) Cleaning and export
 
-# Limit to the Census Places we want 
-
-# rename to prep for merge to places file
+# rename vars as needed
 metrics_employment <- metrics_employment %>%
   dplyr::rename(state = statefip)
-
-# first, bring in the places crosswalk (place-populations.csv)
-places <- read_csv("geographic-crosswalks/data/place-populations.csv")
-# keep only the relevant year (for this, 2020)
-places <- places %>%
-  filter(year > 2019)
-
-# left join to get rid of irrelevant places data
-metrics_employment <- left_join(places, metrics_employment, by=c("state","place"))
-metrics_employment <- metrics_employment %>% 
-  distinct(year, state, place, .keep_all = TRUE)
-# 486 obs which means correct
 
 # add a variable for the year of the data
 metrics_employment <- metrics_employment %>%
