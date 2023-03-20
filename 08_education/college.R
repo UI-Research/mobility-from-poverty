@@ -84,19 +84,14 @@ library(readr)
 # NA = code 001
 microdata <- acs2021clean %>%
   filter(EDUCD != 001)
-# 2230328 obs to 2168983 obs (61,345 missing obs dropped)
+# 2,230,328 obs to 2,168,983 obs (61,345 missing obs dropped)
 
 # Create dataset of the microdata for only ages 19 and 20 
 # first, isolate the dataset to 19-20 year olds
 microdata_coll_age <- microdata %>% 
   filter(AGE == 19 | AGE == 20) 
+# 59,813 obs
 
-# collapse PERWT by place, create a variable for # of places (or n) in the collapse
-num_in_coll_age <- microdata_coll_age %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_19_and_20 = sum(PERWT),
-            n = n()
-  )
 
 # Find the # of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
 # collapse PERWT by place (total count of college ready people)
