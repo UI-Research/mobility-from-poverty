@@ -79,9 +79,16 @@ library(readr)
 
 # (3) Create the college readiness metric
 
-# Create a dataset of the microdata for only ages 19 and 20 
+# FIRST, remove "NA" records 
+# (variable codes explained here: https://usa.ipums.org/usa-action/variables/EDUC#codes_section & see "Detailed codes" at bottom)
+# NA = code 001
+microdata <- acs2021clean %>%
+  filter(EDUCD != 001)
+# 2230328 obs to 2168983 obs (61,345 missing obs dropped)
+
+# Create dataset of the microdata for only ages 19 and 20 
 # first, isolate the dataset to 19-20 year olds
-microdata_coll_age <- acs2021clean %>% 
+microdata_coll_age <- microdata %>% 
   filter(AGE == 19 | AGE == 20) 
 
 # collapse PERWT by place, create a variable for # of places (or n) in the collapse
@@ -91,18 +98,17 @@ num_in_coll_age <- microdata_coll_age %>%
             n = n()
   )
 
-# Create a dataset of the number of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
-microdata_coll <- microdata_coll_age %>% 
-  filter(EDUCD <= 116 & EDUCD >= 62) 
-
+# Find the # of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
 # collapse PERWT by place (total count of college ready people)
-num_coll_ready <- microdata_coll %>% 
+# and combine these into df to prepare for metric ratio
+metrics_college <- microdata_coll_age %>% 
   dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_coll_ready = sum(PERWT))
-
-
-# Merge the two datasets (num_in_coll_age and num_coll_ready) to prepare for ratio
-metrics_college <- left_join(num_in_coll_age, num_coll_ready, by=c("statefip", "place"))
+  dplyr::summarize(
+    num_19_and_20 = sum(PERWT),
+    num_coll_ready = sum((EDUCD <= 116 & EDUCD >= 62) * PERWT),
+    n = n()
+  )
+# EDUCD <= 116 & EDUCD >= 62 evaluates to FALSE if the person isn't college ready and they aren't counted
 
 # Compute the ratio (share employed)
 metrics_college <- metrics_college %>%
@@ -116,8 +122,9 @@ metrics_college <- metrics_college %>%
          share_hs_degree_lb = share_hs_degree - interval)
 
 # adjust ub & lb values that fall beyond 0 and 1
-metrics_college$share_hs_degree_ub[metrics_college$share_hs_degree_ub > 1] <- 1
-metrics_college$share_hs_degree_lb[metrics_college$share_hs_degree_lb < 0] <- 0
+metrics_college <- metrics_college %>% 
+  mutate(share_hs_degree_ub = pmin(1, pmax(0, share_hs_degree_ub)),
+         share_hs_degree_ub = pmax(0, pmin(1, share_hs_degree_ub)))
 
 ###################################################################
 
@@ -129,10 +136,10 @@ metrics_college <- metrics_college %>%
                                (num_19_and_20 >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
-# puma_place <- read_csv("data/temp/puma_place.csv")
+# place_puma <- read_csv("data/temp/place_puma.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
- metrics_college <- left_join(metrics_college, puma_place, by=c("statefip","place"))
+ metrics_college <- left_join(metrics_college, place_puma, by=c("statefip","place"))
 
 # Generate the quality var
  metrics_college <- metrics_college %>% 
@@ -145,23 +152,10 @@ metrics_college <- metrics_college %>%
 
 # (5) Cleaning and export
 
- # Limit to the Census Places we want 
- 
- # rename to prep for merge to places file
+ # rename vars as needed
  metrics_college <- metrics_college %>%
    dplyr::rename(state = statefip)
  
- # first, bring in the places crosswalk (place-populations.csv)
- places <- read_csv("geographic-crosswalks/data/place-populations.csv")
- # keep only the relevant year (for this, 2020)
- places <- places %>%
-   filter(year > 2019)
- 
- # left join to get rid of irrelevant places data
- metrics_college <- left_join(places, metrics_college, by=c("state","place"))
- metrics_college <- metrics_college %>% 
-   distinct(year, state, place, share_hs_degree, .keep_all = TRUE)
-
  # add a variable for the year of the data
  metrics_college <- metrics_college %>%
    mutate(
