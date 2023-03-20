@@ -18,12 +18,8 @@
 # Set working directory to [gitfolder]: Open mobility-from-poverty.Rproj to make sure all file paths will work
 
 # Libraries you'll need
-library(tidyr)
-library(dplyr)
-library(readr)
 library(tidyverse)
 library(Hmisc)
-library(plyr)
 library(ipumsr)
 
 ###################################################################
@@ -41,15 +37,25 @@ library(ipumsr)
 # Objective: get pctl_20 pctl_50 and pctl_80 per unique state+place for year 2021 for the var HHINCOME
 # Aggregation should be weighted by HHWT
 
+# isolate data to count each household only once (PERNUM == 1 counts head of household only)
+# keep only the relevant year (for this, 2020)
+acs2021income <- acs2021clean %>%
+  filter(PERNUM == 1)
+# 2,230,328 obs to 953,247 obs (1,277,081 dropped)
+
+# remove "NA" records (variable codes explained here: https://usa.ipums.org/usa-action/variables/HHINCOME#codes_section)
+acs2021income <- acs2021income %>%
+  filter(HHINCOME != 9999999)
+# no drops 
+
 # Calculate quantiles by grouping variable
 # detach(package:Hmisc)
-metrics_income <- acs2021clean %>%
+metrics_income <- acs2021income %>%
   dplyr::group_by(statefip, place) %>%
   dplyr::summarize(pctl_20 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.2), 
                    pctl_50 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.5),
                    pctl_80 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.8),
                    household = sum(HHWT))
-
 
 ###################################################################
 
@@ -61,10 +67,11 @@ metrics_income <- metrics_income %>%
                                (household >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
-# puma_place <- read_csv("data/temp/puma_place.csv")
+# place_puma <- read_csv("data/temp/place_puma.csv")
+
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_income <- left_join(metrics_income, puma_place, by=c("statefip","place"))
+metrics_income <- left_join(metrics_income, place_puma, by=c("statefip","place"))
 # Generate the quality var
 metrics_income <- metrics_income %>% 
   mutate(pctl_20_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
@@ -83,29 +90,13 @@ metrics_income <- metrics_income %>%
 
 # Keep only relevant variables
 metrics_income <- metrics_income %>% 
-  select(state, place, pctl_20, pctl_20_quality, 
+  select(statefip, place, pctl_20, pctl_20_quality, 
          pctl_50, pctl_50_quality, pctl_80, 
          pctl_80_quality, household, size_flag, 
          puma_flag)
 
 metrics_income <- metrics_income %>% 
   dplyr::rename('state' = 'statefip')
-      
-# Limit to the Census Places we want 
-# first, bring in the places crosswalk (place-populations.csv)
-places <- read_csv("geographic-crosswalks/data/place-populations.csv")
-# keep only the relevant year (for this, 2020)
-places <- places %>%
-  filter(year > 2019)
-
-# left join to get rid of irrelevant places data
-metrics_income <- left_join(places, metrics_income, by=c("state","place"))
-metrics_income <- metrics_income %>% 
-  distinct(state, place, pctl_20, pctl_20_quality, 
-           pctl_50, pctl_50_quality, pctl_80, 
-           pctl_80_quality, household, size_flag, 
-           puma_flag, .keep_all = TRUE)
-# 486 obs which means correct
 
 
 ###################################################################
