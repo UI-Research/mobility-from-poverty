@@ -39,13 +39,10 @@
 # Set working directory to [gitfolder]: Open mobility-from-poverty.Rproj to make sure all file paths will work
 
 # Libraries you'll need
-library(tidyr)
-library(dplyr)
-library(readr)
 library(tidyverse)
 library(Hmisc)
-library(plyr)
 library(ipumsr)
+library(readxl)
 
 ###################################################################
 
@@ -55,20 +52,6 @@ library(ipumsr)
 # this one should already match the PUMAs to places
 # acs2021clean <- read_csv("data/temp/2021microdata.csv")
 
-# Limit microdata to only relevant cities to save memory
-places <- read_csv("geographic-crosswalks/data/place-populations.csv")
-# keep only the relevant year (for this, 2020)
-places <- places %>%
-  filter(year > 2019)
-places <- places %>%
-  dplyr::rename(statefip = state)
-# create a concatenated GEOID for each city(e.g. census place)
-places$GEOID <- paste(places$statefip,places$place, sep = "")
-acs2021clean$GEOID <- paste(acs2021clean$statefip,acs2021clean$place, sep = "")
-
-# limit only to places of interest
-acs2021clean <- acs2021clean %>%
-  filter(GEOID %in% places$GEOID)
 
 ###################################################################
 
@@ -82,6 +65,7 @@ acs2021clean <- acs2021clean %>%
 vacant <- acs2021clean %>%
   mutate(vacant = case_when((VACANCY==1 | VACANCY==2 | VACANCY==3) ~ 1,
                             (VACANCY==0 | VACANCY>3) ~ 0))
+# now 2,230,328 obs 
 
 # adjust needed variables
 vacant <- vacant %>%
@@ -117,10 +101,11 @@ rent_ratio <- acs2021clean %>%
 rent_ratio <- rent_ratio %>%
   filter(PERNUM == 1,
          OWNERSHP == 2)
+# 289,314 obs
+
 
 # (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
 #      vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per place)
-
 rent_ratio <- rent_ratio %>%
   mutate(ratio_rentgrs_rent = RENTGRS/RENT)
 
@@ -186,6 +171,7 @@ FMR_pop_2021 <- read_excel("data/temp/FMR_pop_2021.xlsx")
 
 # Add the population variable onto the income level file
 FMR_Income_Levels_2021 <- left_join(FMR_Income_Levels_2021, FMR_pop_2021, by=c("fips2010"))
+# 4,766 obs
 
 
 # (4b) Bring in county_place crosswalk
@@ -255,7 +241,7 @@ place_income_limits_2021 <- FMR_2021 %>%
 #    use the gross rent.
 
 # Filter microdata to where PERNUM == 1, so only one HH per observation
-microdata <- acs2021clean %>%
+microdata_housing <- acs2021clean %>%
   filter(PERNUM == 1)
 
 # create new dataset called "households_year" to merge microdata & place income limits (FMR_2021) by state and place
@@ -263,7 +249,9 @@ microdata <- acs2021clean %>%
 FMR_2021 <- FMR_2021 %>% 
   dplyr::rename(statefip = state) %>%
   mutate(place = sprintf("%0.5d", as.numeric(place)))
-households_2021 <- left_join(microdata, FMR_2021, by=c("statefip","place"))
+households_2021 <- left_join(microdata_housing, FMR_2021, by=c("statefip","place"))
+# 2,152,591 obs
+
 
 # Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
 # Read more about the AMI vars methodology here: https://www.huduser.gov/portal/datasets/il//il18/IncomeLimitsMethodology-FY18.pdf
@@ -273,7 +261,6 @@ households_2021 <- left_join(microdata, FMR_2021, by=c("statefip","place"))
 
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
-
 households_2021 <- households_2021 %>%
   mutate(Affordable80AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
@@ -314,6 +301,7 @@ households_2021 <- households_2021 %>%
 # housing cost that was calculated and prepared above in the "vacant" df.
 
 vacant_2021 <- left_join(vacant, FMR_2021, by=c("statefip","place"))
+# 4,896,161 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 vacant_2021 <- vacant_2021 %>%
