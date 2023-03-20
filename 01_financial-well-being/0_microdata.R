@@ -101,8 +101,8 @@ puma_place <- puma_place %>%
                 place_pop = sum(pop20))
 
 summary(puma_place)
-# Q1 of placepop is 351
-# sum_products mean is 0.09
+# Q1 of placepop is 110,629
+# sum_products mean is 0.76
 puma_place <- puma_place %>%
   dplyr::mutate(
     puma_flag = 
@@ -113,13 +113,22 @@ puma_place <- puma_place %>%
       ),
     small_place = 
       case_when(
-        placepop >= 350 ~ 0,
-        placepop < 350 ~ 1
+        placepop >= 110629 ~ 0,
+        placepop < 110629 ~ 1
       )
   )
 
 # save as "puma_place.csv" in gitignore
 write_csv(puma_place, "data/temp/puma_place.csv")
+
+# save a version with just the place-level values of data quality variables
+place_puma <- puma_place %>%
+  group_by(statefip, place) %>%
+  summarize(puma_flag = mean(puma_flag), 
+            small_place = mean(small_place))
+
+# save as "place_puma.csv" in gitignore
+write_csv(place_puma, "data/temp/place_puma.csv")
 
 ###################################################################
 
@@ -158,6 +167,14 @@ acs2021clean  <- left_join(acs_2021, puma_place, by=c("statefip","puma"))
 # run anti_join to see how many cases on the left did not have a match on the right
 test  <- anti_join(acs_2021, puma_place, by=c("statefip","puma"))
 # 1,656,456 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
+
+# Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
+acs2021clean <- acs2021clean %>% 
+  filter(!is.na(afact))
+# 3,252,599 obs to 2,230,328 obs (1,022,271 dropped)
+acs2021clean <- acs2021clean %>% 
+  filter(afact > 0)
+# no drops
 
 # create a variable for the number of places per PUMA population per place (e.g., in unique statefip+place pairs)
 #acs2021clean  <- acs2021clean  %>%
