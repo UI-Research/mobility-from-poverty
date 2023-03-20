@@ -123,8 +123,8 @@ write_csv(puma_place, "data/temp/puma_place.csv")
 
 # save a version with just the place-level values of data quality variables
 place_puma <- puma_place %>%
-  group_by(statefip, place) %>%
-  summarize(puma_flag = mean(puma_flag), 
+  dplyr::group_by(statefip, place) %>%
+  dplyr::summarize(puma_flag = mean(puma_flag), 
             small_place = mean(small_place))
 
 # save as "place_puma.csv" in gitignore
@@ -135,7 +135,7 @@ write_csv(place_puma, "data/temp/place_puma.csv")
 # (4) Prepare Microdata (non-subgroup)
 
 # open IPUMS extract (change "usa_00014.xml" to whatever your extract is called)
-microdata <- 'data/temp/usa_00014.xml'
+microdata <- 'usa_00014.xml'
 ddi <- read_ipums_ddi(microdata)
 acs_2021 <- read_ipums_micro(ddi)
 # 3252599 observations
@@ -197,6 +197,6 @@ acs2021clean <- acs2021clean %>%
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" in gitignore
-write_csv(acs2021clean, "data/temp/2021microdata.csv")
+# write_csv(acs2021clean, "data/temp/2021microdata.csv")
 
 

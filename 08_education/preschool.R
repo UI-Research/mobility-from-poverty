@@ -53,7 +53,7 @@ microdata_preschool_age <- acs2021clean %>%
 # collapse PERWT by place, create a variable for count per place in the collapse
 # also create a collapse var for children 3-4 AND in pre-school (GRADEATT =1)
 # these vars needed to calculate metric: share of kids in pre-school
-metrics_preschool2 <- microdata_preschool_age %>% 
+metrics_preschool <- microdata_preschool_age %>% 
   dplyr::group_by(statefip, place) %>% 
   dplyr::summarize(
     num_3_and_4 = sum(PERWT),
