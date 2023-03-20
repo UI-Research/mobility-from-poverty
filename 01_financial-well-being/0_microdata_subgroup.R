@@ -230,3 +230,14 @@ acs5yr_clean <- acs5yr_clean %>%
 # write_csv(acs5yr_clean, "data/temp/2021microdata5yr.csv")
 
 
+##########################################
+# create empty sub-group level place file (1944 observations), to use as check/comparison for catching NA values 
+place_subgroup <- acs5yr_clean %>% 
+  dplyr::group_by(statefip, place, subgroup) %>% 
+  dplyr::summarize(
+    n = n()
+  )
+
+# save as "place_subgroup.csv" in gitignore
+# write_csv(acs5yr_clean, "data/temp/place_subgroup.csv")
+
