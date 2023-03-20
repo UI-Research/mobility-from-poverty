@@ -38,7 +38,7 @@ library(readr)
 # first, isolate the dataset to 25-54 year olds
 microdata_emp_age <- acs2021clean %>% 
   filter(AGE >= 25 & AGE <= 54) 
-# 19,974,218 observations
+# 857,108 observations
 
 # collapse PERWT by place, create a variable for count/freq in the collapse
 num_in_emp_age <- microdata_emp_age %>% 
@@ -46,7 +46,7 @@ num_in_emp_age <- microdata_emp_age %>%
   dplyr::summarize(num_25_thru_54 = sum(PERWT),
             n = n()
   )
-# 31,533 observations
+
 
 # EMPSTAT values:
 #  0		N/A
@@ -54,20 +54,17 @@ num_in_emp_age <- microdata_emp_age %>%
 #  2		Unemployed
 #  3		Not in labor force
 
-# Create a dataset of the number of EMPLOYED 25-54 year olds by place
-# first, isolate the dataset to EMPLOYED 25-54 year olds
-microdata_emp <- acs2021clean %>% 
-  filter(AGE >= 25 & AGE <= 54 & EMPSTAT == 1) 
-# 15,024,978 observations
-
-# collapse PERWT by place to get num_employed
-num_employed <- microdata_emp %>% 
+# collapse # of 25-54 year olds by place
+# also create a collapse var for people that age who are employed (EMPSTAT == 1)
+# these vars needed to calculate metric: share employed
+metrics_employment <- microdata_emp_age %>% 
   dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(num_employed = sum(PERWT))
-# 31,533 observations
+  dplyr::summarize(
+    num_in_emp_age = sum(PERWT),
+    num_employed = sum((EMPSTAT == 1) * PERWT),
+    n = n()
+  )
 
-# Merge the two datasets (num_in_emp_age and num_employed)
-metrics_employment <- left_join(num_in_emp_age, num_employed, by=c("statefip", "place"))
 
 # Compute the ratio (share employed)
 metrics_employment <- metrics_employment %>%
@@ -79,6 +76,11 @@ metrics_employment <- metrics_employment %>%
          interval = 1.96 * sqrt((not_employed*share_employed)/n),
          share_employed_ub = share_employed + interval,
          share_employed_lb = share_employed - interval)
+
+# adjust ub & lb values 
+metrics_employment <- metrics_employment %>% 
+  mutate(share_employed_ub = pmin(1, pmax(0, share_employed_ub)),
+         share_employed_lb = pmax(0, pmin(1, share_employed_lb)))
 
 ###################################################################
 
