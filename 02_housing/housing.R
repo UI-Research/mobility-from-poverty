@@ -342,9 +342,11 @@ vacant_summed_2021 <- vacant_2021 %>%
                    Affordable50AMI_vacant = sum(Affordable50AMI*HHWT, na.rm = TRUE),
                    Affordable30AMI_vacant = sum(Affordable30AMI*HHWT, na.rm = TRUE))
 
+vacant_summed_2021 <- vacant_summed_2021 %>% 
+  rename("state" = "statefip")
 
 # (7b) Merge them by place
-housing_2021 <- left_join(households_summed_2021, vacant_summed_2021, by=c("statefip","place"))
+housing_2021 <- left_join(households_summed_2021, vacant_summed_2021, by=c("state","place"))
 
 
 # (7c) Calculate share_affordable metric for each level
@@ -360,8 +362,7 @@ housing_2021 <- housing_2021 %>%
 
 # create the year variable
 housing_2021 <- housing_2021 %>%
-  mutate(year = 2021) %>%
-  dplyr::rename(state = statefip)
+  mutate(year = 2021) 
 
 # keep what we need
 housing_2021 <- housing_2021 %>% 
