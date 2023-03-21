@@ -1,0 +1,387 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    css: !expr here::here("10_construct-database", "www", "web_report.css")
+    toc: TRUE
+    toc_float: TRUE
+    editor_options: 
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+```{r fix-debt}
+read_csv(here("01_financial-well-being", "share_debt_2018.csv")) %>%
+  mutate(share_debt_coll_quality = if_else(is.na(share_debt_coll), true = as.numeric(NA), false = share_debt_coll_quality)) %>%
+  write_csv(here("01_financial-well-being", "share_debt_2018.csv"))
+
+```
+
+```{r fix-juvenile-justice}
+read_csv(here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv")) %>%
+  filter(subgroup_type == "all") %>%
+  select(year, state, county, juvenile_arrest_rate, juvenile_arrest_rate_quality) %>%
+  write_csv(here("07_safety", "juvenile_arrests", "jvarrestrate_county_2016_CORRECT.csv"))
+
+```
+
+```{r}
+
+read_csv_and_clean <- function(file) {
+  
+  read_csv(file, guess_max = 5000) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0"))
+  
+}
+```
+
+
+
+```{r fix-neonatal-health}
+neonatal_2018 <- read_csv_and_clean(
+  here("04_health", "final_data", "neonatal_health_2018.csv")
+  )
+
+neonatal_2020 <- read_csv_and_clean(
+  here("04_health", "final_data", "neonatal_health_2020.csv")
+  )
+
+neonatal <- rbind(neonatal_2018, neonatal_2020)
+
+write_csv(neonatal, 
+          here::here("04_health", "final_data", "neonatal_health_CORRECT.csv")
+          )
+
+```
+
+
+
+```{r}
+#This code expands the crosswalk files for two reasons:
+#(1)  The 2020 Census split county 02261 to 02063 and 02066
+#     Consequently these new counties are not reflected in the 2018 xwalk
+#     but are in the 2020 xwalk:
+#     https://gdg.sc.egov.usda.gov/GatewayNews/2022-05-10.htm#:~:text=FIPS%20Code%2002261%2C%20Valdez%2DCordova,Chugach%20and%2002066%20Copper%20River.
+
+#(2) We have some years of data beginning in 2014 (Wealth-building Opportunities)
+#    Consequently, given that we left join all files to the crosswalk file using
+#    state, and county, we need to have county-year rows for every county-year
+#    beginning in 2014
+
+xwalk_18 <- read_csv_and_clean(
+  here::here("geographic-crosswalks",
+                     "data", 
+                     "tract-county-crosswalk_2018.csv"
+             )
+  )
+
+xwalk_20 <- read_csv_and_clean(
+  here::here("geographic-crosswalks",
+                     "data", 
+                     "tract-county-crosswalk_2020.csv"
+             )
+  )
+
+
+
+new_year_xwalks_to_make <- c(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021)
+
+create_new_xwalk_year <- function(year){
+  #Function to either read in 2018 or 2020 crosswalk and then change the year
+  # to the inputted year
+  if(year < 2020){
+    new_xwalk <- xwalk_18 %>%
+      mutate(year = {{year}})
+  } else{
+    new_xwalk <- xwalk_20 %>%
+      mutate(year = {{year}})
+  }
+  return(new_xwalk)
+  
+}
+
+long_xwalk <- 
+  map(new_year_xwalks_to_make, create_new_xwalk_year) %>%
+  reduce(rbind)
+
+
+
+write_csv(long_xwalk,
+          here::here("geographic-crosswalks",
+                     "data", 
+                     "long-xwalk.csv")
+          )
+
+```
+
+```{r}
+files <- c(
+  
+  ### CROSSWALK ### 
+  
+  #Note: combined 2018 and 2020 above:
+  here("geographic-crosswalks", "data", "long-xwalk.csv"),
+  
+  ### NEIGHBORHOODS: ###
+  here("02_housing", "metrics_housing.csv"),
+  here("02_housing", "homelessness_all.csv"),
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure.csv"),
+  here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure.csv"),  
+  here("06_neighborhoods", "transportation", "county_transport_stats_final.csv"),
+  
+  #missing social capital membership per 10,000
+  #missing social capital higher socioeconomic status facebook friends
+  
+  #taking out metrics_rent because according to https://urbanorg.app.box.com/file/1070049441934?s=ye8ketyp9kmqpbmmqkjzc5t0njx4g90c
+  #we remove it
+  #here("02_housing", "metrics_rent.csv"), 
+  
+  
+  ### EDUCATION: ### 
+  here("08_education", "metrics_preschool.csv"),
+  here("08_education", "SEDA_all_county.csv"), #Note: this is effective public education
+
+  #Missing school economic diversity
+  
+  here("08_education", "metrics_college.csv"),
+
+  #Missing digital access!! 
+  
+  #Removing this because I see nothing about Free / Reduced public lunch in Tina's doc
+  #here("08_education", "FRPL.csv"),
+  
+  ### Rewarding Work: ### 
+  here("09_employment", "metrics_employment.csv"),
+  here("09_employment", "metrics_wage_ratio_years.csv"), #Note: I think this corresponds to the access to jobs paying a living wage but I am not sure
+
+  here("01_financial-well-being", "metrics_income.csv"),
+  here("01_financial-well-being", "share_debt_2018.csv"), 
+
+  #Missing: Wealth-building opportunities
+  
+  
+  ### Healthy Environment and Good Care ### 
+
+  #Missing: Ratio of population per PCP. Think it is associated with: 
+  #here("04_health", "final_data", "hpsa_2020.csv"),
+  
+  #Note: Fixed issue here above:
+  here("04_health", "final_data", "neonatal_health_CORRECT.csv"),
+
+  #Missing data: There is an updated script here but no csv!
+  #here("06_neighborhoods", "environment", "enviro.csv"),
+  
+  #Missing data: Safety from trauma
+  
+  
+  ### Responsible and Just Governance ### 
+  here("05_local-governance", "voter-turnout", "voter-turnout.csv"),
+  here("05_local-governance", "descriptive-representation", "descriptive-representation.csv"),
+
+  #Missing data: Property Crime
+  #Missing data: Violent crime
+  #This will be superceded by the broken out crime data
+  #here("07_safety", "crime", "crimerate_county_2015_2017.csv"),
+
+  
+  here("07_safety", "juvenile_arrests", "jvarrestrate_county_2016_CORRECT.csv") #,
+  
+  #Removing because not listed on Data Sheet Interim Update Page:
+  #here("03_family", "metrics_famstruc.csv"),
+)
+
+```
+
+
+# Multi-year Database
+
+```{r}
+# construct multiyear database
+db <- map(files, read_csv_and_clean) %>%
+  reduce(left_join, by = c("year", "state", "county"))
+
+```
+
+# Recent-year Database
+
+```{r}
+read_csv_recent <- function(file) {
+  
+  file <- read_csv(file, guess_max = 5000)  %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    filter(year == max(year)) %>%
+    select(-year)
+  
+  return(file)
+  
+}
+
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(left_join, by = c("state", "county"))
+
+
+
+```
+
+## Quality and Completeness
+
+### Full Database
+
+missing metrics
+metrics rated 1
+metrics rated 2
+metrics rated 3
+
+```{r}
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality)
+
+```
+
+### Recent Database
+
+```{r}
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+```
+
+## Test
+
+### Full Database
+
+```{r}
+db_values <- db %>%
+  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb"))
+
+db_quality <- db %>%
+  select(ends_with("_quality"))
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+
+db_values %>%
+  assert(within_bounds(0, Inf), starts_with("pctl_")) %>%
+  assert(within_bounds(0, 1), share_debt_coll) %>%
+  assert(within_bounds(0, Inf), share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) %>%
+  assert(within_bounds(0, 1), share_burdened_30_ami, share_burdened_50_ami, share_burdened_80_ami) %>%
+  assert(within_bounds(0, Inf), homeless_count) %>%
+  assert(within_bounds(0, 1), homeless_share) %>%
+  assert(within_bounds(0, 1), starts_with("famstruc_")) %>%
+  assert(in_set(0, 1), hpsa_yn) %>%
+  assert(within_bounds(0, 1), lbw) %>%
+  assert(within_bounds(0, Inf), asian_other, black_nonhispanic, hispanic, white_nonhispanic) %>%
+  assert(within_bounds(0, 1), election_turnout) %>%
+  assert(within_bounds(0, 100), environmental) %>%
+  assert(within_bounds(0, 1), ends_with("exposure")) %>%
+  assert(within_bounds(0, 100), transit_cost, transit_trips) %>%
+  assert(within_bounds(0, 100000), ends_with("_crime_rate")) %>%
+  #assert(within_bounds(0, 100000), starts_with("juvenile_arrest")) %>%
+  assert(within_bounds(0, 1), share_hs_degree, share_in_preschool) %>%
+  assert(within_bounds(-1, 10), learning_rate) %>%
+  assert(within_bounds(0, 1), starts_with("frpl40_")) %>%
+  assert(within_bounds(0, 1), share_employed) %>%
+  assert(within_bounds(0, 10), average_to_living_wage_ratio)
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### Check multi-year data
+
+```{r}
+db %>%
+  count(year, !is.na(share_affordable_30_ami))
+
+db %>%
+  count(year, !is.na(share_affordable_50_ami))
+
+db %>%
+  count(year, !is.na(share_affordable_80_ami))
+
+db %>%
+  count(year, !is.na(share_burdened_30_ami))
+
+db %>%
+  count(year, !is.na(share_burdened_50_ami))
+
+db %>%
+  count(year, !is.na(share_burdened_80_ami))
+
+
+db %>%
+  count(year, !is.na(homeless_count))
+
+db %>%
+  count(year, !is.na(homeless_share))
+
+db %>%
+  count(year, !is.na(violent_crime_rate), !is.na(property_crime_rate))
+
+db %>%
+  count(year, !is.na(average_to_living_wage_ratio))
+
+```
+
+
+
+### Recent Database
+
+```{r}
+
+
+
+
+```
+
+## Write the File
+
+```{r}
+write_csv(db, here("data", "00_mobility-metrics_longitudinal.csv"))
+
+write_csv(db_recent, here("data", "01_mobility-metrics.csv"))
+
+```
+
+
+
