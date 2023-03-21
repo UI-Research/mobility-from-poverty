@@ -253,6 +253,8 @@ export delimited using "built/SEDA_all_subgroups_metro.csv", replace // 2013,14,
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
+add to gitignore
+
 export delimited using "built/SEDA_all_metro.csv", replace
 
 
