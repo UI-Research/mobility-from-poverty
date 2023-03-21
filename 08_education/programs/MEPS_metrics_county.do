@@ -144,7 +144,9 @@ tab year if meps20_hispanic==.
 tab year if meps20_white==.
 tab year if meps20_total==.
 
-sort year state county  meps20_black* meps20_hispanic* meps20_white* meps20_total*
+order year state county meps20_black* meps20_hispanic* meps20_white* meps20_total*
 gsort -year state county 
+
+drop meps20_total meps20_total_quality
 
 export delimited using "built/MEPS_2014-2018_county.csv", replace
