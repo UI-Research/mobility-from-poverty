@@ -189,4 +189,6 @@ drop city_name stateplacefp
 order year state place
 gsort -year state place
 
+drop meps20_total meps20_total_quality
+
 export delimited using "built/MEPS_2016-2018_city.csv", replace
