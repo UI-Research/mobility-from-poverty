@@ -70,13 +70,56 @@ neonatal_2020 <- read_csv_and_clean(
   here("04_health", "final_data", "neonatal_health_2020.csv")
   )
 
-neonatal <- rbind(neonatal_2018, neonatal_2020)
+neonatal <- rbind(neonatal_2018, neonatal_2020) %>%
+  rename_with(~ gsub("lbw", "low_birth_weight", .x, fixed = TRUE))
 
 write_csv(neonatal, 
           here::here("04_health", "final_data", "neonatal_health_CORRECT.csv")
           )
 
+#rm(neonatal, neonatal_2018, neonatal_2020)
+
 ```
+
+```{r fix-income-names}
+income <- read_csv(
+  here::here("01_financial-well-being",
+             "metrics_income.csv")
+)
+
+income_CORRECT <- income %>%
+  rename_with(.cols = starts_with("pctl"), 
+                ~str_c("income_", .x))
+
+write_csv(
+  income_CORRECT,
+  here::here("01_financial-well-being", 
+             "CORRECT_metrics_income.csv")
+)
+
+```
+
+```{r fix-descriptive-representation-names}
+desc_rep <- read_csv(
+  here::here("05_local-governance",
+             "descriptive-representation",
+             "descriptive-representation.csv"
+             )
+)
+
+desc_rep_CLEAN <- desc_rep %>%
+  rename_with(.cols = asian_other:white_nonhispanic_quality, 
+              ~str_c("descriptive_representation_", .x))
+
+write_csv(desc_rep_CLEAN,
+          here::here(
+            "05_local-governance",
+             "descriptive-representation",
+             "CLEAN_descriptive-representation.csv"
+          ))
+
+```
+
 
 
 
@@ -178,7 +221,7 @@ files <- c(
   here("09_employment", "metrics_employment.csv"),
   here("09_employment", "metrics_wage_ratio_years.csv"), #Note: I think this corresponds to the access to jobs paying a living wage but I am not sure
 
-  here("01_financial-well-being", "metrics_income.csv"),
+  here("01_financial-well-being", "CORRECT_metrics_income.csv"),
   here("01_financial-well-being", "share_debt_2018.csv"), 
 
   #Missing: Wealth-building opportunities
@@ -187,7 +230,8 @@ files <- c(
   ### Healthy Environment and Good Care ### 
 
   #Missing: Ratio of population per PCP. Think it is associated with: 
-  #here("04_health", "final_data", "hpsa_2020.csv"),
+  #Note that we will need to rename variables here
+  #here("04_health", "final_data", "hpsa_2020.csv"), #This file not on github
   
   #Note: Fixed issue here above:
   here("04_health", "final_data", "neonatal_health_CORRECT.csv"),
@@ -200,12 +244,9 @@ files <- c(
   
   ### Responsible and Just Governance ### 
   here("05_local-governance", "voter-turnout", "voter-turnout.csv"),
-  here("05_local-governance", "descriptive-representation", "descriptive-representation.csv"),
-
-  #Missing data: Property Crime
-  #Missing data: Violent crime
-  #This will be superceded by the broken out crime data
-  #here("07_safety", "crime", "crimerate_county_2015_2017.csv"),
+  here("05_local-governance", "descriptive-representation", 
+       "CLEAN_descriptive-representation.csv"),
+  here("07_safety", "crime", "crimerate_county_2015_2017.csv"),
 
   
   here("07_safety", "juvenile_arrests", "jvarrestrate_county_2016_CORRECT.csv") #,
@@ -259,10 +300,15 @@ metrics rated 2
 metrics rated 3
 
 ```{r}
+#We remove nas because they come from missing data from most years. 
+#This means we cannot count NAs from years that have data
+
 db %>%
   select(ends_with("_quality")) %>%
   pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
-  count(variable, quality)
+  count(variable, quality) %>%
+  filter(!is.na(quality))
+
 
 ```
 
