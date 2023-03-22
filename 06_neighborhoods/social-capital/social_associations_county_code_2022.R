@@ -152,10 +152,15 @@ library(readr)
         merged_sa <- merged_sa %>% 
           rename(state = fipstate,
                  county = fipscty,
+                 #G. Morrison addition March 2023 to make variable name more human-readible
+                 social_connection = socassn,
+                 social_connection_quality = socassn_quality
+                 
+                 
                  )
         
         # check how many missing
-        sum(is.na(merged_sa$socassn))
+        sum(is.na(merged_sa$social_connection))
 
         # export our file as a .csv
         write_csv(merged_sa, "06_neighborhoods/social-capital/data/social_associations_county_2022.csv")
