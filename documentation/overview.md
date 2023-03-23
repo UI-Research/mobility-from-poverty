@@ -28,6 +28,7 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * [College readiness](#college-readiness)
 * [Employment](#employment)
 * [Access to jobs paying a living wage](#access-to-jobs-paying-a-living-wage)
+* [Digital access](#digital-access)
 
 ---
 
@@ -983,3 +984,24 @@ For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the
 
 Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
 
+
+---
+
+## Digital access
+
+### Overview
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2021
+* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
+* **Data Source(s):** Census Bureau's American Community Survey 
+* **Notes:**
+* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Limitations:**
+* **Missingness:** There are no missing county or city level observations.
+
+### Process
+
+This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+
+This metric is calculated using `digital_access.R' in the 04_education folder.
