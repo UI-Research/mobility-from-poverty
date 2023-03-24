@@ -288,7 +288,12 @@ county_pop_by_race <- county_pop_by_race %>%
   #Gabe Morrison code update: 
   #the year variable comes from the crosswalks, but the data is from 2017 - 2021, so we 
   # are calling it 2021
-  mutate(year = 2021)
+  mutate(year = 2021) %>%
+  #GM second update: to make names better
+  rename_with(.cols = total_people:white_nonhispanic_quality, 
+              ~str_c("desc_rep_", .x)) %>%
+  rename(desc_rep_total_population = desc_rep_total_people, 
+         desc_rep_total_population_quality = desc_rep_total_people_quality)
 
 place_pop_by_race <- place_pop_by_race %>% 
   select(year, state, place, total_people, total_nonhisp, asian_other, 
@@ -296,7 +301,11 @@ place_pop_by_race <- place_pop_by_race %>%
          total_people_quality, total_nonhisp_quality, asian_other_quality, 
          black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality) %>%
   #See note above!
-  mutate(year = 2021)
+  mutate(year = 2021) %>%
+  rename_with(.cols = total_people:white_nonhispanic_quality, 
+              ~str_c("desc_rep_", .x)) %>%
+  rename(desc_rep_total_population = desc_rep_total_people, 
+         desc_rep_total_population_quality = desc_rep_total_people_quality)
 
 
 # Export each of the files as CSVs
