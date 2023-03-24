@@ -26,6 +26,7 @@ library(dplyr)
 library(readr)
 library(tidyverse)
 library(censusapi)
+library(tidycensus)
 
 # Establish Census API key
 # You can get a Census API key here: https://api.census.gov/data/key_signup.html
@@ -280,16 +281,22 @@ place_pop_by_race <- left_join(places_pop, wide_places_demo, by=c("GEOID"))
 
 # Keep only relevant variables before export
 county_pop_by_race <- county_pop_by_race %>% 
-  select(year, state_name, county_name, total_people, total_nonhisp, 
+  select(year, state, county, total_people, total_nonhisp, 
          asian_other, black_nonhispanic, total_hispanic, white_nonhispanic,
          total_people_quality, total_nonhisp_quality, asian_other_quality, 
-         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality)
+         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality) %>%
+  #Gabe Morrison code update: 
+  #the year variable comes from the crosswalks, but the data is from 2017 - 2021, so we 
+  # are calling it 2021
+  mutate(year = 2021)
 
 place_pop_by_race <- place_pop_by_race %>% 
-  select(year, NAME, total_people, total_nonhisp, asian_other, 
+  select(year, state, place, total_people, total_nonhisp, asian_other, 
          black_nonhispanic, total_hispanic, white_nonhispanic,
          total_people_quality, total_nonhisp_quality, asian_other_quality, 
-         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality)
+         black_nonhispanic_quality, total_hispanic_quality, white_nonhispanic_quality) %>%
+  #See note above!
+  mutate(year = 2021)
 
 
 # Export each of the files as CSVs
