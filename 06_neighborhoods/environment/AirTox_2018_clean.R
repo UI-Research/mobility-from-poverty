@@ -1,7 +1,7 @@
 #/*************************/
 #  air quality program: 
 #  created by: Rebecca Marx
-#  updated on: March 24, 2023
+#  updated on: March 27, 2023
 #Original data:
   #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
   #https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
@@ -423,9 +423,12 @@ final_data_cnty_sub18 <- final_data_cnty18 %>%
           subgroup) %>%
   select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) 
 #18,850 -- supposed to be 18,852 (3,142*6 = 18,852) [CHECK -- missing 2] 
-  
+
+#round environmental indicator to nearest integer
+final_data_cnty_sub18$environmental <- round(final_data_cnty_sub18$environmental, digits = 0)
+
 #save file 
-#write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county_subs18.csv")
+write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county_sub18.csv")
 
 #[CHECK] -- the exported csv file does not have leading zeroes 
 
@@ -436,7 +439,7 @@ quality_2_3 <- final_data_cnty18 %>%
 data_cnty18_final <- final_data_cnty_sub18 %>%
   filter(subgroup == "All")
 #3142 obs
-#write_csv(data_cnty18_final,"06_neighborhoods/environment/data/output/environment_county18.csv")
+write_csv(data_cnty18_final,"06_neighborhoods/environment/data/output/environment_county18.csv")
 
 final_place_all14 <- final_data_place14 %>%
   filter(subgroup == "All")
@@ -685,24 +688,28 @@ missing2018 <- anti_join(by = c("state", "county"), x = final_data_cnty14, y = f
 final_data_cnty_sub <- final_data_cnty_sub18  %>% 
   bind_rows(final_data_cnty_sub14)
 
+#round environmental indicator to nearest integer
+final_data_cnty_sub$environmental <- round(final_data_cnty_sub$environmental, digits = 0)
+
 #save file 
-#write_csv(final_data_cnty_sub, "06_neighborhoods/environment/data/output/environment_county_sub_all.csv")
+write_csv(final_data_cnty_sub, "06_neighborhoods/environment/data/output/environment_county_sub_all.csv")
 #[CHECK] -- the exported csv file does not have leading zeroes 
 
 #check 
-quality_2_3 <- final_data_cnty %>%
+quality_2_3 <- final_data_cnty_sub %>%
   filter (environmental_quality != 1)
 
 data_cnty_all_final <- final_data_cnty_sub %>%
   filter(subgroup == "All")
 #save file
-#write_csv(final_data_cnty, "06_neighborhoods/environment/data/output/environment_county_all.csv")
+write_csv(data_cnty_all_final, "06_neighborhoods/environment/data/output/environment_county_all.csv")
+
 
   #####PLACE FILES #####
 
 #(8) prep city crosswalk data from geocorr
 
-#pull in city crosswalk dowloaded from geocorr (geocorr2022_tract_to_place.csv)          [CHECK] #Problem that it's 2020 tracts and not 2018?
+#pull in city crosswalk downloaded from geocorr (geocorr2022_tract_to_place.csv)          
 crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_place.csv")
 #afact2 is place to tract
 #afact is tract to place (how much of a tract is falling in that place)
@@ -730,7 +737,6 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
   crosswalk_city$place <- str_pad(crosswalk_city$place, 5, side = "left", pad = "0")
   
  
-  
 #### 2018 PLACE ####
   
   ###### (9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place #####
@@ -891,14 +897,17 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
             subgroup)%>%
     select(year, state, place, subgroup_type, subgroup, environmental, environmental_quality) 
     #should have 2,916
+ 
+ #round environmental indicator to nearest integer
+ final_data_place18$environmental <- round(final_data_place18$environmental, digits = 0)
   
  #save file as csv
- #write_csv(final_data_place18, "06_neighborhoods/environment/data/output/environment_place_sub18.csv")
+ write_csv(final_data_place18, "06_neighborhoods/environment/data/output/environment_place_sub18.csv")
  
  #create a file with only place-level observations
  final_place_all18 <- final_data_place18 %>%
     filter(subgroup == "All")
- #write_csv(final_place_all18, "06_neighborhoods/environment/data/output/environment_place_18.csv")
+ write_csv(final_place_all18, "06_neighborhoods/environment/data/output/environment_place_18.csv")
  
  
 #### 2014 PLACE FILE ####
@@ -1049,7 +1058,7 @@ tract_place_haz14 <- tract_place_haz14 %>%
            subgroup)%>%
    select(year, state, place, subgroup_type, subgroup, environmental, environmental_quality) 
  #should have 2,916; have 2,910 (missing place 52120)
- 
+
  #file with only place-level observations
  final_place_all14 <- final_data_place14 %>%
    filter(subgroup == "All")
@@ -1062,13 +1071,16 @@ tract_place_haz14 <- tract_place_haz14 %>%
  environment_place_all_sub <- final_data_place18 %>%
    bind_rows(final_data_place14)
  
+ #round environmental indicator to nearest integer
+ environment_place_all_sub$environmental <- round(environment_place_all_sub$environmental, digits = 0)
+ 
  #save as a csv file 
- #write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_sub_all.csv")
+ write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_sub_all.csv")
 
  #filter and save multi-year place file (no subgroups)
  environment_place_all <- environment_place_all_sub %>%
    filter(subgroup == "All")
  #972 observations - correct 
- #write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_all.csv")
+ write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_all.csv")
  
   
