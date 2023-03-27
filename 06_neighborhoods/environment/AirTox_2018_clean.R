@@ -40,7 +40,6 @@ library(httr)
 library (dplyr)
 library(readxl)
 
-
 ###### Create Environmental Indicators ######
 
 ##### (1) create tract level indicators of environmental hazards for 2018 #####
@@ -53,7 +52,6 @@ neuro_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_
 resp_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_RespHI_by_tract_srcgrp.xlsx")
 
 ##Only keep needed variabales##
-
 cancer_data18 <- cancer_data18 %>% 
   select(Tract, `Total Cancer Risk (per million)`) 
 
@@ -64,7 +62,6 @@ resp_data18 <- resp_data18 %>%
   select(Tract, `Total Respiratory (hazard quotient)`)   
 
 ##Join Variables and rename## [try left_join %>%]
-
 enviro18_int <- left_join(resp_data18, cancer_data18, by = "Tract") %>%
   left_join(neuro_data18, by = "Tract")
 
@@ -181,6 +178,8 @@ enviro14$haz_idx <- round(enviro14$envhrank14*100,0)
 haz_idx14 <- enviro14 %>% 
   select(tract, haz_idx)
 
+#check which are in 2014 but not 2018 
+test5 <- anti_join(by = "tract", x = haz_idx14, y = haz_idx18)
 
 ###COMPARE TO 2014 AFFH###
 
@@ -288,17 +287,6 @@ race_pov18 <- race_pov18 %>%
       percent_pov >=  .4 ~ "High Poverty")
   )
 
-#two county names and fips codes were changed [CHECK FROM Peace code -- how do we know what changed?]
-#edit the GEOIDs to match the current fips codes. 
-#race_pov18 <- race_pov18 %>% 
-#mutate(GEOID = case_when(
-#GEOID ==  "46113940500" ~ "46102940500",
-#GEOID ==  "46113940800" ~ "46102940800",
-#GEOID ==  "46113940900" ~ "46102940900", 
-#GEOID ==  "02270000100" ~ "02158000100",
-#TRUE ~ GEOID
-#))
-
 #puerto rico is available in the affh data but not apart of our analyses. drop all observations in puerto rico:
 #enviro_haz18 <- enviro_haz18 %>%
 #filter(state!= "72")
@@ -307,23 +295,18 @@ race_pov18 <- race_pov18 %>%
 race_enviro18 <- left_join(race_pov18, enviro_haz18, by="GEOID") %>% 
   mutate(na_pop= if_else(is.na(haz_idx), total_pop, 0))
 
-#census tracts with zero population (2018 - 645); (2014 - 618)
+#census tracts with zero population (2018 - 645)
 filter(race_enviro18, total_pop == 0)
-
-#census tracts with zero population that are missing hazard index (2018- 508); (2014 - 508)
+#census tracts with zero population that are missing hazard index (2018- 508)
 filter(race_enviro18, total_pop==0, is.na(haz_idx))
-
-#census tracts with population greater than 0 that are missing hazard index (2018- 33); (2014 - 46)
+#census tracts with population greater than 0 that are missing hazard index (2018- 33)
 filter(race_enviro18, total_pop>0, is.na(haz_idx))
-
-#census tracts with population greater than 100 that are missing hazard index (2018 - 29); (2014 - 30)
+#census tracts with population greater than 100 that are missing hazard index (2018 - 29)
 filter(race_enviro18, total_pop>100, is.na(haz_idx))
-
-#census tracts with zero population counted in poverty total metric (2018- 147); (2014 - 147)
+#census tracts with zero population counted in poverty total metric (2018- 147)
 filter(race_enviro18, total_pov == 0, total_pop != 0)
-
 #census tracts with zero population counted in poverty total metric 
-#also have hazard index missing (2018 - 7); (2014 - 10)
+#also have hazard index missing (2018 - 7)
 filter(race_enviro18, total_pov == 0, total_pop != 0, is.na(haz_idx))
 
 
@@ -421,12 +404,12 @@ haz_by_race_exp18 <- left_join(expand_race18,
   mutate(subgroup_type = "race-ethnicity")
 
 ###APPEND DATA### #Final data should be 18,852 (3,142 counties*6 sub-groups)
-final_data_cnty18 <- all_environment18 %>% #21,994 observations -- trying to drop the subgroup NAs   #[CHECK - 
+final_data_cnty18 <- all_environment18 %>% 
   bind_rows(pov_environment_exp18) %>%
   bind_rows(haz_by_race_exp18)
 
 ###match file to data standards###
-final_data_cnty18 <- final_data_cnty18 %>%
+final_data_cnty_sub18 <- final_data_cnty18 %>%
   select(-geoid) %>%
   mutate(year = 2018) %>%
   select(year, state, county, environmental, everything())%>%
@@ -438,21 +421,31 @@ final_data_cnty18 <- final_data_cnty18 %>%
           county,
           subgroup_type,
           subgroup) %>%
-  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) %>%
+  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) 
+#18,850 -- supposed to be 18,852 (3,142*6 = 18,852) [CHECK -- missing 2] 
   
 #save file 
-#write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county18.csv")
+#write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county_subs18.csv")
+
+#[CHECK] -- the exported csv file does not have leading zeroes 
 
 quality_2_3 <- final_data_cnty18 %>%
   filter (environmental_quality != 1) #10 observations are 2
 
+#save county-level file (no subgroups)
+data_cnty18_final <- final_data_cnty_sub18 %>%
+  filter(subgroup == "All")
+#3142 obs
+#write_csv(data_cnty18_final,"06_neighborhoods/environment/data/output/environment_county18.csv")
 
+final_place_all14 <- final_data_place14 %>%
+  filter(subgroup == "All")
 
 #### 2014 COUNTY ####
 
 #(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
 
-##MERGE 2014 FILE WITH CROSSWALK##
+##merge 2014 file with crosswalk##
 hazidx14_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx14, 
                                      by= "tract")
 
@@ -471,7 +464,7 @@ enviro_haz14$year <- 2014
 
 ####(2) create tract-level indicators of poverty and race for counties in US by population weighting tracts####
 
-###POPULATION WEIGHT TRACTS - 2014###
+###population weight tracts - 2014###
 
 # pull total population and white, non-Hispanic population, total for poverty calculation, and total in poverty
 # by tract from the ACS
@@ -490,9 +483,9 @@ pull_acs <- function(state_fips) {
 }
 acs14 <- map_df(state_fips, pull_acs)
 
-####CREATE INDICATORS FOR RACE AND POVERTY for 2014#### 
+####create indicators for race and povery for 2014#### 
 
-# use acs data to create a variable for percent poc, by tract
+#use acs data to create a variable for percent poc, by tract
 race_pov14 <- acs14 %>%
   transmute(GEOID = GEOID,
             name = NAME,
@@ -518,16 +511,24 @@ race_pov14 <- race_pov14 %>%
       percent_pov >=  .4 ~ "High Poverty")
   )
 
-#four county names and fips codes were changed                #CHECK - Total tract 18846, should be 18,850 
-# edit the GEOIDs to match the current fips codes.            #These lines are from Peace CodeDid not change these in this version.
-#race_pov14 <- race_pov14 %>%                                 #Did not change these in this version
-  #mutate(GEOID = case_when(                                  #If I do, total tracts increases to 18,852
-    #GEOID ==  "46113940500" ~ "46102940500",
-    #GEOID ==  "46113940800" ~ "46102940800",
-    #GEOID ==  "46113940900" ~ "46102940900", 
-    #GEOID ==  "02270000100" ~ "02158000100",
-    #TRUE ~ GEOID
-  #))
+#check to see which are in 2018 but not 2014 
+test2 <- anti_join(by = c("state", "county"), x = race_enviro18, y = race_enviro14)
+#four don't match 
+
+#four county names and fips codes were changed                #CHECK - Total tract 18852, should be 18,850 
+#edit the GEOIDs to match the current fips codes.             #These lines are from Peace Code
+race_pov14 <- race_pov14 %>%                                 
+  mutate(GEOID = case_when(                                  
+    GEOID ==  "46113940500" ~ "46102940500",
+    GEOID ==  "46113940800" ~ "46102940800",
+    GEOID ==  "46113940900" ~ "46102940900", 
+    GEOID ==  "02270000100" ~ "02158000100",
+    TRUE ~ GEOID
+  ))
+
+test3 <- anti_join(by = "GEOID", x = race_pov18, y = race_pov14)
+#check if any are in 2014 but not 2018 
+test4 <- anti_join(by = "GEOID", x = race_pov14, y = race_pov18)
 
 ##Merge with enviro_haz14 data 
 
@@ -535,26 +536,26 @@ race_pov14 <- race_pov14 %>%
 #enviro_haz14 <- enviro_haz14 %>%
 #filter(state!= "72")
 
-#join to race indicator file
+#join race/pov files to environmental indicator file
 race_enviro14 <- left_join(race_pov14, enviro_haz14, by="GEOID") %>% 
   mutate(na_pop= if_else(is.na(haz_idx), total_pop, 0))
 
 ##Check missingness##
 
-#number of tracts with pop > 0 & missing poverty rates: #[CHECK - WHY?]
+#number of tracts with pop > 0 & missing poverty rates: 
 
-#census tracts with zero population (2018 - 645); (2014 - 618)
+#census tracts with zero population (2014 - 618)
 filter(race_enviro14, total_pop == 0)
-#census tracts with zero population that are missing hazard index (2018- 508); (2014 - 508)
+#census tracts with zero population that are missing hazard index (2014 - 508)
 filter(race_enviro14, total_pop==0, is.na(haz_idx))
-#census tracts with population greater than 0 that are missing hazard index (2018- 33); (2014 - 46)
+#census tracts with population greater than 0 that are missing hazard index (2014 - 46)
 filter(race_enviro14, total_pop>0, is.na(haz_idx))
-#census tracts with population greater than 100 that are missing hazard index (2018 - 29); (2014 - 30)
+#census tracts with population greater than 100 that are missing hazard index (2014 - 30)
 filter(race_enviro14, total_pop>100, is.na(haz_idx))
-#census tracts with zero population counted in poverty total metric (2018- 147); (2014 - 147)
+#census tracts with zero population counted in poverty total metric (2014 - 147)
 filter(race_enviro14, total_pov == 0, total_pop != 0)
 #census tracts with zero population counted in poverty total metric 
-#also have hazard index missing (2018 - 7); (2014 - 10)
+#also have hazard index missing (2014 - 10)
 filter(race_enviro14, total_pov == 0, total_pop != 0, is.na(haz_idx))
 
 #(6) create county level environmental index by race-identity and poverty-level for 2014
@@ -574,7 +575,10 @@ all_environment14 <- all_environment14 %>%
          subgroup_type = "all") %>%
   select(-c(na_pop, county_pop))
 
-##calculate county/poverty type index
+#2018 has 3142, this has 3141 - check which dind't join 
+allenv_diff <- anti_join(by = c("state", "county"), x = all_environment18, y = all_environment14)
+
+#calculate county/poverty type index (high poverty vs. not high poverty)
 pov_environment14 <- race_enviro14 %>% 
   mutate(weighting_ind = case_when(poverty_type == "High Poverty" ~ poverty,
                                    poverty_type == "Not High Poverty" ~ (total_pov - poverty)),
@@ -650,14 +654,14 @@ haz_by_race_exp14 <- left_join(expand_race14,
   rename(subgroup = race_ind) %>%
   mutate(subgroup_type = "race-ethnicity")
 
-###APPEND DATA### #Final data should be 18,852 (3,142 counties*6 sub-groups)
+###append data### #Final data should be 18,852 (3,142 counties*6 sub-groups)
 final_data_cnty14 <- all_environment14 %>% 
   bind_rows(pov_environment_exp14) %>%
   bind_rows(haz_by_race_exp14)
 
 ###Match File to Data Standards###
 
-final_data_cnty14 <- final_data_cnty14 %>%
+final_data_cnty_sub14 <- final_data_cnty14 %>%
   select(-geoid) %>%
   mutate(year = 2014) %>%
   select(year, state, county, environmental, everything())%>%
@@ -669,25 +673,32 @@ final_data_cnty14 <- final_data_cnty14 %>%
           county,
           subgroup_type,
           subgroup) %>%
-  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) 
+  select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality)
+#18,852 observations -- correct 
+
+#check what's missing from 2018 
+missing2018 <- anti_join(by = c("state", "county"), x = final_data_cnty14, y = final_data_cnty18)
 
 #(7) bind 2018 and 2014 county files for final files 
 
 #create complete file of 2014 and 2018 
-final_data_cnty <- final_data_cnty18 %>% 
-  rbind(final_data_cnty14)
+final_data_cnty_sub <- final_data_cnty_sub18  %>% 
+  bind_rows(final_data_cnty_sub14)
 
 #save file 
-write_csv(final_data_cnty, "06_neighborhoods/environment/data/output/environment_county_all.csv")
+#write_csv(final_data_cnty_sub, "06_neighborhoods/environment/data/output/environment_county_sub_all.csv")
+#[CHECK] -- the exported csv file does not have leading zeroes 
 
 #check 
 quality_2_3 <- final_data_cnty %>%
   filter (environmental_quality != 1)
 
-
+data_cnty_all_final <- final_data_cnty_sub %>%
+  filter(subgroup == "All")
+#save file
+#write_csv(final_data_cnty, "06_neighborhoods/environment/data/output/environment_county_all.csv")
 
   #####PLACE FILES #####
-
 
 #(8) prep city crosswalk data from geocorr
 
@@ -879,16 +890,15 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
             subgroup_type,
             subgroup)%>%
     select(year, state, place, subgroup_type, subgroup, environmental, environmental_quality) 
-    #should have 2,916; have 2,910
+    #should have 2,916
   
  #save file as csv
- write_csv(final_data_place18, "06_neighborhoods/environment/data/output/environment_city_2018.csv")
+ #write_csv(final_data_place18, "06_neighborhoods/environment/data/output/environment_place_sub18.csv")
  
  #create a file with only place-level observations
  final_place_all18 <- final_data_place18 %>%
     filter(subgroup == "All")
-    #one place did not join and two places are extra (should have 286, have 285
- 
+ #write_csv(final_place_all18, "06_neighborhoods/environment/data/output/environment_place_18.csv")
  
  
 #### 2014 PLACE FILE ####
@@ -913,7 +923,7 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
  #one place does not join - place 52120 in state 16 (Idaho)
  
 #add missing row (state 16 place 52120) to tract_haz_place14 match other files
-tract_place_haz14 <- tract_place_haz14 <- 
+tract_place_haz14 <- tract_place_haz14 %>%
    bind_rows(tract_place_haz14, no_join14)
 
  #Create "All" observations for each place 
@@ -1049,11 +1059,16 @@ tract_place_haz14 <- tract_place_haz14 <-
  ##### (11) bind 2018 and 2014 place files for final files ####
  
  #bind 2014 and 2018 place data with subgroup observations
- environment_place_all <- final_data_place18 %>%
+ environment_place_all_sub <- final_data_place18 %>%
    bind_rows(final_data_place14)
  
  #save as a csv file 
- write_csv(environment_place_all, "06_neighborhoods/environment/data/output/environment_place_all.csv")
+ #write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_sub_all.csv")
 
+ #filter and save multi-year place file (no subgroups)
+ environment_place_all <- environment_place_all_sub %>%
+   filter(subgroup == "All")
+ #972 observations - correct 
+ #write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_all.csv")
  
   
