@@ -1,23 +1,29 @@
 #/*************************/
 #  air quality program: 
 #  created by: Rebecca Marx
-#  updated on: March 21, 2023
+#  updated on: March 24, 2023
 #Original data:
   #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
   #https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
 #Description: 
 
-#create indicatorand prepare tracts
-#(1) create tract level indicators of environmental hazards for 2014 and 2018 and merge with crosswalks
-#(2) create tract-level indicators of poverty and race in US
+#create environmental hazard indicators
+#(1) create tract level indicators of environmental hazards for 2018 
+#(2) create tract level indicators of environmental hazards for 2014
+#compare to affh data previoulsy used for the envrionmental indicator
+
 #create county files 
-#(3) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014 and 2018
-#(4) create county level environmental index by race-identity and poverty-level
-#create place files
-#(5) using tract level indicators and sub-group weights created previously, create place-level indicators 
-    #weighted by population and area of tract in a place
-#(6) create place-level environmental index by race-identity and poverty-level
-#*/
+#(3) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2018
+#(4) create county level environmental index by race-identity and poverty-level for 2018
+#(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
+#(6) create county level environmental index by race-identity and poverty-level for 2014
+#(7) bind 2018 and 2014 county files for final files 
+
+#create place files 
+#(8) prep city crosswalk data from geocorr
+#(9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place
+#(10) create place-level environmental indicators using poverty and race-idenity subgroups for 2014 and percent of tract in place
+#(11) bind 2018 and 2014 place files for final files
 #  /*************************/
 
 #install packages
@@ -34,7 +40,10 @@ library(httr)
 library (dplyr)
 library(readxl)
 
-####(1) create tract level indicators of environmental hazards for 2014 and 2018 and merge with crosswalks####
+
+###### Create Environmental Indicators ######
+
+##### (1) create tract level indicators of environmental hazards for 2018 #####
 
 ##Import 2018 AirToxScreen Data and 2014 AFFH data##
 #https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
@@ -106,10 +115,10 @@ enviro18$haz_idx <- round(enviro18$envhrank18*100,0)
 haz_idx18 <- enviro18 %>% 
   select(tract, haz_idx)
 
-#Save File? [CHECK]
+#save file? [CHECK]
 
 
-###Repeat for 2014###
+##### (2) create tract level indicators of environmental hazards for 2014 #####
 
 ###Import 2014 National Air Toxics Assessment (NATA) Data###
 #https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
@@ -197,8 +206,7 @@ haz_idx14 <- enviro14 %>%
 #non_affh = as.data.frame(non_affh)
 #write.csv(haz_idx, "06_neighborhoods/environment/data/output/EnvHazIdx2.csv", row.names = F)
 
-
-##Join the indicators file to the county crossswalk file## 
+###### Create County Files ######
 
 #import tract-county-crosswalk_2018.csv
 crosswalk_cnty <- read.csv("geographic-crosswalks/data/tract-county-crosswalk_2018.csv")
@@ -217,6 +225,9 @@ crosswalk_cnty$tract2 <- gsub(" ", "", crosswalk_cnty$tract2)
 crosswalk_cnty <- crosswalk_cnty %>%
   select(year,tract2)
   colnames(crosswalk_cnty) <- c("year", "tract")
+  
+
+###### (3) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2018 #####
 
 ##merge 2018 hazard and crosswalk file##
 hazidx18_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx18, 
@@ -251,8 +262,6 @@ pull_acs <- function(state_fips) {
 }
 acs18 <- map_df(state_fips, pull_acs)
 
-###CREATE INDICATORS FOR RACE AND POVERTY for 2018###
-
 #use acs data to create a variable for percent poc, by 2018 tract
 race_pov18 <- acs18 %>%
   transmute(GEOID = GEOID,
@@ -271,7 +280,7 @@ race_pov18 <- acs18 %>%
 race_pov18 <- race_pov18 %>%
   mutate(
     race_ind = case_when(
-      percent_poc > .4 & percent_poc < .6 ~"Mixed Race and Ethnicity",
+      percent_poc > .4 & percent_poc < .6 ~"No Majority Race/Ethnicity",
       percent_poc >= .6 ~ "Majority Non-White",
       percent_poc <= .6 ~ "Majority White, Non-Hispanic"), 
     poverty_type = case_when(
@@ -317,9 +326,9 @@ filter(race_enviro18, total_pov == 0, total_pop != 0)
 #also have hazard index missing (2018 - 7); (2014 - 10)
 filter(race_enviro18, total_pov == 0, total_pop != 0, is.na(haz_idx))
 
-#### (4) CREATE COUNTY LEVEL ESTIMATES for 2018 ####
 
-###CALCULATE FOR 2018###
+##### (4) create county level environmental index by race-identity and poverty-level for 2018 #####
+
 ##calculate 2018 avg county level hazard index 
 all_environment18 <- race_enviro18 %>%
   group_by(state, county) %>%
@@ -416,8 +425,7 @@ final_data_cnty18 <- all_environment18 %>% #21,994 observations -- trying to dro
   bind_rows(pov_environment_exp18) %>%
   bind_rows(haz_by_race_exp18)
 
-###Match File to Data Standards###
-
+###match file to data standards###
 final_data_cnty18 <- final_data_cnty18 %>%
   select(-geoid) %>%
   mutate(year = 2018) %>%
@@ -432,8 +440,8 @@ final_data_cnty18 <- final_data_cnty18 %>%
           subgroup) %>%
   select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) %>%
   
-  #save file 
-  #write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county18.csv")
+#save file 
+#write_csv(final_data_cnty18, "06_neighborhoods/environment/data/output/environment_county18.csv")
 
 quality_2_3 <- final_data_cnty18 %>%
   filter (environmental_quality != 1) #10 observations are 2
@@ -441,6 +449,8 @@ quality_2_3 <- final_data_cnty18 %>%
 
 
 #### 2014 COUNTY ####
+
+#(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
 
 ##MERGE 2014 FILE WITH CROSSWALK##
 hazidx14_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx14, 
@@ -546,6 +556,8 @@ filter(race_enviro14, total_pov == 0, total_pop != 0)
 #census tracts with zero population counted in poverty total metric 
 #also have hazard index missing (2018 - 7); (2014 - 10)
 filter(race_enviro14, total_pov == 0, total_pop != 0, is.na(haz_idx))
+
+#(6) create county level environmental index by race-identity and poverty-level for 2014
 
 ##calculate 2014 avg county level hazard index 
 all_environment14 <- race_enviro14 %>%
@@ -659,27 +671,25 @@ final_data_cnty14 <- final_data_cnty14 %>%
           subgroup) %>%
   select(year, state, county, subgroup_type, subgroup, environmental, environmental_quality) 
 
-#save file 
-write_csv(final_data_cnty14, "06_neighborhoods/environment/data/output/environment_county.csv")
+#(7) bind 2018 and 2014 county files for final files 
 
-#create complete file 
+#create complete file of 2014 and 2018 
 final_data_cnty <- final_data_cnty18 %>% 
   rbind(final_data_cnty14)
+
+#save file 
+write_csv(final_data_cnty, "06_neighborhoods/environment/data/output/environment_county_all.csv")
 
 #check 
 quality_2_3 <- final_data_cnty %>%
   filter (environmental_quality != 1)
 
 
+
   #####PLACE FILES #####
 
-# Description: Code to create city-level Environmental Qulaity indicators
 
-#For 2014 and 2018:
-#(1) import city-level crosswalk
-#(2) merge with tract-level data, including population data previoudly pulled in to create the county file
-#(3) create subgroups 
-#(4) Filter to unique places 
+#(8) prep city crosswalk data from geocorr
 
 #pull in city crosswalk dowloaded from geocorr (geocorr2022_tract_to_place.csv)          [CHECK] #Problem that it's 2020 tracts and not 2018?
 crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_place.csv")
@@ -693,12 +703,10 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
 
   #add leading zero to state
   crosswalk_city$state <- str_pad(crosswalk_city$state, 2, side = "left", pad = "0")
-
-  #remove period (".") from tract, add end zero then and add a leading zero
-  crosswalk_city$tract2 <- str_replace(crosswalk_city$tract, "[.]","") 
-  crosswalk_city$tract2 <- str_pad(crosswalk_city$tract2, 5, side = "right", pad = "0") 
+  
+  #perpare tract by multiplying by 100 to remove decimals then add the leading zero 
+  crosswalk_city$tract2 <- crosswalk_city$tract*100
   crosswalk_city$tract2 <- str_pad(crosswalk_city$tract2, 6, side = "left", pad = "0")
-  crosswalk_city$place <- str_pad(crosswalk_city$place, 5, side = "left", pad = "0")
   
   #concatenate state, county, tract to match the haz_idx file and keep needed columns
   crosswalk_city$tract3 <- paste(crosswalk_city$state,crosswalk_city$county,crosswalk_city$tract2)
@@ -707,34 +715,45 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
     select(place,tract3,afact)
   colnames(crosswalk_city) <- c("place", "GEOID", "afact")
 
-  #### 2018 PLACE ####
+  #add leading zero to place 
+  crosswalk_city$place <- str_pad(crosswalk_city$place, 5, side = "left", pad = "0")
+  
+ 
+  
+#### 2018 PLACE ####
+  
+  ###### (9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place #####
+
+  #import places/pop file and prep to limit to population cutoff palces 
+  state_places_pop18 <- read_csv("geographic-crosswalks/data/place-populations.csv")
+  #match data types 
+  state_places_pop18$state <- as.integer(places_pop18$state)
+  state_places_pop18$place <- as.integer(places_pop18$place)
+  #keep only 2018 data (should leave us with 486 obs total)
+  keep <- c(2018)
+  state_places_pop18 <- filter(places_pop18, year %in% keep)
+  #add leading zero to state and place 
+  state_places_pop18$state <- str_pad(places_pop18$state, 2, side = "left", pad = "0")
+  state_places_pop18$place <- str_pad(places_pop18$place, 5, side = "left", pad = "0")
+  #add geoid
+  state_places_pop18 <-  state_places_pop18 %>%
+    mutate(geoid = str_c(state, place))
   
   #2018 merge tract hazard indicators including poverty and race to places - left join since places (city crosswalk) has more observations
   tract_place_haz18 <- tidylog::left_join(x = crosswalk_city, y = race_enviro18, #73,056 tracts with hazard and population data
                                        by= "GEOID")
 
-  test1 <- tidylog::inner_join(x = crosswalk_city, y = race_enviro18, #pull in data with population
-                              by= "GEOID")
-  
-  #write_csv(crosswalk_city,"06_neighborhoods/environment/data/output/crosswalk_city_v2.csv")
-  #write_csv(race_enviro18,"06_neighborhoods/environment/data/output/race_pov_enviro18.csv" )
-  
-  no_join2 <- anti_join(by = "geoid", x = state_places_pop18, y = crosswalk_city) 
+  test1 <- anti_join(by = "geoid", x = state_places_pop18, y = crosswalk_city) 
   #0 observations -- so places get lost elsewhere (all the places are in the crosswalk)
-  #test which tracts/place didn't join 
- 
-   nj <- anti_join(by = "GEOID", x = crosswalk_city, y = race_enviro18)
-  #91,614 observations of 141,771 do not join
+  
+  #check missing places - #118 *6 = 708
+  no_join18 <- anti_join(by = c("state","place"), x = state_places_pop18, y = tract_place_haz18)
+  #one place does not join - place 52120 in state 16 (Idaho)
+  
+  #add missing row (state 16 place 52120) to tract_haz_place14 match other files
+  tract_place_haz18 <- tract_place_haz18 <- 
+    bind_rows(tract_place_haz14, no_join18)
 
-  #check which don't join 
-  test_tract_place_haz18 <- tract_place_haz18 %>%
-    mutate(geoid = str_c(state, place), state, place)
-  no_join_tract_place <- anti_join(by = "geoid", x = state_places_pop18, y = test_tract_place_haz18) #118 places lost
-  
-  #drop those that did not match (from 141,771 to 50,157)
-  #test_tract_place_haz18 <-  tract_place_haz18 %>%
-    #drop_na(total_pop) #[CHECK -- mark as na instead of drop? ]
-  
   #Create "All" observations 
   #calculate place population for tracts and haz_idx weighting by amount of tract in place and tract total population
   all_enviro_place18  <- tract_place_haz18 %>%
@@ -756,9 +775,6 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
   all_enviro_place18 <- all_enviro_place18 %>%
     mutate(geoid = str_c(state, place), state, place)
   
-  #check join with places 
-  no_join_all1 <- anti_join(by = "geoid", x = state_places_pop18, y = all_enviro_place18) #118 don't join observations 
-  
   #check max percent of population of county that has missing information [CHECK Peace Code - Why?]
   #enviro_place18%>%
   #pull(na)perc%>%
@@ -777,35 +793,15 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
     ungroup()%>%
     mutate(geoid = str_c(state,place),
            na_perc = na_pop / subgroup_pop) %>%
-    select(-c(na_pop, subgroup_pop))%>%
-    filter(!is.na(poverty_type)) 
+    select(-c(na_pop, subgroup_pop))
   
-  #make dataset of unique state/county pairs (from 8912 to 1,536 distinct state/place)
-  
-  #limit to population cutoff places
-  #places_pop <- read_csv("geographic-crosswalks/data/place-populations.csv")
-  #match data types 
-  #places_pop$state <- as.integer(places_pop$state)
-  #places_pop$place <- as.integer(places_pop$place)
-  
-  #keep only 2018 data to prepare for merge (should leave us with 486 obs total)
-  #keep <- c(2018)
-  #places_pop <- filter(places_pop, year %in% keep)
-  #add leading zero to place 
-  #places_pop$state <- str_pad(places_pop$state, 2, side = "left", pad = "0")
-  #places_pop$place <- str_pad(places_pop$place, 5, side = "left", pad = "0")
-
-  #test_state_place18 <- places_pop %>%
-    #transmute(geoid = str_c(state, place), state, place) %>%
-    #distinct()%>%
-    #filter(!is.na(geoid))
-  
+  #create file of unique states and places 
   state_place18 <- tract_place_haz18 %>%
     transmute(geoid = str_c(state, place), state, place) %>%
     distinct()%>%
     filter(!is.na(geoid)) 
   
-  #expand poverty/place dataset for every place/poverty_type (from 1,596 to 3,072) -- [CHECK - aren't we only supposed to have 486?]
+  #expand poverty/place dataset for every place/poverty_type (from 1,596 to 3,072) 
   expand_pov_place18 <- pov_enviro_place18 %>%
     expand(geoid, poverty_type)
   
@@ -820,9 +816,8 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
     mutate(subgroup_type = "poverty")
 
   ###Average place level hazard by race/ethnicity###
-  #weight the index by total population for tracts that have mixed race and ethnicity 
-  #weight by number of people of color for tracts that are majority non-whire
-  #[CHECK] weight by 
+  #weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place      #[CHECK]
+  #weight by number of people of color for tracts that are majority non-whire * percentage of tract in place              #[CHECK]
   #calculate missingness 
   
   haz_by_race_place18 <- tract_place_haz18 %>%
@@ -838,8 +833,7 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
     ungroup() %>%
     mutate(geoid = str_c(state, place),
            na_perc = na_pop / subgroup_pop) %>%  ##WHAT IS THIS DOING 
-    select(-c(na_pop, subgroup_pop)) %>%
-    filter(!is.na(race_ind))
+    select(-c(na_pop, subgroup_pop)) 
   
   #expand dataset for every place/race/ethnicity 
   expand_race_place18 <- haz_by_race_place18 %>%
@@ -870,39 +864,12 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
            ) %>%
     select(-na_perc) 
   
-  #limit to population cutoff places [using state_place18??]
-  places_pop18 <- read_csv("geographic-crosswalks/data/place-populations.csv")
-  #match data types 
-  places_pop18$state <- as.integer(places_pop18$state)
-  places_pop18$place <- as.integer(places_pop18$place)
-  
-  #keep only 2018 data to prepare for merge (should leave us with 486 obs total)
-  keep <- c(2018)
-  places_pop18 <- filter(places_pop18, year %in% keep)
-  #add leading zero to place 
-  places_pop18$state <- str_pad(places_pop18$state, 2, side = "left", pad = "0")
-  places_pop18$place <- str_pad(places_pop18$place, 5, side = "left", pad = "0")
-  
-  state_places_pop18 <- places_pop18 %>%
-  transmute(geoid = str_c(state, place), state, place) #%>%
-  #distinct()%>%
-  #filter(!is.na(geoid))
-  
-  #places <- state_place18 %>%
-    #select(-c(state,place))
-  
- final_data_place18 <- filter(bind_data_place18,   
-                                    geoid %in% state_places_pop18$geoid)
- 
- #check missing places - #118 *6 = 708
- no_join <- anti_join(by = "geoid", x = state_places_pop18, y = final_data_place18)
- write_csv(no_join,"06_neighborhoods/environment/data/output/no_join_places.csv")
- 
- #check against crosswalk file 
- crosswalk_city$state <- str_sub(crosswalk_city$GEOID, start = 1, end = 2)
- crosswalk_city <-  crosswalk_city %>%
-   mutate(geoid = str_c(state, place), state, place)
- 
+  #keep only the places in the places_pop18 file 
+  final_data_place18 <- bind_data_place18 %>%
+    filter(geoid %in% state_places_pop18$geoid) %>%
+    #filter out those with missing subgroup
+    filter(!is.na(subgroup)) 
+
 #match to data standards
  final_data_place18 <-  final_data_place18 %>%
    select(-geoid) %>% 
@@ -912,11 +879,181 @@ crosswalk_city <- read.csv("geographic-crosswalks/data/geocorr2022_tract_to_plac
             subgroup_type,
             subgroup)%>%
     select(year, state, place, subgroup_type, subgroup, environmental, environmental_quality) 
-    #should have 2,904 but only have 2,208; 118 places do not join (missing 118*6 observations = 708 + 2,208 = 2,916)
+    #should have 2,916; have 2,910
   
+ #save file as csv
+ write_csv(final_data_place18, "06_neighborhoods/environment/data/output/environment_city_2018.csv")
+ 
+ #create a file with only place-level observations
  final_place_all18 <- final_data_place18 %>%
     filter(subgroup == "All")
+    #one place did not join and two places are extra (should have 286, have 285
  
  
- #### 2014 PLACE FILE ####
+ 
+#### 2014 PLACE FILE ####
+ 
+ ##### (10) create place-level environmental indicators using poverty and race-idenity subgroups for 2014 and percent of tract in place #####
+ 
+ 
+ #prep place file to limit to population cutoff places 
+ state_places_pop14 <- state_places_pop18 %>%
+   mutate(year = 2014)
+ 
+ #2014 merge tract hazard indicators including poverty and race to places - left join since places (city crosswalk) has more observations
+ tract_place_haz14 <- tidylog::left_join(x = crosswalk_city, y = race_enviro14, #73,056 tracts with hazard and population data
+                                         by= "GEOID")
+ 
+ #no_join2 <- anti_join(by = "geoid", x = state_places_pop18, y = crosswalk_city) 
+ #0 observations -- so places get lost elsewhere (all the places are in the crosswalk)
+ #test which tracts/place didn't join 
+ 
+ #check missing places - #118 *6 = 708
+ no_join14 <- anti_join(by = c("state","place"), x = state_places_pop14, y = tract_place_haz14)
+ #one place does not join - place 52120 in state 16 (Idaho)
+ 
+#add missing row (state 16 place 52120) to tract_haz_place14 match other files
+tract_place_haz14 <- tract_place_haz14 <- 
+   bind_rows(tract_place_haz14, no_join14)
+
+ #Create "All" observations for each place 
+ #calculate place population for tracts and haz_idx weighting by amount of tract in place and tract total population
+ all_enviro_place14  <- tract_place_haz14 %>%
+   mutate(tract_pop = (total_pop*afact)) %>% #to account for the fact that only part of the tract population is in the place
+   group_by(state, place) %>%
+   summarise(environmental = weighted.mean(haz_idx, tract_pop, na.rm = TRUE),
+             na_pop = sum(na_pop),
+             place_pop = sum (tract_pop)) %>% 
+   ungroup()
+ 
+ #calculate percent population of each county that has missing tract hazard information
+ all_enviro_place14 <- all_enviro_place14 %>%
+   mutate(na_perc = na_pop / place_pop,
+          subgroup = "All",
+          subgroup_type = "all") %>%
+   select(-c(na_pop, place_pop))
+ 
+ #create geoid for filtering later
+ all_enviro_place14 <- all_enviro_place14 %>%
+   mutate(geoid = str_c(state, place), state, place)
+ 
+ #check max percent of population of county that has missing information [CHECK Peace Code - Why?]
+ #enviro_place18%>%
+ #pull(na)perc%>%
+ #max()
+ 
+ ###create place level index by race###
+ pov_enviro_place14 <- tract_place_haz14 %>%
+   mutate(weighting_ind = case_when(poverty_type == "High Poverty" ~ poverty,
+                                    poverty_type == "Not High Poverty" ~ (total_pov - poverty)),
+          na_pop = if_else(is.na(haz_idx) | is.na(poverty_type), weighting_ind, 0)) %>%
+   group_by(state, place, poverty_type) %>%
+   summarise(environmental = weighted.mean(haz_idx, weighting_ind*afact, na.rm = TRUE), #Multiplied weight by % in Tract
+             na_pop = sum(na_pop, na.rm = TRUE),
+             subgroup_pop = sum(weighting_ind, na.rm=TRUE)
+   ) %>%
+   ungroup()%>%
+   mutate(geoid = str_c(state,place),
+          na_perc = na_pop / subgroup_pop) %>%
+   select(-c(na_pop, subgroup_pop))
+ 
+ #create file of unique states and places 
+ state_place14 <- tract_place_haz14 %>%
+   transmute(geoid = str_c(state, place), state, place) %>%
+   distinct()%>%
+   filter(!is.na(geoid)) 
+ 
+ #expand poverty/place dataset for every place/poverty_type (from 1,596 to 3,072) 
+ expand_pov_place14 <- pov_enviro_place14 %>%
+   expand(geoid, poverty_type)
+ 
+ #join dataset on expanded dataset, join with geo varibale, and add subgroup type variables
+ pov_env_exp_place14 <- left_join(expand_pov_place14,
+                                  pov_enviro_place14 %>%
+                                    select(geoid, poverty_type, environmental, na_perc),
+                                  by=c("geoid",
+                                       "poverty_type")) %>%
+   left_join(state_place14, by = "geoid") %>%
+   rename(subgroup = poverty_type) %>%
+   mutate(subgroup_type = "poverty")
+ 
+ ###Average place level hazard by race/ethnicity###
+ #weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place      #[CHECK]
+ #weight by number of people of color for tracts that are majority non-whire * percentage of tract in place              #[CHECK]
+ #calculate missingness 
+ 
+ haz_by_race_place14 <- tract_place_haz14 %>%
+   mutate(weighting_ind = case_when(race_ind == "Mixed Race and Ethnicity" ~ total_pop,
+                                    race_ind == "Majority Non-White" ~ poc,
+                                    race_ind == "Majority White, Non-Hispanic" ~wnh),
+          na_pop = if_else(is.na(haz_idx) | is.na(race_ind), weighting_ind, 0)) %>%
+   group_by(state, place, race_ind) %>%
+   summarise(environmental = weighted.mean(haz_idx, weighting_ind*afact, na.rm = TRUE), ##[CHECK - weight by afact??]##
+             na_pop = sum(na_pop, na.rm = TRUE),
+             subgroup_pop = sum(weighting_ind*afact, na.rm = TRUE)
+   ) %>%
+   ungroup() %>%
+   mutate(geoid = str_c(state, place),
+          na_perc = na_pop / subgroup_pop) %>%  
+   select(-c(na_pop, subgroup_pop)) 
+ 
+ #expand dataset for every place/race/ethnicity 
+ expand_race_place14 <- haz_by_race_place14 %>%
+   expand(geoid,race_ind)
+ 
+ #join to expanded, add geo variables, and add subgroup variables 
+ haz_by_race_exp_place14 <- left_join(expand_race_place14,
+                                      haz_by_race_place14 %>%
+                                        select(geoid, race_ind, environmental, na_perc),
+                                      by=c("geoid", "race_ind")) %>%
+   left_join(state_place14, by = "geoid") %>%
+   rename(subgroup = race_ind) %>%
+   mutate(subgroup_type = "race-ethnicity")
+ 
+ ###APPEND DATA### 9,216 obs (?)
+ bind_data_place14 <- all_enviro_place14 %>%
+   bind_rows(pov_env_exp_place14) %>%
+   bind_rows(haz_by_race_exp_place14) %>%
+   #organize data 
+   #select(-geoid) %>%
+   #create quality variable where quality is 2 if value is missing by more than 5 percent
+   mutate(
+     environmental_quality = if_else(na_perc >= .05,2,1),
+     year = 2014
+   ) %>%
+   select(-na_perc) 
+ 
+  #keep only the places in the places_pop18 file 
+  final_data_place14 <- bind_data_place14 %>%
+    filter(geoid %in% state_places_pop14$geoid) %>%
+  #filter out those with missing subgroup
+    filter(!is.na(subgroup))
+ 
+ #match to data standards
+ final_data_place14 <-  final_data_place14 %>%
+   select(-geoid) %>% 
+   arrange(year,
+           state,
+           place,
+           subgroup_type,
+           subgroup)%>%
+   select(year, state, place, subgroup_type, subgroup, environmental, environmental_quality) 
+ #should have 2,916; have 2,910 (missing place 52120)
+ 
+ #file with only place-level observations
+ final_place_all14 <- final_data_place14 %>%
+   filter(subgroup == "All")
+ #one place did not join and two places are extra (should have 286, have 285
+ 
+ 
+ ##### (11) bind 2018 and 2014 place files for final files ####
+ 
+ #bind 2014 and 2018 place data with subgroup observations
+ environment_place_all <- final_data_place18 %>%
+   bind_rows(final_data_place14)
+ 
+ #save as a csv file 
+ write_csv(environment_place_all, "06_neighborhoods/environment/data/output/environment_place_all.csv")
+
+ 
   
