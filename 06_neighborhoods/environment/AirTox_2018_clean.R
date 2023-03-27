@@ -45,7 +45,7 @@ library(readxl)
 ##### (1) create tract level indicators of environmental hazards for 2018 #####
 
 ##Import 2018 AirToxScreen Data and 2014 AFFH data##
-#https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
+#https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide - Source Group data 
 
 cancer_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_CancerRisk_by_tract_srcgrp.xlsx")
 neuro_data18 <- read_excel("06_neighborhoods/environment/data/raw/2018_National_NeurHI_by_tract_srcgrp.xlsx")
