@@ -367,7 +367,7 @@ pov_environment_exp18 <- left_join(expand_pov18,
   rename(subgroup = poverty_type) %>%
   mutate(subgroup_type = "poverty")
 
-###Average county level hazard by race/ethnicity###
+###average county level hazard by race/ethnicity###
 #weight the index by total population for tracts that have mixed race and ethnicity
 #weight by number of people of color for tracts that are majority non-white
 #calculate missingness 
@@ -469,8 +469,8 @@ enviro_haz14$year <- 2014
 
 ###population weight tracts - 2014###
 
-# pull total population and white, non-Hispanic population, total for poverty calculation, and total in poverty
-# by tract from the ACS
+#pull total population and white, non-Hispanic population, total for poverty calculation, and total in poverty
+#by tract from the ACS
 state_fips <- unique(urbnmapr::states$state_fips)
 pull_acs <- function(state_fips) {
   tidycensus::get_acs(geography = "tract", 
@@ -544,9 +544,7 @@ race_enviro14 <- left_join(race_pov14, enviro_haz14, by="GEOID") %>%
   mutate(na_pop= if_else(is.na(haz_idx), total_pop, 0))
 
 ##Check missingness##
-
 #number of tracts with pop > 0 & missing poverty rates: 
-
 #census tracts with zero population (2014 - 618)
 filter(race_enviro14, total_pop == 0)
 #census tracts with zero population that are missing hazard index (2014 - 508)
@@ -693,7 +691,6 @@ final_data_cnty_sub$environmental <- round(final_data_cnty_sub$environmental, di
 
 #save file 
 write_csv(final_data_cnty_sub, "06_neighborhoods/environment/data/output/environment_county_sub_all.csv")
-#[CHECK] -- the exported csv file does not have leading zeroes 
 
 #check 
 quality_2_3 <- final_data_cnty_sub %>%
