@@ -77,15 +77,7 @@ save "intermediate/cityfile.dta", replace
 local latestyear 2017
 	educationdata using "district ccd directory ", sub(year=2008:`latestyear') col(year leaid city_location fips) csv clear
 
-	*_strip_labels county_code
-	*tostring county_code, replace
-	*replace county_code = "0" + county_code if strlen(county_code)==4
-	*gen state = substr(county_code,1,2) // "fips" in data is jurisdictional and not geographic 
-	*gen county = substr(county_code,3,5)
-	*drop if strlen(county)!=3
-	*drop county_code
-	
-	gen state = substr(leaid, 1, 2)
+	gen state = substr(leaid, 1, 2)  // create string fips variable
 	
 	save "intermediate/ccd_lea_city.dta", replace
 **********************************************
@@ -102,7 +94,7 @@ keep if subject=="rla"
 ** in 6th grade in 2014, etc **
 gen cohort = year - grade + 8
 keep if cohort>=2014 & cohort!=.
-replace year= year-1
+replace year= year-1 // to match to other dataset that use fall of school year
 
 egen totgyb_oth = rowtotal(totgyb_asn totgyb_nam)
 gen temp_asn = gcs_mn_asn*totgyb_asn
@@ -120,7 +112,7 @@ gen state = substr(leaid, 1, 2)
 *merge to common core data to get city location
 merge m:1 year leaid state using "intermediate/ccd_lea_city.dta"
 tab year _merge
-drop if _merge==2
+drop if _merge==2 // drop common core observationst that don't match SEDA
 drop _merge
 
 rename city_location city_name
@@ -135,7 +127,7 @@ sort state city_name year
 *brow state city_name _merge year if _merge!=3 & (year==2016 | year==2017) // _merge=2 means its in city but not seda
 *searched the _merge column for 2s and look above and below to see if cities are spelled differently
 
-*generate an indicator that if a district matched the city crosswalk in 2016/17 or if its a city in our city crosswalk, we keep the district for all years
+*generate an indicator that if a district matched the city crosswalk in 2016/17 or if its a city in our city crosswalk, we keep the city/district for all years
 gen final_files = 1 if _merge!=1
 bysort leaid: egen final=max(final_files)
 
@@ -149,9 +141,7 @@ drop final*
 
 destring leaid, replace
 
-
 ******************************************************************
-
 
 ** calculate growth estimates for each subgroup **
 ** NOTE: This loop takes a long time to run (4-8+ hours or more).
@@ -197,6 +187,7 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	replace learning_rate_quality_`subgroup'=3 if learning_rate_`subgroup'!=. & learning_rate_quality_`subgroup'==.
 
 	drop min_sample_size_`subgroup' num_grades_included_`subgroup'
+	
 }
 *EG: start here once have crosswalk
 save "intermediate/seda_race_postreg_sedalea.dta", replace
@@ -208,12 +199,12 @@ use "intermediate/seda_race_postreg_sedalea.dta", clear
 	
 drop year
 rename cohort year
-replace year = year - 1 // changed so that the year reflects the fall of the academic year \
+replace year = year - 1 // changed so that the year reflects the fall of the academic year  - did this previously with year variable, not cohort
 
 keep year fips city_name state stateplacefp leaid learning_rate_* tot*
 
 
-*collapse to city level and weight by each subgroups total subgroup count (no other)
+*collapse to city level and weight by each subgroups total subgroup count
 foreach var in _all _blk _hsp _wht _mal _fem _ecd _nec {
 preserve
 collapse learning_rate`var' learning_rate_lb`var' learning_rate_ub`var' learning_rate_quality`var' [fw=totgyb`var'], by(state city_name year)
@@ -223,6 +214,7 @@ save "intermediate/collapse_city`var'_weighted.dta", replace
 restore
 }
 
+*merge subgroup data together
 use "intermediate/collapse_city_all_weighted.dta", clear
 foreach var in _blk _hsp _wht _mal _fem _ecd _nec {
 merge 1:1 state city_name year using "intermediate/collapse_city`var'_weighted.dta"
@@ -233,9 +225,6 @@ drop _merge
 merge 1:1 city_name state year using "intermediate/cityfile.dta"
 tab year _merge
 drop if _merge==1 // drop anything that doesn't match city crosswalk
-
-*don't drop duplicates bc they are the previously merged cities in 16 and 17 without data
-*duplicates drop
 
 gsort -year state stateplacefp
 order year state stateplacefp
@@ -279,10 +268,11 @@ tab year if subgroup=="Male" & learning_rate==.
 tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
 tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
 
-order year state stateplacefp subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
+gen place = substr(stateplacefp, -5, 5)
+drop stateplacefp
 
-gsort -year state stateplacefp subgroup_type subgroup
-rename stateplacefp place
+order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
+gsort -year state place subgroup_type subgroup
 
 ** export data **
 export delimited using "built/SEDA_all_subgroups_city.csv", replace 
