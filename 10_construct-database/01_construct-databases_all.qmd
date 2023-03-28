@@ -1,0 +1,562 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r quarto-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+```{r}
+
+read_csv_and_clean <- function(file) {
+  
+  read_csv(file, guess_max = 5000) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0"))
+  
+}
+```
+
+
+
+```{r fix-neonatal-health}
+neonatal_2018 <- read_csv_and_clean(
+  here("04_health", "final_data", "neonatal_health_2018.csv")
+  )
+
+neonatal_2020 <- read_csv_and_clean(
+  here("04_health", "final_data", "neonatal_health_2020.csv")
+  )
+
+neonatal <- rbind(neonatal_2018, neonatal_2020) %>%
+  rename_with(~ gsub("lbw", "rate_low_birth_weight", .x, fixed = TRUE))
+
+write_csv(neonatal, 
+          here::here("04_health", "final_data", "neonatal_health_CORRECT.csv")
+          )
+
+rm(neonatal, neonatal_2018, neonatal_2020)
+
+```
+
+
+
+
+
+```{r set-up-crosswalk}
+#This code expands the crosswalk files for two reasons:
+#(1)  The 2020 Census split county 02261 to 02063 and 02066
+#     Consequently these new counties are not reflected in the 2018 xwalk
+#     but are in the 2020 xwalk:
+#     https://gdg.sc.egov.usda.gov/GatewayNews/2022-05-10.htm#:~:text=FIPS%20Code%2002261%2C%20Valdez%2DCordova,Chugach%20and%2002066%20Copper%20River.
+
+#(2) We have some years of data beginning in 2014 (Wealth-building Opportunities)
+#    Consequently, given that we left join all files to the crosswalk file using
+#    state, and county, we need to have county-year rows for every county-year
+#    beginning in 2014
+
+xwalk_18 <- read_csv_and_clean(
+  here::here("geographic-crosswalks",
+                     "data", 
+                     "tract-county-crosswalk_2018.csv"
+             )
+  )
+
+xwalk_20 <- read_csv_and_clean(
+  here::here("geographic-crosswalks",
+                     "data", 
+                     "tract-county-crosswalk_2020.csv"
+             )
+  )
+
+new_year_xwalks_to_make <- c(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)
+
+create_new_xwalk_year <- function(year){
+  #Function to either read in 2018 or 2020 crosswalk and then change the year
+  # to the inputted year
+  #Note that we remove tracts and extra rows here so that each row is uniquely
+  # identified by year, state, and county code. This way, when we join on those,
+  # each joined row will still be unique on those features
+  
+  if(year < 2020){
+    new_xwalk <- xwalk_18 %>%
+      mutate(year = {{year}}) %>%
+      select(-tract) %>%
+      distinct()
+  } else{
+    new_xwalk <- xwalk_20 %>%
+      mutate(year = {{year}}) %>%
+      select(-tract) %>%
+      distinct()
+  }
+  return(new_xwalk)
+  
+}
+
+long_xwalk <- map_dfr(new_year_xwalks_to_make, create_new_xwalk_year)
+
+
+
+write_csv(long_xwalk,
+          here::here("geographic-crosswalks",
+                     "data", 
+                     "long-xwalk.csv")
+          )
+
+```
+
+```{r}
+files <- c(
+  
+  ### CROSSWALK ### 
+  
+  #Note: combined 2018 and 2020 above:
+  here("geographic-crosswalks", "data", "long-xwalk.csv"),
+  
+  ### EDUCATION: ### 
+  here("08_education", "metrics_preschool.csv"),
+  here("08_education", "SEDA_all_county.csv"), #Note: this is effective public education
+  here("08_education", "data", "built", "MEPS_2014-2018_county.csv"),#Student poverty
+  here("08_education", "metrics_college.csv"),
+  #Missing digital access
+  
+  ### FINANCIAL WELL-BEING ###
+  here("01_financial-well-being", "metrics_income.csv"),
+  here("01_financial-well-being", "share_debt_2018.csv"), #we have more recent data at city level
+  here("01_financial-well-being", "home-values", "county_hh_hw_raceeth_2014_2021.csv"),
+  
+  ### HEALTH ### 
+  #Missing: Ratio of population per PCP. Think it is associated with: 
+  #here("04_health", "final_data", "hpsa_2020.csv"), #This file not on github
+  here("04_health", "final_data", "neonatal_health_CORRECT.csv"),
+
+  #Missing data: Safety from trauma
+  
+  ### HOUSING ### 
+  here("02_housing", "metrics_housing.csv"),
+  here("02_housing", "homelessness_all.csv"),
+
+  ### LOCAL GOVERNANCE ### 
+  here("05_local-governance", "voter-turnout", "voter-turnout.csv"),
+  here("05_local-governance", "descriptive-representation",
+            "data", "descriptive_rep_denominator_county_2022.csv"),
+  ### NIEGHBORHOODS: ###
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure.csv"),
+  here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure.csv"),
+  here("06_neighborhoods", "transportation", "county_transport_stats_final.csv"),
+
+  #missing: environment
+  here("06_neighborhoods", "social-capital", "data", "economic_connectedness_county_2022.csv"),
+  here("06_neighborhoods", "social-capital", "data", "social_associations_county_2022.csv"),
+
+  ### SAFETY ###
+  here("07_safety", "crime", "crimerate_county_2015_2017.csv"),
+  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"),
+
+  ### WORK ###
+  here("09_employment", "metrics_employment.csv"),
+  here("09_employment", "metrics_wage_ratio_years.csv") #access to jobs paying a living wage
+
+
+  #removed following files because these are not in metrics 2.0 tracker
+  #here("02_housing", "metrics_rent.csv"),
+  #here("03_family", "metrics_famstruc.csv"),
+  #here("08_education", "frpl.csv"),
+)
+
+```
+
+
+# Multi-year Database
+
+```{r}
+# construct multiyear database
+db_unclean <- map(files, read_csv_and_clean) %>%
+  reduce(left_join, by = c("year", "state", "county"))
+
+```
+
+```{r fix multi-year database names}
+#' Function to clean database. 
+#' 
+#' The naming conventions implemented here are:
+#' Everything that is a percentage/share begins with share_, a ratio begins with ratio_ , a rate begins with rate_ , and a percentile with pctl_ 
+#' Only a handful of variables don't have these prefixes (transportation_cost and meps20...)
+#' All _quality variables match the name of their respective variables unless the quality column refers to multiple variables
+
+clean_data <- function(db_unclean){
+  
+
+  
+  db <- db_unclean %>%
+  #Fix for debt data:
+  mutate(share_debt_coll_quality = if_else(is.na(share_debt_coll), 
+                                           true = as.numeric(NA), 
+                                           false = share_debt_coll_quality)) %>%
+  
+  #Fix for juvenile arrest data:
+  filter(subgroup_type == "all" | is.na(subgroup_type)) %>%
+  
+  #Fix for economic connectedness including se's
+  select(-c(contains("_se"), subgroup, subgroup_type)) %>%
+  
+  #Address issues in disparate naming conventions:
+  rename_with(.cols = starts_with("pctl"), 
+              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
+  
+  rename_with(~gsub("hv_hh", "house_value_households", .x, fixed=TRUE)) %>%
+  rename_with(.cols = contains("wealth_quality"),
+              ~paste0("ratio_", 
+                      str_replace(
+                        .x,
+                        "wealth_quality", 
+                        "house_value_households_quality"
+                        )
+                      )
+              ) %>%
+
+  rename_with(.cols = starts_with("r_"), 
+              ~str_replace(.x, "r_", "ratio_")) %>%
+  rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
+              ) %>%
+  rename_with(~str_replace_all(.x, "homeless_count", "count_homeless")
+              ) %>%
+  rename_with(~str_replace_all(.x, "election_turnout", "share_election_turnout")
+              ) %>%
+    
+  #the 2022 descriptive representation file is organized to have total
+  # and total non-hispanics in the same file as percentages for different
+  # race /ethnicity groups, so this separates those with different prefixes
+  rename_with(~str_replace_all(.x, "desc_rep_total", "count_desc_rep_total")
+              ) %>%
+  
+  rename_with(.cols = starts_with("desc_rep_"),
+              ~str_replace(.x, 
+                          "desc_rep_",
+                          "share_desc_rep_")
+              ) %>%
+  
+  rename_with(.cols = contains("exposure"),
+              .fn = ~paste0("share_", .x)
+              ) %>%
+  rename_with(~str_replace(.x,
+                           "transit_cost",
+                           "transportation_cost")
+              ) %>%
+  rename_with(~str_replace(.x,
+                           "transit_trips",
+                           "count_transportation_trips")
+              ) %>%
+  rename_with(~str_replace(.x, 
+                           "economic_connectedness",
+                           "ratio_high_low_ses_fb_friends")
+              ) %>%
+  rename_with(~str_replace(.x, 
+                           "social_connection",
+                           "count_membership_associations_per_10k")
+               ) %>%
+  rename_with(.cols = contains("crime_rate"),
+              ~paste0("rate_",
+                      str_replace(.x, "crime_rate", "crime")
+                      )
+              ) %>%
+  rename_with(.cols = contains("arrest_rate"),
+              ~paste0("rate_",
+                      str_replace(.x, "arrest_rate", "arrest")
+                      )
+                ) %>%
+  rename(
+    share_in_preschool_quality = preschool_quality, 
+    share_hs_degree_quality = hs_degree_quality,
+    share_affordable_quality = housing_quality, 
+    share_homeless = homeless_share,
+    share_employed_quality = employed_quality,
+    ratio_average_to_living_wage = average_to_living_wage_ratio,
+    ratio_average_to_living_wage_quality = wage_ratio_quality
+  )
+  
+  
+  #Note: Don't rename MEPS because it is hard to get a short variable name
+  # and pct_ prefix inappropriate because the metric itself is a percentage
+
+  
+}
+
+db <- clean_data(db_unclean)
+
+
+```
+
+
+
+# Recent-year Database
+
+```{r}
+read_csv_recent <- function(file) {
+  
+  file <- read_csv(file, guess_max = 5000)  %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    filter(year == max(year, na.rm = TRUE)) %>%
+    select(-year)
+  
+  return(file)
+  
+}
+
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(left_join, by = c("state", "county")) %>%
+  clean_data()
+
+
+
+```
+
+## Quality and Completeness
+
+### Full Database
+
+missing metrics
+metrics rated 1
+metrics rated 2
+metrics rated 3
+
+```{r}
+#We remove nas because they come from missing data from most years. 
+#This means we cannot count NAs from years that have data
+
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  filter(!is.na(quality))
+
+
+```
+
+### Recent Database
+
+```{r}
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+```
+
+## Test
+
+### Full Database
+
+```{r}
+db_values <- db %>%
+  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb")) %>%
+  
+  #Separate ratios out to assess them: 
+  separate(ratio_hispanic_house_value_households, 
+           sep = ":", 
+           into = c("hispanic_house_value", "hispanic_households")
+           ) %>%
+  separate(ratio_black_nh_house_value_households, 
+           sep = ":", 
+           into = c("black_nh_house_value", "black_nh_households")
+           ) %>%
+  separate(ratio_white_nh_house_value_households,
+           sep = ":", 
+           into = c("white_nh_house_value", "white_nh_households")
+           ) %>% 
+  separate(ratio_other_nh_house_value_households, 
+           sep = ":", 
+           into = c("other_nh_house_value", "other_nh_households")
+           )%>%
+  mutate(across(black_nh_house_value:white_nh_households, 
+                ~as.numeric(
+                  str_sub(.x, end = -2)
+                  ) / 100
+                )
+         )
+  
+  
+  
+db_quality <- db %>%
+  select(ends_with("_quality"))
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+
+db_values %>%
+  
+  ### EDUCATION ###
+  assert(within_bounds(0, 1), share_hs_degree, share_in_preschool) %>%
+  assert(within_bounds(-1.5, 10), rate_learning) %>% #There are some values below -1, but these could be legit, so changed to -1.5
+  
+  #Potential concern!!!
+  #assert(within_bounds(0, 1), starts_with("meps20")) #student poverty
+
+
+  ### FINANCIAL WELLBEING ###
+  assert(within_bounds(0, Inf), starts_with("pctl_income_")) %>%
+  assert(within_bounds(0, 1), share_debt_coll) %>%
+  assert(within_bounds(0, Inf), ends_with("house_value")) %>%
+  assert(within_bounds(0, 1), ends_with("_households")) %>% 
+  
+  #Currently not doing assert statements for the wealth-building opportunities:
+  #r_black_nh_hv_hh", "r_hispanic_hv_hh", "r_other_nh_hv_hh", "r_white_nh_hv_hh"
+  #variables. These are ranges of form X%:Y% and thus hard to test 
+  
+  ### HEALTH ###
+  assert(within_bounds(0, 1), rate_low_birth_weight) %>%
+  #assert(within_bounds(0, 100), environmental) %>%
+  
+  ### HOUSING ###
+  assert(within_bounds(0, Inf), 
+         share_affordable_80_ami, 
+         share_affordable_50_ami, 
+         share_affordable_30_ami
+         ) %>%
+  assert(within_bounds(0, Inf), count_homeless) %>%
+  assert(within_bounds(0, 1), share_homeless) %>%
+    
+  ### LOCAL GOVERNANCE ###
+  assert(within_bounds(0, Inf), 
+         count_desc_rep_total_hispanic,
+         count_desc_rep_total_nonhisp,
+         count_desc_rep_total_population, 
+         
+         share_desc_rep_asian_other,
+         share_desc_rep_black_nonhispanic,
+         share_desc_rep_white_nonhispanic
+         ) %>%
+  assert(within_bounds(0, 1), share_election_turnout) %>%
+    
+  ### NEIGHBORHOODS ### 
+  assert(within_bounds(0, 1), share_poverty_exposure) %>%
+  assert(within_bounds(0, 1), ends_with("exposure")) %>%
+  assert(within_bounds(0, 100), transportation_cost, count_transportation_trips) %>%
+  assert(within_bounds(0, 100), count_membership_associations_per_10k) %>%
+  assert(within_bounds(0, 10), ratio_high_low_ses_fb_friends) %>%
+
+  ### SAFETY ### 
+  assert(within_bounds(0, 100000), ends_with("crime")) %>%
+  assert(within_bounds(0, 100000), starts_with("juvenile_arrest")) %>%
+
+  ### WORK ### 
+  assert(within_bounds(0, 1), share_employed) %>%
+  assert(within_bounds(0, 10), ratio_average_to_living_wage)
+  
+  
+  #Missing:
+    
+  #EDUCATION:
+  #digital access
+  
+  #HEALTH:
+  #Access to health services (PCP)
+  #Safety from trauma
+  
+  #NEIGHBORHOODS:
+  #Environment
+
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### Check multi-year data
+
+```{r}
+#Need to add:
+#wealth-building opportunities
+
+db %>%
+  count(year, !is.na(share_affordable_30_ami))
+
+db %>%
+  count(year, !is.na(share_affordable_50_ami))
+
+db %>%
+  count(year, !is.na(share_affordable_80_ami))
+
+
+
+db %>%
+  count(year, !is.na(count_homeless))
+
+db %>%
+  count(year, !is.na(share_homeless))
+
+db %>%
+  count(year, !is.na(rate_violent_crime), !is.na(rate_property_crime))
+
+db %>%
+  count(year, !is.na(ratio_average_to_living_wage))
+
+db %>%
+  count(year, !is.na(rate_low_birth_weight))
+
+db %>%
+  count(year, !is.na(ratio_white_nh_house_value_households))
+
+db %>%
+  count(year, !is.na(ratio_black_nh_house_value_households))
+
+db %>%
+  count(year, !is.na(ratio_hispanic_house_value_households))
+
+db %>%
+  count(year, !is.na(ratio_other_nh_house_value_households))
+
+```
+
+
+
+## Write the File
+
+```{r}
+write_csv(db, here("data", "00_mobility-metrics_longitudinal.csv"))
+
+write_csv(db_recent, here("data", "01_mobility-metrics.csv"))
+
+```
+
+
+
