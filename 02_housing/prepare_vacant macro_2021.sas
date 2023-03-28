@@ -36,12 +36,11 @@ data vacant;
   rent = rent*adjust;
   if valueh ne 9999999 then do;
     *Calculate  monthly payment for first-time homebuyers.               
-     Using 3.69% as the effective mortgage rate for DC in 2016, *look up rates on FHFA*
      calculate monthly P & I payment using monthly mortgage rate and compounded interest calculation
      ******; 
     valueh=valueh*adjust;
-    loan = .9 * valueh;
-    month_mortgage= (6.00 / 12) / 100; /*use 6% for mortage rate for testing*/
+    loan = .9 * valueh; *assume loan is 90% of value of house;
+    month_mortgage= (6.00 / 12) / 100; /*use 6% for mortage rate as of 3/28/23*/
     monthly_PI = loan * month_mortgage * ((1+month_mortgage)**360)/(((1+month_mortgage)**360)-1);
     *Calculate PMI and taxes/insurance to add to Monthly_PI to find total monthly payment
     ******;               
@@ -55,7 +54,7 @@ run;
 data Rent_ratio;
   set &microdata_file.(keep= rent rentgrs pernum ownershpd statefip county
                       where=(pernum=1 and ownershpd in ( 22 )));
-  Ratio_rentgrs_rent = rentgrs / rent;
+  Ratio_rentgrs_rent = rentgrs / rent; *rentgrs is gross rent, that is rent plus other costs of renting;
 run;
 proc means data=Rent_ratio noprint;
   var Ratio_rentgrs_rent;
