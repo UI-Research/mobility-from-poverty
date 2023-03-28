@@ -1,6 +1,6 @@
 /*************
 
-This code reads in the employment metric created by Paul, adds confidence intervals,
+This code reads in the employment metric created by compute_metrics_employment adds confidence intervals,
 put it in the right format, and outputs it as a csv
 
 Kevin Werner
@@ -11,19 +11,19 @@ Kevin Werner
 
 /* 
 
-This uses the SAS dataset created by Paul's compute_metrics_employment program
+This uses the SAS dataset created by employ's compute_metrics_employment program
 as input.
 
 */
 
 %let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment\metrics_employment_2021.csv;
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
+libname employ "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\09_employment";
 
 /* create confidence interval and correctly format variables */
 
 data employment_missing_HI (keep = year county state share_employed share_employed_ub share_employed_lb)  ;
- set paul.metrics_employment_2021;
+ set employ.metrics_employment_2021;
  year = 2021;
  not_employed = 1 - share_employed;
  interval = 1.96*sqrt((not_employed*share_employed)/_FREQ_);

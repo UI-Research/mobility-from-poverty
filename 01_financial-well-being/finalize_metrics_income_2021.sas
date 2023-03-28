@@ -90,7 +90,6 @@ run;
 proc sort data=metrics_income_&year; by year state county; run;
 %mend compute_metrics;
 
-/* this is for 2018 */
 %compute_metrics(lib2021.microdata,year=2021);
 
 /* export as csv */

@@ -4,14 +4,12 @@
 
 /*
 
-The input files USA_00027 and puma_to_county are created by the preceeding SAS programs,
+The input files main_2021 and puma_to_county are created by the preceeding SAS programs,
 1_init.sas and 2_puma_to_county
 
-USA_00027 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
+main_2021 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2021.
 It will need to be downloaded and unzipped. 
 
-USA_00019 is on Box in Metrics Database/ACS-based metrics/PUMS-based/data/2018.
-It will need to be downloaded and unzipped. 
 
 */
 
@@ -31,8 +29,9 @@ proc sql;
 ;  
 quit;
 
-*Add an indicator of whether the puma-to-county match resulted in the creation of additional records (i.e. did
- the PUMA span counties?);
+*Map PUMAs to counties. This expands records for persons in PUMAs that span counties 
+(e.g. if a person is in a PUMA that spans 3 counties, 2 additional copies of the person’s record will be created, 
+for a total of 3 records for that person);;
 proc sort data=add_county;
   by serial pernum;
 run;
@@ -76,4 +75,8 @@ run;
 
 /* this should be run to get the 2014 housing data 
 %prepare_microdata(lib2014.usa_00024,lib2014.microdata);*/
+
+proc print data = add_num_of_counties (obs = 10);
+ where county = 515;
+run;
 

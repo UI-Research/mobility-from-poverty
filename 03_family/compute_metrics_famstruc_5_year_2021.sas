@@ -1,6 +1,11 @@
 *=================================================================;
 *Compute county-level family-structure-and-stability metrics;
 *=================================================================;
+
+/* computes family structure metric for subgroup file on 2021 5 year ACS
+
+3/15/23
+*/
 libname family "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 
 %let max_hhsize = 20; /*maximum number of persons that can be in a household*/
