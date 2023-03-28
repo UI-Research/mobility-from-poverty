@@ -1,10 +1,10 @@
 /*************
 
-this code creates the income metrics
+this code creates the income metrics for the 2021 subgroup file. 
 
 Kevin Werner
 
-12/1/20
+3/15/23
 
 NOTE: per email from Greg on 9/10/20, I have removed the confidence interval code.
 
@@ -14,9 +14,8 @@ NOTE: per email from Greg on 9/10/20, I have removed the confidence interval cod
 
 %let suppress = 30;
 
-/* this runs on the microdata file output by 3_prepate_microdata_5_year */
+/* this runs on the microdata file output by 3_prepate_microdata_5_year_2021 */
 
-/*libname desktop "C:\Users\kwerner\Desktop\Metrics";*/
 options fmtsearch=(lib2018);
 
  Proc format;
@@ -139,13 +138,20 @@ data income;
  end;
 run;
 
-/* sort final data set and order variables*/
+/* sort final data set and order variables. also create format to turn . into NA*/
+
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "000000000000.00";
+			
+			 run;
 
 data income (drop = single_race);
  retain year state county subgroup_type subgroup pctl_20 pctl_50 pctl_80;
  set income;
  if subgroup in (1,2,3,4) then subgroup_type = "race-ethnicity";
  else subgroup_type = "all";
+ format pctl_20 pctl_50 pctl_80 num.;
 run;
 
 proc sort data=income; by year state county subgroup; run;

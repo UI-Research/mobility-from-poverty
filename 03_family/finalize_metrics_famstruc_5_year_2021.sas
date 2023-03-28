@@ -1,20 +1,14 @@
 /*************
 
-This code reads in the family structure metrics created by Paul, adds confidence intervals,
+This code reads in the family structure metrics created compute_metrics_famstruc_5_year_2021, adds confidence intervals,
 put it in the right format, and outputs it as a csv
 
 Kevin Werner
 
-12/1/20
+3/15/23
 
 *************/
 
-/*
-
-This code uses the SAS dataset output from Paul's compute_metric_famstruc
-as input.
-
-*/
 
 options fmtsearch=(lib2018);
 
@@ -167,11 +161,21 @@ data all_structure_merged;
  by state county subgroup;
 run;
 
-/* put columns in correct order */
+/* put columns in correct order and create formats */
+
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "9.99999";
+			 run;
 
 data all_structure_merged;
  retain year state county subgroup_type subgroup;
  set all_structure_merged;
+ format famstruc_2par_married	famstruc_2par_married_ub	famstruc_2par_married_lb	famstruc_2par_unmarried	famstruc_2par_unmarried_ub	
+	famstruc_2par_unmarried_lb	famstruc_1par_plusadults	famstruc_1par_plusadults_ub	famstruc_1par_plusadults_lb	famstruc_1par_noadults	
+	famstruc_1par_noadults_ub	famstruc_1par_noadults_lb	famstruc_0par_2adults	famstruc_0par_2adults_ub	famstruc_0par_2adults_lb	
+	famstruc_0par_other	famstruc_0par_other_ub	famstruc_0par_other_lb num.;
+
 run;
 
 proc sort data=all_structure_merged; by year state county subgroup; run;

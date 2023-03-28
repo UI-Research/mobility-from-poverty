@@ -1,24 +1,17 @@
 /*************
 
-This code reads in the family structure metrics created by Paul, adds confidence intervals,
+This code reads in the family structure metrics compute_metrics, adds confidence intervals,
 put it in the right format, and outputs it as a csv
 
 Kevin Werner
 
-7/28/20
 
 *************/
 
-/*
-
-This code uses the SAS dataset output from Paul's compute_metric_famstruc
-as input.
-
-*/
 
 %let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family\metrics_famstruc_2021.csv;
 
-libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
+libname fam "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 
 
 /* create confidence interval using macro for each metric.
@@ -26,7 +19,7 @@ libname paul "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_fa
 
 %macro fam_struc(structure= );
 data &structure.(keep = year county state &structure &structure._ub &structure._lb) ;
- set paul.metrics_famstruc_2021;
+ set fam.metrics_famstruc_2021;
  year = 2021;
  inverse_&structure = 1 - &structure;
  interval = 1.96*sqrt((inverse_&structure*&structure)/_FREQ_);
