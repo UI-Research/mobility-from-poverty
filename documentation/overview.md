@@ -28,6 +28,8 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * [College readiness](#college-readiness)
 * [Employment](#employment)
 * [Access to jobs paying a living wage](#access-to-jobs-paying-a-living-wage)
+* [Social Capital](#social-capital)
+* [Descriptive Representation](#descriptive-representation)
 
 ---
 
@@ -983,3 +985,96 @@ For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the
 
 Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
 
+
+---
+
+## Social Capital
+
+### Overview
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `social_associations_geography_2022.csv`
+* **Data Source(s):** Census County Business Patterns (CBP) Survey 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
+* **Missingness:** 152 missing observations for county-level data. No missing observations for city-level data.
+
+### Process
+
+This metric shows the number of membership associations per 10,000 people in each county and city. 
+
+
+* The social organization counts come from the CBP: https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html
+    * The data must be isolated to the following NAICS organization codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920. These are the codes/associations included in the County Health Rankings metric -- see here for more: https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022
+
+
+These data, once downloaded, are combined with population data from the ACS. The social association (metric) ratio is constructed with the count of appropriate social organizations as the numerator, and the denominator is the population divided by 10000. For the city-level data, ZIP-code level data is re-aggregated to the Census Place geography using a ZCTA to Place crosswalk. Values are weighted by the percent of the area of the ZCTA that falls into each Census Place.
+
+	
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `economic_connectedness_geography_2022.csv.csv`
+* **Data Source(s):** Social Capital Atlas data for Economic Connectedness 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 50% or more of the ZIPs fall mostly (>50%) in the census place, `2' means 15% to 50% of the ZIPs fall mostly (>50%) in the census place, and `3' means less than 15% of the ZIP falls mostly into the census place.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place, unlike the county-level data which is already calculated at the county level.
+* **Missingness:** 168 missing observations for city-level data. No missing observations for city-level data. 126 missing observations for county-level data.
+
+### Process
+
+This metric shows the level of economic connectedness, or the ratio of Facebook friends with higher socioeconomic status to Facebook friends with lower socioeconomic status, in each county and city. 
+
+
+* The economic connectedness data comes from the Social Capital Atlas: https://data.humdata.org/dataset/social-capital-atlas
+    * The data must be downloaded at the county level to calculate the county-level metric, and at the ZIP code (2010 ZCTA) level to calculate the city metric.
+
+
+For the city-level metric, these data, once downloaded, are combined with a ZIP to Census Place crosswalk to re-aggregate the data at the right geography. The economic connectedness variable is averaged by Census Place, weighted by the percent of the area of the ZCTA in that Place.
+
+---
+
+## Descriptive Representation 
+
+### Overview
+
+This metric is a county-level and city-level estimate of population count by racial subgroup, which is meant to be used as the denominator for the Descriptive Representation mobility metric.
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `descriptive_rep_denominator_geography_2022.csv`
+* **Data Source(s):** 2017-2021 5-year ACS estimates
+* **Notes:**
+* **Data Quality Index:** `1` means this metric is reliable calculated at the geography.
+* **Limitations:** None
+* **Missingness:** None 
+
+### Process
+
+1. Pull demographics for Census Places and Census Counties from ACS 5-year 2021
+2. Clean and reshape to move data into the race variables accordingly
+3. Test for errors
+4. Add data quality flags
+5. Save the data  
+
+
+## Housing wealth
+
+### Overview
+
+* **Analyst & Programmer:** Jung Hyun Choi
+* **Year(s):** 2014-2021
+* **Final data name(s):** `county_hh_hw_raceeth_2014_2021.csv`,`place_hh_hw_raceeth_2014_2021.csv`
+* **Data Source(s):** ACS 1-yr, PUMA-County, PUMA-Place crosswalks
+* **Notes:** PUMA-County and PUMA-Place crosswalk data are the boundaries in 2012. Census will use the updated boundaries from the 2022 ACS. 
+* **Data Quality Index:** The metrics for the ACS indices are based on the (1) sample size of each race and ethnic household at the county/place and (2) the number of observations that comes from the specific county/place calculated from the  PUMA-county/place crosswalk. First, if the number of households (N) for a race group at a county/place is less than 30 then the data quality always equals `3`. If N is 30 or above, we look at what percent of data for the county actually came from the county/place itself, and the sample size in each county/place. `1` means more than 75% of observations are from the county/place, `2` means more than 35% of observations are from the county/place, and `3` means less than 35% of observations are from the county/place. 
+* **Limitations:** Housing value is used as a proxy of housing wealth. This value is self-reported. Since mortgage debt is not incorporated, and households of color tend to have higher mortgage debt, the racial gap is likely underestimated. 
+* **Missingness:** For cities, only places with more than 50,000 population in 2020 were selected. 
+
+### Process
+The variables used were downloaded from IPUMs.org. I merged this data with PUMA-County and PUMA-Place geocodes to get County and City boundaries. For counties, only the counties where ACS did not provide county codes (county code == 0) were updated using the PUMA-County crosswalk.
+
+For each county/city, I calculate the household share by race and ethnicity (total number of households for each race and ethnic group/total number of households). Then for the same geography, I calculate the housing wealth share by race and ethnicity (total aggregated housing wealth for homeowners for each race and ethnic group/total aggregated housing wealth). I create the data quality index, using the above criteria and export the final data. 
+
+---
