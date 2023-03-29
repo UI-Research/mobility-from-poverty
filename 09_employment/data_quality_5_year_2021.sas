@@ -52,6 +52,23 @@ below 35% is bad, in between is marginal.
 This is calculated by taking the product of percentagge of PUMA in county and
 percentage of county in PUMA for each county-PUMA pairing, and summing
 across the county
+
+This code gets the portion of data on each county that comes from that county. 
+There is a row for each state/county/PUMA combination. 
+The afact is the share of a county in a PUMA and afact2 is the share of a PUMA in a county.
+If afact and afact2 were both 1, that means the county and PUMA shared the same borders. 
+
+If afact is <1 and afact2 is 1, the PUMA spans a counties, but that county is entirely 
+in the PUMA. If afact2 is 0.5 in this example, then products will equal 0.5. Products is summed for
+each instance of the county, but there is only one instance, so the sum is 0.5. 
+
+If afact is 1 and afact2 is <1, then the county is spread over multiple PUMAs. afact and afact2 are
+multiplied together and summed for each instance of the county. So if the county is spread perfectly 
+among two PUMAs, afact2 will be 0.5 for each row, the product of afact and afact2 will be 0.5, and 
+the sum will 1 one, meaning we know where 100% of the county's data comes from. 
+
+If both afact and afact2 are <1, then the result is a combination of previous two examples. There 
+will be mutliple instances of rows to be summed, but the total sum will likely be less than 1.
 */
 
 data puma_county;

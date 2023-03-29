@@ -21,6 +21,12 @@ libname lib2021 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2021";
 libname lib2018 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2018";
 libname lib2014 "V:\Centers\Ibp\KWerner\Kevin\Mobility\Paul\2014";
 
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "000000000000.00";
+			
+			 run;
+
 %macro compute_metrics(microdata_file,year);
 /******************* income metric *********************/
 /* this exactly recreates Paul's percentiles
@@ -82,9 +88,12 @@ run;
 
 /* sort final data set and order variables*/
 
+
+
 data metrics_income_&year;
  retain year state county pctl_20 pctl_50 pctl_80;
  set metrics_income_&year;
+ format pctl_20 pctl_50 pctl_80 num.;
 run;
 
 proc sort data=metrics_income_&year; by year state county; run;

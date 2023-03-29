@@ -63,9 +63,15 @@ run;
 
 /* sort final data set and order variables*/
 
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "9.99999";
+			 run;
+
 data metrics_college_ready;
  retain year state county share_hs_degree share_hs_degree_ub share_hs_degree_lb;
  set metrics_college_ready;
+ format share_hs_degree share_hs_degree_ub share_hs_degree_lb num.;
 run;
 
 proc sort data=metrics_college_ready; by year state county; run;

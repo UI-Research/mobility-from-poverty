@@ -227,7 +227,7 @@ run;
 %add_year(dataset = metrics_preschool_2021);
 %add_year(dataset = metrics_income_2021);
 %add_year(dataset = metrics_access_2021);
-%add_year(dataset = metrics_rent_2021);
+*%add_year(dataset = metrics_rent_2021);
 %add_year(dataset = metrics_housing_2021);
 
 
@@ -289,7 +289,7 @@ run;
 %flag(dataset = metrics_preschool_2021, metric = share_in_preschool);
 %flag(dataset = metrics_income_2021, metric = pctl);
 %flag(dataset = metrics_access_2021, metric = share_access);
-%flag(dataset = metrics_rent_2021, metric = rent);
+*%flag(dataset = metrics_rent_2021, metric = rent);
 
 /*
 proc print data=metrics_housing_flag;
@@ -307,7 +307,7 @@ run;
 %macro output(dataset= , folder =);
 proc import datafile="&metrics_folder.&folder.&dataset..csv" out=&dataset._orig dbms=csv replace;
   getnames=yes;
-  guessingrows=100;
+  guessingrows=3000;
   datarow=2;
 run;
 
@@ -340,7 +340,7 @@ run;
 %output(dataset = metrics_famstruc_2021, folder = 03_family\); 
 %output(dataset = metrics_income_2021, folder = 01_financial-well-being\); 
 %output(dataset = metrics_housing_2021, folder = 02_housing\); 
-%output(dataset = metrics_rent_2021, folder = 02_housing\); 
+*%output(dataset = metrics_rent_2021, folder = 02_housing\); 
 %output(dataset = metrics_employment_2021, folder = 09_employment\); 
 %output(dataset = metrics_access_2021, folder = 06_neighborhoods\); 
 

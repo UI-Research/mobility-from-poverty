@@ -995,9 +995,15 @@ run;
 
 /* sort final data set and order variables*/
 
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "9.99999";
+			 run;
+
 data edu.metrics_preschool_2021;
  retain year state county share_in_preschool share_in_preschool_ub share_in_preschool_lb;
  set edu.metrics_preschool_2021;
+ format share_in_preschool share_in_preschool_ub share_in_preschool_lb num. 
 run;
 
 proc sort data=edu.metrics_preschool_2021; by year state county; run;
