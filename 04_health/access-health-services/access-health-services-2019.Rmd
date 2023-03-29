@@ -15,6 +15,7 @@ library(tidyverse)
 library(rvest)
 library(glue)
 library(fs)
+library(tidycensus)
 
 set_urbn_defaults(style = "print")
 
@@ -23,7 +24,9 @@ set_urbn_defaults(style = "print")
 ## 1. Prepare for file download
 ```{r}
 base_url <- "https://www.countyhealthrankings.org"
+
 url <- paste0(base_url, "/explore-health-rankings/rankings-data-documentation")
+
 download_urls <-
   read_html(url) %>% 
   html_elements('span.field-content') %>%  
@@ -46,7 +49,9 @@ get_state_data_url <- function(url){
     str_subset('2022') %>% 
     paste0(base_url, .)
 }
+
 state_data_url <- purrr::map_chr(.x = download_urls, .f = get_state_data_url)
+
 ```
 
 
@@ -87,22 +92,42 @@ walk2(state_data_url, out_state, download_data)
 
 ## 3. Read in, clean, and append each Excel sheet
 ```{r}
-physicians <- map_dfr(out_state,
-                     ~{readxl::read_excel(path = here::here(
-                       paste0('04_health/access-health-services/data/', .x, '.xlsx')),
-                       sheet = 'Ranked Measure Data',
-                       skip = 1
-                     ) %>%
-                         select(fips = 'FIPS',
-                                pc_phys_ratio = 'Primary Care Physicians Ratio'
-                                ) %>%
-                         filter(!str_detect(fips, '000$')) %>%
-                         mutate(state = str_sub(fips, 1, 2),
-                                county = str_sub(fips, 3, 5)
-                                )
-                     }
-)
+# physicians <- map_dfr(out_state,
+#                      ~{readxl::read_excel(path = here::here(
+#                        paste0('04_health/access-health-services/data/', .x, '.xlsx')),
+#                        sheet = 'Ranked Measure Data',
+#                        skip = 1
+#                      ) %>%
+#                          select(fips = 'FIPS',
+#                                 pc_phys_ratio = 'Primary Care Physicians Ratio',
+#                                 number_pc_phys = '# Primary Care Physicians',
+#                                 pc_phys_rate = 'Primary Care Physicians Rate'
+#                                 ) %>%
+#                          filter(!str_detect(fips, '000$')) %>%
+#                          mutate(state = str_sub(fips, 1, 2),
+#                                 county = str_sub(fips, 3, 5)
+#                                 )
+#                      }
+# )
 
+physicians <- read_excel(here::here('04_health/access-health-services/data/Alabama.xlsx'),
+                         sheet = 'Ranked Measure Data',
+                         skip = 1
+) %>%
+  select(fips = 'FIPS',
+         pc_phys_ratio = 'Primary Care Physicians Ratio',
+         number_pc_phys = '# Primary Care Physicians',
+         pc_phys_rate = 'Primary Care Physicians Rate'
+  ) %>%
+  filter(!str_detect(fips, '000$')) %>%
+  mutate(state = str_sub(fips, 1, 2),
+         county = str_sub(fips, 3, 5)
+  )
+
+```
+
+
+```{r}
 physicians <- physicians %>%
   separate(col = pc_phys_ratio,
            into = c('antecedent', 'consequent'),
@@ -111,14 +136,38 @@ physicians <- physicians %>%
                                    consequent == "0" ~ "0",
                                    is.na(pc_phys_ratio) ~ "0"),
          year = 2019
-         ) %>%
-  select(year, state, county, pc_phys_ratio)
+         )
+  # select(year, state, county, fips, pc_phys_ratio, number_pc_phys)
 
 ```
 
 
 ## 4. Add data quality flags
+
+First we need to get population estimates from the US Census Bureau Population Estimation Program. # Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at https://api.census.gov/data/key_signup.html if you don't have one.
 ```{r}
+# census_api_key("YOUR-KEY-HERE")
+
+pop <- tidycensus::get_estimates("county", year = 2019, variables = "POP") %>%
+  rename(fips = GEOID)
+
+pop <- pop %>%
+  select(fips,
+         population = value)
+```
+
+Join the population data to the physicians data.
+```{r}
+alabama <- left_join(physicians, pop, by = "fips")
+
+alabama <- alabama %>%
+  mutate(check = population / number_pc_phys,
+         diff = abs(as.numeric(antecedent) - check),
+         plus1 = (population + 1) / number_pc_phys,
+         minus1 = (population - 1) / number_pc_phys,
+         plus1_diff = abs(as.numeric(antecedent) - plus1),
+         minus1_diff = abs(as.numeric(antecedent) - minus1)
+         )
 
 
 ```
@@ -126,8 +175,6 @@ physicians <- physicians %>%
 
 ## 5. Save the data
 ```{r}
-# Is this join necessary?
-
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
   tidylog::filter(year == 2020) %>%
   select(-year)
@@ -145,5 +192,6 @@ joined_data %>%
   write_csv(here::here("04_health",
                        "access-health-services",
                        "access-health-services-2019.csv"))
+
 ```
 
