@@ -13,6 +13,11 @@ Kevin Werner
 
 libname fam "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\03_family";
 
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "9.99999";
+			 run;
+
 
 /* create confidence interval using macro for each metric.
 	creates one data set per metric */
@@ -88,6 +93,10 @@ run;
 data all_structure;
  retain year state county;
  set all_structure;
+  format famstruc_2par_married	famstruc_2par_married_ub	famstruc_2par_married_lb	famstruc_2par_unmarried	famstruc_2par_unmarried_ub	
+	famstruc_2par_unmarried_lb	famstruc_1par_plusadults	famstruc_1par_plusadults_ub	famstruc_1par_plusadults_lb	famstruc_1par_noadults	
+	famstruc_1par_noadults_ub	famstruc_1par_noadults_lb	famstruc_0par_2adults	famstruc_0par_2adults_ub	famstruc_0par_2adults_lb	
+	famstruc_0par_other	famstruc_0par_other_ub	famstruc_0par_other_lb num.;
 run;
 
 proc sort data=all_structure; by year state county; run;
