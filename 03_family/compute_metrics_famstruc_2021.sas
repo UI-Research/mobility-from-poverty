@@ -48,7 +48,7 @@ data children;
               if marst_array(j)=1 then num_married_parents+1;
 			  else num_unmarried_parents+1;
 			end;
-			else if age>17 then num_nonparent_adults+1;/*found a non-parent adult*/
+			else if age_array(j)>17 then num_nonparent_adults+1;/*found a non-parent adult*/
 		end;/*end looking for parents and nonparent adults*/
 		/*determine family structure and output this child*/
         famstruc_2par_married=0;

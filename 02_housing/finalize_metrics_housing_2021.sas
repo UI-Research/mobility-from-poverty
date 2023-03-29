@@ -22,6 +22,12 @@ Uses the dataset created by compute_metrics_housing as input
 
 libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02_housing";
 
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "000000000.00000";
+			
+			 run;
+
 /* I turned this into a macro so it can easily read both the 2014 and 2018 data */
 
 %macro finalize_housing(year);
@@ -58,6 +64,7 @@ run;
 data housing_&year;
  retain year state county;
  set housing_&year;
+ format share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami num.;
 run;
 
 proc sort data=housing_&year; by year state county; run;

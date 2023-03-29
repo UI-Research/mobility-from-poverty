@@ -54,9 +54,16 @@ run;
 
 /* sort final data set and order variables*/
 
+
+PROC FORMAT ;
+PICTURE Num    .="NA"
+				OTHER = "9.99999";
+			 run;
+
 data employment;
  retain year state county ;
  set employment;
+ format share_employed share_employed_ub share_employed_lb num.;
 run;
 
 proc sort data=employment; by year state county; run;
