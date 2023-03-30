@@ -20,6 +20,8 @@
 # Libraries you'll need
 library(tidyverse)
 library(ipumsr)
+library(survey)
+library(srvyr)
 
 # Download needed microdata from IPUMS:
 #  Sample Selection: ACS 2021 (1-year)
@@ -196,7 +198,7 @@ acs2021clean <- acs2021clean %>%
          RENTGRS = RENTGRS*ADJUST, # adjusts gross monthly rental cost for rented housing units into cal-year dollars
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
-# save as "microdata.csv" in gitignore
+# save as "microdata.csv" 
 # write_csv(acs2021clean, "data/temp/2021microdata.csv")
 
 
