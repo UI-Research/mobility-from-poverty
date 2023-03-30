@@ -92,34 +92,27 @@ microdata_coll_age <- microdata %>%
   filter(AGE == 19 | AGE == 20) 
 # 59,813 obs
 
+# re-import as survey to prep for CI
+svy <- as_survey_design(microdata_coll_age, weights = PERWT)
 
 # Find the # of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
 # collapse PERWT by place (total count of college ready people)
 # and combine these into df to prepare for metric ratio
-metrics_college <- microdata_coll_age %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(
+metrics_college <- svy %>% 
+  group_by(statefip, place) %>% 
+  summarise(
     num_19_and_20 = sum(PERWT),
     num_coll_ready = sum((EDUCD <= 116 & EDUCD >= 62) * PERWT),
-    n = n()
+    n = n(),
+    share_hs_degree = survey_ratio(num_coll_ready, num_19_and_20, vartype = "ci", level = 0.95)
   )
 # EDUCD <= 116 & EDUCD >= 62 evaluates to FALSE if the person isn't college ready and they aren't counted
 
-# Compute the ratio (share employed)
-metrics_college <- metrics_college %>%
-  mutate(share_hs_degree = num_coll_ready/num_19_and_20)
 
-# Create Confidence Interval (CI) and correctly format the variables
+# Rename Confidence Interval (CI) vars
 metrics_college <- metrics_college %>%
-  mutate(no_hs_degree = 1 - share_hs_degree,
-         interval = 1.96 * sqrt((no_hs_degree*share_hs_degree)/n),
-         share_hs_degree_ub = share_hs_degree + interval,
-         share_hs_degree_lb = share_hs_degree - interval)
-
-# adjust ub & lb values that fall beyond 0 and 1
-metrics_college <- metrics_college %>% 
-  mutate(share_hs_degree_ub = pmin(1, pmax(0, share_hs_degree_ub)),
-         share_hs_degree_ub = pmax(0, pmin(1, share_hs_degree_ub)))
+  mutate(share_hs_degree_ub = share_hs_degree_upp,
+         share_hs_degree_lb = share_hs_degree_low)
 
 ###################################################################
 
