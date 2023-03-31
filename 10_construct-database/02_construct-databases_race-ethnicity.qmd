@@ -105,7 +105,7 @@ files <- c(
   ### EDUCATION ###
   here("08_education", "metrics_preschool_subgroup.csv"),
   here("08_education", "metrics_college_subgroup.csv"),
-  here("08_education", "SEDA_all_subgroups_county.csv"),
+  here("08_education", "SEDA_all_subgroups_county.csv"), #Effective public education
   
   ### FINANCIAL WELLBEING ###
   here("01_financial-well-being", "metrics_income_subgroup.csv"),
@@ -119,6 +119,7 @@ files <- c(
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"),
   
   ### SAFETY ###
+  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"),
   
   ### WORK ### 
   here("09_employment", "metrics_employment_subgroup.csv")
@@ -148,34 +149,77 @@ db <- map(files, read_csv_and_clean) %>%
 db <- db %>%
   mutate(
     pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    # famstruc_quality = if_else(is.na(famstruc_2par_married), as.numeric(NA), famstruc_quality),
     hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
     preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
     employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
-  )
-
-frame <- 
-  bind_rows(
-    expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
-      subgroup_type = c("all"),
-      subgroup = c("All")
-    ),
-    expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
-      subgroup_type = c("race-ethnicity"),
-      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
-    )
   ) %>%
-  arrange(year, state, county, subgroup_type, subgroup)
   
-db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+  #remove non-race and ethnicity related subgroups:
+  filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
 
-stopifnot(
-  nrow(db) == nrow(frame)
-)
+
+# GM: IDK why we use this "frame" dataset at all. I join in the crosswalk for all years below 
+# frame <- 
+#   bind_rows(
+#     expand_grid(
+#       read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
+#       subgroup_type = c("all"),
+#       subgroup = c("All")
+#     ),
+#     expand_grid(
+#       read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
+#       subgroup_type = c("race-ethnicity"),
+#       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+#     )
+#   ) %>%
+#   arrange(year, state, county, subgroup_type, subgroup)
+#   
+# db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+
+#This check does not make sense because we are reading in multiple years of data only at the county scale,
+# and this makes data only from 2020 at the tract scale
+# 
+# stopifnot(
+#   nrow(db) == nrow(frame)
+# )
 
 ```
+
+```{r clean-data}
+#' Function to clean db, largely by updating names
+#' @param db_unclean (data.frame) dataframe joined by map reduce logic above
+#' @return db (data.frame) the cleaned dataframe
+
+
+clean_data <- function(db_unclean){
+  db <- db_unclean %>%
+    rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
+                ) %>%
+    rename_with(.cols = starts_with("pctl"), 
+              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
+    rename_with(.cols = contains("exposure"),
+              .fn = ~paste0("share_", .x)
+              ) %>%   
+    rename_with(.cols = contains("arrest_rate"),
+              ~paste0("rate_",
+                      str_replace(.x, "arrest_rate", "arrest")
+                      )
+                ) %>%
+    rename(share_in_preschool_quality = preschool_quality,
+           share_hs_degree_quality = hs_degree_quality,
+           share_employed_quality = employed_quality
+           ) 
+  return(db)
+  
+}
+
+db <- clean_data(db)
+
+```
+
+
+
+
 
 # Recent-year Database
 
@@ -189,7 +233,7 @@ read_csv_recent <- function(file) {
     mutate(subgroup = str_replace(subgroup, "Other Races and Eth$", "Other Races and Ethnicities")) %>%
     mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
     mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
-    filter(year == max(year)) %>%
+    slice_max(year) %>% 
     select(-year)
   
   return(file)
@@ -204,32 +248,33 @@ db_recent <- map(files, read_csv_recent) %>%
 db_recent <- db_recent %>%
   mutate(
     pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    famstruc_quality = if_else(is.na(famstruc_2par_married), as.numeric(NA), famstruc_quality),
     hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
     preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
     employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
   )
 
-frame <- 
-  bind_rows(
-    expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-      subgroup_type = c("all"),
-      subgroup = c("All")
-    ),
-    expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-      subgroup_type = c("race-ethnicity"),
-      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
-    )
-  ) %>%
-  arrange(year, state, county, subgroup_type, subgroup) %>%
-  filter(year == max(year)) %>%
-  select(-year)
 
-db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
-
-stopifnot(nrow(frame) == nrow(db_recent)) #todo(aaron): resolve
+# 
+# frame <- 
+#   bind_rows(
+#     expand_grid(
+#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+#       subgroup_type = c("all"),
+#       subgroup = c("All")
+#     ),
+#     expand_grid(
+#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+#       subgroup_type = c("race-ethnicity"),
+#       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+#     )
+#   ) %>%
+#   arrange(year, state, county, subgroup_type, subgroup) %>%
+#   filter(year == max(year)) %>%
+#   select(-year)
+# 
+# db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
+# 
+# stopifnot(nrow(frame) == nrow(db_recent)) #todo(aaron): resolve
 
 ```
 
