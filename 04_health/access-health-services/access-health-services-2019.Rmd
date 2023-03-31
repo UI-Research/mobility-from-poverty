@@ -91,41 +91,26 @@ walk2(state_data_url, out_state, download_data)
 
 
 ## 3. Read in, clean, and append each Excel sheet
-```{r}
-# physicians <- map_dfr(out_state,
-#                      ~{readxl::read_excel(path = here::here(
-#                        paste0('04_health/access-health-services/data/', .x, '.xlsx')),
-#                        sheet = 'Ranked Measure Data',
-#                        skip = 1
-#                      ) %>%
-#                          select(fips = 'FIPS',
-#                                 pc_phys_ratio = 'Primary Care Physicians Ratio',
-#                                 number_pc_phys = '# Primary Care Physicians',
-#                                 pc_phys_rate = 'Primary Care Physicians Rate'
-#                                 ) %>%
-#                          filter(!str_detect(fips, '000$')) %>%
-#                          mutate(state = str_sub(fips, 1, 2),
-#                                 county = str_sub(fips, 3, 5)
-#                                 )
-#                      }
-# )
-
-physicians <- read_excel(here::here('04_health/access-health-services/data/Alabama.xlsx'),
-                         sheet = 'Ranked Measure Data',
-                         skip = 1
-) %>%
-  select(fips = 'FIPS',
-         pc_phys_ratio = 'Primary Care Physicians Ratio',
-         number_pc_phys = '# Primary Care Physicians',
-         pc_phys_rate = 'Primary Care Physicians Rate'
-  ) %>%
-  filter(!str_detect(fips, '000$')) %>%
-  mutate(state = str_sub(fips, 1, 2),
-         county = str_sub(fips, 3, 5)
-  )
+```{r, message = FALSE}
+physicians <- map_dfr(out_state,
+                     ~{readxl::read_excel(path = here::here(
+                       paste0('04_health/access-health-services/data/', .x, '.xlsx')),
+                       sheet = 'Ranked Measure Data',
+                       skip = 1
+                     ) %>%
+                         select(fips = 'FIPS',
+                                pc_phys_ratio = 'Primary Care Physicians Ratio',
+                                number_pc_phys = '# Primary Care Physicians',
+                                pc_phys_rate = 'Primary Care Physicians Rate'
+                                ) %>%
+                         filter(!str_detect(fips, '000$')) %>%
+                         mutate(state = str_sub(fips, 1, 2),
+                                county = str_sub(fips, 3, 5)
+                                )
+                     }
+)
 
 ```
-
 
 ```{r}
 physicians <- physicians %>%
@@ -137,7 +122,6 @@ physicians <- physicians %>%
                                    is.na(pc_phys_ratio) ~ "0"),
          year = 2019
          )
-  # select(year, state, county, fips, pc_phys_ratio, number_pc_phys)
 
 ```
 
@@ -152,23 +136,52 @@ pop <- tidycensus::get_estimates("county", year = 2019, variables = "POP") %>%
   rename(fips = GEOID)
 
 pop <- pop %>%
+  # Drop PR observations
+  filter(!str_detect(fips, '^72')) %>%
   select(fips,
          population = value)
+
 ```
 
 Join the population data to the physicians data.
 ```{r}
-alabama <- left_join(physicians, pop, by = "fips")
+joined_data <- left_join(physicians, pop, by = "fips")
 
-alabama <- alabama %>%
-  mutate(check = population / number_pc_phys,
-         diff = abs(as.numeric(antecedent) - check),
-         plus1 = (population + 1) / number_pc_phys,
-         minus1 = (population - 1) / number_pc_phys,
-         plus1_diff = abs(as.numeric(antecedent) - plus1),
-         minus1_diff = abs(as.numeric(antecedent) - minus1)
-         )
+joined_data <- joined_data %>%
+  mutate(
+    # Convert the antecedent of the primary care physicians:population ratio to numeric so we can use it for calculations
+    antecedent = as.numeric(antecedent),
+    # Divide the 2019 PEP population by the 2019 CHR Number of Physicians. Compare this value to the antecedent of the ratio.
+    check_antecedent = population / number_pc_phys,
+    diff_ratio = abs(antecedent - check_antecedent)
+  )
+```
 
+Any differences in the ratio are likely due to rounding. 
+```{r}
+test <- joined_data %>%
+  filter(number_pc_phys != 0)
+  
+quantile(test$diff_ratio, probs = seq(0, 1, 0.25), na.rm = TRUE)
+
+```
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(
+    # Add 1 to the denominator of the ratio and reconstruct the ratio
+    plus1 = population / (number_pc_phys + 1),
+    # Calculate the differences between each of the new ratios and the original ratio
+    plus1_diff = abs(as.numeric(antecedent) - plus1)
+  )
+
+```
+
+```{r}
+test <- joined_data %>%
+  filter(number_pc_phys != 0)
+  
+quantile(test$plus1_diff, probs = seq(0, 1, 0.25), na.rm = TRUE)
 
 ```
 
@@ -184,7 +197,6 @@ joined_data <- left_join(physicians, all_counties, by = c("state", "county"))
 test <- anti_join(all_counties, physicians, by = c("state", "county"))
 
 joined_data <- joined_data %>%
-  mutate(year = 2019) %>%
   select(year, state, county, pc_phys_ratio, population) %>%
   arrange(year, state, county)
 
@@ -194,4 +206,5 @@ joined_data %>%
                        "access-health-services-2019.csv"))
 
 ```
+
 
