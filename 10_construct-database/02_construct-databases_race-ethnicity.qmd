@@ -34,19 +34,35 @@ library(gt)
 ```
 
 ```{r}
-read_csv(here("08_education", "SEDA_all_subgroups.csv")) %>%
-  filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
-  filter(year == 2015) %>%
-  write_csv(here("08_education", "SEDA_race-ethnicity.csv"))
+# read_csv(here("08_education", "SEDA_all_subgroups.csv")) %>%
+#   filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
+#   filter(year == 2015) %>%
+#   write_csv(here("08_education", "SEDA_race-ethnicity.csv"))
 
 ```
+
+```{r, combine-neonatal-health}
+neonatal_2018 <- read_csv(
+  here("04_health", "final_data", "neonatal_health_subgroup_2018.csv")
+  )
+neonatal_2020 <- read_csv(
+  here("04_health", "final_data", "neonatal_health_subgroup_2020.csv")
+  )
+neonatal <- rbind(neonatal_2018, neonatal_2020) %>%
+  rename_with(~ gsub("lbw", "rate_low_birth_weight", .x, fixed = TRUE))
+write_csv(neonatal, 
+          here::here("04_health", "final_data", "neonatal_health_subgroup_CORRECT.csv")
+          )
+rm(neonatal, neonatal_2018, neonatal_2020)
+```
+
+
 
 Add the "all" data to the subgroup data. 
 
 ```{r}
 fix_files <- c(
   here("01_financial-well-being", "metrics_income.csv"),
-  here("03_family", "metrics_famstruc.csv"),
   here("08_education", "metrics_college.csv"),
   here("08_education", "metrics_preschool.csv"),
   here("09_employment", "metrics_employment.csv")
@@ -54,7 +70,6 @@ fix_files <- c(
 
 wrong_files <- c(
   here("01_financial-well-being", "metrics_income_subgroup.csv"),
-  here("03_family", "metrics_famstruc_subgroup.csv"),
   here("08_education", "metrics_college_subgroup.csv"),  
   here("08_education", "metrics_preschool_subgroup.csv"),
   here("09_employment", "metrics_employment_subgroup.csv")
@@ -86,12 +101,26 @@ map2(fix_files, wrong_files, ~add_all(all = .x, subgroup = .y))
 
 ```{r}
 files <- c(
-  here("01_financial-well-being", "metrics_income_subgroup.csv"),
-  here("03_family", "metrics_famstruc_subgroup.csv"),
-  here("04_health", "final_data", "neonatal_health_subgroup.csv"),
-  here("08_education", "SEDA_race-ethnicity.csv"),
+  
+  ### EDUCATION ###
   here("08_education", "metrics_preschool_subgroup.csv"),
   here("08_education", "metrics_college_subgroup.csv"),
+  here("08_education", "SEDA_all_subgroups_county.csv"),
+  
+  ### FINANCIAL WELLBEING ###
+  here("01_financial-well-being", "metrics_income_subgroup.csv"),
+
+  ### HEALTH ###
+  here("04_health", "final_data", "neonatal_health_subgroup_CORRECT.csv"),
+
+  ### HOUSING ###
+  
+  ### NEIGHBORHOODS ### 
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"),
+  
+  ### SAFETY ###
+  
+  ### WORK ### 
   here("09_employment", "metrics_employment_subgroup.csv")
 )
 
@@ -119,7 +148,7 @@ db <- map(files, read_csv_and_clean) %>%
 db <- db %>%
   mutate(
     pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    famstruc_quality = if_else(is.na(famstruc_2par_married), as.numeric(NA), famstruc_quality),
+    # famstruc_quality = if_else(is.na(famstruc_2par_married), as.numeric(NA), famstruc_quality),
     hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
     preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
     employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
@@ -128,12 +157,12 @@ db <- db %>%
 frame <- 
   bind_rows(
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
       subgroup_type = c("all"),
       subgroup = c("All")
     ),
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
       subgroup_type = c("race-ethnicity"),
       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
     )
