@@ -4,14 +4,14 @@ author: ""
 date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
 output:
   html_document:
-    number_sections: true
+    number_sections: false
     self_contained: TRUE
     code_folding: show
     toc: TRUE
     toc_float: TRUE
     css: !expr here::here("05_local-governance", "www", "web_report.css")
-    editor_options:
-      chunk_output_type: console
+editor_options:
+  chunk_output_type: console
 ---
 
 <style>
@@ -52,9 +52,13 @@ set_urbn_defaults(style = "print")
 
 ## 1. Numerator
 
-### MIT Election Data and Science Lab
+### 1.1 MIT Election Data and Science Lab
 
 We use the MIT Election Data and Science Lab for county-level votes in the 2020 Presidential election ([data here](https://dataverse.harvard.edu/file.xhtml?fileId=6104822&version=10.0)). First, we download the data. 
+
+To download the data manually, go to [this link](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ). On the right side of the page, click "Access Dataset" and under "Download Options" select "Original Format ZIP." Complete the License/Data Use Agreement by providing your name, email, institution, and position, and then click "Accept." Once you've downloaded the data, unzip the file and move it into the `05_local-governance/voter-turnout/data/mit` directory.
+
+Alternatively, from the [landing page](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ), scroll down to the file list and right click on the tabular data file (e.g., `countypres_2000-2020.tab` for 2020 - the only other file is an `md` file). Select "Copy Link Address." This link should include a 7 digit string after `fileID=`. Replace the 7 digit string in the `download.file()` command below with the new string (between `datafile/` and `?format=`). This will download the data directly. 
 
 ```{r}
 # create a data folder for intermediate data files
@@ -94,11 +98,6 @@ if (!file.exists(mit_data)) {
   )
   
 }
-
-# XX I'm not sure what the actual process is for getting the above API link that directly downloads
-# the data. I replaced the "3641280" from the original link with the file ID for the 2020 
-# version based on the landing page for the data ("6104822"). That seemed to work, but probably
-# not the method we want to use for future iterations of the project.
 
 ```
 
@@ -146,7 +145,7 @@ mit %>%
 mit <- mit %>%
   mutate(FIPS = case_when(county_name == "DISTRICT OF COLUMBIA"  ~ "11001",
                           TRUE ~ FIPS)) %>%
-  tidylog::filter(!(state == 'RHODE ISLAND' & county_name == 'FEDERAL PRECINCT'))
+  tidylog::filter(!(state == "RHODE ISLAND" & county_name == "FEDERAL PRECINCT"))
 
 ```
 
@@ -175,7 +174,7 @@ mit %>%
 
 ```
 
-XX For the 2018 data, Aaron said "Alaska is reported as Districts instead of counties. We drop these." but I think the more accurate wording is that we replace the FIPS codes for all Alaska districts with "02000" because we are not actually dropping the observations (in 2018 or 2020).
+Alaska is reported as Districts instead of counties. We replace the FIPS codes for all Alaska districts with "02000"
 
 There are no places where the summarized candidate votes don't sum to the county votes.
 
@@ -257,17 +256,18 @@ mit_counties %>%
 
 ```
 
-The aggregated nationwide total from MIT is also very close to the 158,383,403 votes reported on Wikipedia. We have 92,933 more votes than Wikipedia.
+The aggregated nationwide total from MIT of 158,476,336 is also very close to the 158,429,631 votes reported on Wikipedia. We have 46,705 more votes than Wikipedia.
 
 ```{r}
+state_votes %>%
+  summarize(sum(wiki_votes))
+
 mit_counties %>%
   summarize(sum(votes, na.rm = TRUE))
 
 ```
 
-<!-- At this point, the only missing values are Bedford County, Virginia. Alaska is excluded entirely. -->
-
-XX There are no missing values. Also, I don't think Alaska is excluded? It doesn't look like it was excluded in 2016 either, so not sure what that comment means.
+There are no missing values.
 
 ```{r}
 mit_counties %>%
@@ -329,7 +329,7 @@ cvap <- cvap %>%
          FIPS = str_c(state, county))
 
 cvap <- cvap %>%
-  tidylog::filter(state != "72") %>% #Drop Puerto Rico
+  tidylog::filter(state != "72") %>% # Drop Puerto Rico
   select(state, 
          county, 
          FIPS,
@@ -340,22 +340,24 @@ cvap <- cvap %>%
 
 ## 3. Combine and calculate turnout
 
-We combine the data. The join works for all counties except for counties in Alaska and [Kalawao County, Hawaii (FIPS 15005 which is a judicial district of Maui County (FIPS 15009))](https://en.wikipedia.org/wiki/Kalawao_County,_Hawaii)
+We combine the data. The join works for all counties except for counties in Alaska and [Kalawao County, Hawaii (FIPS 15005 which is a judicial district of Maui County (FIPS 15009))](https://en.wikipedia.org/wiki/Kalawao_County,_Hawaii). Alaska is dropped entirely because it doesn't have a coutny that exists in `cvap`.
 
 ```{r}
 joined_data <- left_join(cvap, mit_counties, by = c("state", "county"))
 
-anti_join(cvap, mit_counties, by = c("state", "county")) %>%
-count(state)
+anti_join(cvap, mit_counties, by = c("state", "county"))
 
 ```
 
-We calculate turnout and the coefficient of variation for the CVAP estimate. 
+We calculate turnout and the standard error for the CVAP estimate. 
 
 ```{r}
 joined_data <- joined_data %>%
-  mutate(election_turnout = votes / cvap) %>%
-  mutate(cv = cvap_moe / cvap)
+  mutate(
+    election_turnout = votes / cvap,
+    cvap_se = cvap_moe / 1.645
+  ) %>%
+  mutate(cv = cvap_se / cvap)
 
 ```
 
@@ -457,11 +459,67 @@ all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 
 all_counties <- all_counties %>%
   mutate(year = 2020) %>%
-  select(year, state, county, election_turnout, election_turnout_quality) 
+  select(year, state, county, election_turnout, election_turnout_quality, population) 
 
 all_counties %>%
+  select(-population) %>%
   write_csv(here::here("05_local-governance",
                        "voter-turnout",
                        "voter-turnout-2020.csv"))
   
+```
+
+## Benchmark against 2016
+
+### Compare turnout
+
+```{r}
+turnout2016 <- read_csv(here::here("05_local-governance",
+                                   "voter-turnout",
+                                   "voter-turnout-2016.csv"))
+
+
+turnout_combined <- left_join(
+  all_counties,
+  turnout2016,
+  by = c("state", "county"),
+  suffix = c("_2020", "_2016")
+)
+
+turnout_combined <- turnout_combined %>%
+  mutate(change = election_turnout_2020 - election_turnout_2016)
+
+turnout_combined %>%
+  ggplot(aes(election_turnout_2016, election_turnout_2020, color = population < 10000)) +
+  geom_abline() +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Most voter turnouts increased modestly",
+    subtitle = "Counties with fewer than 10,000 people in yellow"
+  ) +
+  coord_equal() +
+  scatter_grid()
+
+turnout_combined %>%
+  filter(population < 1000000) %>%
+  ggplot(aes(population, change)) +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Large changes in turnout are in low-population areas",
+    subtitle = "Exclusing counties with 1+ million people"
+    ) +
+  scatter_grid()
+
+turnout_combined %>%
+  arrange(desc(abs(change))) %>%
+  select(-year_2020, -year_2016)
+
+```
+
+### Compare quality
+
+```{r}
+turnout_combined %>%
+  count(election_turnout_quality_2016, election_turnout_quality_2020)
+
 ```
