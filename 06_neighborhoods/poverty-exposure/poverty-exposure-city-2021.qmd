@@ -1,0 +1,1148 @@
+---
+title: "Poverty Exposure - City"
+author: "Aaron R. Williams and Vincent Pancini"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+    css: ../../06_neighborhoods/www/web_report.css
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+```{css, echo = FALSE}
+div.main .content {
+  font-size: 10px;
+}
+
+div.column {
+  padding: 0 16px;
+  max-width: 1500px;
+}
+
+```
+
+This metric is the share of people experiencing poverty in a census place who live in census tracts with poverty rates over 40%. If a place's overall poverty rate is 20% but people in poverty are spread out evenly across all census tracts, the index would equal 0; if they were heavily concentrated in certain tracts, the index would approach 1.
+
+## Process
+
+1. Pull people and poverty rates for census tracts. 
+2. Create the “Other Races and Ethnicities” subgroup. 
+3. Count the number of people in poverty who live in census tracts with poverty > 40% in each place. 
+4. Crosswalk census tracts to census places
+5. Summarize the tract data to the place-level.
+6. Divide the number from 2. by the total number of people in poverty in each census tract. 
+7. Validation
+8. Data quality flags
+9. Save the data
+
+## Setup
+
+All numbers come for the Census API. The documentation for the Census API is available [here](https://api.census.gov/data/2021/acs/acs5/profile/variables.html). We pull all of the race/ethnicity counts for 2021 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete "template". It is sourced above. 
+
+To do this we have to identify census tracts with poverty rates over 40% in each census place, count the number of residents in those tracts who are poor, sum that up and divided it by the total number of poor residents in the census place.
+
+```{r}
+#| label: setuo
+
+options(scipen = 999)
+
+library(tidyverse)
+library(censusapi)
+library(urbnthemes)
+library(reactable)
+library(kableExtra)
+
+set_urbn_defaults(style = "print")
+
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+source(here::here("06_neighborhoods", "R", "get_vars.R"))
+
+```
+
+## 1. Pull people and poverty rates for census tracts
+
+https://api.census.gov/data/2021/acs/acs5/variables.html
+
+```{r}
+#| label: load-tract-data
+
+vars <- c( # Estimate!!Total!!Income in the past 12 months below poverty level
+  # "B00001_001E", # UNWEIGHTED SAMPLE COUNT OF THE POPULATION
+  # "B01001_001E", # SEX BY AGE
+  people = "B17001_001E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (Total)
+  poverty = "B17001_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE
+  poverty_moe = "B17001_002M", 
+  # "B17001A_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (WHITE ALONE)
+  # "B17001A_002M",
+  poverty_black = "B17001B_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (BLACK OR AFRICAN AMERICAN ALONE)
+  poverty_black_moe = "B17001B_002M",
+  poverty_aian = "B17001C_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (AMERICAN INDIAN AND ALASKA NATIVE ALONE)
+  poverty_aian_moe = "B17001C_002M",
+  poverty_asian = "B17001D_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (ASIAN ALONE)
+  poverty_asian_moe = "B17001D_002M",
+  poverty_pacific = "B17001E_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (NATIVE HAWAIIAN AND OTHER PACIFIC ISLANDER ALONE)
+  poverty_pacific_moe = "B17001E_002M",
+  poverty_other = "B17001F_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (SOME OTHER RACE ALONE)
+  poverty_other_moe = "B17001F_002M",
+  poverty_twoplus = "B17001G_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (TWO OR MORE RACES)
+  poverty_twoplus_moe = "B17001G_002M",
+  poverty_white_nonhispanic = "B17001H_002E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (WHITE ALONE, NOT HISPANIC OR LATINO)
+  poverty_white_nonhispanic_moe = "B17001H_002M",
+  poverty_hispanic = "B17001I_002E",  # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (HISPANIC OR LATINO)
+  poverty_hispanic_moe = "B17001I_002M"
+)
+
+# pull census tracts for 2021
+state_fips <- 
+  paste0("state:",
+         c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
+           "13", "15", "16", "17", "18", "19", "20", "21", "22", "23",
+           "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
+           "34", "35", "36", "37", "38", "39", "40", "41", "42", "44",
+           "45", "46", "47", "48", "49", "50", "51", "53", "54", "55",
+           "56")
+  ) 
+
+tracts <- map_df(state_fips, ~getCensus(name = "acs/acs5",
+                                        vars = vars, 
+                                        region = "tract:*",
+                                        regionin = .x,
+                                        vintage = 2021)) %>%
+  as_tibble()
+
+# rename the variables
+tracts <- tracts %>%
+  rename(all_of(vars))
+
+```
+
+Some tracts don't have any population. We drop those tracts. 
+
+```{r}
+#| label: drop-empty-tracts
+
+tracts <- tracts %>%
+  tidylog::filter(people > 0)
+
+```
+
+Check the number of people. It should be around [321,897,703](https://data.census.gov/cedsci/table?q=B17001&tid=ACSDT5Y2021.B17001&hidePreview=false).
+
+```{r}
+#| label: check-total-population 
+
+tracts %>%
+  summarize(sum(people))
+
+```
+
+## 2. Create the “Other Races and Ethnicities” subgroup
+
+We need to combine the small groups into a group for other races and ethnicities. The Census Bureau typically only posts cross tabs for up to two variables. This requires race, ethnicity, and poverty status so the resulting groups are not disjoint.  
+
+```{r}
+#| echo: false
+
+knitr::include_graphics(here::here("06_neighborhoods", "www", "images", "race.png"))
+
+```
+
+Combine the race/ethnicity groups into the group of interest. 
+
+```{r}
+#| label: create-other-races
+
+tracts <- tracts %>%
+  mutate(
+    poverty_other_races = 
+      poverty_aian +
+      poverty_asian +
+      poverty_pacific + 
+      poverty_other +
+      poverty_twoplus
+  )
+
+```
+
+[This Census presentation](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf) recommends using the maximum margin of error when aggregating multiple zero estimates.
+
+> One way this approximation can differ from the actual MOE is if you were aggregating multiple zero estimates. In this case, the approximate MOE could diverge from the actual margin of error. And so the - our recommendation is to only include one zero estimate margin of error and include the largest one. 
+
+```{r}
+# pivot the point estimates
+values <- tracts %>%
+  select(state, 
+         county, 
+         tract, 
+         poverty_aian,
+         poverty_asian,
+         poverty_pacific, 
+         poverty_other,
+         poverty_twoplus) %>%
+  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "value")
+
+# pivot the margins of error
+moes <- tracts %>%
+  select(state,
+         county, 
+         tract, 
+         poverty_aian_moe,
+         poverty_asian_moe,
+         poverty_pacific_moe, 
+         poverty_other_moe,
+         poverty_twoplus_moe) %>%
+  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "moe") %>%
+  mutate(group = str_replace(group, "_moe", ""))
+
+# combine the point estimates and margins of error
+other_moe <- left_join(values, moes, by = c("state", "county", "tract", "group"))
+    
+rm(moes, values)
+
+# keep MOE for non-zero estimates and keep the largest MOE for zero estimates
+other_moe <- other_moe %>%
+  group_by(state, county, tract) %>%
+  mutate(moe_rank = row_number(desc(moe))) %>%
+  mutate(moe_rank = if_else(value == 0, moe_rank, 5L)) %>%
+  mutate(moe_rank = ifelse(moe_rank == min(moe_rank), moe_rank, 0L)) %>%
+  filter(value != 0 | moe_rank != 0) %>%
+  select(-moe_rank) 
+
+# combine the margins of error using two methods
+other_moe <- other_moe %>%
+  summarize(poverty_other_races_moe = sqrt(sum(moe ^ 2))) %>%
+  ungroup()
+
+# append to the original data set
+tracts <- left_join(tracts, other_moe, by = c("state", "county", "tract"))
+
+```
+
+We convert margins of error to standard errors using 1.645 as the critical value ([page 3](https://www2.census.gov/programs-surveys/acs/tech_docs/accuracy/2018_ACS_Accuracy_Document_Worked_Examples.pdf?))
+
+```{r}
+tracts <- tracts %>%
+  mutate(
+    poverty_se = poverty_moe / 1.645,
+    poverty_black_se = poverty_black_moe / 1.645, 
+    poverty_hispanic_se = poverty_hispanic_moe / 1.645, 
+    poverty_other_races_se = poverty_other_races_moe / 1.645, 
+    poverty_white_nonhispanic_se = poverty_white_nonhispanic_moe / 1.645
+  )
+
+```
+
+
+```{r}
+tracts <- tracts %>%
+  select(
+    state, 
+    county, 
+    tract, 
+    people, 
+    poverty,
+    poverty_black, 
+    poverty_hispanic, 
+    poverty_other_races, 
+    poverty_white_nonhispanic, 
+    poverty_se,
+    poverty_black_se, 
+    poverty_hispanic_se, 
+    poverty_other_races_se, 
+    poverty_white_nonhispanic_se,
+    poverty_moe,
+    poverty_black_moe, 
+    poverty_hispanic_moe, 
+    poverty_other_races_moe, 
+    poverty_white_nonhispanic_moe
+  ) 
+
+```
+
+Look at the margins of error. A large share of the Other Races and Ethnicities have coefficients of variation greater than 0.4.
+
+```{r}
+tracts %>%
+  summarize(mean((poverty_other_races_se / poverty_other_races) > 0.4))
+
+```
+
+Let's look at the margins of error in relation to the counts of people in each race/ethnicity category in each county. Observations to the upper left of the black line have coefficients of variation in excess of 0.4.
+
+```{r}
+tracts %>%
+  ggplot(aes(poverty_black, poverty_black_se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+  labs(title = "Most Black Estimates Have Large SEs",
+       subtitle = "Line represents a CV of 0.4") +  
+  coord_equal() +
+  scatter_grid()
+
+tracts %>%
+  ggplot(aes(poverty_hispanic, poverty_hispanic_se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Most Hispanic Estimates Have Large SEs",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+tracts %>%
+  ggplot(aes(poverty_other_races, poverty_other_races_se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+    labs(title = "Most Other Races and Ethnicities Estimates Have Large SEs",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+tracts %>%
+  ggplot(aes(poverty_white_nonhispanic, poverty_white_nonhispanic_se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +  
+  labs(title = "Most White, non-Hispanic Estimates Have Large SEs",
+       subtitle = "Line represents a CV of 0.4") +  
+  coord_equal() +
+  scatter_grid()
+
+```
+
+As mentioned earlier, these race/ethnicity groups are not disjoint. Accordingly, summing the groups will result in population counts that exceed the population. It will also result in poverty counts that are inflated.
+
+```{r}
+tracts %>%
+  mutate(poverty_summed = poverty_black + poverty_hispanic + poverty_other_races + poverty_white_nonhispanic) %>%
+  ggplot(aes(poverty, poverty_summed)) +
+  geom_point(alpha = 0.2, size = 1) +
+  geom_abline() +
+  coord_equal() +
+  labs(title = "The Counts Are Unequal because the Groups Aren't Disjoint") +
+  scatter_grid()
+
+```
+
+## 3. Count the number of people in poverty who live in census tracts with poverty > 40% in each county.
+
+We turn the count of people in poverty into a rate. 
+
+```{r}
+tracts <- tracts %>%
+  mutate(poverty_rate = poverty / people)
+
+stopifnot(min(tracts$poverty_rate) >= 0)
+stopifnot(max(tracts$poverty_rate) <= 1)
+
+```
+
+We calculate the rate of poverty in high-poverty tracts. We will allocate the portions of the tracts to places in a later step; however, we assume the distribution of poverty is equal within each tract, so a high-poverty tract will be high poverty for counties and places. 
+
+```{r count-high-poverty}
+tracts <- tracts %>%
+  mutate(
+    high_poverty = if_else(poverty_rate > 0.4, poverty, 0),
+    high_poverty_black = if_else(poverty_rate > 0.4, poverty_black, 0),
+    high_poverty_hispanic = if_else(poverty_rate > 0.4, poverty_hispanic, 0),
+    high_poverty_other_races = if_else(poverty_rate > 0.4, poverty_other_races, 0),
+    high_poverty_white_nonhispanic = if_else(poverty_rate > 0.4, poverty_white_nonhispanic, 0)
+  )
+
+```
+
+## 4. Crosswalk census tracts to census places
+
+First we read in the tract-place crosswalk and join to our tract-level data to get tract-place pairs so we can aggregate up from tracts to places.
+
+The original version of this metric calculated the share of people who are poor in a county who live in census tracts with poverty rates over 40%. Now we are calculating the share of people who are poor in a **census place** who live in census tracts with poverty rates over 40%. The county-level version of this metric was more straightforward because [census tracts are completely contained within counties](https://www2.census.gov/geo/pdfs/reference/geodiagram.pdf). The place-level version will be more difficult because places are only contained within states; they do not necessarily adhere to county or tract boundaries.
+
+Census tract populations range from [1,200 - 8,000 with an average of 4,000 inhabitants](https://www2.census.gov/geo/pdfs/education/CensusTracts.pdf). The smallest population in our list of places for 2021 is 74,793 (North Port city, FL), so all tracts are smaller than the places that we're working with. However, "Tract 1" may be located in both "Place A" and "Place B" - therefore, we need to know what percentage of "Tract 1" area overlaps with the area of "Place A" and what percentage overlaps with the area of "Place B." Then we can multiply the total population of "Tract 1" by those percentages to interpolate what share of that total population is located in "Place A" and what share is located in "Place B." This is a technique known as [areal interpolation](https://cran.r-project.org/web/packages/areal/vignettes/areal-weighted-interpolation.html).
+
+First we need to know which census places have any overlap with each census tract. We construct a census tract to place crosswalk using the [Missouri Census Data Center's Geocorr 2022 tool](https://mcdc.missouri.edu/applications/geocorr2022.html). We construct the crosswalk using the following options:
+
+  * Input Options
+      + Select the state(s) (including DC and/or PR) to process:
+          - Select all states including DC but excluding PR
+      + Select one or more source geographies:
+          - 2020 Geographies: census tract
+      + Select one or more target geographies:
+          - 2020 Geographies: Place (city, town, village, CDP, etc.)
+      + Weighting variable:
+          - Population (2020 census)
+      + Ignore census blocks with a value of 0 for the weighting variable: TRUE (select this option)
+  * Output options
+      + Generate second allocation factor `[AFACT2]` showing portion of target geocodes in source geocodes
+  * Geographic Filtering Options
+      + Combine geographic filters using:
+          - AND (intersection)
+          
+Then click "Run request" at the bottom of the screen. After the crosswalk finished processing I downloaded it, renamed it, and moved it to the `geographic-crosswalks` folder for this project.
+
+Now we read in the tract to place crosswalk and clean it.
+
+```{r}
+crosswalk <- read_csv(
+  here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
+  skip = 1
+) %>%
+  select(
+    state = `State code`, 
+    county = `County code`, 
+    place = `Place code`, 
+    tract = Tract, 
+    afact = `tract-to-place allocation factor`,
+    afact2 = `place-to-tract allocation factor`
+  ) %>%
+  mutate(county = substring(county, 3, 5),
+         state_place = str_c(state, place),
+         tract = str_remove(string = tract, pattern = "[.]")) %>%
+  # place GEOIDs of 99999 indicate tracts that are not located within a census place
+  filter(place != 99999)
+
+```
+
+We are only interested in places with large populations. We load the crosswalk containing those places and filter to the places of interest. 
+
+```{r}
+places_of_interest <- 
+  read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  filter(year == 2020) %>%
+  mutate(state_place = paste0(state, place))
+
+crosswalk <- crosswalk %>%
+  filter(state_place %in% places_of_interest$state_place)
+
+crosswalk <- 
+  inner_join(
+    crosswalk,
+    select(places_of_interest, state_place, place_name), 
+    by = "state_place"
+  )
+
+```
+
+The crosswalk contains an allocation factor variable, `afact`, which indicates the proportion of the source geographies (tracts) contained within the target geography (place). It also contains `afact2`, which is the proportion of the target geogrpahy (place) included in each source geography (tract). 
+
+We can use `afact` to allocate census tract data to places. The allocation is based on 2020 data and the ACS data uses 2021 data. This should work because the borders of Census geographies only change in years ending in 2. We will use the product of `afact` and `afact2` for a quality measure later. 
+
+```{r}
+crosswalk <- crosswalk %>%
+  mutate(afact_product = afact * afact2)
+
+```
+
+Join data to match each census tract with every census place that the tract overlaps with.
+
+```{r}
+ tracts_joined <- left_join(tracts, crosswalk, by = c("state", "county", "tract")) %>%
+  arrange(state_place)
+
+```
+
+Many tracts are missing place because they do not overlap with any place of interest. 
+
+```{r}
+sum(is.na(tracts_joined$state_place))
+
+```
+
+```{r}
+tracts_joined <- tracts_joined %>%
+  filter(!is.na(state_place))
+
+```
+
+## 5. Summarize the tract data to the place-level
+
+We calculate the overall poverty and the number of people without a poverty estimate and then sum to the county level. 
+
+```{r}
+places_summary <- tracts_joined %>%
+  group_by(state, place, state_place, place_name) %>%
+  summarize(
+    people = sum(people * afact), 
+    tracts = sum(afact),
+    # poverty
+    poverty = sum(poverty * afact), 
+    poverty_black = sum(poverty_black * afact),
+    poverty_hispanic = sum(poverty_hispanic * afact),
+    poverty_other_races = sum(poverty_other_races * afact),
+    poverty_white_nonhispanic = sum(poverty_white_nonhispanic * afact),
+    # high poverty
+    high_poverty = sum(high_poverty * afact),
+    high_poverty_black = sum(high_poverty_black * afact),
+    high_poverty_hispanic = sum(high_poverty_hispanic * afact),
+    high_poverty_other_races = sum(high_poverty_other_races * afact),
+    high_poverty_white_nonhispanic = sum(high_poverty_white_nonhispanic * afact),
+    # standard errors
+    poverty_se = sqrt(sum(afact * (poverty_moe ^ 2))),
+    poverty_black_se = sqrt(sum(afact * (poverty_black_moe ^ 2))),
+    poverty_hispanic_se = sqrt(sum(afact * (poverty_hispanic_moe ^ 2))),
+    poverty_other_races_se = sqrt(sum(afact * (poverty_other_races_moe ^ 2))),
+    poverty_white_nonhispanic_se = sqrt(sum(afact * (poverty_white_nonhispanic_moe ^ 2))),
+    afact_sum_product = sum(afact_product)
+  ) %>%
+  ungroup()
+
+places_summary <- places_summary %>%
+  mutate(poverty_rate = poverty / people)
+
+stopifnot(nrow(places_summary) == 486)
+
+```
+
+We pull in the place-level data and compare it to the calculated place-level data. The poverty rates should be identical; however, they may differ from numbers published elsewhere (like [here](https://www.census.gov/quickfacts/autaugacountyalabama)) that use Small-Area Income and Poverty Estimates (SAIPE). 
+
+```{r}
+places_test <- map_df(
+  state_fips, ~getCensus(name = "acs/acs5",
+                         vars = vars, 
+                         region = "place:*",
+                         regionin = .x,
+                         vintage = 2021)
+) %>%
+  as_tibble() %>%
+  rename(all_of(vars)) %>%
+  mutate(state_place = paste0(state, place))
+
+places_test <- places_test %>%
+  filter(state_place %in% places_of_interest$state_place)
+
+```
+
+```{r}
+places_test <- places_test %>%
+  mutate(poverty_rate = poverty / people)
+
+# join data
+test_joined <- inner_join(
+  places_summary, 
+  places_test, 
+  by = c("state", "place", "state_place"),
+  suffix = c("_interpolated", "_reported")
+)
+
+test_joined %>%
+  ggplot(aes(people_reported, people_interpolated)) +
+  geom_abline() +  
+  geom_point(alpha = 0.2) +
+  coord_equal() +
+  scatter_grid() +
+  labs(title = "Reported population and interpolated population are similar")
+
+test_joined %>%
+  ggplot(aes(poverty_reported, poverty_interpolated)) +
+  geom_abline() +
+  geom_point(alpha = 0.2) +
+  coord_equal() +
+  scatter_grid() +
+  labs(title = "Reported poverty and interpolated poverty are similar")
+
+test_joined %>%
+  ggplot(aes(poverty_rate_reported, poverty_rate_interpolated)) +
+  geom_abline() +
+  geom_point(alpha = 0.2) +
+  coord_equal() +
+  scatter_grid() +
+  labs(title = "Reported poverty rate and interpolated poverty rate are similar")
+
+bind_rows(
+  reported = places_test,
+  interpolated = places_summary,
+  .id = "source"
+) %>%
+  select(
+    state_place,
+    source,
+    poverty_black,
+    poverty_white_nonhispanic,
+    poverty_hispanic
+  ) %>%
+  pivot_longer(-c(state_place, source), names_to = "var", values_to = "value") %>%
+  pivot_wider(names_from = "source", values_from = "value") %>%
+  ggplot(aes(reported, interpolated, color = var)) +
+  geom_abline() +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~var) +
+  coord_equal() +
+  scatter_grid() +
+  labs(
+    title = "Reported poverty and interpolated poverty are similar",
+    subtitle = "By race/ethncity subgroup"
+  )
+
+bind_rows(
+  reported = places_test,
+  interpolated = places_summary,
+  .id = "source"
+) %>%
+  filter(people < 200000) %>%
+  select(
+    state_place,
+    source,
+    poverty_black,
+    poverty_white_nonhispanic,
+    poverty_hispanic
+  ) %>%
+  pivot_longer(-c(state_place, source), names_to = "var", values_to = "value") %>%
+  pivot_wider(names_from = "source", values_from = "value") %>%
+  ggplot(aes(reported, interpolated, color = var)) +
+  geom_abline() +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~var) +
+  coord_equal() +
+  scatter_grid() +
+  labs(
+    title = "Reported poverty and interpolated poverty are similar",
+    subtitle = "By race/ethncity subgroup for places with fewer than 200,000 people"
+  )
+  
+```
+
+## 6. Divide high poverty by total poverty
+
+We need the conditional logic to deal with division by zero. If there is no poverty then poverty exposure is zero. 
+
+```{r calculate-poverty-exposure}
+places_summary <- places_summary %>%
+  mutate(
+    poverty_exposure = high_poverty / poverty,
+    poverty_exposure_black = 
+      if_else(condition = poverty_black > 0, 
+              true = high_poverty_black / poverty_black, 
+              false = 0),
+    poverty_exposure_hispanic = 
+      if_else(condition = poverty_hispanic > 0, 
+              true = high_poverty_hispanic / poverty_hispanic, 
+              false = 0),
+    poverty_exposure_other_races = 
+      if_else(condition = poverty_other_races > 0, 
+              true = high_poverty_other_races / poverty_other_races, 
+              false = 0),
+    poverty_exposure_white_nonhispanic = 
+      if_else(condition = poverty_white_nonhispanic > 0, 
+              true = high_poverty_white_nonhispanic / poverty_white_nonhispanic,  
+              false = 0),
+  ) 
+
+# This checks whether there are any missing values for any of the variables in places_summary
+stopifnot(
+  all(map_dbl(places_summary, ~sum(is.na(.x))) == 0)
+)
+
+```
+
+### Overall
+
+Interestingly, college towns dominate the list.
+
+```{r}
+places_summary %>%
+  arrange(desc(poverty_exposure)) %>%
+  select(state_place, place_name, poverty_exposure, poverty_rate)
+
+```
+
+### Black
+
+```{r}
+places_summary %>%
+  arrange(desc(poverty_exposure_black)) %>%
+  select(state_place, place_name, poverty_exposure_black, poverty_rate, poverty_black)
+
+```
+
+### Hispanic
+
+```{r}
+places_summary %>%
+  arrange(desc(poverty_exposure_hispanic)) %>%
+  select(state_place, place_name, poverty_exposure_hispanic, poverty_rate, poverty_hispanic)
+
+```
+
+### Other Races
+
+```{r}
+places_summary %>%
+  arrange(desc(poverty_exposure_other_races)) %>%
+  select(state_place, place_name, poverty_exposure_other_races, poverty_rate, poverty_other_races)
+
+```
+
+### White, Non-Hispanic
+
+```{r}
+places_summary %>%
+  arrange(desc(poverty_exposure_white_nonhispanic)) %>%
+  select(state_place, place, place_name, poverty_exposure_white_nonhispanic, poverty_rate, poverty_white_nonhispanic)
+
+```
+
+There shouldn't be any missing values. 
+
+```{r}
+stopifnot(
+  places_summary %>%
+    filter(is.na(poverty_exposure)) %>%
+    nrow() == 0
+)
+
+```
+
+## 7. Validation
+
+### "All" file
+
+The table shows the calculated metrics. Click on the variable columns to sort the table. 
+
+```{r table, echo = FALSE}
+places_summary %>%
+  mutate(state_place_fips = paste0(state, place)) %>%
+  select(
+    place_name,
+    tracts,
+    poverty_rate,
+    poverty_exposure
+  ) %>%
+  mutate_if(is.numeric, round, digits = 3) %>%
+  reactable(
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 10,
+    highlight = TRUE
+  )
+
+```
+
+```{r validation-plots}
+places_summary %>%
+  ggplot(aes(poverty_exposure)) +
+  geom_histogram() +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  labs(title = "Most Places in 2018 Have No Poverty Exposure",
+       subtitle = "The Distribution of Poverty Exposure")
+
+places_summary %>%
+  ggplot(aes(tracts, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
+       x = "Number of Tracts in Place")
+
+places_summary %>%
+  ggplot(aes(people, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Counties",
+       x = "Population in Place")
+
+places_summary %>%
+  ggplot(aes(poverty_rate, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  scatter_grid() +
+  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related")
+
+```
+
+### Subgroups File
+
+```{r validation-plots-subgroups}
+places_summary_subgroups_plots <- places_summary %>%
+  select(state, place, contains("exposure")) %>%
+  # pivot to very long
+  pivot_longer(c(-state, -place), names_to = "subgroup", values_to = "poverty_exposure") %>%
+  # clean up names
+  mutate(subgroup = 
+           recode(
+             subgroup,
+             poverty_exposure = "All",
+             poverty_exposure_black = "Black",
+             poverty_exposure_hispanic = "Hispanic",
+             poverty_exposure_other_races = "Other Races and Ethnicities", 
+             poverty_exposure_white_nonhispanic = "White, Non-Hispanic"
+           )
+  )
+
+
+places_summary_subgroups_plots %>%
+  filter(subgroup != "All") %>%
+  ggplot(aes(poverty_exposure)) +
+  geom_histogram() +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  facet_wrap(~subgroup) +
+  labs(title = "Most Places in 2021 Have No Poverty Exposure",
+       subtitle = "The Distribution of Poverty Exposure")
+
+places_summary_subgroups_plots <- left_join(places_summary_subgroups_plots, select(places_summary, -poverty_exposure), by = c("state", "place"))
+
+places_summary_subgroups_plots %>%
+  filter(subgroup!= "All") %>%
+  ggplot(aes(tracts, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  facet_wrap(~subgroup, nrow = 2) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
+       x = "Number of Tracts in Place")
+
+places_summary_subgroups_plots %>%
+  filter(subgroup!= "All") %>%
+  ggplot(aes(people, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  facet_wrap(~subgroup) +
+  scatter_grid() +
+  labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
+       x = "Population in Place")
+
+places_summary_subgroups_plots %>%
+  filter(subgroup!= "All") %>%
+  ggplot(aes(poverty_rate, poverty_exposure)) +
+  geom_point(alpha = 0.2,
+             size = 1) +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.2))) +
+  facet_wrap(~subgroup) +
+  scatter_grid() +
+  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related")
+
+rm(places_summary_subgroups_plots)
+
+```
+
+## 8. Quality Flags
+
+We consider three dimensions of quality when developing the quality variables for poverty exposure. 
+
+1. The unweighted number of observations behind each calculation. 
+2. The coefficient of variation for poverty in the census place.
+3. The overlap of census place (target geography) and the census tracts (source geographies). 
+
+### 1. Unweighted number of observations
+
+We suppress any estimates with thirty or fewer unweighted observations. 
+
+```{r}
+#' Suppress counties
+#'
+#' @param race The variable for the count in a race/ethnicity group
+#' @param exposure The variable name for the exposure index
+#' @param threshold The minimum size of the race group to report the exposure index
+#'
+#' @return
+#'
+suppress_place <- function(race, exposure, threshold) {
+  
+  exposure <- if_else(race <= threshold, as.numeric(NA), exposure)
+  return(exposure)
+  
+}
+
+```
+
+```{r}
+places_summary %>%
+  summarize(
+    all = sum(is.na(poverty_exposure)),
+    black_nh = sum(is.na(poverty_exposure_black)),
+    hispanic = sum(is.na(poverty_exposure_hispanic)),
+    other_nh = sum(is.na(poverty_exposure_other_races)),
+    white_nh = sum(is.na(poverty_exposure_white_nonhispanic))
+  )
+
+places_summary <- places_summary %>%
+  mutate(
+    # overall
+    poverty_exposure = 
+      suppress_place(
+        race = poverty, 
+        exposure = poverty_exposure, 
+        threshold = 30
+      ),
+    # black
+    poverty_exposure_black = 
+      suppress_place(
+        race = poverty_black, 
+        exposure = poverty_exposure_black, 
+        threshold = 30
+      ),
+    # hispanic
+    poverty_exposure_hispanic = 
+      suppress_place(
+        race = poverty_hispanic, 
+        exposure = poverty_exposure_hispanic, 
+        threshold = 30
+      ),
+    # other races and ethnicities
+    poverty_exposure_other_races = 
+      suppress_place(
+        race = poverty_other_races, 
+        exposure = poverty_exposure_other_races, 
+        threshold = 30
+      ),
+    # white, non-hispanic
+    poverty_exposure_white_nonhispanic = 
+      suppress_place(
+        race = poverty_white_nonhispanic, 
+        exposure = poverty_exposure_white_nonhispanic, 
+        threshold = 30
+      )
+  )
+
+places_summary %>%
+  summarize(
+    all = sum(is.na(poverty_exposure)),
+    black_nh = sum(is.na(poverty_exposure_black)),
+    hispanic = sum(is.na(poverty_exposure_hispanic)),
+    other_nh = sum(is.na(poverty_exposure_other_races)),
+    white_nh = sum(is.na(poverty_exposure_white_nonhispanic))
+  )
+
+```
+
+### 2. Coefficient of variation
+
+The coefficient of variation is a standard measure of precision normalized by the magnitude of an estimate. In this case it is $\frac{SE(\hat{count})}{\hat{count}}$. We calculate the coefficient of variation for each poverty estimate. 
+
+We don't calculate the CV at the tract-level or for high poverty. 
+
+```{r}
+places_summary <- places_summary %>%
+  mutate(
+    poverty_cv = poverty_se / poverty,
+    poverty_black_cv = poverty_black_se / poverty_black,
+    poverty_hispanic_cv = poverty_hispanic_se / poverty_hispanic, 
+    poverty_other_races_cv = poverty_other_races_se / poverty_other_races,
+    poverty_white_nonhispanic_cv = poverty_white_nonhispanic_se / poverty_white_nonhispanic
+  ) 
+
+places_summary %>%
+  filter(poverty_cv >= 0.4) %>%
+  ggplot(aes(poverty, poverty_cv, color = poverty <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "Places with CV > 0.4, poverty <= 30 in yellow") +
+  scatter_grid()
+  
+places_summary %>%
+  filter(poverty_black_cv >= 0.4) %>%
+  ggplot(aes(poverty_black, poverty_black_cv, color = poverty_black <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Black: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "Places with CV > 0.4, poverty_black <= 30 in yellow") +
+  scatter_grid()
+  
+places_summary %>%
+  filter(poverty_hispanic_cv >= 0.4) %>%
+  ggplot(aes(poverty_hispanic, poverty_hispanic_cv, color = poverty_hispanic <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "Places with CV > 0.4, poverty_hispanic <= 30 in yellow") +
+  scatter_grid()
+
+places_summary %>%
+  filter(poverty_other_races_cv >= 0.4) %>%
+  ggplot(aes(poverty_other_races, poverty_other_races_cv, color = poverty_other_races <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "Places with CV > 0.4, poverty_other_races <= 30 in yellow") +
+  scatter_grid()
+
+places_summary %>%
+  filter(poverty_white_nonhispanic_cv >= 0.4) %>%
+  ggplot(aes(poverty_white_nonhispanic, poverty_white_nonhispanic_cv, color = poverty_white_nonhispanic <= 30)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
+       subtitle = "Places with CV > 0.4, white_nh <= 30 in yellow") +
+  scatter_grid()
+
+```
+
+### 3. Overlap between census tracts and census places
+
+Areal interpolation reduces the precision of our estimates. The visualizations above demonstrate that there is a tight connection between our interpolated estimates and the estimates reported directly at the census place level. 
+
+We still develop a measure of the amount of data shared by the target geography and source geographies. We use an approach developed by Greg Acs and Kevin Werner for other spatial interpolations. The idea is to weight the proportion of tract data in a census place by the proportion of the census place in the tract. Consider a few examples:
+
+* If `afact` and `afact2` are both 1, then the census tract and census place share the same borders.
+* If `afact` is < 1 and `afact2` is 1, the census tract spans the place but the place is entirely in the tract. This is impossible. 
+* If `afact` is 1 and `afact2` is < 1, then the census place is spread over multiple tracts. `afact` and `afact2` are multiplied together and summed for each instance of the county. So if the place is spread perfectly among two tracts, `afact2` will be 0.5 for each row, the product of `afact` and `afact2` will be 0.5, and the sum will 1 one, meaning we know where 100% of the places's data comes from.
+* If both `afact` and `afact2` are < 1, then the result is a combination of previous two examples. There will be multiple instances of rows to be summed, but the total sum will likely be less than 1.
+
+We performed these calculations above. 
+
+All proportions exceed 0.75. This indicates that there is a tight connection between the census tracts and the census places. This unsurprising since we only focus on census places with large populations.
+
+```{r}
+summary(places_summary$afact_sum_product)
+
+```
+
+### 4. Data Quality
+
+We need to add data quality flags with `1`, `2`, or `3`. The overlap between census tracts and census places is high in all cases. Therefore we will only suppress values based on sample size and downgrade observations based on CVs. The values are outlined in the [data standards](https://github.com/UI-Research/gates-mobility-metrics). 
+
+* `1` - If the county coefficient of variation for the count in the group is less than 0.2
+* `2` - If the county coefficient of variation for the count in the group is less than 0.4
+* `3` - If the county coefficient of variation for the count in the group exceeds 0.4
+* `NA` - If the metric is missing
+
+```{r}
+#' Assign a data quality flag
+#'
+#' @param race A vector of counts of a race/ethnicity group within a county
+#' @param exposure A race/ethnicity exposure metric
+#'
+#' @return A numeric data quality flag
+#'
+set_quality <- function(cv, exposure) {
+  
+  quality <- case_when(
+    cv < 0.2 ~ 1,
+    cv < 0.4 ~ 2,
+    cv >= 0.4 ~ 3
+  )
+  quality <- if_else(is.na(exposure), as.numeric(NA), quality)
+  
+  return(quality)
+  
+}
+
+places_summary <- places_summary %>%
+  mutate(
+    poverty_exposure_quality = set_quality(cv = poverty_cv, exposure = poverty_exposure),
+    poverty_exposure_black_quality = set_quality(cv = poverty_black_cv, exposure = poverty_exposure_black),
+    poverty_exposure_hispanic_quality = set_quality(cv = poverty_hispanic_cv, exposure = poverty_exposure_hispanic),
+    poverty_exposure_other_races_quality = set_quality(cv = poverty_other_races_cv, exposure = poverty_exposure_other_races),
+    poverty_exposure_white_nonhispanic_quality = set_quality(cv = poverty_white_nonhispanic_cv, exposure = poverty_exposure_white_nonhispanic)
+  )
+
+count(places_summary, poverty_exposure_quality)
+count(places_summary, poverty_exposure_black_quality)           
+count(places_summary, poverty_exposure_hispanic_quality)
+count(places_summary, poverty_exposure_other_races_quality)
+count(places_summary, poverty_exposure_white_nonhispanic_quality)
+
+```
+
+Most of the counties with missing values are very small. 
+
+```{r}
+missing <- places_summary %>%
+  filter(
+    is.na(poverty_exposure) |
+      is.na(poverty_exposure_black) |
+      is.na(poverty_exposure_hispanic) |
+      is.na(poverty_exposure_other_races) |
+      is.na(poverty_exposure_white_nonhispanic)
+    )
+
+max(missing$people)
+max(missing$tracts)
+
+```
+
+## 9. Save the data
+
+### All File
+
+We need to include all counties in the published data even if we don't have a metric for the county. We load the county file and join our metrics to the county file. 
+
+```{r save-data}
+final_data <- places_summary %>%
+  mutate(year = 2021) %>%
+  select(year,
+         state,
+         place,
+         poverty_exposure,
+         poverty_exposure_quality)
+
+write_csv(final_data,
+          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_city_2021.csv"))
+
+```
+
+### Subgroup File
+
+```{r}
+# create a long version of the subgroup data
+places_summary_subgroups <- places_summary %>%
+  select(state, place, contains("exposure")) %>%
+  # pivot to very long
+  pivot_longer(c(-state, -place), names_to = "subgroup", values_to = "poverty_exposure") %>%
+  # create new variable names
+  mutate(variable = if_else(str_detect(subgroup, "_quality"), 
+                            "poverty_exposure_quality", 
+                            "poverty_exposure")) %>%
+  mutate(subgroup = str_replace(subgroup, "_quality", "")) %>%
+  # pivot to long
+  pivot_wider(names_from = variable, values_from = poverty_exposure) %>%
+  # clean up names
+  mutate(subgroup = 
+           recode(
+             subgroup,
+             poverty_exposure = "All",
+             poverty_exposure_black = "Black",
+             poverty_exposure_hispanic = "Hispanic",
+             poverty_exposure_other_races = "Other Races and Ethnicities", 
+             poverty_exposure_white_nonhispanic = "White, Non-Hispanic"
+           )
+  )
+
+# check the bounds of the poverty exposure metric
+stopifnot(min(places_summary_subgroups$poverty_exposure, na.rm = TRUE) >= 0)
+stopifnot(max(places_summary_subgroups$poverty_exposure, na.rm = TRUE) <= 1)
+
+```
+
+```{r}
+places_summary_subgroups <- places_summary_subgroups %>%
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
+
+# create a frame with all possible rows
+all_places_subgroups <- 
+  expand_grid(
+    places_of_interest, 
+    subgroup = c("All", "Black", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+  ) %>%
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
+
+final_data_race_ethnicity <- left_join(
+  all_places_subgroups, 
+  places_summary_subgroups, 
+  by = c("state", "place", "subgroup_type", "subgroup")
+) %>%
+  select(
+    year,
+    state,
+    place,
+    subgroup_type,
+    subgroup,
+    poverty_exposure,
+    poverty_exposure_quality
+  )
+
+write_csv(final_data_race_ethnicity,
+          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"))
+
+```
