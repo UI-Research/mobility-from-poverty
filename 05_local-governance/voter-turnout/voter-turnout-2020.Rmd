@@ -10,8 +10,8 @@ output:
     toc: TRUE
     toc_float: TRUE
     css: !expr here::here("05_local-governance", "www", "web_report.css")
-    editor_options:
-      chunk_output_type: console
+editor_options:
+  chunk_output_type: console
 ---
 
 <style>
@@ -353,8 +353,11 @@ We calculate turnout and the standard error for the CVAP estimate.
 
 ```{r}
 joined_data <- joined_data %>%
-  mutate(election_turnout = votes / cvap) %>%
-  mutate(se = cvap_moe / 1.645)
+  mutate(
+    election_turnout = votes / cvap,
+    cvap_se = cvap_moe / 1.645
+  ) %>%
+  mutate(cv = cvap_se / cvap)
 
 ```
 
@@ -421,9 +424,6 @@ If anything, a stricter threshold is necessary because the estimates are used in
 
 ```{r}
 joined_data <- joined_data %>%
-  mutate(cv = se / election_turnout)
-
-joined_data <- joined_data %>%
   mutate(
     election_turnout_quality = case_when(
       is.na(election_turnout) ~ NA_real_,
@@ -459,11 +459,67 @@ all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 
 all_counties <- all_counties %>%
   mutate(year = 2020) %>%
-  select(year, state, county, election_turnout, election_turnout_quality) 
+  select(year, state, county, election_turnout, election_turnout_quality, population) 
 
 all_counties %>%
+  select(-population) %>%
   write_csv(here::here("05_local-governance",
                        "voter-turnout",
                        "voter-turnout-2020.csv"))
   
+```
+
+## Benchmark against 2016
+
+### Compare turnout
+
+```{r}
+turnout2016 <- read_csv(here::here("05_local-governance",
+                                   "voter-turnout",
+                                   "voter-turnout-2016.csv"))
+
+
+turnout_combined <- left_join(
+  all_counties,
+  turnout2016,
+  by = c("state", "county"),
+  suffix = c("_2020", "_2016")
+)
+
+turnout_combined <- turnout_combined %>%
+  mutate(change = election_turnout_2020 - election_turnout_2016)
+
+turnout_combined %>%
+  ggplot(aes(election_turnout_2016, election_turnout_2020, color = population < 10000)) +
+  geom_abline() +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Most voter turnouts increased modestly",
+    subtitle = "Counties with fewer than 10,000 people in yellow"
+  ) +
+  coord_equal() +
+  scatter_grid()
+
+turnout_combined %>%
+  filter(population < 1000000) %>%
+  ggplot(aes(population, change)) +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Large changes in turnout are in low-population areas",
+    subtitle = "Exclusing counties with 1+ million people"
+    ) +
+  scatter_grid()
+
+turnout_combined %>%
+  arrange(desc(abs(change))) %>%
+  select(-year_2020, -year_2016)
+
+```
+
+### Compare quality
+
+```{r}
+turnout_combined %>%
+  count(election_turnout_quality_2016, election_turnout_quality_2020)
+
 ```
