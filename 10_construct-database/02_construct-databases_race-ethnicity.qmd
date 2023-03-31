@@ -60,44 +60,44 @@ rm(neonatal, neonatal_2018, neonatal_2020)
 
 Add the "all" data to the subgroup data. 
 
-```{r}
-fix_files <- c(
-  here("01_financial-well-being", "metrics_income.csv"),
-  here("08_education", "metrics_college.csv"),
-  here("08_education", "metrics_preschool.csv"),
-  here("09_employment", "metrics_employment.csv")
-)
+<!-- ```{r} -->
+<!-- fix_files <- c( -->
+<!--   here("01_financial-well-being", "metrics_income.csv"), -->
+<!--   here("08_education", "metrics_college.csv"), -->
+<!--   here("08_education", "metrics_preschool.csv"), -->
+<!--   here("09_employment", "metrics_employment.csv") -->
+<!-- ) -->
 
-wrong_files <- c(
-  here("01_financial-well-being", "metrics_income_subgroup.csv"),
-  here("08_education", "metrics_college_subgroup.csv"),  
-  here("08_education", "metrics_preschool_subgroup.csv"),
-  here("09_employment", "metrics_employment_subgroup.csv")
-)
+<!-- wrong_files <- c( -->
+<!--   here("01_financial-well-being", "metrics_income_subgroup.csv"), -->
+<!--   here("08_education", "metrics_college_subgroup.csv"),   -->
+<!--   here("08_education", "metrics_preschool_subgroup.csv"), -->
+<!--   here("09_employment", "metrics_employment_subgroup.csv") -->
+<!-- ) -->
 
-add_all <- function(all, subgroup) {
-  
-  # read all
-  all_csv <- read_csv(all, guess_max = 5000) %>%
-    mutate(subgroup_type = "all",
-           subgroup = "All")
-  
-  # read subgroup
-  subgroup_csv <- read_csv(subgroup, guess_max = 5000) %>%
-    filter(subgroup_type != "all")
-  
-  # replace all with bind_rows
-  fixed_csv <- bind_rows(subgroup_csv, all_csv) %>%
-    arrange(year, state, county, subgroup_type, subgroup)
+<!-- add_all <- function(all, subgroup) { -->
 
-  # write
-  write_csv(fixed_csv, subgroup)
-  
-}
+<!--   # read all -->
+<!--   all_csv <- read_csv(all, guess_max = 5000) %>% -->
+<!--     mutate(subgroup_type = "all", -->
+<!--            subgroup = "All") -->
 
-map2(fix_files, wrong_files, ~add_all(all = .x, subgroup = .y))
+<!--   # read subgroup -->
+<!--   subgroup_csv <- read_csv(subgroup, guess_max = 5000) %>% -->
+<!--     filter(subgroup_type != "all") -->
 
-```
+<!--   # replace all with bind_rows -->
+<!--   fixed_csv <- bind_rows(subgroup_csv, all_csv) %>% -->
+<!--     arrange(year, state, county, subgroup_type, subgroup) -->
+
+<!--   # write -->
+<!--   write_csv(fixed_csv, subgroup) -->
+
+<!-- } -->
+
+<!-- map2(fix_files, wrong_files, ~add_all(all = .x, subgroup = .y)) -->
+
+<!-- ``` -->
 
 ```{r}
 files <- c(
@@ -116,11 +116,13 @@ files <- c(
   ### HOUSING ###
   
   ### NEIGHBORHOODS ### 
-  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"),
+  
+  #GM: While nominally race-ethnicity, this dataset does not break out Black by Non-Hispanic
+  #     commenting out here until we get the updated version (this one throws off the subgroup categories)
+  #here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity.csv"),
   
   ### SAFETY ###
-  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"),
-  
+
   ### WORK ### 
   here("09_employment", "metrics_employment_subgroup.csv")
 )
@@ -156,6 +158,13 @@ db <- db %>%
   
   #remove non-race and ethnicity related subgroups:
   filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
+
+#GM note: shape here a moving target:
+# In theory we should have number of years * number of race-ethnic groups * number of counties 
+# This is not the case because we are missing other data from our rate-learning data which
+# constitute much of the non-2018 and 2020 data
+
+
 
 
 # GM: IDK why we use this "frame" dataset at all. I join in the crosswalk for all years below 
@@ -197,14 +206,10 @@ clean_data <- function(db_unclean){
                 ) %>%
     rename_with(.cols = starts_with("pctl"), 
               ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
-    rename_with(.cols = contains("exposure"),
-              .fn = ~paste0("share_", .x)
-              ) %>%   
-    rename_with(.cols = contains("arrest_rate"),
-              ~paste0("rate_",
-                      str_replace(.x, "arrest_rate", "arrest")
-                      )
-                ) %>%
+    #Commenting out as we don't currently process exposure
+    # rename_with(.cols = contains("exposure"),
+    #           .fn = ~paste0("share_", .x)
+    #           ) %>%   
     rename(share_in_preschool_quality = preschool_quality,
            share_hs_degree_quality = hs_degree_quality,
            share_employed_quality = employed_quality
@@ -215,6 +220,12 @@ clean_data <- function(db_unclean){
 
 db <- clean_data(db)
 
+
+t <- db %>%
+  group_by(state, county, year) %>% 
+  count()
+
+nrow(db) / nrow(t)
 ```
 
 
@@ -251,8 +262,18 @@ db_recent <- db_recent %>%
     hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
     preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
     employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
-  )
+  ) %>%
+  #get rid of non race/ethnicity groups:
+ filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
 
+  
+db_recent <- clean_data(db_recent)
+
+#Check below:
+#5 racial categories(all, nh-White, nh-Black, Hispanic, Other)
+# 3144 counties, there were 3142 pre-2020, then one in Alaska split into 2 others
+#   hence why we have a total of 3144 appearing here 
+stopifnot(nrow(db_recent) == ((3142 + 2) * 5))
 
 # 
 # frame <- 
@@ -324,10 +345,10 @@ db_bounds <- db %>%
 
 ```{r}
 db_values %>%
-  assert(within_bounds(0, Inf), pctl_20, pctl_50, pctl_80) %>%
+  assert(within_bounds(0, Inf), pctl_income_20, pctl_income_50, pctl_income_80) %>%
   assert(within_bounds(0, 1), starts_with("famstruc_")) %>%
-  assert(within_bounds(0, 1), lbw) %>%
-  assert(within_bounds(-1, 10), learning_rate) %>%
+  assert(within_bounds(0, 1), rate_low_birth_weight) %>%
+  assert(within_bounds(-2, 10), rate_learning) %>%
   assert(within_bounds(0, 1), starts_with("share_"))
 
 ```
@@ -336,12 +357,31 @@ Test confidence interval bounds.
 
 ```{r}
  db %>%
-  verify(is.na(lbw) | lbw_lb < lbw) %>%
-  verify(is.na(lbw) | lbw_lb < lbw_ub) %>%
-  verify(is.na(lbw) | lbw < lbw_ub) %>%
-  verify(is.na(learning_rate) | learning_rate_lb < learning_rate) %>%
-  verify(is.na(learning_rate) | learning_rate_lb < learning_rate_ub) %>%
-  verify(is.na(learning_rate) | learning_rate < learning_rate_ub)
+  verify(is.na(rate_low_birth_weight) | rate_low_birth_weight_lb < rate_low_birth_weight) %>%
+  verify(is.na(rate_low_birth_weight) | rate_low_birth_weight_lb < rate_low_birth_weight_ub) %>%
+  verify(is.na(rate_low_birth_weight) | rate_low_birth_weight < rate_low_birth_weight_ub)
+
+db %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning) %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning_ub) %>%
+  verify(is.na(rate_learning) | rate_learning < rate_learning_ub)
+
+db %>%
+  verify(is.na(share_in_preschool) | share_in_preschool_lb < share_in_preschool) %>%
+  verify(is.na(share_in_preschool) | share_in_preschool_lb < share_in_preschool_ub) %>%
+  verify(is.na(share_in_preschool) | share_in_preschool< share_in_preschool_ub)
+
+db %>%
+  verify(is.na(share_hs_degree) | share_hs_degree_lb <= share_hs_degree) %>%
+  verify(is.na(share_hs_degree) | share_hs_degree_lb <= share_hs_degree_ub) %>%
+  verify(is.na(share_hs_degree) | share_hs_degree <= share_hs_degree_ub)
+
+
+
+db %>%
+  verify(is.na(share_employed) | share_employed_lb < share_employed) %>%
+  verify(is.na(share_employed) | share_employed_lb < share_employed_ub) %>%
+  verify(is.na(share_employed) | share_employed< share_employed_ub)
 
 ```
 
@@ -349,15 +389,6 @@ Test confidence interval bounds.
 
 db_quality %>%
   assert(in_set(1, 2, 3), everything())
-
-```
-
-### Recent Database
-
-```{r}
-
-
-
 
 ```
 
