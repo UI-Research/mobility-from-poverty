@@ -836,7 +836,7 @@ The process for creating the subgroup metric is the same as the process for crea
 
 ## Effective public education
 
-This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or metro is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space. This metric is available at the county level using county level SEDA data and at the city level using school district level SEDA data. 
+This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or city is learning at an average rate or on track with grade level; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space. This metric is available at the county level using county level SEDA data and at the city level using school district level SEDA data. 
 
 ### Overview
 
@@ -866,7 +866,7 @@ White, Non-Hispanic				218	216	214	252		White, Non-Hispanic			89	90
 
 ### Process
 
-SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in order to obtain county/school district-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county/school district. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
+SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in the county data and school district in the city data in order to obtain county/school district-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county/school district. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
 
 ---
 
