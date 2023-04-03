@@ -137,7 +137,9 @@ tracts_cv <- tracts %>%
 
 ```
 
-Most tracts have very large coefficients of variation. Some of these tracts will be suppressed. Others will be included in calculations but have lower quality scores. Finally, averaging on the place level will reduce some of the imprecision. The following table shows the share of tracts with coefficients of variation greater than 0.4, a very poor CV for each race/ethnicity group. The shares are very high.
+Most tracts have very large coefficients of variation. Some of these tracts will be in census places that we suppress. Others will be included in calculations but have lower quality scores. 
+
+We also combine AIAN, NHPI, Other, and Two or More races to reduce the CVs. Finally, averaging on the place level will reduce some of the imprecision. The following table shows the share of tracts with coefficients of variation greater than 0.4, a very poor CV for each race/ethnicity group. The shares are very high.
 
 ```{r}
 tracts_cv %>%
@@ -145,6 +147,7 @@ tracts_cv %>%
     hispanic = mean(hispanic_cv >= 0.4),
     black_nh = mean(black_nh_cv >= 0.4),
     white_nh = mean(white_nh_cv >= 0.4),
+    asian_nh = mean(asian_nh >= 0.4),
     aian_nh = mean(aian_nh_cv >= 0.4),
     nhpi_nh = mean(nhpi_nh_cv >= 0.4),
     census_other_nh = mean(census_other_nh_cv >= 0.4),
@@ -185,27 +188,39 @@ tracts <- tracts %>%
 ```{r}
 # pivot the point estimates
 values <- tracts %>%
-  select(state, 
-         county, 
-         tract, 
-         aian_nh, 
-         asian_nh, 
-         nhpi_nh, 
-         census_other_nh, 
-         two_or_more_nh) %>%
-  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "value")
+  select(
+    state, 
+    county, 
+    tract, 
+    aian_nh, 
+    asian_nh, 
+    nhpi_nh, 
+    census_other_nh, 
+    two_or_more_nh
+  ) %>%
+  pivot_longer(
+    cols = c(-state, -county, -tract), 
+    names_to = "group", 
+    values_to = "value"
+  )
 
 # pivot the margins of error
 moes <- tracts %>%
-  select(state, 
-         county, 
-         tract, 
-         aian_nh_moe, 
-         asian_nh_moe, 
-         nhpi_nh_moe, 
-         census_other_nh_moe, 
-         two_or_more_nh_moe) %>%
-  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "moe") %>%
+  select(
+    state, 
+    county, 
+    tract, 
+    aian_nh_moe, 
+    asian_nh_moe, 
+    nhpi_nh_moe, 
+    census_other_nh_moe, 
+    two_or_more_nh_moe
+  ) %>%
+  pivot_longer(
+    cols = c(-state, -county, -tract), 
+    names_to = "group", 
+    values_to = "moe"
+  ) %>%
   mutate(group = str_replace(group, "_moe", ""))
 
 # combine the point estimates and margins of error
@@ -289,8 +304,8 @@ After combining the detailed race/ethnicity groups into Other Races and Ethnicit
 ```{r}
 tracts %>%
   summarize(
-    mean((other_nh_se / other_nh) > 0.4),
-    mean((other_nh_se_reduced / other_nh) > 0.4)
+    original = mean((other_nh_se / other_nh) > 0.4),
+    reduced = mean((other_nh_se_reduced / other_nh) > 0.4)
   )
 
 ```
@@ -316,7 +331,6 @@ tracts %>%
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
   labs(title = "Most Black, non-Hispanic Estimates Have Modest CVs",
        subtitle = "Line represents a CV of 0.4") +  
-  coord_equal() +
   scatter_grid()
 
 tracts %>%
@@ -325,7 +339,6 @@ tracts %>%
   geom_abline(aes(slope = 0.4, intercept = 0)) +
   labs(title = "Most Hispanic Estimates Have Modest CVs",
        subtitle = "Line represents a CV of 0.4") +
-  coord_equal() +
   scatter_grid()
 
 tracts %>%
@@ -334,7 +347,6 @@ tracts %>%
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
     labs(title = "Most Other Races and Ethnicities Estimates Have Modest CVs",
        subtitle = "Line represents a CV of 0.4") +
-  coord_equal() +
   scatter_grid()
 
 tracts %>%
@@ -343,22 +355,19 @@ tracts %>%
   geom_abline(aes(slope = 0.4, intercept = 0)) +  
   labs(title = "Most White, non-Hispanic Estimates Have Modest CVs",
        subtitle = "Line represents a CV of 0.4") +  
-  coord_equal() +
   scatter_grid()
 
 ```
 
 ## 3. Crosswalk census tracts to census places.
 
-First we read in the tract-place crosswalk and join to our tract-level data to get tract-place pairs so we can aggregate up from tracts to places.
-
-This metric was originally calculated at the county level. Now, we are going to calculate it for **census places**. 
+This metric was originally calculated at the county level. Now, we are going to calculate it for **census places**. First we read in the tract-place crosswalk and join to our tract-level data to get tract-place pairs so we can aggregate up from tracts to places.
 
 The county-level version of this metric was more straightforward because [census tracts are completely contained within counties](https://www2.census.gov/geo/pdfs/reference/geodiagram.pdf). The place-level version will be more difficult because places are only contained within states; they do not necessarily adhere to county or tract boundaries.
 
 Census tract populations range from [1,200 - 8,000 with an average of 4,000 inhabitants](https://www2.census.gov/geo/pdfs/education/CensusTracts.pdf). The smallest population in our list of places for 2020 is 74,793 (North Port city, FL), so all tracts are smaller than the places that we're working with. However, "Tract 1" may be located in both "Place A" and "Place B" - therefore, we need to know what percentage of "Tract 1" area overlaps with the area of "Place A" and what percentage overlaps with the area of "Place B." Then we can multiply the total population of "Tract 1" by those percentages to interpolate what share of that total population is located in "Place A" and what share is located in "Place B." This is a technique known as [areal interpolation](https://cran.r-project.org/web/packages/areal/vignettes/areal-weighted-interpolation.html).
 
-First we need to know which census places have any overlap with each census tract. We construct a census tract to place crosswalk using the [Missouri Census Data Center's Geocorr 2022 tool](https://mcdc.missouri.edu/applications/geocorr2022.html). We construct the crosswalk using the following options:
+We need to know which census places have any overlap with each census tract. We construct a census tract to place crosswalk using the [Missouri Census Data Center's Geocorr 2022 tool](https://mcdc.missouri.edu/applications/geocorr2022.html). We construct the crosswalk using the following options:
 
   * Input Options
       + Select the state(s) (including DC and/or PR) to process:
@@ -376,7 +385,7 @@ First we need to know which census places have any overlap with each census trac
       + Combine geographic filters using:
           - AND (intersection)
 
-Then click "Run request" at the bottom of the screen. After the crosswalk finished processing I downloaded it, renamed it, and moved it to the `geographic-crosswalks` folder for this project.
+Then click "Run request" at the bottom of the screen. After the crosswalk finished processing we downloaded it, renamed it, and moved it to the `geographic-crosswalks` folder for this project.
 
 Now we read in the tract to place crosswalk and clean it.
 
@@ -393,10 +402,13 @@ crosswalk <- read_csv(
     afact = `tract-to-place allocation factor`,
     afact2 = `place-to-tract allocation factor`
   ) %>%
-  mutate(county = substring(county, 3, 5),
-         state_place = str_c(state, place),
-         tract = str_remove(string = tract, pattern = "[.]")) %>%
-  # place GEOIDs of 99999 indicate tracts that are not located within a census place
+  mutate(
+    county = substring(county, 3, 5),
+    state_place = str_c(state, place),
+    tract = str_remove(string = tract, pattern = "[.]")
+  ) %>%
+  # place GEOIDs of 99999 indicate tracts that are not located within a 
+  # census place
   filter(place != 99999)
 
 ```
@@ -469,7 +481,7 @@ indices <- tracts_joined %>%
 
 **Check:** Do the shares in each tract sum to one in a place?
 
-```{r check-county-sums}
+```{r check-place-sums}
 stopifnot(
   indices %>%
     group_by(state, place, state_place) %>%
@@ -560,18 +572,6 @@ places_test <- tracts <- get_vars(year = 2021,
 places_test <- places_test %>%
   filter(state_place %in% places_of_interest$state_place)
 
-```
-
-
-
-
-
-
-
-
-
-
-```{r}
 # join data
 test_joined <- inner_join(
   place_data, 
@@ -580,40 +580,54 @@ test_joined <- inner_join(
   suffix = c("_interpolated", "_reported")
 )
 
+```
+
+We visualize to compare. 
+
+```{r}
+test_joined <- test_joined %>%
+    mutate(
+    pop_lt_200000 = if_else(people_interpolated < 200000, 
+                            "Pop. < 200,000",
+                            "Pop. > 200,000"),
+    Houston = state_place == 4835000
+  )
+
 test_joined %>%
-  ggplot(aes(people_reported, people_interpolated)) +
+  ggplot(aes(people_reported, people_interpolated, color = Houston)) +
   geom_abline() +  
   geom_point(alpha = 0.2) +
-  coord_equal() +
+  facet_wrap(~ pop_lt_200000, scales = "free") +
   scatter_grid() +
   labs(title = "Reported population and interpolated population are similar")
 
 test_joined %>%
-  ggplot(aes(black_nh_reported, black_nh_interpolated)) +
+  ggplot(aes(black_nh_reported, black_nh_interpolated, color = Houston)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  coord_equal() +
+  facet_wrap(~ pop_lt_200000, scales = "free") +
   scatter_grid() +
   labs(title = "Black population and interpolated Black population are similar")
 
 test_joined %>%
-  ggplot(aes(hispanic_reported, hispanic_interpolated)) +
+  ggplot(aes(hispanic_reported, hispanic_interpolated, color = Houston)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  coord_equal() +
+  facet_wrap(~ pop_lt_200000, scales = "free") +
   scatter_grid() +
   labs(title = "Hispanic population and interpolated Hispanic population are similar")
 
 test_joined %>%
-  ggplot(aes(white_nh_reported, white_nh_interpolated)) +
+  ggplot(aes(white_nh_reported, white_nh_interpolated, color = Houston)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  coord_equal() +
+  facet_wrap(~ pop_lt_200000, scales = "free") +
   scatter_grid() +
   labs(title = "White population and interpolated white population are similar")
 
 ```
 
+Houston's interpolated values are consistently higher than the reported values. We don't know why. 
 
 ## 6. Validation
 
@@ -742,13 +756,6 @@ place_data %>%
 
 ```
 
-todo: explore extreme cases
-
-
-
-
-
-
 ## 7. Add Data Quality Flags
 
 We consider three dimensions of quality when developing the quality variables for poverty exposure. 
@@ -759,10 +766,10 @@ We consider three dimensions of quality when developing the quality variables fo
 
 ### 1. Unweighted number of observations
 
-First, we suppress exposure indices for groups in counties that have 30 or fewer individuals in that group. This excludes many observations that have very imprecise estimates. 
+First, we suppress exposure indices for groups in places with 30 or fewer individuals in that group. This excludes many observations that have very imprecise estimates. 
 
 ```{r}
-#' Suppress counties
+#' Suppress places
 #'
 #' @param race The variable for the count in a race/ethnicity group
 #' @param exposure The variable name for the exposure index
@@ -912,7 +919,7 @@ count(place_data, white_nh_exposure_quality)
 
 ```
 
-Most of the counties with missing values are very small. 
+There are no missing values. 
 
 ```{r}
 missing <- place_data %>%
@@ -923,17 +930,15 @@ missing <- place_data %>%
       is.na(white_nh_exposure)
     )
 
-max(missing$people)
-max(missing$tracts)
+nrow(missing)
+max(missing$people_interpolated)
+max(missing$tracts_interpolated)
 
 ```
 
 ## 8. Save the Data
 
-We need to include all counties in the published data even if we don't have a metric for the place We load the place file and join our metrics to the place file. 
-
 ```{r save-data}
-
 place_data %>%
   mutate(year = 2021) %>%
   select(year, 
