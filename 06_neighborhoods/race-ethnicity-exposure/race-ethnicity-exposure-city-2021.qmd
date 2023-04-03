@@ -435,7 +435,7 @@ crosswalk <-
 
 The crosswalk contains an allocation factor variable, `afact`, which indicates the proportion of the source geographies (tracts) contained within the target geography (place). It also contains `afact2`, which is the proportion of the target geogrpahy (place) included in each source geography (tract). 
 
-We can use `afact` to allocate census tract data to places. The allocation is based on 2020 data and the ACS data uses 2021 data. This should work because the borders of Census geographies only change in years ending in 2. We will use the product of `afact` and `afact2` for a quality measure later. 
+We can use `afact` to allocate census tract data to places. The allocation is based on 2020 data and the ACS data uses 2021 data. We will use the product of `afact` and `afact2` for a quality measure later. 
 
 ```{r}
 crosswalk <- crosswalk %>%
@@ -466,15 +466,17 @@ tracts_joined <- tracts_joined %>%
 
 ## 4. Calculate the share of a place's racial/ethnic group in each tract
 
+We weight each census tract in the numerator because only part of the tract may be in the census place. We weight the sum in the denominator to account for all of the census tracts that are only partially in the census place. 
+
 ```{r place-shares-in-tracts}
 indices <- tracts_joined %>%
   group_by(state, place, state_place, place_name) %>%
   mutate(
-    share_of_black_nh = black_nh / sum(black_nh),
-    share_of_hispanic = hispanic / sum(hispanic),
-    share_of_other_nh = other_nh / sum(other_nh),
-    share_of_white_nh = white_nh / sum(white_nh)
-    ) %>%
+    share_of_black_nh = (black_nh * afact) / sum(black_nh * afact),
+    share_of_hispanic = (hispanic * afact) / sum(hispanic * afact),
+    share_of_other_nh = (other_nh * afact) / sum(other_nh * afact),
+    share_of_white_nh = (white_nh * afact) / sum(white_nh * afact)
+  ) %>%
   ungroup()
 
 ```
@@ -514,10 +516,10 @@ Calculate the complement to each race/ethnic group of interest.
 ```{r share-other-race-ethnicity}
 indices <- indices %>%
   mutate(
-    non_white_nh = (hispanic + black_nh + other_nh) / people,
-    non_black_nh = (hispanic + white_nh + other_nh) / people,
-    non_hispanic = (white_nh + black_nh + other_nh) / people,
-    non_other_nh = (hispanic + white_nh + black_nh) / people
+    non_white_nh = (afact * (hispanic + black_nh + other_nh)) / (afact * people),
+    non_black_nh = (afact * (hispanic + white_nh + other_nh)) / (afact * people),
+    non_hispanic = (afact * (white_nh + black_nh + other_nh)) / (afact * people),
+    non_other_nh = (afact * (hispanic + white_nh + black_nh)) / (afact * people)
   )
 
 ```
@@ -526,22 +528,24 @@ indices <- indices %>%
 
 We find the weighted average at the place level of exposure to other race/ethnicity groups weighted by the share of the race/ethnicity group living in each tract. In other words, the 0.1 and 0.5 are `non_white_nh` and the 0.8 and 0.2 are `share_of_white_nh`.
 
+We account for `afact` for tracts, people, counts, and standard errors. We do not account for `afact` for the exposure variables because the tract-level variables for share of other races in the census tract (i.e. `non_black_nh`) and the share of the given race group in the tract (i.e. `share_of_black_nh`) already accounts for `afact`. 
+
 ```{r calc-metrics}
 place_data <- indices %>%
   group_by(state, place, state_place, place_name) %>%
   summarize(
-    tracts = n(),
-    people = sum(people),
+    tracts = sum(afact),
+    people = sum(people * afact), 
     # counts
-    black_nh = sum(black_nh),
-    hispanic = sum(hispanic),
-    other_nh = sum(other_nh),
-    white_nh = sum(white_nh),
+    black_nh = sum(black_nh * afact),
+    hispanic = sum(hispanic * afact),
+    other_nh = sum(other_nh * afact),
+    white_nh = sum(white_nh * afact),
     # standard errors
-    black_nh_se = sqrt(sum(black_nh_moe ^ 2)) / 1.645,
-    hispanic_se = sqrt(sum(hispanic_moe ^ 2)) / 1.645,
-    other_nh_se = sqrt(sum(other_nh_moe ^ 2)) / 1.645,
-    white_nh_se = sqrt(sum(white_nh_moe ^ 2)) / 1.645,
+    black_nh_se = sqrt(sum(afact * (black_nh_moe ^ 2))) / 1.645,
+    hispanic_se = sqrt(sum(afact * (hispanic_moe ^ 2))) / 1.645,
+    other_nh_se = sqrt(sum(afact * (other_nh_moe ^ 2))) / 1.645,
+    white_nh_se = sqrt(sum(afact * (white_nh_moe ^ 2))) / 1.645,
     # exposures
     black_nh_exposure = weighted.mean(non_black_nh, w = share_of_black_nh),
     hispanic_exposure = weighted.mean(non_hispanic, w = share_of_hispanic),
