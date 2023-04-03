@@ -282,7 +282,7 @@ gsort -year state county
 *save "all" separately
 preserve
 keep year state county homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
-export delimited using "built/homessness_all_county.csv", replace
+export delimited using "built/homelessness_all_county.csv", replace
 restore
 
 rename homeless* all*
@@ -314,10 +314,4 @@ order year state county  subgroup_type subgroup
 gsort -year state county subgroup_type subgroup 
 
 export delimited using "built/homelessness_all_subgroups_county.csv", replace // EG: 2014 & 2018 match old data
-
-
-keep if subgroup_type=="all"
-drop subgroup_type subgroup
-
-export delimited using "built/homeless_all_county.csv", replace
 

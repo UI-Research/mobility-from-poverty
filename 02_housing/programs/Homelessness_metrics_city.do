@@ -309,7 +309,7 @@ gsort -year state place
 *save "all" separately
 preserve
 keep year state place homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
-export delimited using "built/homessness_all_city.csv", replace
+export delimited using "built/homelessness_all_city.csv", replace
 restore
 
 rename homeless* all*
@@ -339,11 +339,3 @@ rename share homeless_share
 rename quality homeless_quality
 
 export delimited using "built/homelessness_all_subgroups_city.csv", replace 
-
-
-keep if subgroup_type=="all"
-drop subgroup_type subgroup
-
-export delimited using "built/homelessness_all_city.csv", replace
-
-
