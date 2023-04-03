@@ -50,35 +50,28 @@ microdata_preschool_age <- acs2021clean %>%
   filter(AGE==3|AGE==4) 
 # 44,367 obs
 
-# collapse PERWT by place, create a variable for count per place in the collapse
-# also create a collapse var for children 3-4 AND in pre-school (GRADEATT =1)
-# these vars needed to calculate metric: share of kids in pre-school
-metrics_preschool <- microdata_preschool_age %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(
-    num_3_and_4 = sum(PERWT),
-    num_in_preschool = sum((GRADEATT == 1) * PERWT),
-    n = n()
-  )
+# re-import as survey to prep for CI
+svy <- as_survey_design(microdata_preschool_age, weights = PERWT)
+
+# use srvyr to calculate our desired metric ratio & 95% confidence interval(s)
+# collapse the number of emp age people for data quality var later
+metrics_preschool <- svy %>%
+  mutate(preschool = (GRADEATT == 1)) %>%
+  group_by(statefip, place) %>%
+  summarise(share_in_preschool = survey_mean(preschool, vartype = "ci"),
+            num_3_and_4 = sum(PERWT))
 
 
-# Compute the ratio (share of 3-4 yo kids in preschool)
+# Rename Confidence Interval (CI) vars
 metrics_preschool <- metrics_preschool %>%
-  mutate(share_in_preschool = num_in_preschool/num_3_and_4)
-
-
-# Create Confidence Interval (CI) and correctly format the variables
-metrics_preschool <- metrics_preschool %>%
-  mutate(not_in_pre = 1 - share_in_preschool,
-         interval = 1.96*sqrt((not_in_pre*share_in_preschool)/n),
-         share_in_preschool_ub = share_in_preschool + interval,
-         share_in_preschool_lb = share_in_preschool - interval)
-
+  rename(share_in_preschool_ub = share_in_preschool_upp,
+         share_in_preschool_lb = share_in_preschool_low)
 
 # adjust ub & lb values 
 metrics_preschool <- metrics_preschool %>% 
   mutate(share_in_preschool_ub = pmin(1, pmax(0, share_in_preschool_ub)),
          share_in_preschool_lb = pmax(0, pmin(1, share_in_preschool_lb)))
+
 
 ###################################################################
 
@@ -105,8 +98,6 @@ metrics_preschool <- metrics_preschool %>%
 ###################################################################
 
 # (5) Cleaning and export
-
-# Limit to the Census Places we want 
 
 # rename vars as needed
 metrics_preschool <- metrics_preschool %>%
