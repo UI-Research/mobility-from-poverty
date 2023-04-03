@@ -62,6 +62,7 @@ data &output_file.;
   if statefip = 51 and county = 515 then county = 19;
   if statefip = 2 and county = 270 then county = 158;
   if statefip = 46 and county = 113 then county = 102;
+  if gq >= 3 then delete; *deletes people in general quarters. The extracted dataset should already do this, but this is just in case;
 run;
 
 *Sort into order most useful for calculating metrics;
@@ -80,3 +81,6 @@ proc print data = add_num_of_counties (obs = 10);
  where county = 515;
 run;
 
+proc freq data=lib2021.microdata;
+ table gq;
+run;

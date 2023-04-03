@@ -115,7 +115,7 @@ proc means data=housholds_5_year noprint completetypes;
    format subgroup subgroup_f.;
 run;
 
-/* create income metric that right now just has the number of total households */
+/* create access metric that right now just has the number of total households */
 proc means data=housholds_5_year noprint completetypes; 
   output out=metrics_access_subgroup_2021(drop=_type_) sum=;
   by statefip county ;

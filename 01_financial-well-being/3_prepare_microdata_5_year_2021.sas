@@ -22,7 +22,7 @@ options fmtsearch=(lib2018);
 
 %macro prepare_microdata(input_file,output_file);
 
-*Map PUMAs to counties (this  records for PUMAs that span counties);
+*Map PUMAs to counties (this expands records for PUMAs that span counties);
 proc sql; 
  create table add_county as 
  select  
@@ -70,7 +70,6 @@ data &output_file.;
   if statefip = 46 and county = 113 then county = 102;
 
   /* create race categories */
-   /* create race categories */
   /* values for RACE:
 	1	White	
 	2	Black/African American/Negro	
