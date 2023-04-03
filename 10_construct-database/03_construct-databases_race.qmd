@@ -2,14 +2,14 @@
 title: ""
 author: ""
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
-  html_document:
-    code_folding: show
-    css: !expr here::here("10_construct-database", "www", "web_report.css")
-    toc: TRUE
-    toc_float: TRUE
-    editor_options: 
-      chunk_output_type: console
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 <style>
@@ -35,6 +35,9 @@ library(gt)
 
 ```{r}
 files <- c(
+  #THIS IS GOING TO BE UPDATED TO USE NIBRS DATA WHICH REMAINS DISAGGREGATED NOT BY ETHNICITY
+  # NOT DOING FURTHER WORK HERE UNTIL WE ACTUALLY GET THAT DATA - gm 2023-04-03
+  # WE WILL ALSO HAVE JUVENILE ARRESTS AND CRIMES IN THIS CATEGORY
   here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv")
 )
 
@@ -53,30 +56,61 @@ read_csv_and_clean <- function(file) {
 
 db <- map(files, read_csv_and_clean) %>%
   reduce(full_join, by = c("year", "state", "county", "subgroup_type", "subgroup")) %>%
-  filter(state != "02" & county != "270")
+  filter(state != "02" & county != "270") 
+
+
+xwalk_2016_analog_all <- 
+      read_csv(here("geographic-crosswalks", 
+                    "data", 
+                    "tract-county-crosswalk_2018.csv"), guess_max = 5000) %>%
+  mutate(year = 2016) %>%
+  expand_grid(
+      subgroup_type = c("all"),
+      subgroup = c("All")
+    )
+
+xwalk_2016_analog_race <- read_csv(here("geographic-crosswalks", 
+                    "data", 
+                    "tract-county-crosswalk_2018.csv"), guess_max = 5000) %>%
+  mutate(year = 2016) %>%
+  expand_grid(
+       subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black", "Other Races", "White")
+    )
+
 
 frame <- 
   bind_rows(
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      read_csv(here("geographic-crosswalks", 
+                    "data", 
+                    "tract-county-crosswalk_2018.csv"), guess_max = 5000),
       subgroup_type = c("all"),
       subgroup = c("All")
     ),
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      read_csv(here("geographic-crosswalks", 
+                    "data", 
+                    "tract-county-crosswalk_2018.csv"), guess_max = 5000),
       subgroup_type = c("race-ethnicity"),
       subgroup = c("Black", "Other Races", "White")
-    )
+    ),
+    xwalk_2016_analog_all,
+    xwalk_2016_analog_race
   ) %>%
-  arrange(year, state, county, subgroup_type, subgroup)
+  arrange(year, state, county, subgroup_type, subgroup) %>%
+  select(-tract) %>%
+  distinct()
   
 db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
 
+
+#We get differences here because we are missing 2016 Alaska data!
 stopifnot(
   nrow(db) == nrow(frame)
 )
 
-anti_join(db, frame)
+unjoined <- anti_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
 
 
 ```
@@ -181,15 +215,6 @@ db_bounds <- db %>%
 ```{r}
 db_quality %>%
   assert(in_set(1, 2, 3), everything())
-
-```
-
-### Recent Database
-
-```{r}
-
-
-
 
 ```
 
