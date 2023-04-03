@@ -59,33 +59,33 @@ state_data_url <- purrr::map_chr(.x = download_urls, .f = get_state_data_url)
 
 Download all 51 Excel files from each state's URL
 ```{r}
-# create a data folder for intermediate data files
-intermediate_files <- here::here("04_health",
-                                 "access-health-services",
-                                 "data/")
-
-if (!dir.exists(intermediate_files)) {
-  
-  dir.create(intermediate_files)
-  
-}
-
-chr_data <- here::here("04_health",
-                       "access-health-services",
-                       "data",
-                       out_state
-)
-
-download_data <- function(state_data_url, state_name){
-  if (!file.exists(here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))) {
-    
-    download.file(state_data_url, 
-                  destfile = here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))
-    
-  }
-}
-
-walk2(state_data_url, out_state, download_data)
+# # create a data folder for intermediate data files
+# intermediate_files <- here::here("04_health",
+#                                  "access-health-services",
+#                                  "data/")
+# 
+# if (!dir.exists(intermediate_files)) {
+#   
+#   dir.create(intermediate_files)
+#   
+# }
+# 
+# chr_data <- here::here("04_health",
+#                        "access-health-services",
+#                        "data",
+#                        out_state
+# )
+# 
+# download_data <- function(state_data_url, state_name){
+#   if (!file.exists(here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))) {
+#     
+#     download.file(state_data_url, 
+#                   destfile = here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))
+#     
+#   }
+# }
+# 
+# walk2(state_data_url, out_state, download_data)
 
 ```
 
@@ -153,16 +153,16 @@ joined_data <- joined_data %>%
     antecedent = as.numeric(antecedent),
     # Divide the 2019 PEP population by the 2019 CHR Number of Physicians. Compare this value to the antecedent of the ratio.
     check_antecedent = population / number_pc_phys,
-    diff_ratio = abs(antecedent - check_antecedent)
+    diff_pop = abs(antecedent - check_antecedent)
   )
 ```
 
-Any differences in the ratio are likely due to rounding. 
+Any differences in the ratio are likely due to rounding. This means the population variable we pulled from PEP is a good proxy for the population variable used by County Health Rankings to construct this ratio.
 ```{r}
 test <- joined_data %>%
   filter(number_pc_phys != 0)
   
-quantile(test$diff_ratio, probs = seq(0, 1, 0.25), na.rm = TRUE)
+quantile(test$diff_pop, probs = seq(0, 1, 0.25), na.rm = TRUE)
 
 ```
 
@@ -172,7 +172,8 @@ joined_data <- joined_data %>%
     # Add 1 to the denominator of the ratio and reconstruct the ratio
     plus1 = population / (number_pc_phys + 1),
     # Calculate the differences between each of the new ratios and the original ratio
-    plus1_diff = abs(as.numeric(antecedent) - plus1)
+    plus1_diff = round(abs(as.numeric(antecedent) - plus1), digits = 3),
+    pct_change = round(abs((antecedent - plus1) / antecedent), digits = 4) * 100
   )
 
 ```
@@ -181,7 +182,32 @@ joined_data <- joined_data %>%
 test <- joined_data %>%
   filter(number_pc_phys != 0)
   
-quantile(test$plus1_diff, probs = seq(0, 1, 0.25), na.rm = TRUE)
+quantile(test$pct_change, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm = TRUE)
+
+```
+
+
+```{r}
+joined_data %>%
+  filter(!is.na(antecedent)) %>%
+  ggplot(aes(number_pc_phys, pct_change)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Counties with the lowest number of PC physicians have the highest percentage point change",
+       subtitle = "") +
+  scatter_grid()
+
+```
+
+To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of the number of population per primary care physician. If the ratio changes less than 20 percentage points we assign a quality value of 1. If the ratio changes by more than 20 percentage points we assign a quality value of 2.
+```{r}
+# Assign a data quality flag
+joined_data <- joined_data %>%
+  mutate(pc_phys_quality = case_when(pct_change < 20 ~ 1,
+                             pct_change >= 20 ~ 2)
+  )
+
+joined_data %>%
+  count(pc_phys_quality)
 
 ```
 
@@ -192,12 +218,15 @@ all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-pop
   tidylog::filter(year == 2020) %>%
   select(-year)
 
-joined_data <- left_join(physicians, all_counties, by = c("state", "county"))
+joined_data <- joined_data %>%
+  select(-population) %>%
+  left_join(all_counties, by = c("state", "county"))
 
 test <- anti_join(all_counties, physicians, by = c("state", "county"))
 
 joined_data <- joined_data %>%
-  select(year, state, county, pc_phys_ratio, population) %>%
+  mutate(year = 2019) %>%
+  select(year, state, county, pc_phys_ratio, population, pc_phys_quality) %>%
   arrange(year, state, county)
 
 joined_data %>%
