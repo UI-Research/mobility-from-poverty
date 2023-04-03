@@ -301,9 +301,6 @@ gen subgroup_type = ""
 replace subgroup_type = "all" if subgroup=="All"
 replace subgroup_type = "race-ethnicity" if subgroup!="All"
 
-order year state county  subgroup_type subgroup
-gsort -year state county subgroup_type subgroup 
-
 replace subgroup = "Black, Non-Hispanic" if subgroup=="Black"
 replace subgroup = "White, Non-Hispanic" if subgroup=="White"
 replace subgroup = "Other Races and Ethnicities" if subgroup=="Other"
@@ -313,4 +310,14 @@ rename count_ub homeless_count_ub
 rename share homeless_share
 rename quality homeless_quality
 
+order year state county  subgroup_type subgroup
+gsort -year state county subgroup_type subgroup 
+
 export delimited using "built/homelessness_all_subgroups_county.csv", replace // EG: 2014 & 2018 match old data
+
+
+keep if subgroup_type=="all"
+drop subgroup_type subgroup
+
+export delimited using "built/homeless_all_county.csv", replace
+

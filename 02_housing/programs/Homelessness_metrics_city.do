@@ -339,3 +339,11 @@ rename share homeless_share
 rename quality homeless_quality
 
 export delimited using "built/homelessness_all_subgroups_city.csv", replace 
+
+
+keep if subgroup_type=="all"
+drop subgroup_type subgroup
+
+export delimited using "built/homelessness_all_city.csv", replace
+
+
