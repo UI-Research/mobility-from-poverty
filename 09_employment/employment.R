@@ -47,33 +47,28 @@ microdata_emp_age <- acs2021clean %>%
 #  2		Unemployed
 #  3		Not in labor force
 
-# collapse # of 25-54 year olds by place
-# also create a collapse var for people that age who are employed (EMPSTAT == 1)
-# these vars needed to calculate metric: share employed
-metrics_employment <- microdata_emp_age %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(
-    num_in_emp_age = sum(PERWT),
-    num_employed = sum((EMPSTAT == 1) * PERWT),
-    n = n()
-  )
-# 486 obs - good to go
 
-# Compute the ratio (share employed)
-metrics_employment <- metrics_employment %>%
-  mutate(share_employed = num_employed/num_in_emp_age)
+# re-import as survey to prep for CI
+svy <- as_survey_design(microdata_emp_age, weights = PERWT)
 
-# Create Confidence Interval (CI) and correctly format the variables
-metrics_employment <- metrics_employment %>%
-  mutate(not_employed = 1 - share_employed,
-         interval = 1.96 * sqrt((not_employed*share_employed)/n),
-         share_employed_ub = share_employed + interval,
-         share_employed_lb = share_employed - interval)
+# use srvyr to calculate our desired metric ratio & 95% confidence interval(s)
+# collapse the number of emp age people for data quality var later
+metrics_employment <- svy %>%
+  mutate(employed = (EMPSTAT == 1)) %>%
+  group_by(statefip, place) %>%
+  summarise(share_employed = survey_mean(employed, vartype = "ci"),
+            num_in_emp_age = sum(PERWT))
+
+
+# Rename Confidence Interval (CI) vars
+metrics_college <- metrics_college %>%
+  rename(share_hs_degree_ub = share_hs_degree_upp,
+         share_hs_degree_lb = share_hs_degree_low)
 
 # adjust ub & lb values 
-metrics_employment <- metrics_employment %>% 
-  mutate(share_employed_ub = pmin(1, pmax(0, share_employed_ub)),
-         share_employed_lb = pmax(0, pmin(1, share_employed_lb)))
+metrics_college <- metrics_college %>% 
+  mutate(share_hs_degree_ub = pmin(1, pmax(0, share_hs_degree_ub)),
+         share_hs_degree_lb = pmax(0, pmin(1, share_hs_degree_lb)))
 
 ###################################################################
 
