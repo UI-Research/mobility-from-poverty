@@ -67,6 +67,10 @@ library(readr)
 # 116		Doctoral degree
 # 999		Missing
 
+
+# Universe for the variable of interest is all persons
+# We filter out 001
+
 ###################################################################
 
 # (2) Import the prepared microdata file 
@@ -95,18 +99,18 @@ microdata_coll_age <- microdata %>%
 # re-import as survey to prep for CI
 svy <- as_survey_design(microdata_coll_age, weights = PERWT)
 
-# Find the # of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
-# collapse PERWT by place (total count of college ready people)
-# and combine these into df to prepare for metric ratio
-metrics_college <- svy %>% 
-  group_by(statefip, place) %>% 
-  summarise(
-    num_19_and_20 = sum(PERWT),
-    num_coll_ready = sum((EDUCD <= 116 & EDUCD >= 62) * PERWT),
-    n = n(),
-    share_hs_degree = survey_ratio(num_coll_ready, num_19_and_20, vartype = "ci", level = 0.95)
-  )
+
 # EDUCD <= 116 & EDUCD >= 62 evaluates to FALSE if the person isn't college ready and they aren't counted
+#
+svy %>%
+  mutate(hs_grad = (EDUCD >= 62 & EDUCD <= 116)) %>%
+  group_by(statefip, place) %>%
+  summarise(ratio_edu = survey_mean(hs_grad, vartype = "ci"))
+
+svy %>%
+  mutate(hs_grad = (EDUCD >= 62 & EDUCD <= 116)) %>%
+  group_by(statefip, place, hs_grad) %>%
+  summarise(ratio_edu = survey_prop(vartype = "se"))
 
 
 # Rename Confidence Interval (CI) vars
