@@ -2,14 +2,14 @@
 title: ""
 author: ""
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
-  html_document:
-    code_folding: show
-    css: !expr here::here("10_construct-database", "www", "web_report.css")
-    toc: TRUE
-    toc_float: TRUE
-    editor_options: 
-      chunk_output_type: console
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 <style>
@@ -18,7 +18,7 @@ output:
 
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
-```{r rmarkdown-setup, include = FALSE}
+```{r, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
 options(knitr.kable.NA = "")
@@ -55,8 +55,12 @@ read_csv(here("01_financial-well-being", "share_debt_2018_long.csv"), guess_max 
 files <- c(
   here("01_financial-well-being", "share_debt_race-ethnicity.csv"),
   here("06_neighborhoods", "transportation", "output", "county_transport_stats_by_race_final.csv"),
-  here("06_neighborhoods", "environment", "enviro_race-ethnicity.csv")
-)
+  here("06_neighborhoods", 
+       "environment", 
+       "data", 
+       "output", 
+       "environment_county_sub_all.csv")
+  )
 
 ```
 
@@ -68,31 +72,47 @@ read_csv_and_clean <- function(file) {
   read_csv(file, guess_max = 5000) %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            county = stringr::str_pad(county, width = 3, pad = "0")) %>%
+    filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
     mutate(
       subgroup = case_when(
         subgroup == "All" ~ "All",
         subgroup == "Predominantly People of Color" ~ "Majority Non-White", 
         subgroup == "No Predominant Racial Group" ~ "Mixed Race and Ethnicity",
         subgroup == "Predominantly White" ~ "Majority White, Non-Hispanic",
+        subgroup == "No Majority Race/Ethnicity" ~ "Mixed Race and Ethnicity", 
         TRUE ~ subgroup
       )
     )
-  
 }
 
 db <- map(files, read_csv_and_clean) %>%
   reduce(full_join, by = c("year", "state", "county", "subgroup_type", "subgroup")) %>%
   mutate(subgroup_type = str_to_lower(subgroup_type))
 
+xwalk_18 <- read_csv(here("geographic-crosswalks", 
+                          "data", 
+                          "tract-county-crosswalk_2018.csv"), 
+                     guess_max = 5000) %>%
+  select(-tract) %>%
+  distinct()
+
+xwalk_14 <- xwalk_18 %>%
+  mutate(year = 2014)
+
+xwalk_16 <- xwalk_18 %>%
+  mutate(year = 2016)
+
+xwalk <- bind_rows(xwalk_14, xwalk_16, xwalk_18)
+
 frame <- 
   bind_rows(
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      xwalk,
       subgroup_type = c("all"),
-      subgroup = c("All")
+      subgroup = c("All"),
     ),
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      xwalk,
       subgroup_type = c("race-ethnicity"),
       subgroup = c("Mixed Race and Ethnicity", "Majority Non-White", "Majority White, Non-Hispanic")
     )
@@ -101,9 +121,9 @@ frame <-
   
 db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
 
-# stopifnot(
-#   nrow(db) == nrow(frame)
-# )
+stopifnot(
+  nrow(db) == nrow(frame)
+)
 
 ```
 
@@ -121,11 +141,13 @@ read_csv_recent <- function(file) {
         subgroup == "Predominantly People of Color" ~ "Majority Non-White", 
         subgroup == "No Predominant Racial Group" ~ "Mixed Race and Ethnicity",
         subgroup == "Predominantly White" ~ "Majority White, Non-Hispanic",
+        subgroup == "No Majority Race/Ethnicity" ~ "Mixed Race and Ethnicity", 
         TRUE ~ subgroup
       )
     ) %>%
     mutate(subgroup_type = str_to_lower(subgroup_type)) %>%
     filter(year == max(year)) %>%
+    filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
     select(-year)
   
   return(file)
@@ -137,15 +159,15 @@ db_recent <- map(files, read_csv_recent) %>%
   reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup")) %>%
   mutate(subgroup_type = str_to_lower(subgroup_type))
 
-frame <- 
+frame_recent <- 
   bind_rows(
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      xwalk_18, 
       subgroup_type = c("all"),
       subgroup = c("All")
     ),
     expand_grid(
-      read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
+      xwalk_18,
       subgroup_type = c("race-ethnicity"),
       subgroup = c("Mixed Race and Ethnicity", "Majority Non-White", "Majority White, Non-Hispanic")
     )
@@ -154,9 +176,9 @@ frame <-
   filter(year == max(year)) %>%
   select(-year)
 
-db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
+db_recent <- full_join(frame_recent, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
 
-# stopifnot(nrow(frame) == nrow(db_recent))
+stopifnot(nrow(frame) == nrow(db_recent))
 
 ```
 
@@ -207,8 +229,9 @@ db_bounds <- db %>%
 ```{r}
 
 db_values %>%
+  #filter(!is.na(share_debt_coll)) %>%
   assert(within_bounds(0, 1), share_debt_coll) %>%
-  assert(within_bounds(0, 100), transit_cost, transit_trips)
+  assert(within_bounds(0, 100), transit_cost, transit_trips, environmental)
 
 ```
 
@@ -223,24 +246,18 @@ Test confidence interval bounds.
 ```
 
 ```{r}
-
 db_quality %>%
   assert(in_set(1, 2, 3), everything())
 
 ```
 
-### Recent Database
-
-```{r}
-
-
-
-
-```
 
 ## Write the File
 
 ```{r}
-write_csv(db_recent, here("data", "04_mobility-metrics_race-share.csv"))
+
+
+write_csv(db_recent, here("data", "04_mobility-metrics_race-share_recent.csv"))
+write_csv(db, here("data", "04_mobility-metrics_race-share_all.csv"))
 
 ```
