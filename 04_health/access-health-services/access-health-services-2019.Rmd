@@ -1,9 +1,9 @@
 ---
-title: ""
+title: "Access to Health Services"
 author: "Vincent Pancini"
+editor_options: 
+  chunk_output_type: console
 ---
-
-
 
 ```{r rmarkdown-setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -18,6 +18,8 @@ library(fs)
 library(tidycensus)
 
 set_urbn_defaults(style = "print")
+
+options(scipen = 999)
 
 ```
 
@@ -172,8 +174,8 @@ joined_data <- joined_data %>%
     # Add 1 to the denominator of the ratio and reconstruct the ratio
     plus1 = population / (number_pc_phys + 1),
     # Calculate the differences between each of the new ratios and the original ratio
-    plus1_diff = round(abs(as.numeric(antecedent) - plus1), digits = 3),
-    pct_change = round(abs((antecedent - plus1) / antecedent), digits = 4) * 100
+    plus1_diff = abs(plus1 - as.numeric(antecedent)),
+    sensitivity = abs((plus1 - antecedent) / antecedent)
   )
 
 ```
@@ -182,7 +184,7 @@ joined_data <- joined_data %>%
 test <- joined_data %>%
   filter(number_pc_phys != 0)
   
-quantile(test$pct_change, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm = TRUE)
+quantile(test$sensitivity, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm = TRUE)
 
 ```
 
@@ -190,20 +192,25 @@ quantile(test$pct_change, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm 
 ```{r}
 joined_data %>%
   filter(!is.na(antecedent)) %>%
-  ggplot(aes(number_pc_phys, pct_change)) +
+  ggplot(aes(number_pc_phys, sensitivity)) +
   geom_point(alpha = 0.2) +
-  labs(title = "Counties with the lowest number of PC physicians have the highest percentage point change",
+  labs(title = "Counties with the lowest number of PC physicians have the highest sensitivity",
        subtitle = "") +
   scatter_grid()
 
 ```
 
 To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of the number of population per primary care physician. If the ratio changes less than 20 percentage points we assign a quality value of 1. If the ratio changes by more than 20 percentage points we assign a quality value of 2.
+
 ```{r}
 # Assign a data quality flag
 joined_data <- joined_data %>%
-  mutate(pc_phys_quality = case_when(pct_change < 20 ~ 1,
-                             pct_change >= 20 ~ 2)
+  mutate(pc_phys_quality = 
+           case_when(
+             sensitivity < 0.2 ~ 1,
+             sensitivity < 0.4 ~ 2,
+             sensitivity < 0.6 ~ 3
+           )
   )
 
 joined_data %>%
@@ -211,11 +218,11 @@ joined_data %>%
 
 ```
 
-
 ## 5. Save the data
+
 ```{r}
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
-  tidylog::filter(year == 2020) %>%
+  tidylog::filter(year == 2019) %>%
   select(-year)
 
 joined_data <- joined_data %>%
@@ -226,7 +233,7 @@ test <- anti_join(all_counties, physicians, by = c("state", "county"))
 
 joined_data <- joined_data %>%
   mutate(year = 2019) %>%
-  select(year, state, county, pc_phys_ratio, population, pc_phys_quality) %>%
+  select(year, state, county, pc_phys_ratio, pc_phys_quality) %>%
   arrange(year, state, county)
 
 joined_data %>%
