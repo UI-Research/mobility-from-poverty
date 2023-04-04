@@ -27,23 +27,24 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 ** Import city file **
 import delimited ${cityfile}, clear
 
-tostring stateplacefp, replace
-replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
-assert strlen(stateplacefp)==7
+tostring place, replace
+replace place = "0" + place if strlen(place)==4
+replace place = "00" + place if strlen(place)==3
+assert strlen(place)==5
 
-tostring statefips, replace
-replace statefips = "0" + statefips if strlen(statefips)==1
-assert strlen(statefips)==2
+tostring state, replace
+replace state = "0" + state if strlen(state)==1
+assert strlen(state)==2
 
-rename city city_name
-rename statefips state
-drop geographicarea cityname population 
+rename place_name city_name
+drop population 
 
 gen city_name_edited = city_name
 replace city_name_edited = subinstr(city_name_edited, " town", "", .)
 replace city_name_edited = subinstr(city_name_edited, " village", "", .)
 replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
 replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+replace city_name_edited = subinstr(city_name_edited, " city", "", .)
 
 drop city_name
 rename city_name_edited city_name
@@ -167,7 +168,7 @@ tab year _merge
 *2 from city file (south fulton georgia & mount pleasant south carolina) don't exist in school dataset
 brow if _merge==2 // Honolulu doesn't match well
 	drop if _merge==1 // drop district data that doesn't match 
-	drop _merge statename state_abbr
+	drop _merge state_name 
 	
 *summary stats to see possible outliers
 bysort year: sum
@@ -180,11 +181,10 @@ tab year if meps20_hispanic==.
 tab year if meps20_white==.
 tab year if meps20_total==.
 
-order year state city stateplacefp meps20_black* meps20_hispanic* meps20_white* meps20_total*
+order year state city place meps20_black* meps20_hispanic* meps20_white* meps20_total*
 gsort -year state city
 
-gen place = substr(stateplacefp, -5, 5)
-drop city_name stateplacefp
+drop city_name 
 
 order year state place
 gsort -year state place
