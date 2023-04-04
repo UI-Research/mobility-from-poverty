@@ -26,29 +26,31 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-	** Import county file **
-	import delimited ${cityfile}, clear
 
-	tostring stateplacefp, replace
-	replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
-	assert strlen(stateplacefp)==7
+** Import city file **
+import delimited ${cityfile}, clear
 
-	tostring statefips, replace
-	replace statefips = "0" + statefips if strlen(statefips)==1
-	assert strlen(statefips)==2
+tostring place, replace
+replace place = "0" + place if strlen(place)==4
+replace place = "00" + place if strlen(place)==3
+assert strlen(place)==5
 
-	rename city city_name
-	rename statefips state
-	drop geographicarea cityname population 
+tostring state, replace
+replace state = "0" + state if strlen(state)==1
+assert strlen(state)==2
 
-	gen city_name_edited = city_name
-	replace city_name_edited = subinstr(city_name_edited, " town", "", .)
-	replace city_name_edited = subinstr(city_name_edited, " village", "", .)
-	replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
-	replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+rename place_name city_name
+drop population 
 
-	drop city_name statename state_abbr
-	rename city_name_edited city_name
+gen city_name_edited = city_name
+replace city_name_edited = subinstr(city_name_edited, " town", "", .)
+replace city_name_edited = subinstr(city_name_edited, " village", "", .)
+replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
+replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+replace city_name_edited = subinstr(city_name_edited, " city", "", .)
+
+drop city_name
+rename city_name_edited city_name
 
 	*hardcode fixes so names merge
 	replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
@@ -300,8 +302,7 @@ tab year // total of 486 cities possible
 tab year if homeless_count==.
 * 2016: 57/485, 2017:58/485, 2018:55/486, 2019:55/486
 
-gen place = substr(stateplacefp, -5, 5)
-drop city_name stateplacefp
+drop city_name state_name
 
 order year state place
 gsort -year state place
