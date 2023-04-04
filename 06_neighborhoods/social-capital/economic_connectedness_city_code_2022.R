@@ -220,8 +220,13 @@ download.file(url, destfile)
       ec_city_data <- ec_city_data %>% 
         rename(ec_zip = new_ec_zip)
       ec_city_data <- ec_city_data %>% 
-        rename(ec_zip_quality = data_quality)
+        rename(ec_zip_quality = data_quality) %>%
       
+      #G. Morrison addition March 2023 to clean table and prepare for join
+      rename(economic_connectedness = ec_zip,
+             economic_connectedness_quality = ec_zip_quality) %>%
+        select(-place_name)
+    
       # export as .csv
       write_csv(ec_city_data, "06_neighborhoods/social-capital/data/economic_connectedness_city_2022.csv")
       
