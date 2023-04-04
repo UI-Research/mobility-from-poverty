@@ -30,23 +30,24 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 ** Import city file **
 import delimited ${cityfile}, clear
 
-tostring stateplacefp, replace
-replace stateplacefp = "0" + stateplacefp if strlen(stateplacefp)<7
-assert strlen(stateplacefp)==7
+tostring place, replace
+replace place = "0" + place if strlen(place)==4
+replace place = "00" + place if strlen(place)==3
+assert strlen(place)==5
 
-tostring statefips, replace
-replace statefips = "0" + statefips if strlen(statefips)==1
-assert strlen(statefips)==2
+tostring state, replace
+replace state = "0" + state if strlen(state)==1
+assert strlen(state)==2
 
-rename city city_name
-rename statefips state
-drop geographicarea cityname population 
+rename place_name city_name
+drop population 
 
 gen city_name_edited = city_name
 replace city_name_edited = subinstr(city_name_edited, " town", "", .)
 replace city_name_edited = subinstr(city_name_edited, " village", "", .)
 replace city_name_edited = subinstr(city_name_edited, " municipality", "", .)
 replace city_name_edited = subinstr(city_name_edited, " urban county", "", .)
+replace city_name_edited = subinstr(city_name_edited, " city", "", .)
 
 drop city_name
 rename city_name_edited city_name
@@ -201,7 +202,7 @@ drop year
 rename cohort year
 replace year = year - 1 // changed so that the year reflects the fall of the academic year  - did this previously with year variable, not cohort
 
-keep year fips city_name state stateplacefp leaid learning_rate_* tot*
+keep year fips city_name state place leaid learning_rate_* tot*
 
 
 *collapse to city level and weight by each subgroups total subgroup count
@@ -226,15 +227,15 @@ merge 1:1 city_name state year using "intermediate/cityfile.dta"
 tab year _merge
 drop if _merge==1 // drop anything that doesn't match city crosswalk
 
-gsort -year state stateplacefp
-order year state stateplacefp
+gsort -year state place
+order year state place
 
 *2016 because that is the earliest year we have for the city crosswalk
 drop if year<2016 | year>$year - 1
-drop statename state_abbr _merge city_name
+drop state_name  _merge city_name
 
 ** make the data long **
-reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quality, i(year stateplacefp) j(subgroup) string
+reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quality, i(year state place ) j(subgroup) string
 
 ** label subgroups **
 gen subgroup_type=""
@@ -267,9 +268,6 @@ tab year if subgroup=="Hispanic" & learning_rate==.
 tab year if subgroup=="Male" & learning_rate==.
 tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
 tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
-
-gen place = substr(stateplacefp, -5, 5)
-drop stateplacefp
 
 order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
 gsort -year state place subgroup_type subgroup
