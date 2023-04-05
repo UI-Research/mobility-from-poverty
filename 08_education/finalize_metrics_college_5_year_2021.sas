@@ -16,7 +16,7 @@ Kevin Werner
 
 /***** create confidence interval and correctly format variables *******/
 
-data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_ subgroup subgroup_type)  ;
+data college_missing_HI (keep = year county state share_hs_degree share_hs_degree_ub share_hs_degree_lb _FREQ_ subgroup)  ;
  set edu.metrics_college_subgroup_2021;
  year = 2021;
  /* suppress values under 30 */
