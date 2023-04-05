@@ -172,6 +172,8 @@ haz_idx14 <- enviro14 %>%
 
 #check which are in 2014 but not 2018 
 test1 <- anti_join(by = "tract", x = haz_idx14, y = haz_idx18)
+test2 <- anti_join(by = "tract", x= haz_idx18, y = haz_idx14)
+
 
 ###COMPARE TO 2014 AFFH###
 
@@ -270,11 +272,11 @@ sum(is.na(hazidx18_merge$haz_idx))
 nomerge_hazidx18_2 <- anti_join(haz_idx18, crosswalk_cnty, by = "tract")
 #one is only in haz_idx18 (36065940200)
 
+           county = str_sub(tract, start = 3, end = 5),
 #split tract into state and county 
 enviro_haz18 <- hazidx18_merge %>%
   mutate(GEOID = str_sub(tract, start = 1, end = 11),
           state = str_sub(tract, start = 1, end = 2),
-           county = str_sub(tract, start = 3, end = 5),
            tract = str_sub(tract, start = 6, end = 11))
 
 ##PULL RACE VARIABLES FROM ACS for 2018##
