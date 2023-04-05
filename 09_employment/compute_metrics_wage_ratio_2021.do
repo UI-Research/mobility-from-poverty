@@ -81,15 +81,19 @@ drop county
 rename new_county county
 
 /* check ratio */
-sum average_to_living_wage_ratio, det
-hist average_to_living_wage_ratio
+*sum average_to_living_wage_ratio, det
+*hist average_to_living_wage_ratio
+
+gen new_ratio = string(average_to_living_wage_ratio)
+drop average_to_living_wage_ratio
+rename new_ratio average_to_living_wage_ratio
 
 /* Generally looks good. County 3 in State 19 (Iowa) is missing average wage 
 data, so it shows up as a 0 in the ratio */
 
 /* replace 0 ratio with missing and replace data quality as missing */
-replace average_to_living_wage_ratio = . if average_to_living_wage_ratio == 0
-replace wage_ratio_quality = . if average_to_living_wage_ratio == .
+replace average_to_living_wage_ratio = "NA" if average_to_living_wage_ratio == "."
+replace wage_ratio_quality = 3 if average_to_living_wage_ratio == "NA"
 
 save "wage_ratio_final_2021.dta",replace
 
