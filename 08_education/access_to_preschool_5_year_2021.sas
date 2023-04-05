@@ -128,8 +128,8 @@ data main;
 
  Proc format;
   Value subgroup_f
- 4 = "White, Non Hispanic"
- 1 = "Black, Non Hispanic"
+ 4 = "White, Non-Hispanic"
+ 1 = "Black, Non-Hispanic"
  3 = "Other Races and Ethnicities"
  2 = "Hispanic"
  . = "All"

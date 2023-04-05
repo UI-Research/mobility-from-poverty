@@ -285,7 +285,7 @@ run;
 %flag(dataset = metrics_college_2021, metric = share_hs_degree); 
 %flag(dataset = metrics_famstruc_2021, metric = famstruc);
 %flag(dataset = metrics_employment_2021, metric = share_employed);
-%flag(dataset = metrics_housing_2021, metric = housing);
+%flag(dataset = metrics_housing_2021, metric = share_affordable);
 %flag(dataset = metrics_preschool_2021, metric = share_in_preschool);
 %flag(dataset = metrics_income_2021, metric = pctl);
 %flag(dataset = metrics_access_2021, metric = share_access);
@@ -304,7 +304,7 @@ run;
 
 	Then, I output as a final CSV */
 
-%macro output(dataset= , folder =);
+%macro output(dataset= , folder =, metric = );
 proc import datafile="&metrics_folder.&folder.&dataset..csv" out=&dataset._orig dbms=csv replace;
   getnames=yes;
   guessingrows=3000;
@@ -317,6 +317,7 @@ proc sort data=&dataset._flag;  by year state county; run;
 data &dataset._final (drop = _FREQ_ quality);
  merge &dataset._orig &dataset._flag;
  by year state county;
+ if state = 15 and county = 5 then &metric._quality = 3;
  /* make sure that state and county have leading 0s */
  new_county = put(county, z3.); 
  new_statefip = put(state, z2.);
@@ -335,14 +336,14 @@ proc export data= &dataset._final
  replace;
 run;
 %mend output;
-%output(dataset = metrics_college_2021, folder = 08_education\); 
-%output(dataset = metrics_preschool_2021, folder = 08_education\); 
-%output(dataset = metrics_famstruc_2021, folder = 03_family\); 
-%output(dataset = metrics_income_2021, folder = 01_financial-well-being\); 
-%output(dataset = metrics_housing_2021, folder = 02_housing\); 
+%output(dataset = metrics_college_2021, folder = 08_education\, metric = share_hs_degree); 
+%output(dataset = metrics_preschool_2021, folder = 08_education\, metric = share_in_preschool); 
+%output(dataset = metrics_famstruc_2021, folder = 03_family\, metric = famstruc); 
+%output(dataset = metrics_income_2021, folder = 01_financial-well-being\, metric = pctl); 
+%output(dataset = metrics_housing_2021, folder = 02_housing\, metric = share_affordable); 
 *%output(dataset = metrics_rent_2021, folder = 02_housing\); 
-%output(dataset = metrics_employment_2021, folder = 09_employment\); 
-%output(dataset = metrics_access_2021, folder = 06_neighborhoods\); 
+%output(dataset = metrics_employment_2021, folder = 09_employment\, metric = share_employed); 
+*%output(dataset = metrics_access_2021, folder = 06_neighborhoods\); 
 
 
 /* I want to test if the number of people ages 19 and 20
