@@ -24,5 +24,5 @@ run;
 %mend compute_metrics_college;
 
 %compute_metrics_college(lib2021.microdata,edu.metrics_college_2021);
-proc means data=edu.metrics_college;
+proc means data=edu.metrics_college_2021;
 run;

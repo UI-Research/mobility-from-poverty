@@ -40,7 +40,7 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_income.csv`
 * **Data Source(s):** ACS 1-yr for original and ACS 5-yr for subgroup.
 * **Notes:** I used the `quantreg` procedure to get the percentiles. The three programs beginning `1_`, `2_`, and `3_` must be run before computing these metrics. These programs `infile` some .csv files which can be found on Box under "ACS-based metrics." For the subgroup analysis, I have changed from the `quantreg` procedure to `proc means`. I get the percentiles for each state-county-race combination with proc means. To run the subgroup programs, you must run the programs `1_`, `2_`, and then `3_prepate_microdata_5_year`. 
@@ -120,7 +120,7 @@ Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, 
 ### Overview
 
 * **Analyst & Programmer:** Paul Johnson and Kevin Werner
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_housing.csv`
 * **Data Source(s):** ACS 1-year
 * **Notes:**
@@ -168,7 +168,7 @@ Counts of students experiencing homelessness are downloaded from the EDFacts web
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_famstruc.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup. 
 * **Notes:** 
@@ -811,7 +811,7 @@ A codebook with definitions for the original arrest data used can be found here:
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_preschool.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:** This metric uses Paul Johnson's method of finding county FIPS code from PUMAs. PUMAs can sometimes span counties, which is adjusted for with weights.
@@ -897,7 +897,7 @@ Outline the process for creating the data: Schools were flagged as having 40% or
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_college.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:**
@@ -928,7 +928,7 @@ The process for creating the subgroup metric is the same as the process for crea
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_employment.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis.
 * **Notes:**
@@ -957,7 +957,7 @@ The process for the subgroup analysis is the same. You must run the file `3_prep
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Aaron Williams
-* **Year(s):** 2018 and 2014
+* **Year(s):** 2021, 2018, and 2014
 * **Final data name(s):** `metrics_wage_ratio.csv`
 * **Data Source(s):** QCEW and MIT Living Wage Calculator 
 * **Notes:**
@@ -977,9 +977,9 @@ This metric shows the living wage in each county.
     * The row where the ownership variable equals “Total Covered” is used for each county.
 *	The living wage data is scraped from the MIT website using the scrape-living-wages R program. 
 
-There are three .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
+There are 5 .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, 2021 QCEW data and the MIT living wage data (two years). Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
 
-For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
+For 2021, the MIT data has to be deflated from 2022 to 2021 using the consumer price index. I compute the living wage ratio by dividing the 2021 QCEW data by the MIT data. For 2018, I first deflate the 2019 MIT data to 2018 using the consumer price index. I compute the living wage ratio by dividing the 2018 QCEW data by the MIT data. For 2014, MIT datato 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
 
 Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
 

@@ -236,9 +236,14 @@ proc import datafile="&metrics_folder.&folder.&dataset..csv" out=&dataset._o dbm
   datarow=2;
 run;
 
+data &dataset._f ;
+ set &dataset._f ;
+ length county 8 ;
+run;
+
 data &dataset._a (drop = _FREQ_ quality);
- merge &dataset._o &dataset._f;
- by state county;
+ merge &dataset._o &dataset._f ;
+ by state county subgroup;
  if state = 15 and county = 5 then &metric._quality = 3;
 /* make sure that state and county have leading 0s */
  new_county = put(county, z3.); 
@@ -257,6 +262,7 @@ proc export data= &dataset._a
  outfile = "&metrics_folder.&folder.&dataset..csv"
  replace;
 run;
+
 
 %mend output;
 %output(dataset = metrics_college_subgroup_2021, folder = 08_education\, metric = share_hs_degree); 

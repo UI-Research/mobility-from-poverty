@@ -97,7 +97,7 @@ PICTURE Num    .="NA"
 			
 			 run;
 
-data income (drop = single_race);
+data income;
  retain year state county subgroup_type subgroup pctl_20 pctl_50 pctl_80;
  set income;
  if subgroup in (1,2,3,4) then subgroup_type = "race-ethnicity";
