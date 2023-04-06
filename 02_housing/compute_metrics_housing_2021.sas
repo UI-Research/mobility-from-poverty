@@ -154,11 +154,7 @@ run;
 %compute_metrics_housing(lib2021.microdata,lib2021.vacant,housing.metrics_housing_2021,year=2021);
 
 
-proc means data=housing.metrics_housing_2021;
-var share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
-title '2021';
-run;
-
 proc print data = housing.metrics_housing_2021;
- where share_affordable_80AMI = . or share_affordable_50AMI = . or share_affordable_30AMI = .;
+ where county = 510;
+ var statefip county share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI;
 run;

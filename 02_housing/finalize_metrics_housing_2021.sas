@@ -24,7 +24,7 @@ libname housing "V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\02
 
 PROC FORMAT ;
 PICTURE Num    .="NA"
-				OTHER = "000000000.00000";
+				OTHER = "000000009.00000";
 			
 			 run;
 
@@ -90,4 +90,16 @@ run;*/
 proc export data = housing_2021
   outfile = "&filepath"
   replace;
+run;
+
+proc print data=housing_2021;
+	where state = "24" and county = "510";
+run;
+
+proc print data=housing_2021;
+	where state = "29" and county = "510";
+run;
+
+proc print data=housing_2021;
+	where state = "51" and county >= "510";
 run;
