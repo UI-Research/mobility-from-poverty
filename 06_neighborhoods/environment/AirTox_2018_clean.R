@@ -252,12 +252,12 @@ haz_idx18 <- haz_idx18 %>%
   
 hazidx18_merge <- tidylog::left_join(x = crosswalk_cnty, y = haz_idx18, 
                         by= "tract")
-#532 rows in only x; 1 in only y 
+#531 rows in only x; 1 in only
 
 #check which did not join
 nomerge_hazidx18_1 <- anti_join(crosswalk_cnty, haz_idx18, by = "tract") 
 sum(is.na(hazidx18_merge$haz_idx))
-#532 are only in the crosswalk 
+#531 are only in the crosswalk 
 
 
 #split tract into state and county 
@@ -426,7 +426,7 @@ haz_by_race18 <- race_pov_enviro18 %>%
 
 #expand dataset for every county/race/ethnicity 
 expand_race18 <- haz_by_race18 %>%
-  expand(geoid,race_ind)
+  expand(geoid, race_ind)
 
 #join to expanded, add geo variables, and add subgroup variables 
 haz_by_race_exp18 <- left_join(expand_race18, 
@@ -831,7 +831,7 @@ tract_place_haz18 <- tidylog::left_join(x = race_pov_enviro18, y = crosswalk_cit
   mutate(place = as.character(place))
 
 
-#18 records that have pop > 0 do not join. It is possible these are outside of places
+#18 records that have pop > 0 do not join. It is possible these are outside of places but not clear exactly why
 unjoined <- tidylog::anti_join(x = race_pov_enviro18, y = crosswalk_city18, by = "GEOID") %>%
   filter(total_pop > 0)
 
@@ -899,8 +899,8 @@ pov_env_exp_place18 <- left_join(expand_pov_place18,
   filter(!is.na(subgroup))
 
 ###Average place level hazard by race/ethnicity###
-#weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place      #[CHECK]
-#weight by number of people of color for tracts that are majority non-whire * percentage of tract in place              #[CHECK]
+#weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place   
+#weight by number of people of color for tracts that are majority non-whire * percentage of tract in place          
 #calculate missingness 
   
 haz_by_race_place18 <- tract_place_haz18 %>%
@@ -920,7 +920,7 @@ haz_by_race_place18 <- tract_place_haz18 %>%
   
 #expand dataset for every place/race/ethnicity 
 expand_race_place18 <- haz_by_race_place18 %>%
-  expand(geoid,race_ind)
+  expand(geoid, race_ind)
   
 #join to expanded, add geo variables, and add subgroup variables 
 haz_by_race_exp_place18 <- left_join(expand_race_place18,
@@ -984,16 +984,13 @@ write_csv(final_place_all18, "06_neighborhoods/environment/data/output/environme
 state_places_pop14 <- state_places_pop18 %>%
   mutate(year = 2014)
 
-
-crosswalk_city18 
-
-
 #2014 merge tract hazard indicators including poverty and race to place
 tract_place_haz14 <- tidylog::left_join(x = crosswalk_city18, y = race_pov_enviro14, 
                                         by= "GEOID")
-#25 observations with population 
+
+#6 observations with population and that have index that we lose
 unjoined <- anti_join(race_pov_enviro14, crosswalk_city18, by = "GEOID") %>%
-  filter(total_pop > 0)
+  filter(total_pop > 0 & !is.na(haz_idx))
 
  
 #check missing places - #118 *6 = 708
@@ -1062,8 +1059,8 @@ pov_env_exp_place14 <- left_join(expand_pov_place14,
   mutate(subgroup_type = "poverty")
  
 ###Average place level hazard by race/ethnicity###
-#weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place      #[CHECK]
-#weight by number of people of color for tracts that are majority non-white * percentage of tract in place              #[CHECK]
+#weight the index by total population for tracts that have mixed race and ethnicity * percentage of tract in place      
+#weight by number of people of color for tracts that are majority non-white * percentage of tract in place           
 #calculate missingness 
  
 haz_by_race_place14 <- tract_place_haz14 %>%
@@ -1072,7 +1069,7 @@ haz_by_race_place14 <- tract_place_haz14 %>%
                                   race_ind == "Majority White, Non-Hispanic" ~wnh),
         na_pop = if_else(is.na(haz_idx) | is.na(race_ind), weighting_ind, 0)) %>%
   group_by(state, place, race_ind) %>%
-  summarise(environmental = weighted.mean(haz_idx, weighting_ind*afact, na.rm = TRUE), ##[CHECK - weight by afact??]##
+  summarise(environmental = weighted.mean(haz_idx, weighting_ind*afact, na.rm = TRUE), 
             na_pop = sum(na_pop*afact, na.rm = TRUE), 
             subgroup_pop = sum(weighting_ind*afact, na.rm = TRUE)
   ) %>%
@@ -1140,7 +1137,8 @@ write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/e
 #filter and save multi-year place file (no subgroups)
 environment_place_all <- environment_place_all_sub %>%
   filter(subgroup == "All")
-#972 observations - correct 
+
+#969 observations
 write_csv(environment_place_all_sub, "06_neighborhoods/environment/data/output/environment_place_all.csv")
  
   
