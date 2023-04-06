@@ -31,7 +31,8 @@
 #       (7a) Summarize households_2021 and vacant both by place
 #       (7b) Merge them by place
 #       (7c) Calculate share_affordable_30/50/80AMI
-# (8) Clean and export
+# (8) Create Data Quality marker
+# (9) Clean and export
 
 ###################################################################
 
@@ -202,30 +203,30 @@ FMR_2021 <- left_join(FMR_Income_Levels_2021, county_place, by=c("state", "count
 place_income_limits_2021 <- FMR_2021 %>%
   dplyr::group_by(state, place) %>%
   dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop2017),
-            l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
-            l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
-            l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
-            l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
-            l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
-            l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
-            l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
-            ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
-            ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
-            ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
-            ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
-            ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
-            ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
-            ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
-            ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
-            l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
-            l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
-            l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
-            l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
-            l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
-            l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
-            l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
-            l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
-            n = n()
+                    l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
+                    l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
+                    l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
+                    l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
+                    l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
+                    l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
+                    l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
+                    ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
+                    ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
+                    ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
+                    ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
+                    ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
+                    ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
+                    ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
+                    ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
+                    l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
+                    l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
+                    l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
+                    l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
+                    l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
+                    l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
+                    l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
+                    l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
+                    n = n()
   )
 
 ###################################################################
@@ -243,12 +244,14 @@ place_income_limits_2021 <- FMR_2021 %>%
 # Filter microdata to where PERNUM == 1, so only one HH per observation
 microdata_housing <- acs2021clean %>%
   filter(PERNUM == 1)
+# 953,247 obs
 
 # create new dataset called "households_year" to merge microdata & place income limits (FMR_2021) by state and place
 # first rename state so it will merge
 FMR_2021 <- FMR_2021 %>% 
   dplyr::rename(statefip = state) %>%
   mutate(place = sprintf("%0.5d", as.numeric(place)))
+
 households_2021 <- left_join(microdata_housing, FMR_2021, by=c("statefip","place"))
 # 2,152,591 obs
 
@@ -261,6 +264,7 @@ households_2021 <- left_join(microdata_housing, FMR_2021, by=c("statefip","place
 
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
+
 households_2021 <- households_2021 %>%
   mutate(Affordable80AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
@@ -271,13 +275,15 @@ households_2021 <- households_2021 %>%
   )
 
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
+# NOTE that we will need to create a Below50AMI_HH (the count of HH) for the Data Quality flag in step 8
 households_2021 <- households_2021 %>%
   mutate(Affordable50AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
                                      OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
                                      OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
          Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
-                                (HHINCOME>l50_4) ~ 0)
+                                (HHINCOME>l50_4) ~ 0),
+         Below50AMI_HH = HHWT*Below50AMI
   )
 
 # create new variable 'Affordable30AMI' and 'Below80AMI' for HH below 30% of area median income (ELI_4 and OWNERSHP)
@@ -304,11 +310,15 @@ vacant_2021 <- left_join(vacant, FMR_2021, by=c("statefip","place"))
 # 4,896,161 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
+# NOTE that we will need to create a Below50AMI_vacantHH (the count of vacant HH) for the Data Quality flag in step 8
 vacant_2021 <- vacant_2021 %>%
   mutate(Affordable80AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l80_4*0.30)) ~ 1,
                                      RENTGRS ==0 & ((total_monthly_cost*12) <= (l80_4*0.30)) ~ 0),
          Affordable50AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l50_4*0.30)) ~ 1,
                                      RENTGRS ==0 & ((total_monthly_cost*12) <= (l50_4*0.30)) ~ 0),
+         Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
+                                (HHINCOME>l50_4) ~ 0),
+         Below50AMI_vacantHH = HHWT*Below50AMI,
          Affordable30AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (ELI_4*0.30)) ~ 1,
                                      RENTGRS ==0 & ((total_monthly_cost*12) <= (ELI_4*0.30)) ~ 0)
   )
@@ -319,7 +329,6 @@ vacant_2021 <- vacant_2021 %>%
 # (7) Create the housing metric
 
 # (7a) Summarize households_2021 and vacant both by place
-
 households_summed_2021 <- households_2021 %>% 
   dplyr::group_by(statefip, place) %>%
   dplyr::summarize(Below80AMI = sum(Below80AMI*HHWT, na.rm = TRUE),
@@ -327,7 +336,8 @@ households_summed_2021 <- households_2021 %>%
                   Below50AMI = sum(Below50AMI*HHWT, na.rm = TRUE),
                   Affordable50AMI = sum(Affordable50AMI*HHWT, na.rm = TRUE),
                   Below30AMI = sum(Below30AMI*HHWT, na.rm = TRUE),
-                  Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE))
+                  Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
+                  HHcount = sum(Below50AMI_HH, na.rm = TRUE))
 
 households_summed_2021 <- households_summed_2021 %>% 
   rename("state" = "statefip")
@@ -340,7 +350,8 @@ vacant_summed_2021 <- vacant_2021 %>%
   dplyr::group_by(statefip, place) %>%
   dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT, na.rm = TRUE),
                    Affordable50AMI_vacant = sum(Affordable50AMI*HHWT, na.rm = TRUE),
-                   Affordable30AMI_vacant = sum(Affordable30AMI*HHWT, na.rm = TRUE))
+                   Affordable30AMI_vacant = sum(Affordable30AMI*HHWT, na.rm = TRUE),
+                   vacantHHcount = sum(Below50AMI_vacantHH, na.rm = TRUE))
 
 vacant_summed_2021 <- vacant_summed_2021 %>% 
   rename("state" = "statefip")
@@ -356,9 +367,36 @@ housing_2021 <- housing_2021 %>%
          share_affordable_30AMI = (Affordable30AMI+Affordable30AMI_vacant)/Below30AMI
   )
 
+
 ###################################################################
 
-# (8) Clean and export
+# (8) Create the Data Quality variable
+
+# For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
+# Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
+housing_2021 <- housing_2021 %>% 
+  mutate(affordableHH_sum = HHcount + vacantHHcount,
+           size_flag = case_when((affordableHH_sum < 30) ~ 1,
+                               (affordableHH_sum >= 30) ~ 0))
+
+# bring in the PUMA flag file if you have not run "0_microdata.R" before this
+# place_puma <- read_csv("data/temp/place_puma.csv")
+place_puma <- place_puma %>% 
+  rename("state" = "statefip")
+
+# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
+housing_2021 <- left_join(housing_2021, place_puma, by=c("state","place"))
+
+# Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
+housing_2021 <- housing_2021 %>% 
+  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
+                                             size_flag==0 & puma_flag==2 ~ 2,
+                                             size_flag==0 & puma_flag==3 ~ 3,
+                                             size_flag==1 ~ 3))
+
+###################################################################
+
+# (9) Clean and export
 
 # create the year variable
 housing_2021 <- housing_2021 %>%
@@ -366,7 +404,7 @@ housing_2021 <- housing_2021 %>%
 
 # keep what we need
 housing_2021 <- housing_2021 %>% 
-  select(year, state, place, share_affordable_80AMI, share_affordable_50AMI, share_affordable_30AMI)
+  select(year, state, place, share_affordable_80AMI, share_affordable_50AMI, share_affordable_30AMI, housing_quality)
 
 # export our file as a .csv
 write_csv(housing_2021, "02_housing/data/housing_city_2021.csv")  
