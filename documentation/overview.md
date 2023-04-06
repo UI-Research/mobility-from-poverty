@@ -676,15 +676,17 @@ There are several limitations to this choice. There is no 'other' race category,
 
 * **Analyst & Programmer:** Rebecca Marx
 * **Year(s):** 2014 & 2018 (2010-2014 ACS & 2014-2018 ACS)
-* **Final data name(s):** `county_enviro_all.csv`, `county_enviro_subgroups.csv`
-* **Data Source(s):** Environmental Protection Agency’s National Air Toxics Assessment data, 2014 & AirToxScreen data, 2018 (based on 2014 & 2017 National Emissions Inventory data); 2014 & 2018 5-year ACS data; Missouri Census Data Center Geocorr 2022: Geographic Correspondence Engine 2022
+* **Final data name(s):** `environment_county_all.csv`, `environment_county_sub_all.csv`, `environment_place_all.csv`, `environment_place_sub_all.csv` 
+* **Data Source(s):** Environmental Protection Agency’s National Air Toxics Assessment data, 2014 & AirToxScreen data, 2018 (based on 2014 & 2017 National Emissions Inventory data); 2014 & 2018 5-year ACS data; Missouri Census Data Center Geocorr 2018: Geographic Correspondence Engine 2018
 * **Notes:**
 * **Data Quality Index:** Census tracts with missing poverty information and a population > 0 for the `Poverty` subgroup type,  with missing hazard or poverty information of more than 5 percent were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. Remaining census tracts were given a data quality flag of '1'. 
 * **Limitations:** These data may not be updated with enough frequency for some communities. Annual data for a different derrivation of an air quality index are available via the EPA for a subset (about 1/3) of counties and core-based statistical areas (see  https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual). 
-* **Missingness:** All 3,142 counties in the United States are represented and all but one census place contains census tracts with data. Some additional details:
-  1. There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 are dropped in the data sets.
-  2. There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
-  3. There are 147 additional tracts without populations that count for poverty estimates. 10 of the 147 tracts with zero population for the people that are counted for the poverty metric do not have a `haz_idx`. Tracts with a population = 0 for the poverty metric are dropped for the poverty subgroup data set.
+* **Missingness:** All 3,142 counties in the United States are represented and all but three census places contain census tracts with data. Some additional details:
+  1. In the county file for 2018 there are 645 tracts without populations.  In 2014 there are 618 tracts without populations. All tracts with a population = 0 are dropped in the data sets.
+  2. In the ocunty file for 2018 there are 13 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 22 tracts with populations > 0 with missing `haz_idx`.
+  3. In place file for 2018 there are 650 tracts without populations. In 2014 there are 234 tracts in places without populations. All tracts with a population = 0 are dropped in the data sets.
+  4. In the place file for 2018 there are 13 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 4 tracts with populations > 0 with missing `haz_idx`.  
+ 
 
 ### Process
 
@@ -707,8 +709,8 @@ There are several limitations to this choice. There is no 'other' race category,
 
 *create place files 
 *(8) prep city crosswalk data from geocorr
-*(9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place
-*(10) create place-level environmental indicators using poverty and race-idenity subgroups for 2014 and percent of tract in place
+*(9) create place-level environmental indicators using poverty and race-identity subgroups for 2018 and percent of tract in place
+*(10) create place-level environmental indicators using poverty and race-identity subgroups for 2014 and percent of tract in place
 *(11) bind 2018 and 2014 place files for final files 
 
 ---
