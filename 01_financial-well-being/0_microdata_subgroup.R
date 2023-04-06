@@ -130,7 +130,7 @@ write_csv(place_puma, "data/temp/place_puma.csv")
 # Prepare MICRODATA (by race subgroup)
 
 # open IPUMS extract (change "usa_00017.xml" to whatever your extract is called)
-microdata <- 'C:/Users/tchelidze/Downloads/usa_00017.xml'
+microdata <- 'usa_00017.xml'
 ddi <- read_ipums_ddi(microdata)
 acs5_2021 <- read_ipums_micro(ddi)
 # 15,537,785 observations
