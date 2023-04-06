@@ -674,31 +674,42 @@ There are several limitations to this choice. There is no 'other' race category,
 
 ### Overview
 
-* **Analyst & Programmer:** Peace Gwam
-* **Year(s):** 2014 (2010-2014 ACS)
+* **Analyst & Programmer:** Rebecca Marx
+* **Year(s):** 2014 & 2018 (2010-2014 ACS & 2014-2018 ACS)
 * **Final data name(s):** `county_enviro_all.csv`, `county_enviro_subgroups.csv`
-* **Data Source(s):** Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
+* **Data Source(s):** Environmental Protection Agency’s National Air Toxics Assessment data, 2014 & AirToxScreen data, 2018 (based on 2014 & 2017 National Emissions Inventory data); 2014 & 2018 5-year ACS data; Missouri Census Data Center Geocorr 2022: Geographic Correspondence Engine 2022
 * **Notes:**
-* **Data Quality Index:** `1` for main environmental index. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.029% of the overall population for the county (see variable `na_perc` for the `All` subgroup type in `county_level_enviro.csv`). There are 147 census tracts with missing poverty information and a population > 0. For the `Poverty` subgroup type, counties with missing hazard or poverty information of more than 5 percent of the county were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. There was one county  for the `Poverty` subgroup type with a quality flag of `2`. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. There was one county with the `Race` subgroup type that had a quality flag of `2`. 
-* **Limitations:** AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
-* **Missingness:** All 3,142 counties in the United States are represented. There are, however, some caveats: 
+* **Data Quality Index:** Census tracts with missing poverty information and a population > 0 for the `Poverty` subgroup type,  with missing hazard or poverty information of more than 5 percent were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. Remaining census tracts were given a data quality flag of '1'. 
+* **Limitations:** These data may not be updated with enough frequency for some communities. Annual data for a different derrivation of an air quality index are available via the EPA for a subset (about 1/3) of counties and core-based statistical areas (see  https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual). 
+* **Missingness:** All 3,142 counties in the United States are represented and all but one census place contains census tracts with data. Some additional details:
   1. There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 are dropped in the data sets.
   2. There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
   3. There are 147 additional tracts without populations that count for poverty estimates. 10 of the 147 tracts with zero population for the people that are counted for the poverty metric do not have a `haz_idx`. Tracts with a population = 0 for the poverty metric are dropped for the poverty subgroup data set.
 
 ### Process
 
-1. Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.  
-2. Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise.   
-3. Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis  
-4. Merged ACS data with cleaned AFFH data  
-5. Checked Missingness  
-6. Created county-level metrics  
-  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level  
-  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"  
-  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".    
-7. Expanded subgroup data to represent unique values for each subgroup and county  
-8. Appended data together, cleaned, and wrote to `.csv`  
+*Original data:
+  *https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
+  *https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
+*Description: 
+
+*create environmental hazard indicators
+*(1) create tract level indicators of environmental hazards for 2018 
+*(2) create tract level indicators of environmental hazards for 2014
+*compare to affh data previoulsy used for the envrionmental indicator
+
+*create county files 
+*(3) population weight tract-level environmental indicators using poverty ("high_poverty" or "low_poverty") and race-idenity ("Majority Non-White", "Majority White, Non-Hispanic", "No Majoirty Race/Ethnicity") subgroups for 2018
+*(4) create county level environmental index by race-identity and poverty-level for 2018
+*(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
+*(6) create county level environmental index by race-identity and poverty-level for 2014
+*(7) bind 2018 and 2014 county files for final files 
+
+*create place files 
+*(8) prep city crosswalk data from geocorr
+*(9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place
+*(10) create place-level environmental indicators using poverty and race-idenity subgroups for 2014 and percent of tract in place
+*(11) bind 2018 and 2014 place files for final files 
 
 ---
 
