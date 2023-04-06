@@ -40,6 +40,10 @@ microdata_emp_age <- acs2021clean %>%
   filter(AGE >= 25 & AGE <= 54) 
 # 857,108 observations
 
+# Excluding all GQ 3 and over
+microdata_emp_age <- microdata_emp_age %>% 
+  filter(GQ<3) 
+# now 829,464 obs
 
 # EMPSTAT values:
 #  0		N/A
@@ -48,27 +52,22 @@ microdata_emp_age <- acs2021clean %>%
 #  3		Not in labor force
 
 
-# re-import as survey to prep for CI
-svy <- as_survey_design(microdata_emp_age, weights = PERWT)
+# collapse # of 25-54 year olds by place
+# also create a collapse var for people that age who are employed (EMPSTAT == 1)
+# these vars needed to calculate metric: share employed
+metrics_employment <- microdata_emp_age %>% 
+  dplyr::group_by(statefip, place) %>% 
+  dplyr::summarize(
+    num_in_emp_age = sum(PERWT),
+    num_employed = sum((EMPSTAT == 1) * PERWT),
+    n = n()
+  )
+# 486 obs - good to go
 
-# use srvyr to calculate our desired metric ratio & 95% confidence interval(s)
-# collapse the number of emp age people for data quality var later
-metrics_employment <- svy %>%
-  mutate(employed = (EMPSTAT == 1)) %>%
-  group_by(statefip, place) %>%
-  summarise(share_employed = survey_mean(employed, vartype = "ci"),
-            num_in_emp_age = sum(PERWT))
+# Compute the ratio (share employed)
+metrics_employment <- metrics_employment %>%
+  mutate(share_employed = num_employed/num_in_emp_age)
 
-
-# Rename Confidence Interval (CI) vars
-metrics_college <- metrics_college %>%
-  rename(share_hs_degree_ub = share_hs_degree_upp,
-         share_hs_degree_lb = share_hs_degree_low)
-
-# adjust ub & lb values 
-metrics_college <- metrics_college %>% 
-  mutate(share_hs_degree_ub = pmin(1, pmax(0, share_hs_degree_ub)),
-         share_hs_degree_lb = pmax(0, pmin(1, share_hs_degree_lb)))
 
 ###################################################################
 
@@ -108,8 +107,7 @@ metrics_employment <- metrics_employment %>%
 
 # order & sort the variables how we want
 metrics_employment <- metrics_employment %>%
-  select(year, state, place, share_employed, share_employed_ub, 
-         share_employed_lb, share_employed_quality)
+  select(year, state, place, share_employed, share_employed_quality)
 
 # Save as "metrics_employment.csv"
 write_csv(metrics_employment, "09_employment/metrics_employment_city_2021.csv")  
