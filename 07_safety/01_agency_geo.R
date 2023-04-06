@@ -1,9 +1,9 @@
 # Agency to geography crosswalk, county demographics
 # Data from 2020 NIBRS NACJD batch extract
-# Description: Create crosswalk from agencies to county geographies
+# Description: Create crosswalk from agencies to county geographies 
 
 # Code by Ashlin Oglesby-Neal
-# Last updated 2023-03-30
+# Last updated 2023-04-06
 
 library(tidyverse)
 library(skimr)
@@ -44,8 +44,8 @@ pop_st <- pop %>%
 # use agency batch header info from NACJD 2020
 # rename and reduce to only necessary vars
 # then merge to get full state names and FIPS state numbers
-ba <- bat %>%
-  rename(ori = BH003,
+ba <- bat %>% 
+  rename(ori = BH003, # ori is unique agency identifier used across multiple files
          agency_type = BH012,
          state_num_nibrs = BH002,
          state_abb = BH008,
@@ -78,7 +78,7 @@ ba <- bat %>%
 # check the distribution of agency types
 ba %>% count(agency_type) %>%
   mutate(pct = n/nrow(ba))
-  #1 city, 2 county, 3 college, 5 special, 7 tribal
+#1 city, 2 county, 3 college, 5 special, 7 tribal
 
 # remove state agencies since cover multiple counties
 # 4 is state police and 6 is other state agency
@@ -87,16 +87,17 @@ ba <- ba %>%
 
 # examine NIBRS agency info
 skim(ba)
-  # a lot of counties have value of zero, which is not valid FIPS code
+table(ba$fips_county_1)
+# a lot of counties have value of zero, which is not valid FIPS code
 
 # subset data to examine further
 ba0 <- ba %>%
   filter(fips_county_1==0)
-  # includes DC, Baltimore
+# includes DC, Baltimore
 
 # see if remaining ORIs in 2012 LEAIC crosswalks
 sum(ba0$ori %in% lecw$ORI9)
-  # 232 agencies are in it
+# 232 agencies are in it
 
 # *limit to useful info from LEAIC crosswalk
 # remove agencies with invalid ORI
@@ -105,7 +106,7 @@ lecw_nrw <- lecw %>%
   rename(ori = ORI9,
          county = FIPS_COUNTY) %>%
   filter(ori != "-1") 
-  
+
 
 # merge to ORIs missing county
 ba0_cw <- ba0 %>%
@@ -115,9 +116,9 @@ ba0_cw <- ba0 %>%
 # check remaining agencies that do not merge\
 ba00 <- ba0_cw %>%
   filter(is.na(county))
-  # 25 agencies still have no county, some in US territories
-  # will be excluded from county-level analysis
-  # all are tribal or special agencies
+# 25 agencies still have no county, some in US territories
+# will be excluded from county-level analysis
+# all are tribal or special agencies
 
 # combine back to original data
 # replace fips county 1 with updated county number from LEAIC
@@ -127,10 +128,6 @@ ba_full <- ba %>%
   filter(!is.na(county)) %>%
   mutate(fips_county_1 = county)
 
-
-# merge Urban crosswalk to agencies based on full state name and county FIPS
-ba_pop <- ba %>%
-  left_join(pop20, by = c("year","state_name", "county"))
 
 # 3 County-level demographics----
 # check variables
@@ -183,7 +180,7 @@ county_demo <- get_acs(geography = "county",
                        survey = "acs5",
                        output = "wide",
                        geometry = FALSE)
-  # note, two or more race variable not appearing, may not be available at county level
+# note, two or more race variable not appearing, may not be available at county level
 
 # get rid of E in name of variables and drop MOE
 county_demo <- county_demo %>%
@@ -238,7 +235,7 @@ ba_long <- ba_long %>%
 
 # check whether all counties merge
 skim(ba_long) 
-  # 5 agencies (2 counties) not in file, will drop
+# 5 agencies (2 counties) not in file, will drop
 
 # make agency weights based on population of counties they cover
 ba_long_wt <- ba_long %>%
@@ -254,9 +251,7 @@ ba_long_wt <- ba_long_wt %>%
 # count how many agencies per county
 county_agency <- ba_long_wt %>%
   group_by(state, county) %>%
-  summarize(n = n(),
-            n_agencies = n_distinct(ori),
-            n_wt = sum(weight),
+  summarize(n_agencies = n_distinct(ori),
             n_core_city = sum(core_city==1),
             core_city = max(core_city),
             n_agen_city = sum(agency_type==1),
@@ -269,7 +264,7 @@ county_agency <- ba_long_wt %>%
 
 # check county-level data
 skim(county_agency)
-  # Cook County has 171 non-state and non-federal agencies!; Allegheny has 135
+# Cook County has 171 non-state and non-federal agencies!; Allegheny has 135
 
 
 # 5 Combine county-level agency and demographic info----
@@ -279,15 +274,15 @@ county_demo_agency <- county_demos %>%
 # limit to only counties in Urban crosswalk
 county_demo_agency <- county_demo_agency %>%
   filter(GEOID %in% pop20$GEOID)
-  # 3143 counties
+# 3143 counties
 
 # check file
 skim(county_demo_agency)
-  # 7 counties have no agencies
+# 7 counties have no agencies
 county_demo_agency %>%
   filter(is.na(n_agencies)) %>%
   skim()
-  # generally small counties (48 to 7,015 people)
+# generally small counties (48 to 7,015 people)
 
 # 6 Save files----
 # county demographics only
