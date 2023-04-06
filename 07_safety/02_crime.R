@@ -4,7 +4,7 @@
 # Geography: county
 
 # Code by Ashlin Oglesby-Neal
-# Last updated 2023-03-30
+# Last updated 2023-04-06
 
 library(tidyverse)
 library(skimr)
@@ -19,13 +19,10 @@ ofs <- readRDS("07_safety/data/nibrs_offense_segment_2021.rds")
 
 # load agency and county files
 # counties with demographics and number of agencies
-county_demo_agency <- read_csv("07_safety/modified data/2021_county_demo_agency.csv")
+county_demos <- read_csv("07_safety/modified data/2021_county_demo.csv")
 
 # agencies linked to counties and weight for each county
 ba_long_wt <- read_csv("07_safety/modified data/2021_agency_weights_by_county.csv")
-
-# county demographics only
-county_demos <- read_csv("07_safety/modified data/2021_county_demo.csv")
 
 # 2 Process crime data----
 # reduce data to only necessary vars
@@ -44,7 +41,7 @@ property <- c("all other larceny", "arson", "bribery", "burglary/breaking and en
               "destruction/damage/vandalism of property", "embezzlement",
               "extortion/blackmail", "false pretenses/swindle/confidence game",
               "hacking/computer invasion", "identity theft", "impersonation",
-              "motor vehicle theft", "pocket-picking", "purse-snatching", 
+              "motor vehicle theft", "pocket-picking", "purse-snatching", "robbery",
               "shoplifting", "stolen property offenses (receiving, selling, etc.)",
               "theft from building", "theft from coin-operated machine or device",
               "theft from motor vehicle", "theft of motor vehicle parts/accessories",
@@ -109,7 +106,7 @@ skim(of_agency_county)
 
 # 5 Calculate rates----
 # Merge demographic file to get population denominator
-of_county_demo <- county_demo_agency %>%
+of_county_demo <- county_demos %>%
   select(c(GEOID, total_people)) %>%
   left_join(of_agency_county, by = "GEOID")
 
@@ -122,6 +119,7 @@ of_by_county <- of_county_demo %>%
 
 
 # suppress data using population of less than 30 people
+# note no counties in 2021 have population less than 30
 of_by_county <- of_by_county %>%
   mutate(crime_violent_rate = ifelse(total_people < 30, NA, crime_violent_rate),
          crime_property_rate = ifelse(total_people < 30, NA, crime_property_rate))
@@ -130,7 +128,7 @@ of_by_county <- of_by_county %>%
 of_by_county %>%
   select(ends_with("_rate")) %>%
   skim()
-  # missing for 7 counties with no law enforcement agencies
+# missing for 7 counties with no law enforcement agencies
 
 # 7 Make quality indicators----
 of_by_county <- of_by_county %>%
@@ -150,7 +148,7 @@ of_by_county <- of_by_county %>%
 # check distribution based on definition
 of_by_county %>%
   count(all_crime_rate_quality, crime_rate_quality)
-  # very similar - core reporting moves 192 counties from 3 to 2 
+# very similar - core reporting moves 192 counties from 3 to 2 
 
 # 8 Save data----
 of_by_county_2021 <- of_by_county %>%
@@ -165,4 +163,3 @@ of_by_county_2021 <- of_by_county %>%
 skim(of_by_county_2021)
 
 write_csv(of_by_county_2021, file = "07_safety/modified data/2021_crime_rate_county.csv")
-
