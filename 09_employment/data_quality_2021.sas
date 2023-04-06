@@ -101,17 +101,17 @@ run;
 
 /* for the housing metric, I use an intermediate dataset produced
 when creating the metric so I can get the unweighted
-number of households with <50 AMI to use as the size flag. The 
+number of households with <30 AMI to use as the size flag. The 
 dataset I use as input is created as an intermediate step in 
 Paul's code and contains only households. 
 
 I also use this dataset to create the total number of households, 
 which is the sample size for the income metric*/
 %macro number_of_hhs(year);
-data households_&year (keep = statefip county Below50AMI_unw household year);
+data households_&year (keep = statefip county Below30AMI_unw household year);
   set desktop.households_&year; /* this file should be output by the program compute_metrics_housing.sas */
   if L50_4 ne . then do;
-    Below50AMI_unw = hhincome < L50_4;  
+    Below30AMI_unw = hhincome < ELI_4;  
   end;
   household = 1;
 run;
@@ -119,7 +119,7 @@ run;
 proc means data=households_&year noprint; 
   output out=number_hhs_&year(drop=_type_) sum=;
   by year statefip county;
-  var Below50AMI_unw household ;
+  var Below30AMI_unw household ;
 run;
 %mend number_of_hhs;
 %number_of_hhs(year=2021);
@@ -207,7 +207,7 @@ run;
 %metric(lib = edu, dataset = metrics_college_2021, denominator = _FREQ_);
 %metric(lib = fam, dataset = metrics_famstruc_2021, denominator = _FREQ_);
 %metric(lib = employ, dataset = metrics_employment_2021, denominator = _FREQ_);
-%metric(lib = work, dataset = metrics_housing_2021, denominator = Below50AMI_unw);
+%metric(lib = work, dataset = metrics_housing_2021, denominator = Below30AMI_unw);
 %metric(lib = edu, dataset = metrics_preschool_2021, denominator = _FREQ_);
 %metric(lib = work, dataset = metrics_income_2021, denominator = household);
 %metric(lib = work, dataset = metrics_access_2021, denominator = household);

@@ -4,6 +4,9 @@
 
 /* computes college readiness/share with HS degree metric for subgroup file on 2021 5 year ACS
 
+*You MUST run this after running access_to_preschool_5_year_2021 and "main" from that 
+program must be in your working directory;
+
 3/15/23
 */
 
@@ -98,6 +101,6 @@ data &metrics_file.;
 run;
 %mend compute_metrics_college;
 
-%compute_metrics_college(lib2021.microdata_5_year,edu.metrics_college_subgroup_2021);
+%compute_metrics_college(main,edu.metrics_college_subgroup_2021);
 proc means data=edu.metrics_college_subgroup_2021;
 run;

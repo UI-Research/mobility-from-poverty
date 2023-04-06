@@ -85,7 +85,7 @@ run;
 %mend prepare_microdata;
 
 
-%prepare_microdata(desktop.usa_00071, main);
+%prepare_microdata(desktop.usa_00074, main);
 
 
 
