@@ -40,6 +40,10 @@ microdata_emp_age <- acs5yr_clean %>%
   filter(AGE >= 25 & AGE <= 54) 
 # 4,092,797 observations
 
+# Excluding all GQ 3 and over
+microdata_emp_age <- microdata_emp_age %>% 
+  filter(GQ<3) 
+# now 3,958,346 obs (134,451 drops)
 
 # EMPSTAT values:
 #  0		N/A
