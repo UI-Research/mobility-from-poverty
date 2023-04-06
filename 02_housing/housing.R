@@ -53,6 +53,11 @@ library(readxl)
 # this one should already match the PUMAs to places
 # acs2021clean <- read_csv("data/temp/2021microdata.csv")
 
+# isolate to only GQ under 3 (only want households and vacant units)
+# see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
+acs2021clean <- acs2021clean %>%
+  filter(GQ < 3) 
+# 2230328 obs to 2130573 obs (99,755 obs dropped)
 
 ###################################################################
 
@@ -66,7 +71,6 @@ library(readxl)
 vacant <- acs2021clean %>%
   mutate(vacant = case_when((VACANCY==1 | VACANCY==2 | VACANCY==3) ~ 1,
                             (VACANCY==0 | VACANCY>3) ~ 0))
-# now 2,230,328 obs 
 
 # adjust needed variables
 vacant <- vacant %>%
@@ -75,13 +79,13 @@ vacant <- vacant %>%
 # (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
 
 # Kevin used 3.69% as the effective mortgage rate for DC in 2016, *look up rates on FHFA*
-# Using 4.15% for the USA in April 2019 (https://www.fhfa.gov/DataTools/Downloads/Pages/Monthly-Interest-Rate-Data.aspx)
+# Using 6% for the USA to match the choice made by Kevin/Aaron
 # Calculate monthly P & I payment using monthly mortgage rate and compounded interest calculation
 
 vacant <- vacant %>%
   mutate(VALUEH = VALUEH*ADJUST,
          loan = 0.9 * VALUEH,
-         month_mortgage = (4.15 / 12) / 100,
+         month_mortgage = (6 / 12) / 100,
          monthly_PI = loan * month_mortgage * ((1+month_mortgage)**360)/(((1+month_mortgage)**360)-1))
 
 
@@ -102,7 +106,7 @@ rent_ratio <- acs2021clean %>%
 rent_ratio <- rent_ratio %>%
   filter(PERNUM == 1,
          OWNERSHP == 2)
-# 289,314 obs
+# 289,291 obs
 
 
 # (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
@@ -244,7 +248,7 @@ place_income_limits_2021 <- FMR_2021 %>%
 # Filter microdata to where PERNUM == 1, so only one HH per observation
 microdata_housing <- acs2021clean %>%
   filter(PERNUM == 1)
-# 953,247 obs
+# 853,918 obs
 
 # create new dataset called "households_year" to merge microdata & place income limits (FMR_2021) by state and place
 # first rename state so it will merge
@@ -253,7 +257,7 @@ FMR_2021 <- FMR_2021 %>%
   mutate(place = sprintf("%0.5d", as.numeric(place)))
 
 households_2021 <- left_join(microdata_housing, FMR_2021, by=c("statefip","place"))
-# 2,152,591 obs
+# 1,886,942 obs
 
 
 # Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
@@ -307,7 +311,7 @@ households_2021 <- households_2021 %>%
 # housing cost that was calculated and prepared above in the "vacant" df.
 
 vacant_2021 <- left_join(vacant, FMR_2021, by=c("statefip","place"))
-# 4,896,161 obs
+# 4,629,902 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 # NOTE that we will need to create a Below50AMI_vacantHH (the count of vacant HH) for the Data Quality flag in step 8
