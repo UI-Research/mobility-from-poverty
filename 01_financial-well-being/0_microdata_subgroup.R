@@ -159,7 +159,7 @@ acs5_2021 <- acs5_2021 %>%
 acs5yr_clean  <- left_join(acs5_2021, puma_place, by=c("statefip","puma"))
 # now have 18,514,586 observations
 # run anti_join to see how many cases on the left did not have a match on the right
-# test  <- anti_join(acs_2021, puma_place, by=c("statefip","puma"))
+# test  <- anti_join(acs5_2021, puma_place, by=c("statefip","puma"))
 
 # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
 acs5yr_clean <- acs5yr_clean %>% 
@@ -226,7 +226,7 @@ acs5yr_clean <- acs5yr_clean %>%
 
 
 
-# save as "microdata.csv" in gitignore
+# save as "microdata5yr.csv" in gitignore
 # write_csv(acs5yr_clean, "data/temp/2021microdata5yr.csv")
 
 
