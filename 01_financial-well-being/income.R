@@ -55,7 +55,7 @@ metrics_income <- acs2021income %>%
   dplyr::summarize(pctl_20 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.2), 
                    pctl_50 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.5),
                    pctl_80 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.8),
-                   household = sum(HHWT))
+                   count = n())
 
 ###################################################################
 
@@ -63,15 +63,17 @@ metrics_income <- acs2021income %>%
 
 # For Income metric: total number of households is the sample size we are checking
 metrics_income <- metrics_income %>% 
-  mutate(size_flag = case_when((household < 30) ~ 1,
-                               (household >= 30) ~ 0))
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
 
+metrics_income <- metrics_income %>% 
+  dplyr::rename('state' = 'statefip')
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_income <- left_join(metrics_income, place_puma, by=c("statefip","place"))
+metrics_income <- left_join(metrics_income, place_puma, by=c("state","place"))
 # Generate the quality var
 metrics_income <- metrics_income %>% 
   mutate(pctl_20_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
@@ -94,9 +96,6 @@ metrics_income <- metrics_income %>%
          pctl_50, pctl_50_quality, pctl_80, 
          pctl_80_quality, household, size_flag, 
          puma_flag)
-
-metrics_income <- metrics_income %>% 
-  dplyr::rename('state' = 'statefip')
 
 
 ###################################################################
