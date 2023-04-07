@@ -75,14 +75,18 @@ metrics_employment <- metrics_employment %>%
 
 # For Employment metric: total number of people 25 to 54 years old
 metrics_employment <- metrics_employment %>% 
-  mutate(size_flag = case_when((num_in_emp_age < 30) ~ 1,
-                               (num_in_emp_age >= 30) ~ 0))
+  mutate(size_flag = case_when((n < 30) ~ 1,
+                               (n >= 30) ~ 0))
+
+# rename vars as needed
+metrics_employment <- metrics_employment %>%
+  dplyr::rename(state = statefip)
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_employment <- left_join(metrics_employment, place_puma, by=c("statefip","place"))
+metrics_employment <- left_join(metrics_employment, place_puma, by=c("state","place"))
 
 # Generate the quality var
 metrics_employment <- metrics_employment %>% 
@@ -94,10 +98,6 @@ metrics_employment <- metrics_employment %>%
 ###################################################################
 
 # (5) Cleaning and export
-
-# rename vars as needed
-metrics_employment <- metrics_employment %>%
-  dplyr::rename(state = statefip)
 
 # add a variable for the year of the data
 metrics_employment <- metrics_employment %>%
