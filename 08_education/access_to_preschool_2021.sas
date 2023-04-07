@@ -93,8 +93,8 @@ run;
 %macro compute_metrics_preschool(microdata_file,metrics_file);
 proc sort data=&microdata_file.; by statefip county; run;
 
-/* outputs a file with only children 3-4 */
-proc means data=&microdata_file.(where=(age in (3,4))) noprint; 
+/* outputs a file with only children 3-4 (added 4/7/23: and those NOT in kindergarten */
+proc means data=&microdata_file.(where=(age in (3,4) and gradeatt ne 2)) noprint; 
   output out=num_3_and_4(drop=_type_) sum=num_3_and_4;
   by statefip county;
   var perwt;
@@ -166,7 +166,7 @@ PICTURE Num    .="NA"
 data edu.metrics_preschool_2021;
  retain year state county share_in_preschool share_in_preschool_ub share_in_preschool_lb;
  set edu.metrics_preschool_2021;
- format share_in_preschool share_in_preschool_ub share_in_preschool_lb num. 
+ format share_in_preschool share_in_preschool_ub share_in_preschool_lb num.; 
 run;
 
 proc sort data=edu.metrics_preschool_2021; by year state county; run;
@@ -180,6 +180,7 @@ proc export data = edu.metrics_preschool_2021
   replace;
 run;
 
-proc print data = main;
- where statefip = 19 and county = 15 and age in (3,4);
+proc freq data = main;
+ where statefip = 1 and county = 1 and age in (3,4);
+ table gradeatt;
 run;
