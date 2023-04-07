@@ -96,27 +96,19 @@ microdata_coll_age <- microdata %>%
   filter(AGE == 19 | AGE == 20) 
 # 59,813 obs
 
-# re-import as survey to prep for CI
-svy <- as_survey_design(microdata_coll_age, weights = PERWT)
+# Find the # of 19-20 year olds that fall between HS graduate (62) and Professional degree (116) (re: educational)
+# collapse PERWT by place (total count of college ready people)
+# and combine these into df to prepare for metric ratio
+metrics_college <- microdata_coll_age %>% 
+  dplyr::group_by(statefip, place) %>% 
+  dplyr::summarize(num_19_and_20 = sum(PERWT),
+                   num_coll_ready = sum((EDUCD <= 116 & EDUCD >= 62) * PERWT),
+                   n = n())
 
-
-# EDUCD <= 116 & EDUCD >= 62 evaluates to FALSE if the person isn't college ready and they aren't counted
-#
-svy %>%
-  mutate(hs_grad = (EDUCD >= 62 & EDUCD <= 116)) %>%
-  group_by(statefip, place) %>%
-  summarise(ratio_edu = survey_mean(hs_grad, vartype = "ci"))
-
-svy %>%
-  mutate(hs_grad = (EDUCD >= 62 & EDUCD <= 116)) %>%
-  group_by(statefip, place, hs_grad) %>%
-  summarise(ratio_edu = survey_prop(vartype = "se"))
-
-
-# Rename Confidence Interval (CI) vars
+# Compute the ratio (share employed)
 metrics_college <- metrics_college %>%
-  mutate(share_hs_degree_ub = share_hs_degree_upp,
-         share_hs_degree_lb = share_hs_degree_low)
+  mutate(share_hs_degree = num_coll_ready/num_19_and_20)
+
 
 ###################################################################
 
@@ -124,14 +116,18 @@ metrics_college <- metrics_college %>%
 
 # For Employment metric: total number of people 19 and 20 years old
 metrics_college <- metrics_college %>% 
-  mutate(size_flag = case_when((num_19_and_20 < 30) ~ 1,
-                               (num_19_and_20 >= 30) ~ 0))
+  mutate(size_flag = case_when((n < 30) ~ 1,
+                               (n >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
 
+# rename vars as needed
+metrics_college <- metrics_college %>%
+  dplyr::rename(state = statefip)
+
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
- metrics_college <- left_join(metrics_college, place_puma, by=c("statefip","place"))
+ metrics_college <- left_join(metrics_college, place_puma, by=c("state","place"))
 
 # Generate the quality var
  metrics_college <- metrics_college %>% 
@@ -143,10 +139,6 @@ metrics_college <- metrics_college %>%
 ###################################################################
 
 # (5) Cleaning and export
-
- # rename vars as needed
- metrics_college <- metrics_college %>%
-   dplyr::rename(state = statefip)
  
  # add a variable for the year of the data
  metrics_college <- metrics_college %>%
@@ -157,7 +149,6 @@ metrics_college <- metrics_college %>%
  # order & sort the variables how we want
  metrics_college <- metrics_college %>%
    select(year, state, place, share_hs_degree, 
-          share_hs_degree_ub, share_hs_degree_lb,
           share_hs_degree_quality)
  
  # Save as "metrics_employment.csv"
