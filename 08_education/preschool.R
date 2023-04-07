@@ -50,43 +50,41 @@ microdata_preschool_age <- acs2021clean %>%
   filter(AGE==3|AGE==4) 
 # 44,367 obs
 
-# re-import as survey to prep for CI
-svy <- as_survey_design(microdata_preschool_age, weights = PERWT)
+# collapse PERWT by place, create a variable for count per place in the collapse
+# also create a collapse var for children 3-4 (who are BELOW Kindergarten age, or GRADEATT<2) 
+# AND create a collapse var for children in pre-school (GRADEATT =1)
+# these vars needed to calculate metric: share of kids in pre-school
+metrics_preschool <- microdata_preschool_age %>% 
+  dplyr::group_by(statefip, place) %>% 
+  dplyr::summarize(
+    num_3_and_4 = sum((GRADEATT < 2) * PERWT),
+    num_in_preschool = sum((GRADEATT == 1) * PERWT),
+    n = n()
+  )
 
-# use srvyr to calculate our desired metric ratio & 95% confidence interval(s)
-# collapse the number of emp age people for data quality var later
-metrics_preschool <- svy %>%
-  mutate(preschool = (GRADEATT == 1)) %>%
-  group_by(statefip, place) %>%
-  summarise(share_in_preschool = survey_mean(preschool, vartype = "ci"),
-            num_3_and_4 = sum(PERWT))
-
-
-# Rename Confidence Interval (CI) vars
+# Compute the ratio (share of 3-4 yo kids in preschool)
 metrics_preschool <- metrics_preschool %>%
-  rename(share_in_preschool_ub = share_in_preschool_upp,
-         share_in_preschool_lb = share_in_preschool_low)
-
-# adjust ub & lb values 
-metrics_preschool <- metrics_preschool %>% 
-  mutate(share_in_preschool_ub = pmin(1, pmax(0, share_in_preschool_ub)),
-         share_in_preschool_lb = pmax(0, pmin(1, share_in_preschool_lb)))
+  mutate(share_in_preschool = num_in_preschool/num_3_and_4)
 
 
 ###################################################################
 
 # (4) Create the Data Quality variable
 
-# For Preschool metric: total number of people ages 3 and 4
+# Create size flag based on number of obs collapsed
 metrics_preschool <- metrics_preschool %>% 
-  mutate(size_flag = case_when((num_3_and_4 < 30) ~ 1,
-                               (num_3_and_4 >= 30) ~ 0))
+  mutate(size_flag = case_when((n < 30) ~ 1,
+                               (n >= 30) ~ 0))
 
 # bring in the PUMA flag file
 # place_puma <- read_csv("data/temp/place_puma.csv")
 
+# rename vars as needed
+metrics_preschool <- metrics_preschool %>%
+  dplyr::rename(state = statefip)
+
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-metrics_preschool <- left_join(metrics_preschool, place_puma, by=c("statefip","place"))
+metrics_preschool <- left_join(metrics_preschool, place_puma, by=c("state","place"))
 
 # Generate the quality var
 metrics_preschool <- metrics_preschool %>% 
@@ -99,10 +97,6 @@ metrics_preschool <- metrics_preschool %>%
 
 # (5) Cleaning and export
 
-# rename vars as needed
-metrics_preschool <- metrics_preschool %>%
-  dplyr::rename(state = statefip)
-
 # add a variable for the year of the data
 metrics_preschool <- metrics_preschool %>%
   mutate(
@@ -112,7 +106,6 @@ metrics_preschool <- metrics_preschool %>%
 # order & sort the variables how we want
 metrics_preschool <- metrics_preschool %>%
   select(year, state, place, share_in_preschool, 
-         share_in_preschool_ub, share_in_preschool_lb,
          share_in_preschool_quality)
 
 # Save as "metrics_preschool.csv"
