@@ -56,9 +56,9 @@ microdata_preschool_age <- acs5yr_clean %>%
 metrics_preschool <- microdata_preschool_age %>% 
   dplyr::group_by(statefip, place, subgroup) %>% 
   dplyr::summarize(
-    num_3_and_4 = sum(PERWT),
+    num_3_and_4 = sum((GRADEATT < 2) * PERWT),
     num_in_preschool = sum((GRADEATT == 1) * PERWT),
-    n = n()
+    count = n()
   )
 # only 1927 obs (should be 1944 -- will need to merge place_subgroup later to capture missings)
 
@@ -67,28 +67,14 @@ metrics_preschool <- metrics_preschool %>%
   mutate(share_in_preschool = num_in_preschool/num_3_and_4)
 
 
-# Create Confidence Interval (CI) and correctly format the variables
-metrics_preschool <- metrics_preschool %>%
-  mutate(not_in_pre = 1 - share_in_preschool,
-         interval = 1.96*sqrt((not_in_pre*share_in_preschool)/n),
-         share_in_preschool_ub = share_in_preschool + interval,
-         share_in_preschool_lb = share_in_preschool - interval)
-
-
-# adjust ub & lb values 
-metrics_preschool <- metrics_preschool %>% 
-  mutate(share_in_preschool_ub = pmin(1, pmax(0, share_in_preschool_ub)),
-         share_in_preschool_lb = pmax(0, pmin(1, share_in_preschool_lb)))
-
-
 ###################################################################
 
 # (4) Create the Data Quality variable
 
-# For Preschool metric: total number of people ages 3 and 4
+# Create size flag based on number of obs collapsed per place
 metrics_preschool <- metrics_preschool %>% 
-  mutate(size_flag = case_when((num_3_and_4 < 30) ~ 1,
-                               (num_3_and_4 >= 30) ~ 0))
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
 
 # bring in the PUMA flag file
 # place_puma <- read_csv("data/temp/place_puma.csv")
@@ -128,7 +114,6 @@ metrics_preschool <- metrics_preschool %>%
 # order & sort the variables how we want
 metrics_preschool <- metrics_preschool %>%
   select(year, state, place, subgroup_type, subgroup, share_in_preschool, 
-         share_in_preschool_ub, share_in_preschool_lb,
          share_in_preschool_quality)
 
 # Save as "metrics_preschool.csv"
