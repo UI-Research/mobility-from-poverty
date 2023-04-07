@@ -54,7 +54,7 @@ metrics_income <- acs5yr_income %>%
   dplyr::summarize(pctl_20 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.2), 
                    pctl_50 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.5),
                    pctl_80 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.8),
-                   household = sum(HHWT))
+                   count = n())
 # 1944 obs (this is 486 - the # of places - times 4 - the number of race groups - so good to go)
 
 ###################################################################
@@ -63,8 +63,8 @@ metrics_income <- acs5yr_income %>%
 
 # For Income metric: total number of households is the sample size we are checking
 metrics_income <- metrics_income %>% 
-  mutate(size_flag = case_when((household < 30) ~ 1,
-                               (household >= 30) ~ 0))
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
