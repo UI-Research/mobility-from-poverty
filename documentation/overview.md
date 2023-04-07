@@ -683,7 +683,7 @@ There are several limitations to this choice. There is no 'other' race category,
 * **Limitations:** These data may not be updated with enough frequency for some communities. Annual data for a different derrivation of an air quality index are available via the EPA for a subset (about 1/3) of counties and core-based statistical areas (see  https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual). 
 * **Missingness:** All 3,142 counties in the United States are represented and all but three census places contain census tracts with data. Some additional details:
   1. In the county file for 2018 there are 645 tracts without populations.  In 2014 there are 618 tracts without populations. All tracts with a population = 0 are dropped in the data sets.
-  2. In the ocunty file for 2018 there are 13 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 22 tracts with populations > 0 with missing `haz_idx`.
+  2. In the county file for 2018 there are 13 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 22 tracts with populations > 0 with missing `haz_idx`.
   3. In place file for 2018 there are 137 tracts without populations. In 2014 there are 117 tracts in places without populations. All tracts with a population = 0 are dropped in the data sets.
   4. In the place file for 2018 there are 5 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 2 tracts with populations > 0 with missing `haz_idx`.  
  
