@@ -12,10 +12,11 @@ editor_options:
   chunk_output_type: console
 ---
 
+```{=html}
 <style>
 @import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
 </style>
-
+```
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
 ```{r quarto-setup, include = FALSE}
@@ -31,6 +32,7 @@ library(tidylog)
 library(here)
 library(assertr)
 library(gt)
+library(tidyeval)
 ```
 
 ```{r}
@@ -44,14 +46,44 @@ read_csv_and_clean <- function(file) {
 
 ```
 
-
-
 ```{r fix-neonatal-health}
 
 concatenate_files <- function(files){
   lapply(files, read_csv) %>%
     bind_rows()
 }
+
+
+debt_18 <- read_csv_and_clean(
+  here(
+    "01_financial-well-being",
+    "share_debt_2018.csv"
+  )
+) %>%
+  rename_with(~str_replace(.x, "coll", "col"))
+
+  
+debt_22 <- read_csv_and_clean(
+  here("01_financial-well-being",
+       "county-debt-coll-shares-2022.csv")
+) %>%
+  filter(subgroup == "All") %>%
+  mutate(share_debt_col_lb = NA, 
+         share_debt_col_ub = NA) %>%
+  select(-c(subgroup, subgroup_type)) %>%
+  arrange(year, state, county, share_debt_coll, share_debt_col_ub, 
+          share_debt_col_lb, share_debt_coll_quality) %>%
+  rename(share_debt_col = share_debt_coll,
+         share_debt_col_quality = share_debt_coll_quality)
+
+
+debt <- bind_rows(debt_18, debt_22) %>%
+  write_csv(here(
+    "01_financial-well-being",
+    "county_debt_longitudinal.csv"
+  ))
+  
+
 
 neonatal <- concatenate_files(
   c(
@@ -96,8 +128,22 @@ re_exposure <- concatenate_files(c(
   )
 
 
-```
 
+jv_arrest <- read_csv_and_clean(here(
+  "07_safety",
+  "juvenile_arrests",
+  "2016_arrest_by_county_subgroup.csv"
+)) %>% 
+  filter(subgroup_type == "all") %>%
+  select(-c(subgroup, subgroup_type)) %>%
+  write_csv(here(
+    "07_safety",
+    "juvenile_arrests",
+    "jvarrestrate_county_2016_CORRECT.csv"
+  )
+  )
+
+```
 
 ```{r set-up-crosswalk}
 #This code expands the crosswalk files for two reasons:
@@ -187,16 +233,14 @@ files <- c(
   
   ### FINANCIAL WELL-BEING ###
   here("01_financial-well-being", "metrics_income.csv"),
-  here("01_financial-well-being", "share_debt_2018.csv"), #we have more recent data at city level
+  here("01_financial-well-being", "county_debt_longitudinal.csv"),
   here("01_financial-well-being", "home-values", "county_hh_hw_raceeth_2014_2021.csv"),
 
   ### HEALTH ### 
-  #Missing: Ratio of population per PCP. Think it is associated with: 
-  #here("04_health", "final_data", "hpsa_2020.csv"), #This file not on github
+  here("04_health", "access-health-services", "access-health-services-2019.csv"),
   here("04_health", "final_data", "neonatal_health_CORRECT.csv"),
+  here("04_health", "exposure-to-trauma", "exposure-to-trauma-2019.csv"), 
 
-  #Missing data: Safety from trauma
-  
   ### HOUSING ### 
   here("02_housing", "metrics_housing.csv"),
   here("02_housing", "homelessness_all.csv"),
@@ -211,27 +255,20 @@ files <- c(
   here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure_county.csv"),
   here("06_neighborhoods", "transportation", "county_transport_stats_final.csv"),
 
-  #missing: environment
+  here("06_neighborhoods", "environment", "data", "output", "environment_county_all.csv"), 
   here("06_neighborhoods", "social-capital", "data", "economic_connectedness_county_2022.csv"),
   here("06_neighborhoods", "social-capital", "data", "social_associations_county_2022.csv"),
 
   ### SAFETY ###
   here("07_safety", "crime", "crimerate_county_2015_2017.csv"),
-  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"),
+  here("07_safety", "juvenile_arrests", "jvarrestrate_county_2016_CORRECT.csv"),
 
   ### WORK ###
   here("09_employment", "metrics_employment.csv"),
   here("09_employment", "metrics_wage_ratio_years.csv") #access to jobs paying a living wage
-
-  #removed following files because these are not in metrics 2.0 tracker
-  #here("02_housing", "metrics_rent.csv"),
-  #here("03_family", "metrics_famstruc.csv"),
-  #here("08_education", "frpl.csv"),
-
 )
 
 ```
-
 
 # Multi-year Database
 
@@ -260,9 +297,9 @@ clean_data <- function(db_unclean){
   
   db <- db_unclean %>%
   #Fix for debt data:
-  mutate(share_debt_coll_quality = if_else(is.na(share_debt_coll), 
+  mutate(share_debt_col_quality = if_else(is.na(share_debt_col), 
                                            true = as.numeric(NA), 
-                                           false = share_debt_coll_quality)) %>%
+                                           false = share_debt_col_quality)) %>%
   
   #Fix for juvenile arrest data:
   filter(subgroup_type == "all" | is.na(subgroup_type)) %>%
@@ -334,6 +371,15 @@ clean_data <- function(db_unclean){
                       str_replace(.x, "arrest_rate", "arrest")
                       )
                 ) %>%
+  rename_with(
+    ~str_replace(.x, "pc_phys_ratio", "ratio_population_pc_physician")
+              ) %>%
+  rename_with(
+    ~str_replace(.x, "injury_death_rate", "rate_injury_death")
+  ) %>%
+  rename_with(
+    ~str_replace(.x, "environmental", "air_quality_index")
+  ) %>%
   rename(
     share_in_preschool_quality = preschool_quality, 
     share_hs_degree_quality = hs_degree_quality,
@@ -341,7 +387,9 @@ clean_data <- function(db_unclean){
     share_homeless = homeless_share,
     share_employed_quality = employed_quality,
     ratio_average_to_living_wage = average_to_living_wage_ratio,
-    ratio_average_to_living_wage_quality = wage_ratio_quality
+    ratio_average_to_living_wage_quality = wage_ratio_quality, 
+    rate_injury_deaths_quality = injury_deaths_quality,
+    ratio_population_pc_physician_quality = pc_phys_quality
   )
   
   
@@ -355,7 +403,6 @@ db <- clean_data(db_unclean)
 
 
 ```
-
 
 # Recent-year Database
 
@@ -382,10 +429,7 @@ db_recent <- map(files, read_csv_recent) %>%
 
 ### Full Database
 
-missing metrics
-metrics rated 1
-metrics rated 2
-metrics rated 3
+missing metrics metrics rated 1 metrics rated 2 metrics rated 3
 
 ```{r}
 #We remove nas because they come from missing data from most years. 
@@ -442,7 +486,10 @@ db_values <- db %>%
                   str_sub(.x, end = -2)
                   ) / 100
                 )
-         )
+         ) %>%
+  mutate(pcp = as.numeric(
+    str_sub(ratio_population_pc_physician, end = -3))
+    )
 
 db_quality <- db %>%
   select(ends_with("_quality"))
@@ -466,16 +513,17 @@ db_values %>%
 
   ### FINANCIAL WELLBEING ###
   assert(within_bounds(0, Inf), starts_with("pctl_income_")) %>%
-  assert(within_bounds(0, 1), share_debt_coll) %>%
   assert(within_bounds(0, Inf), ends_with("house_value")) %>%
   assert(within_bounds(0, 1), ends_with("_households")) %>% 
   assert(within_bounds(0, Inf), starts_with("income_pctl_")) %>%
-  assert(within_bounds(0, 1), share_debt_coll) %>%
+  assert(within_bounds(0, 1), share_debt_col) %>%
   #Currently not doing assert statements for the welath-building opportunities:
 
   ### HEALTH ###
   assert(within_bounds(0, 1), rate_low_birth_weight) %>%
-  #assert(within_bounds(0, 100), environmental) %>%
+  assert(within_bounds(0, 100), air_quality_index) %>%
+  assert(within_bounds(0, Inf), rate_injury_death) %>%
+  assert(within_bounds(0, Inf), pcp) %>%
   
   ### HOUSING ###
   assert(within_bounds(0, Inf), 
@@ -519,14 +567,6 @@ db_values %>%
     
   #EDUCATION:
   #digital access
-  
-  #HEALTH:
-  #Access to health services (PCP)
-  #Safety from trauma
-  
-  #NEIGHBORHOODS:
-  #Environment
-
 
 ```
 
@@ -541,46 +581,19 @@ db_quality %>%
 
 ```{r}
 
-db %>%
-  count(year, !is.na(share_affordable_30_ami))
+check_year <- function(col_name) {
+  #col_name <- enquo(col_name)
+  
+  db_values %>%
+    count(year, !is.na(!!sym(col_name)))
+  
+}
 
-db %>%
-  count(year, !is.na(share_affordable_50_ami))
+values <- colnames(db_values)
 
-db %>%
-  count(year, !is.na(share_affordable_80_ami))
-
-
-db %>%
-  count(year, !is.na(count_homeless))
-
-db %>%
-  count(year, !is.na(share_homeless))
-
-db %>%
-  count(year, !is.na(rate_violent_crime), !is.na(rate_property_crime))
-
-db %>%
-  count(year, !is.na(ratio_average_to_living_wage))
-
-db %>%
-  count(year, !is.na(rate_low_birth_weight))
-
-db %>%
-  count(year, !is.na(ratio_white_nh_house_value_households))
-
-db %>%
-  count(year, !is.na(ratio_black_nh_house_value_households))
-
-db %>%
-  count(year, !is.na(ratio_hispanic_house_value_households))
-
-db %>%
-  count(year, !is.na(ratio_other_nh_house_value_households))
+map(.x = values, .f = check_year)
 
 ```
-
-
 
 ## Write the File
 
@@ -590,6 +603,3 @@ write_csv(db, here("data", "00_mobility-metrics_longitudinal.csv"))
 write_csv(db_recent, here("data", "00_mobility-metrics_recent.csv"))
 
 ```
-
-
-
