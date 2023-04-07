@@ -41,7 +41,6 @@
 
 # Libraries you'll need
 library(tidyverse)
-library(Hmisc)
 library(ipumsr)
 library(readxl)
 
@@ -68,9 +67,11 @@ acs2021clean <- acs2021clean %>%
 # Vacancy = 2 (for sale)
 # Vacancy - 3 (rented or sold but not yet occupied)
 # Choosing only 1-3 excludes seasonal, occasional, and migratory units
+# drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
 vacant <- acs2021clean %>%
   mutate(vacant = case_when((VACANCY==1 | VACANCY==2 | VACANCY==3) ~ 1,
-                            (VACANCY==0 | VACANCY>3) ~ 0))
+                            (VACANCY==0 | VACANCY>3) ~ 0)) %>%
+  filter(VALUEH != 9999999)
 
 # adjust needed variables
 vacant <- vacant %>%
@@ -180,7 +181,6 @@ FMR_Income_Levels_2021 <- left_join(FMR_Income_Levels_2021, FMR_pop_2021, by=c("
 
 
 # (4b) Bring in county_place crosswalk
-
 county_place <- read_csv("geographic-crosswalks/data/geocorr2022_county_place.csv")
 
 # (4c) Merge FMR file with crosswalk on county
@@ -311,7 +311,7 @@ households_2021 <- households_2021 %>%
 # housing cost that was calculated and prepared above in the "vacant" df.
 
 vacant_2021 <- left_join(vacant, FMR_2021, by=c("statefip","place"))
-# 4,629,902 obs
+# 3,073,390 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 # NOTE that we will need to create a Below50AMI_vacantHH (the count of vacant HH) for the Data Quality flag in step 8
@@ -341,7 +341,7 @@ households_summed_2021 <- households_2021 %>%
                   Affordable50AMI = sum(Affordable50AMI*HHWT, na.rm = TRUE),
                   Below30AMI = sum(Below30AMI*HHWT, na.rm = TRUE),
                   Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
-                  HHcount = sum(Below50AMI_HH, na.rm = TRUE))
+                  HHobs_count = n())
 
 households_summed_2021 <- households_summed_2021 %>% 
   rename("state" = "statefip")
@@ -355,7 +355,7 @@ vacant_summed_2021 <- vacant_2021 %>%
   dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT, na.rm = TRUE),
                    Affordable50AMI_vacant = sum(Affordable50AMI*HHWT, na.rm = TRUE),
                    Affordable30AMI_vacant = sum(Affordable30AMI*HHWT, na.rm = TRUE),
-                   vacantHHcount = sum(Below50AMI_vacantHH, na.rm = TRUE))
+                   vacantHHobs_count = n())
 
 vacant_summed_2021 <- vacant_summed_2021 %>% 
   rename("state" = "statefip")
@@ -379,7 +379,7 @@ housing_2021 <- housing_2021 %>%
 # For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
 # Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
 housing_2021 <- housing_2021 %>% 
-  mutate(affordableHH_sum = HHcount + vacantHHcount,
+  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
            size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
 
