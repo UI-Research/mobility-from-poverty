@@ -100,7 +100,7 @@ metrics_college <- microdata_coll_age %>%
   dplyr::summarize(
     num_19_and_20 = sum(PERWT),
     num_coll_ready = sum((EDUCD <= 116 & EDUCD >= 62) * PERWT),
-    n = n()
+    count = n()
   )
 # EDUCD <= 116 & EDUCD >= 62 evaluates to FALSE if the person isn't college ready and they aren't counted
 # 1937 obs, which is less than 1944, which means we will have a to merge with place_subgroup.csv to account for missing subgroup obs
@@ -109,17 +109,6 @@ metrics_college <- microdata_coll_age %>%
 metrics_college <- metrics_college %>%
   mutate(share_hs_degree = num_coll_ready/num_19_and_20)
 
-# Create Confidence Interval (CI) and correctly format the variables
-metrics_college <- metrics_college %>%
-  mutate(no_hs_degree = 1 - share_hs_degree, 
-         interval = 1.96 * sqrt((no_hs_degree*share_hs_degree)/n),
-         share_hs_degree_ub = share_hs_degree + interval,
-         share_hs_degree_lb = share_hs_degree - interval)
-
-# adjust ub & lb values that fall beyond 0 and 1
-metrics_college <- metrics_college %>% 
-  mutate(share_hs_degree_ub = pmin(1, pmax(0, share_hs_degree_ub)),
-         share_hs_degree_lb = pmax(0, pmin(1, share_hs_degree_lb)))
 
 # Take care of adding in missing values for specific subgroups
 # if you don't already have it loaded from "0_microdata_subgroup.R", then load:
@@ -132,8 +121,8 @@ metrics_college <- left_join(place_subgroup, metrics_college, by=c("statefip","p
 
 # For Employment metric: total number of people 19 and 20 years old
 metrics_college <- metrics_college %>% 
-  mutate(size_flag = case_when((num_19_and_20 < 30) ~ 1,
-                               (num_19_and_20 >= 30) ~ 0))
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
@@ -168,7 +157,6 @@ metrics_college <- metrics_college %>%
 # order & sort the variables how we want
 metrics_college <- metrics_college %>%
   select(year, state, place, subgroup_type, subgroup, share_hs_degree, 
-         share_hs_degree_ub, share_hs_degree_lb,
          share_hs_degree_quality)
 
 # Save as "metrics_employment.csv"
