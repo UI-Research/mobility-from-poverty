@@ -59,7 +59,7 @@ metrics_employment <- microdata_emp_age %>%
   dplyr::summarize(
     num_in_emp_age = sum(PERWT),
     num_employed = sum((EMPSTAT == 1) * PERWT),
-    n = n()
+    count = n()
   )
 # 1944 obs (4 race groups * 486 places), so no missings, no need to merge in place_subgroup.csv
 
@@ -67,26 +67,15 @@ metrics_employment <- microdata_emp_age %>%
 metrics_employment <- metrics_employment %>%
   mutate(share_employed = num_employed/num_in_emp_age)
 
-# Create Confidence Interval (CI) and correctly format the variables
-metrics_employment <- metrics_employment %>%
-  mutate(not_employed = 1 - share_employed,
-         interval = 1.96 * sqrt((not_employed*share_employed)/n),
-         share_employed_ub = share_employed + interval,
-         share_employed_lb = share_employed - interval)
-
-# adjust ub & lb values 
-metrics_employment <- metrics_employment %>% 
-  mutate(share_employed_ub = pmin(1, pmax(0, share_employed_ub)),
-         share_employed_lb = pmax(0, pmin(1, share_employed_lb)))
 
 ###################################################################
 
 # (4) Create the Data Quality variable
 
-# For Employment metric: total number of people 25 to 54 years old
+# Create size flag for number of observations collapsed per place per subgroup
 metrics_employment <- metrics_employment %>% 
-  mutate(size_flag = case_when((num_in_emp_age < 30) ~ 1,
-                               (num_in_emp_age >= 30) ~ 0))
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 # place_puma <- read_csv("data/temp/place_puma.csv")
@@ -122,8 +111,7 @@ metrics_employment <- metrics_employment %>%
 
 # order & sort the variables how we want
 metrics_employment <- metrics_employment %>%
-  select(year, state, place, subgroup_type, subgroup, share_employed, share_employed_ub, 
-         share_employed_lb, share_employed_quality)
+  select(year, state, place, subgroup_type, subgroup, share_employed, share_employed_quality)
 
 # Save as "metrics_employment.csv"
 write_csv(metrics_employment, "09_employment/metrics_employment_subgroup_city_2021.csv")  
