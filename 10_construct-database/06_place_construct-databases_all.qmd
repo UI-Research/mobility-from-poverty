@@ -31,10 +31,14 @@ options(knitr.kable.NA = "")
 read_csv_and_clean <- function(file) {
   print(file)
   
-  read_csv(file, guess_max = 5000) %>%
+  data <- read_csv(file, guess_max = 5000) %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            place = stringr::str_pad(place, width = 5, pad = "0"))
   
+  col_names_to_remove <- c("subgroup", "subgroup_type", "city", "state_place")
+  data <- data[, !names(data) %in% col_names_to_remove]
+  
+ 
 }
 
 ```
@@ -88,7 +92,7 @@ meps_city <- read_csv(
 
 debt <- read_csv(
   here("01_financial-well-being", 
-       "city-debt-col-shares.csv")
+       "city-debt-coll-shares-2021.csv")
   ) %>%
   rename(place = place_fips) %>%
   write_csv(
@@ -108,7 +112,7 @@ cities <- read_csv(here("geographic-crosswalks",
                         "place-populations.csv"))
 
 
-years <- c(2013:2022)
+years <- c(2014:2022)
 
 place_years <- expand_grid(cities, years) %>%
   select(-c(population, year)) %>%
@@ -249,9 +253,9 @@ clean_data <- function(db_unclean){
                           "desc_rep_",
                           "share_desc_rep_")
               ) %>%
-  # rename_with(.cols = contains("exposure"),
-  #             .fn = ~paste0("share_", .x)
-  #             ) %>%
+  rename_with(.cols = contains("exposure"),
+              .fn = ~paste0("share_", .x)
+              ) %>%
   rename_with(~str_replace(.x, 
                            "economic_connectedness",
                            "ratio_high_low_ses_fb_friends")
@@ -259,7 +263,10 @@ clean_data <- function(db_unclean){
   rename_with(~str_replace(.x, 
                            "social_connection",
                            "count_membership_associations_per_10k")
-               ) #%>%
+               ) %>%
+  rename_with(
+    ~str_replace(.x, "environmental", "air_quality_index")
+    ) #%>% 
   # rename_with(.cols = contains("crime_rate"),
   #             ~paste0("rate_",
   #                     str_replace(.x, "crime_rate", "crime")
@@ -287,7 +294,8 @@ clean_data <- function(db_unclean){
   
 }
 
-db <- clean_data(db_unclean)
+db <- clean_data(db_unclean) %>%
+  distinct()
 ```
 
 ```{r create recent dataset}
@@ -307,7 +315,8 @@ read_csv_recent <- function(file) {
 # construct multiyear database
 db_recent <- map(files, read_csv_recent) %>%
   reduce(left_join, by = c("state", "place")) %>%
-  clean_data()
+  clean_data() %>%
+  distinct()
 ```
 
 ```{r}
@@ -457,42 +466,15 @@ db_quality %>%
 
 ```{r}
 
-# db %>%
-#   count(year, !is.na(share_affordable_30_ami))
-# 
-# db %>%
-#   count(year, !is.na(share_affordable_50_ami))
-# 
-# db %>%
-#   count(year, !is.na(share_affordable_80_ami))
-# 
-# 
-# db %>%
-#   count(year, !is.na(count_homeless))
-# 
-# db %>%
-#   count(year, !is.na(share_homeless))
-# 
-# db %>%
-#   count(year, !is.na(rate_violent_crime), !is.na(rate_property_crime))
-# 
-# db %>%
-#   count(year, !is.na(ratio_average_to_living_wage))
-# 
-# db %>%
-#   count(year, !is.na(rate_low_birth_weight))
+check_year <- function(col_name) {
+  db_values %>%
+    count(year, !is.na(!!sym(col_name)))
+  
+}
 
-db %>%
-  count(year, !is.na(ratio_white_nh_house_value_households))
+values <- colnames(db_values)
 
-db %>%
-  count(year, !is.na(ratio_black_nh_house_value_households))
-
-db %>%
-  count(year, !is.na(ratio_hispanic_house_value_households))
-
-db %>%
-  count(year, !is.na(ratio_other_nh_house_value_households))
+map(.x = values, .f = check_year)
 
 ```
 
