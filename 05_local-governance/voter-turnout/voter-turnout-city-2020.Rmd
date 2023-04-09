@@ -24,14 +24,14 @@ editor_options:
 ```{r rmarkdown-setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE)
 knitr::opts_chunk$set(message = FALSE)
-knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(fig.width=12, fig.height=8)
+
 ```
 
 ```{r setup}
 options(scipen = 999)
 
-library(plyr)
+#library(plyr)
 library(tidyverse)
 library(tidyselect)
 library(urbnthemes)
@@ -48,6 +48,8 @@ set_urbn_defaults(style = "print")
 ## 1. 2020 Precinct-Level Election Results/Shapefile and Census Place Shapefile
 
 We use the 2020 Precinct-Level Election Results from the the Voting and Election Science Team at University of Florida and Wichita State University, accessed via the Harvard Dataverse ([data here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/K7760H)), for state-by-state shapefiles of 2020 precinct-level general election results.
+
+### Read Data
 
 First, we download the precinct-level shapefiles with election result data.
 
@@ -169,7 +171,7 @@ rm(urls, vest_directory, vest_data)
 
 Read in the precinct shapefiles and voting results data for each state. Each data set has several variables that begin with `G20PRE` that indicate the number of votes each presidential candidate received in that precinct. We sum these variables to create a new variable called `total_votes`, and only keep this variable and the geometry. We append all states together and create a `GEOID` variable based on row number which we will need for interpolation later.
 
-```{r download-precinct-data, message = FALSE}
+```{r download-precinct-data, message = FALSE, results = "hide"}
 read_precinct <- function(file) {
   
   tempfile <- tempfile()
@@ -257,7 +259,11 @@ precincts <- precincts %>%
   st_zm(drop = TRUE)
 
 # Join the flags for Z/M values onto our original precinct data and check number of ZM flags
-precincts <- left_join(precincts, anti_joined, by = c("GEOID20", "total_votes"))
+precincts <- left_join(
+  precincts, 
+  select(anti_joined, GEOID20, zm_flag),
+  by = "GEOID20"
+)
 
 precincts %>%
   as.data.frame() %>%
@@ -274,6 +280,7 @@ precincts %>%
 
 # Remove obsolete data sets
 rm(test, anti_joined)
+
 ```
 
 We still cannot interpolate yet because there are still 417 invalid geometries for the following reasons: "Nested shells," "Ring Self-intersection," "Self-intersection," and "Too few points in geometry component." We identify and flag the observations with invalid geometries, and then validate them to perform the interpolation.
@@ -306,7 +313,11 @@ invalid_geom <- invalid_geom %>%
   select(-geometry, -zm_flag)
 
 # Join the flags for invalid geometries onto our original precinct data and check number of invalid geometries
-precincts <- left_join(precincts, invalid_geom, by = c("GEOID20", "total_votes"))
+precincts <- left_join(
+  precincts, 
+  select(invalid_geom, GEOID20, invalid_flag),
+  by = "GEOID20",
+)
 
 as.data.frame(precincts) %>%
   dplyr::count(invalid_flag)
@@ -327,30 +338,24 @@ rm(invalid_geom)
 
 ```
 
+The number of intersections is a little greater than the number of observations used for the interpolation. 
+
 ```{r}
 # check overlap
-intersections <- st_intersects(precincts, places)
+intersections <- st_intersects(precincts, my_places)
 
 sum(lengths(intersections) > 0)
 
 ```
 
+### Place Coverage
+
+The following calculates the proportion of area for each place that is covered by the precincts. 
+
 ```{r}
-boom <- aw_preview_weights(
-  .data = my_places, 
-  tid = GEOID, 
-  source = precincts, 
-  sid = GEOID20, 
-  type = "extensive"
-)
-
-
-
-
-
 # source: places
 # target: precincts
-boom2 <- aw_preview_weights(
+places_weights <- aw_preview_weights(
   .data = precincts, 
   tid = GEOID20, 
   source = my_places, 
@@ -358,9 +363,50 @@ boom2 <- aw_preview_weights(
   type = "extensive"
 )
 
+arrange(places_weights, extensiveTotal)
+
 ```
 
-```{r interpolation}
+Some of the places have less than 100% coverage because the shapes include water and the precinct shapes do not include water. Here are maps of all places with less than 90% coverage. 
+
+```{r}
+map_trouble <- function(place_id) {
+  
+  intersections <- st_intersects(
+    precincts, 
+    filter(my_places, GEOID == place_id)
+  )
+  
+  precincts <- precincts[lengths(intersections) > 0, ]
+  
+  place <- filter(my_places, GEOID == place_id)
+  
+  ggplot() +
+    geom_sf(data = precincts,
+            alpha = 0.3) +
+    geom_sf(data = place,
+            alpha = 0.3, fill = "red") +
+    labs(
+      title = paste0(place$place_name, "(", place_id, ")"),
+      subtitle = "Precincts in blue; places in red"
+    )
+
+}
+
+map_trouble("5335940")
+map_trouble("1224125")
+map_trouble("3651000")
+map_trouble("5363000")
+map_trouble("2507000")
+map_trouble("5305210")
+
+```
+
+### Interpolation
+
+We use the following specification for the areal interpolation; however, we manually do the interpolation so we can use the weights to construct a quality variable. 
+
+```{r interpolation, eval = FALSE}
 # I also interpolated using the full places list and then filtering to our 486, which got same result.
 # Interpolate using only our 486 cities
 result <- aw_interpolate(.data = my_places,    # target shapes
@@ -368,22 +414,61 @@ result <- aw_interpolate(.data = my_places,    # target shapes
                          source = precincts,   # source shapes
                          sid = GEOID20,        # source id
                          weight = "total",
-                         output = "sf",
+                         output = "tibble",
                          extensive = c("total_votes", "zm_flag", "invalid_flag"))
 
 ```
 
-We drop the shapes to speed up later computations.
+An example of areal interpolation using the following steps is available [here](https://cran.r-project.org/web/packages/areal/vignettes/areal-weighted-interpolation.html). 
 
 ```{r}
-result <- result %>%
-  st_drop_geometry()
+int <- aw_intersect(
+  .data = my_places,
+  source = precincts, 
+  areaVar = "area"
+)
+
+tot <- aw_total(
+  .data = int,
+  source = precincts, 
+  id = GEOID20, 
+  areaVar = "area", 
+  totalVar = "totalArea",
+  type = "extensive", 
+  weight = "total"
+)
+
+weight <- aw_weight(
+  .data =  tot,
+  areaVar = "area", 
+  totalVar = "totalArea", 
+  areaWeight = "areaWeight"
+) 
+
+result <- weight %>%
+  st_drop_geometry() %>%
+  mutate(total_votes = total_votes * areaWeight) %>%
+  group_by(state, place, state_name, place_name, GEOID) %>%
+  mutate(weight = total_votes / sum(total_votes)) %>%
+  summarize(
+    total_votes = sum(total_votes),
+    messiness = weighted.mean(
+      x = 0.5 - abs(areaWeight - 0.5), 
+      w = weight
+    )
+  ) %>%
+  ungroup()
+
+
+map_trouble("1380508")
+map_trouble("4816432")
+map_trouble("0135896")
 
 ```
 
-## Quality Checks
+### Quality Checks
 
-### Compare with MIT
+#### Compare with MIT
 
 Compare the VEST precinct-level election returns used in our interpolation to the MIT Election Lab precinct-level returns
 
@@ -481,7 +566,7 @@ Interpolate the precinct-level election returns data to the county instead of pl
 
 ```
 
-### Compare Places with Independent Cities and Counties
+#### Compare Places with Independent Cities and Counties
 
 There are a few independent cities and counties in our data set. In these cases, the census place perfectly matches a county and we can pull the county results and compare them to the interpolated place results.
 
@@ -676,7 +761,7 @@ If anything, a stricter threshold is necessary because the estimates are used in
 ```{r add-quality}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout_quality = case_when(
+    denominator_quality = case_when(
       is.na(election_turnout) ~ NA_real_,
       cv >= 0.15 ~ 3,
       cv >= 0.05 ~ 2,
@@ -699,11 +784,11 @@ Accordingly, we downgrade observations from the states.
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout_quality = 
+    allocation_quality = 
       if_else(
         condition = state %in% c("21", "34"),
         true = 3,
-        false = election_turnout_quality
+        false = 1
       )
     )
 
@@ -713,18 +798,47 @@ joined_data <- joined_data %>%
 
 The quality of the numerator may be a concern for precincts with Z/M features in their geometry or with an invalid geometry. We already created flags for these cases. 
 
+We calculated a messiness measure during the areal interpolation. Precincts that mostly or barely intersect a place are ideal because the assumption of an evenly distributed population matters the least. A precinct that is only half inside a place is concerning. 
 
+`areaWeight` is bounded by zero and one. First, we calculate `0.5 - abs(areaWeight - 0.5)`. This gives the distance from `areaWeight` to the closer of `0` or `1`. We then calculate a weighted average of these values to calculate `messiness`. 
 
+* `1` = messiness > 0.05
+* `2` = messiness > 0.1
+* `3` = messiness > 0.2
 
-% overlap
+```{r}
+joined_data <- joined_data %>%
+  mutate(
+    interpolation_quality = 
+      case_when(
+        messiness < 0.05 ~ 1,
+        messiness < 0.1 ~ 2,
+        TRUE ~ 3
+      )
+    )
 
+```
+
+Let's look at each of the quality variables. 
+
+```{r}
+count(
+  joined_data,
+  interpolation_quality,
+  allocation_quality,
+  denominator_quality
+)
+
+```
+
+Let's use the worse of the three quality tests to set the quality. 
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(election_turnout_quality = pmax(interpolation_quality, allocation_quality, denominator_quality))
+```
 
 ## 4. Explore data quality
-
-
-count(joined_data, election_turnout_quality)
-
-
 
 ```{r}
 joined_data %>%
