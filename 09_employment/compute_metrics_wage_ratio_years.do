@@ -5,6 +5,8 @@ county. The file can be edited to read in data from any other year.
 Programmed by Kevin Werner
 
 12/1/20
+
+CORRECTION 11/11/20: The MIT data is actually from 2019, not 2018, so I am deflating it
 ****************************/
 
 
@@ -27,11 +29,15 @@ rename year subgroup
 
 gen subgroup_type = "Year"
 
+*deflate 2019 MIT to 2018 251.107/255.657 from  https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm
+
+replace wage = wage* 251.107/255.657 
+
 tempfile mit_2018
 save `mit_2018'
 clear
 
-/*** deflate the 2018 amounts to 2014 ***/
+/*** deflate the 2019 amounts to 2014 ***/
 
 import delimited using "mit-living-wage.csv"
 
@@ -41,9 +47,9 @@ gen subgroup_type = "Year"
 
 replace subgroup = 2014 if subgroup == 2018
 
-*deflator = 236.746/251.107 from  https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm *
+*deflator = 236.746/255.657 from  https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm *
 
-replace wage = wage* 236.746/251.107 
+replace wage = wage* 236.746/255.657 
 
 /* append on 2018 wages */
 append using `mit_2018'
