@@ -156,11 +156,15 @@ foreach var in homeless black hispanic white twomore nh_pi asian amin_an { //
 }
 
 *collapsing American Indian/Alaskan Native,  two/more, Native Hawaiian/Pacific Islander, and Asian to other
-egen other = rowtotal(twomore nh_pi asian amin_an) 
+egen other = rowtotal(twomore nh_pi asian amin_an) , missing
+
+*because there are only suppressions and no true missings in other
+	*we replace other==. to other==1 to mirror lines 147 in the other 4 race categories
+	replace other = 1 if other==. & year==2019
 
 foreach var in other { // 
 	di "`var'"
-	gen supp_`var' = 1 if supp_twomore==1 | supp_nh_pi==1 | supp_asian==1 | supp_amin_an==1
+	gen supp_`var' = 1 if other==1
 	*replace `var'="1" if `var'=="S"
 	*destring `var', replace
 	bysort year fipst subgrant_status: egen min_`var' = min(`var')
@@ -311,7 +315,13 @@ rename share homeless_share
 rename quality homeless_quality
 
 order year state county  subgroup_type subgroup
-gsort -year state county subgroup_type subgroup 
+gsort -year state county subgroup_type subgroup
+
+*data quality check 
+gen check1 = 1 if homeless_count<homeless_count_lb
+gen check2 = 1 if homeless_count>homeless_count_ub
+bysort subgroup: tab check1, m
+bysort subgroup: tab check2, m 
 
 export delimited using "built/homelessness_all_subgroups_county.csv", replace // EG: 2014 & 2018 match old data
 
