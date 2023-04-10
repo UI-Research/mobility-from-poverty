@@ -180,7 +180,7 @@ read_precinct <- function(file) {
   st_read(tempfile) %>%
     dplyr::mutate(total_votes = across(starts_with("G20PRE")) %>% rowSums) %>%
     dplyr::select(any_of(c("STATEFP20", "COUNTYFP20", "NAME20", "COUNTY")), total_votes, geometry) %>%
-    sf::st_transform(crs = 6549)
+    sf::st_transform(crs = 5070)
   
 }
 
@@ -195,6 +195,15 @@ precincts <- precincts %>%
 
 ```
 
+The total number of votes reported in this data is 158,445,536. This is 15,905 votes more than [the national vote total in 2020 of 158,429,631](https://en.wikipedia.org/wiki/2020_United_States_presidential_election#Results_by_state). 
+```{r compare-votes, message = FALSE}
+# total number of votes is 158,445,536
+precincts %>%
+  as.data.frame() %>%
+  summarize(n = sum(total_votes))
+
+```
+
 Load the census place shapefiles from `library(tigris)` and filter down to our 486 cities. Because KY and NJ precinct files had naming conventions that differed from other states, we read in the place shapefiles for these states separately and then append both files.
 
 ```{r read-places}
@@ -205,7 +214,7 @@ read_places <- function(fips) {
                  year = 2020,
                  progress_bar = FALSE) %>%
     select(GEOID, geometry) %>%
-    sf::st_transform(crs = 6549)
+    sf::st_transform(crs = 5070)
   
 }
 
@@ -402,6 +411,52 @@ map_trouble("5305210")
 
 ```
 
+Check the percentage of the US (by area) that the precincts shapefiles cover
+```{r}
+# Load shapefile for US - all 50 states & DC
+us_sf <- tigris::states(cb = TRUE,
+                          year = 2020,
+                          progress_bar = FALSE) %>%
+  filter(!GEOID %in% c('60', '66', '69', '72', '78')) %>%
+  select(GEOID, geometry)
+
+# Calculate the areas of the shapefiles for all states
+us_sf_area <- us_sf %>%
+  mutate(us_original_area = st_area(.)) %>%
+  select(GEOID, us_original_area) %>%
+  st_drop_geometry()
+
+# Total US area is 9,327,684,830,953 m^2
+total_us_area <- us_sf_area %>%
+  summarize(total_us = sum(us_original_area))
+
+# Calculate the areas of the shapefiles for all precincts
+precinct_sf_area <- precincts %>%
+  mutate(precinct_original_area = st_area(.)) %>%
+  select(GEOID20, precinct_original_area) %>%
+  st_drop_geometry()
+
+# Total precinct area is 2,934,563,569,601 m^2
+total_precinct_area <- precinct_sf_area %>%
+  summarize(total_precinct = sum(precinct_original_area)) %>%
+  mutate(total_precinct_meters = total_precinct * (1200/3937))
+
+# Calculate the areas of the shapefiles for all places
+place_sf_area <- places %>%
+  mutate(place_original_area = st_area(.)) %>%
+  select(GEOID, place_original_area) %>%
+  st_drop_geometry()
+
+# Total total place area is 534,652,959,013 m^2
+total_place_area <- place_sf_area %>%
+  summarize(total_place = sum(place_original_area))
+
+## Precincts cover 31.46% of the US. Places cover 5.73% of the US.
+# 2934563569601 / 9327684830953
+# 534652959013 / 9327684830953
+```
+
+
 ### Interpolation
 
 We use the following specification for the areal interpolation; however, we manually do the interpolation so we can use the weights to construct a quality variable. 
@@ -574,6 +629,7 @@ There are a few independent cities and counties in our data set. In these cases,
 # pull county results
 mit <- read_csv(here::here("05_local-governance", 
                            "voter-turnout", 
+                           "data",
                            "mit", 
                            "countypres_2000-2020.csv")) %>%
   filter(year == 2020) %>%
@@ -831,7 +887,7 @@ count(
 
 ```
 
-Let's use the worse of the three quality tests to set the quality. 
+Let's use the worst of the three quality tests to set the quality. 
 
 ```{r}
 joined_data <- joined_data %>%
