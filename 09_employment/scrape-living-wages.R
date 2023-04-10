@@ -15,7 +15,7 @@ all_counties %>%
   map_df(.f = get_living_wages, sleep_time = 10)
 
 # read in the scraped data
-mit <- read_csv(here::here("09_employment", "mit-living-wage-scraped.csv"), 
+mit <- read_csv(here::here("09_employment", "mit-living-wage-scraped_12_15_22.csv"), 
                 col_names = FALSE) %>%
   mutate(state = str_sub(X1, 1, 2),
          county = str_sub(X1, 3, 5)) %>%
@@ -30,6 +30,7 @@ joined_data <- left_join(all_counties, mit, by = c("state", "county"))
 # write the final file
 joined_data %>%
   select(year, state, county, adults, children, wage) %>%
-  write_csv(here::here("09_employment", "mit-living-wage.csv"))
+  mutate(year = 2021) %>% 
+  write_csv(here::here("09_employment", "mit-living-wage-2022.csv"))
   
   
