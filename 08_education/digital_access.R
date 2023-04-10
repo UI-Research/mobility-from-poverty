@@ -600,6 +600,18 @@ place_digital_access <- place_digital_access %>%
          subgroup_type, subgroup,
          digital_access, digital_access_quality)
 
+# suppress values with horrible CVs
+
+county_digital_access <- county_digital_access %>%
+  mutate(
+    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+  )
+
+place_digital_access <- place_digital_access %>%
+  mutate(
+    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+  )
+
 # Export each of the files as CSVs
 
 county_digital_access %>%
