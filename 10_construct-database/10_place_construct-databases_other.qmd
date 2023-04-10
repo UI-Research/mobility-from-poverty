@@ -1,0 +1,104 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+library(tidylog)
+
+```
+
+```{r}
+place_pop <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  select(state, place, state_name, place_name) %>%
+  distinct()
+
+```
+
+Gm note: environmental index is updated to have subgroups by race share
+## Environmental
+
+```{r}
+environment <- read_csv(here("06_neighborhoods", "environment", "data", "output", "environment_place_sub_all.csv"), guess_max = 5000) %>%
+  mutate(
+    subgroup = recode(
+      subgroup,
+      `High Poverty` = "High Poverty Tracts",
+      `Not High Poverty` = "Not High Poverty Tracts"
+    )
+  ) %>% 
+  left_join(place_pop, by = c("state", "place"))
+
+write_csv(environment, here("data", "09_place_environmental-exposure_poverty_longitudinal.csv"))
+
+
+environment_recent <- environment %>%
+  slice_max(year) %>%
+  write_csv(here("data", "09_place_environmental-exposure_poverty_recent.csv"))
+
+```
+
+```{r}
+SEDA <- read_csv(here("08_education", "data", "built", "SEDA_all_subgroups_city.csv")) %>%
+  filter(subgroup_type %in% c("all", "income")) %>%
+  #filter(year == 2015) %>% #GM note: not obvious why we do this 
+  mutate(
+    subgroup = case_when(
+      subgroup == "All" ~ "All",
+      subgroup == "Economically Disadvantaged" ~ "Low Income",
+      subgroup == "Not Economically Disadvantaged" ~ "Not Low-Income"
+    )
+  )
+
+SEDA_recent <- SEDA %>%
+  slice_max(year) %>%
+  left_join(place_pop, by = c("state", "place")) %>%
+  write_csv(here("data", "09_place_SEDA-income_recent.csv"))
+
+SEDA_longitudinal <- SEDA %>%
+  left_join(place_pop, by = c("state", "place")) %>%
+  write_csv(here("data", "09_place_SEDA-income_longitudinal.csv"))
+
+```
+
+## Poverty Exposure
+
+```{r}
+files <-read_csv(
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv")
+  )%>%
+  left_join(place_pop, by = c("state", "place")) %>%
+  write_csv(here("data", "09_place_poverty-exposure_race-ethnicity.csv"))
+
+#Fix names here!
+```
+
+
+
+
