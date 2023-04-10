@@ -35,7 +35,7 @@ attempt_living_wages <- function(county_id,
   )
   
   write_csv(clean_data, 
-            here::here("09_employment", "mit-living-wage-scraped.csv"),
+            here::here("09_employment", "mit-living-wage-scraped_12_15_22.csv"),
             append = TRUE)
   
   return(clean_data)
