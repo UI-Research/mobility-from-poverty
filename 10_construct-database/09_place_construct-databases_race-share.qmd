@@ -3,3 +3,89 @@ title: "Untitled"
 format: html
 editor: visual
 ---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+
+```{r}
+#these are same for update as of 2023-04-03 (GM)
+files <- c(
+  #Incorrectly subdivided breakdown
+  #here("01_financial-well-being", "city-debt-col-shares_CORRECT.csv"),
+  here("06_neighborhoods", 
+       "environment", 
+       "data", 
+       "output", 
+       "environment_place_sub_all.csv")
+  )
+
+```
+
+
+
+```{r}
+
+read_csv_and_clean <- function(file) {
+  print(file)
+  
+  df <- read_csv(file, guess_max = 5000) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           place = stringr::str_pad(place, width = 5, pad = "0")) %>%
+    filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
+    mutate(
+      subgroup = case_when(
+        subgroup == "All" ~ "All",
+        subgroup == "Predominantly People of Color" ~ "Majority Non-White", 
+        subgroup == "No Predominant Racial Group" ~ "Mixed Race and Ethnicity",
+        subgroup == "Predominantly White" ~ "Majority White, Non-Hispanic",
+        subgroup == "No Majority Race/Ethnicity" ~ "Mixed Race and Ethnicity", 
+        TRUE ~ subgroup
+      )
+    )
+  
+  return(df)
+}
+
+db <- map(files, read_csv_and_clean) %>%
+  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
+  mutate(subgroup_type = str_to_lower(subgroup_type))
+```
+
+```{r}
+#Make recent
+place_pop <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  select(state, place, state_name, place_name) %>%
+  distinct()
+
+db <- db %>% 
+  left_join(place_pop, by = c("state", "place"))
+
+anti <- anti_join(db, place_pop, by = c("state", "place"))
+
+```
+
+
+```{r}
+#Read in and join place names:
+
+```
+
+```{r}
+
+#write_csv(db_recent, here("data", "07_place_mobility-metrics_race-share_recent.csv"))
+write_csv(db, here("data", "07_place_mobility-metrics_race-share_longitudinal.csv"))
+
+```
