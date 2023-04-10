@@ -844,37 +844,37 @@ The process for creating the subgroup metric is the same as the process for crea
 
 ## Effective public education
 
-This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or metro is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space.
+This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or city is learning at an average rate or on track with grade level; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space. This metric is available at the county level using county level SEDA data and at the city level using school district level SEDA data. 
 
 ### Overview
 
 * **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2013-14 school year through 2017-2018 school year
-* **Final data name(s):** `SEDA.csv`
+* **Year(s):** County Level: 2014-15 school year through 2017-2018 school year. City Level: 2016-17 school year through 2017-18 school year. 
+* **Final data name(s):** `SEDA_all_subgroups_city.csv` `SEDA_all_subgroups_county.csv` `SEDA_all_city.csv` `SEDA_all_county.csv`
 * **Data Source(s):** 
   *  https://cepa.stanford.edu/content/seda-data https://edopportunity.org/get-the-data/seda-archive-downloads/ exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta
 	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., & Chavez, B. (2021). 
 	Stanford Education Data Archive (Version 4.1). Retrieved from http://purl.stanford.edu/db586ns4974.
 * Subgroups: all; gender; race/ethnicity; income
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup.
-* **Limitations:** Not all counties report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
+* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup. For city level data, metrics are calculataed at the school district level and are aggregated to be a subgroup-weighted average for each metric. Similarly, the data quality flags are aggregated and rounded to the nearest integer. 
+* **Limitations:** Not all counties and school districts report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
 * **Missingness:** The following years have the following missing data: 
 
-						County					Metro
-subgroup					2013	2014	2015	2016	2017								2013	2014	2015	2016	2017
-All						81	85	76	75	102		All						0	1	0	0	10
-Black, Non-Hispanic				1784	1812	1821	1844	1855		Black, Non-Hispanic			334	346	346	359	370
-Economically Disadvantaged		211	212	219	223	278		Economically Disadvantaged		5	6	3	4	25
-Female					207	202	207	210	245		Female					0	1	0	0	13
-Hispanic					1757	1706	1694	1653	1659		Hispanic					221	207	205	198	193
-Male						193	196	198	205	237		Male						0	1	0	0	13
-Not Economically Disadvantaged		326	328	344	354	410		Not Economically Disadvantaged	6	7	6	5	30
-White, Non-Hispanic				204	218	216	214	252		White, Non-Hispanic			10	14	12	9	22
+						County										City
+subgroup					2014	2015	2016	2017							2016	2017
+All						85	76	75	102		All					83	86
+Black, Non-Hispanic				1812	1821	1844	1855		Black, Non-Hispanic			125	135
+Economically Disadvantaged			212	219	223	278		Economically Disadvantaged		85	92
+Female						202	207	210	245		Female					83	86
+Hispanic					1706	1694	1653	1659		Hispanic				85	93
+Male						196	198	205	237		Male					83	87
+Not Economically Disadvantaged			328	344	354	410		Not Economically Disadvantaged		85	92
+White, Non-Hispanic				218	216	214	252		White, Non-Hispanic			89	90
 
 ### Process
 
-SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in order to obtain county-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
+SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in the county data and school district in the city data in order to obtain county/school district-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county/school district. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
 
 ---
 
