@@ -279,4 +279,39 @@ tab year if homeless_count==.
 order year state county 
 gsort -year state county
 
-export delimited using "built/homelessness_county.csv", replace // EG: 2014 & 2018 match old data
+*save "all" separately
+preserve
+keep year state county homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
+export delimited using "built/homelessness_all_county.csv", replace
+restore
+
+rename homeless* all*
+
+rename all_* *All
+rename black_* *Black
+rename hispanic_* *Hispanic
+rename other_* *Other
+rename white_* *White
+rename county code_county
+
+reshape long count count_lb count_ub share quality, i(year state code_county) j(subgroup) string
+rename code_county county
+
+gen subgroup_type = ""
+replace subgroup_type = "all" if subgroup=="All"
+replace subgroup_type = "race-ethnicity" if subgroup!="All"
+
+replace subgroup = "Black, Non-Hispanic" if subgroup=="Black"
+replace subgroup = "White, Non-Hispanic" if subgroup=="White"
+replace subgroup = "Other Races and Ethnicities" if subgroup=="Other"
+rename count homeless_count
+rename count_lb homeless_count_lb
+rename count_ub homeless_count_ub
+rename share homeless_share
+rename quality homeless_quality
+
+order year state county  subgroup_type subgroup
+gsort -year state county subgroup_type subgroup 
+
+export delimited using "built/homelessness_all_subgroups_county.csv", replace // EG: 2014 & 2018 match old data
+
