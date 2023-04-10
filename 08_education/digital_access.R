@@ -20,33 +20,22 @@
 library(censusapi)
 library(tidycensus)
 library(tidyverse)
+library(tidylog)
 
 ###################################################################
 # (1) Housekeeping
 
 # Explore where to pull data from
-apis <- listCensusApis()
-View(apis)
-
 acs5_vars <- listCensusMetadata(name="2021/acs/acs5", type = "variables")
-head(acs5_vars)
 
 acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geography")
 
 
 # Here are all the codes we need for the population denominator(s): 
 
-# RACE variables
-# B03002_003E # Not Hispanic or Latino, White Alone
-# B03002_004E # Not Hispanic or Latino, Black of African American Alone
-# B03002_005E # Not Hispanic or Latino, American Indian and Alaska Native alone
-# B03002_006E # Not Hispanic or Latino, Asian Alone
-# B03002_007E # Not Hispanic or Latino, Native Hawaiian and Other Pacific Islander alone
-# B03002_008E # Not Hispanic or Latino, some other race alone
-# B03002_009E # Not Hispanic or Latino, two or more races
-
 # RACE variables that will match the ones that are available for digital access (see below)
 # we cannot use the set above, because broadband access not split out by non-hispanic racial subgroups, only totals
+# B02001_001E
 # B02001_002E # White Alone
 # B02001_003E # Black or African American Alone
 # B02001_004E # American Indian and Alaska Native Alone
@@ -68,12 +57,19 @@ acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geogra
 # B28009H_004E # White Alone, not Hispanic or Latino (won't use this since not consistent, it's the only one)
 # B28009I_004E # Hispanic or Latino
 
+# The table doesn't report person-level total tabulations of broadband access
+# We will sum up the disjoint cells to calculate this
+# NOTE: we skip hispanic in that tabulation because the table doesn't disaggregate
+# by race and ethnicity
 
 ###################################################################
 # (2) Pull demographics for Census Places and Census Counties
 
 # First, list & save variables of interest as a vector
 popvars <- c(
+  "B02001_001E",
+  
+  "B02001_002E",
   "B02001_002E",
   "B02001_003E", 
   "B02001_004E",
@@ -95,7 +91,6 @@ digitalvars <- c(
   "B28009I_004E"
 )
 
-
 # Pull ACS data at the Census Place and Census County levels
 # first, all the demographic populations
 places_pop <- get_acs(geography = "place",
@@ -104,7 +99,8 @@ places_pop <- get_acs(geography = "place",
 
 county_pop <- get_acs(geography = "county",
                       variables = popvars,
-                      year = 2021)
+                      year = 2021) %>%
+  filter(!str_detect(GEOID, "^72"))
 
 # now all the digital access data
 places_digital <- get_acs(geography = "place",
@@ -113,7 +109,8 @@ places_digital <- get_acs(geography = "place",
 
 county_digital <- get_acs(geography = "county",
                           variables = digitalvars,
-                          year = 2021)
+                          year = 2021) %>%
+  filter(!str_detect(GEOID, "^72"))
 
 
 ###################################################################
@@ -125,12 +122,6 @@ places_pop <- places_pop %>%
 county_pop <- county_pop %>% 
   select(GEOID, NAME, variable, estimate)
 
-places_digital <- places_digital %>% 
-  select(GEOID, NAME, variable, estimate)
-county_digital <- county_digital %>% 
-  select(GEOID, NAME, variable, estimate)
-
-
 # Reshape the datasets so we can see all the population values per row
 wide_county_pop <- county_pop %>%
   pivot_wider(names_from = variable, values_from = estimate)
@@ -138,61 +129,81 @@ wide_places_pop <- places_pop %>%
   pivot_wider(names_from = variable, values_from = estimate)
 
 wide_county_digital <- county_digital %>%
-  pivot_wider(names_from = variable, values_from = estimate)
+  pivot_wider(names_from = variable, values_from = c(estimate, moe))
 wide_places_digital <- places_digital %>%
-  pivot_wider(names_from = variable, values_from = estimate)
+  pivot_wider(names_from = variable, values_from = c(estimate, moe))
 
 
 
 # Rename vars for clarity
 wide_county_pop <- wide_county_pop %>% 
   rename(
+    "total_people" = "B02001_001",
     "white" = "B02001_002",
-            "black" = "B02001_003", 
-            "aian" = "B02001_004",
-            "asian" = "B02001_005",
-            "nhpi" = "B02001_006",
-            "other" = "B02001_007",
-            "two_or_more" = "B02001_008",
-            "hispanic" = "B03001_003"
+    "black" = "B02001_003", 
+    "aian" = "B02001_004",
+    "asian" = "B02001_005",
+    "nhpi" = "B02001_006",
+    "other" = "B02001_007",
+    "two_or_more" = "B02001_008",
+    "hispanic" = "B03001_003"
   )
 
 wide_places_pop <- wide_places_pop %>% 
   rename(
+    "total_people" = "B02001_001",
     "white" = "B02001_002",
-            "black" = "B02001_003", 
-            "aian" = "B02001_004",
-            "asian" = "B02001_005",
-            "nhpi" = "B02001_006",
-            "other" = "B02001_007",
-            "two_or_more" = "B02001_008",
-            "hispanic" = "B03001_003"
+    "black" = "B02001_003", 
+    "aian" = "B02001_004",
+    "asian" = "B02001_005",
+    "nhpi" = "B02001_006",
+    "other" = "B02001_007",
+    "two_or_more" = "B02001_008",
+    "hispanic" = "B03001_003"
   )
 
 
 
 wide_county_digital <- wide_county_digital %>% 
   rename(
-    "white_digital" = "B28009A_004",
-    "black_digital" = "B28009B_004", 
-    "aian_digital" = "B28009C_004",
-    "asian_digital" = "B28009D_004",
-    "nhpi_digital" = "B28009E_004",
-    "other_digital" = "B28009F_004",
-    "two_or_more_digital" = "B28009G_004",
-    "hispanic_digital" = "B28009I_004"
+    "white_digital" = "estimate_B28009A_004",
+    "black_digital" = "estimate_B28009B_004", 
+    "aian_digital" = "estimate_B28009C_004",
+    "asian_digital" = "estimate_B28009D_004",
+    "nhpi_digital" = "estimate_B28009E_004",
+    "other_digital" = "estimate_B28009F_004",
+    "two_or_more_digital" = "estimate_B28009G_004",
+    "hispanic_digital" = "estimate_B28009I_004",
+    
+    "white_digital_moe" = "moe_B28009A_004",
+    "black_digital_moe" = "moe_B28009B_004", 
+    "aian_digital_moe" = "moe_B28009C_004",
+    "asian_digital_moe" = "moe_B28009D_004",
+    "nhpi_digital_moe" = "moe_B28009E_004",
+    "other_digital_moe" = "moe_B28009F_004",
+    "two_or_more_digital_moe" = "moe_B28009G_004",
+    "hispanic_digital_moe" = "moe_B28009I_004"
   )
 
 wide_places_digital <- wide_places_digital %>% 
   rename(
-    "white_digital" = "B28009A_004",
-    "black_digital" = "B28009B_004", 
-    "aian_digital" = "B28009C_004",
-    "asian_digital" = "B28009D_004",
-    "nhpi_digital" = "B28009E_004",
-    "other_digital" = "B28009F_004",
-    "two_or_more_digital" = "B28009G_004",
-    "hispanic_digital" = "B28009I_004"
+    "white_digital" = "estimate_B28009A_004",
+    "black_digital" = "estimate_B28009B_004", 
+    "aian_digital" = "estimate_B28009C_004",
+    "asian_digital" = "estimate_B28009D_004",
+    "nhpi_digital" = "estimate_B28009E_004",
+    "other_digital" = "estimate_B28009F_004",
+    "two_or_more_digital" = "estimate_B28009G_004",
+    "hispanic_digital" = "estimate_B28009I_004",
+    
+    "white_digital_moe" = "moe_B28009A_004",
+    "black_digital_moe" = "moe_B28009B_004", 
+    "aian_digital_moe" = "moe_B28009C_004",
+    "asian_digital_moe" = "moe_B28009D_004",
+    "nhpi_digital_moe" = "moe_B28009E_004",
+    "other_digital_moe" = "moe_B28009F_004",
+    "two_or_more_digital_moe" = "moe_B28009G_004",
+    "hispanic_digital_moe" = "moe_B28009I_004"
   )
 
 # Collapse the detailed groups into the same four racial groups of interest from the above section
@@ -200,26 +211,75 @@ wide_places_digital <- wide_places_digital %>%
 # Construct asian_other & total (combined values)
 wide_county_pop <- wide_county_pop %>%
   mutate(
-    asian_other = aian + asian + nhpi + other + two_or_more,
-    total_people = asian_other + hispanic + white + black
+    asian_other = aian + asian + nhpi + other + two_or_more
   )
 
 wide_places_pop <- wide_places_pop %>%
   mutate(
-    asian_other = aian + asian + nhpi + other + two_or_more,
-    total_people = asian_other + hispanic + white + black
+    asian_other = aian + asian + nhpi + other + two_or_more
   )
+
+# we combine margins of errors for detailed groups using rules from 
+# slide 51 here: 
+# https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf
+
+# we then calculate coefficients of variation
+# 1. convert the MOE into a standard error by dividing by 1.645 because Census
+# uses 90% confidence interval
+# 2. divide the standard error by the estimate
 
 wide_county_digital <- wide_county_digital %>%
   mutate(
     asian_other_digital = aian_digital + asian_digital + nhpi_digital + other_digital + two_or_more_digital,
-    total_people_digital = asian_other_digital + hispanic_digital + white_digital + black_digital
+    # don't include hispanic when calculating total!
+    total_people_digital = asian_other_digital + black_digital + white_digital,
+    asian_other_moe = sqrt(
+      aian_digital_moe ^ 2 + 
+        asian_digital_moe ^ 2 + 
+        nhpi_digital_moe ^ 2 +
+        other_digital_moe ^ 2 + 
+        two_or_more_digital_moe ^ 2
+    ),
+    # don't include hispanic when calculating total!
+    total_people_digital_moe = sqrt(
+      asian_other_moe ^ 2 + 
+        black_digital_moe ^ 2 + 
+        white_digital_moe ^ 2
+    )
+  ) %>%
+  mutate(
+    total_people_digital_cv = (total_people_digital_moe / 1.645) / total_people_digital, 
+    asian_other_digital_cv = (asian_other_moe / 1.645) / asian_other_digital, 
+    black_digital_cv = (black_digital_moe / 1.645) / black_digital, 
+    hispanic_digital_cv = (hispanic_digital_moe / 1.645) / hispanic_digital, 
+    white_digital_cv = (white_digital_moe / 1.645) / white_digital
   )
 
 wide_places_digital <- wide_places_digital %>%
   mutate(
     asian_other_digital = aian_digital + asian_digital + nhpi_digital + other_digital + two_or_more_digital,
-    total_people_digital = asian_other_digital + hispanic_digital + white_digital + black_digital
+    # don't include hispanic when calculating total!
+    total_people_digital = asian_other_digital + black_digital + white_digital,
+    asian_other_moe = sqrt(
+      aian_digital_moe ^ 2 + 
+        asian_digital_moe ^ 2 + 
+        nhpi_digital_moe ^ 2 +
+        other_digital_moe ^ 2 + 
+        two_or_more_digital_moe ^ 2
+    ),
+    # don't include hispanic when calculating total!
+    total_people_digital_moe = sqrt(
+      asian_other_moe ^ 2 + 
+        black_digital_moe ^ 2 + 
+        white_digital_moe ^ 2
+    )
+  ) %>%
+  mutate(
+    total_people_digital_cv = (total_people_digital_moe / 1.645) / total_people_digital, 
+    asian_other_digital_cv = (asian_other_moe / 1.645) / asian_other_digital, 
+    black_digital_cv = (black_digital_moe / 1.645) / black_digital, 
+    hispanic_digital_cv = (hispanic_digital_moe / 1.645) / hispanic_digital, 
+    white_digital_cv = (white_digital_moe / 1.645) / white_digital
   )
 
 
@@ -247,7 +307,12 @@ wide_county_digital <- wide_county_digital %>% select(GEOID,
                                                       asian_other_digital, 
                                                       black_digital, 
                                                       hispanic_digital, 
-                                                      white_digital)
+                                                      white_digital,
+                                                      total_people_digital_cv, 
+                                                      asian_other_digital_cv, 
+                                                      black_digital_cv, 
+                                                      hispanic_digital_cv, 
+                                                      white_digital_cv)
 
 wide_places_digital <- wide_places_digital %>% select(GEOID, 
                                                       NAME, 
@@ -255,15 +320,20 @@ wide_places_digital <- wide_places_digital %>% select(GEOID,
                                                       asian_other_digital, 
                                                       black_digital, 
                                                       hispanic_digital, 
-                                                      white_digital)
+                                                      white_digital,
+                                                      total_people_digital_cv, 
+                                                      asian_other_digital_cv, 
+                                                      black_digital_cv, 
+                                                      hispanic_digital_cv, 
+                                                      white_digital_cv)
 
 
 ###################################################################
 # (4) Calculate the digital access metric
 
 # Merge the geography files together to have all variables together
-digital_access_county <- left_join(wide_county_pop, wide_county_digital, by=c("GEOID"))
-digital_access_city <- left_join(wide_places_pop, wide_places_digital, by=c("GEOID"))
+digital_access_county <- left_join(wide_county_pop, wide_county_digital, by=c("GEOID", "NAME"))
+digital_access_city <- left_join(wide_places_pop, wide_places_digital, by=c("GEOID", "NAME"))
 
 # Now calculate the metric: share with digital access
 digital_access_county <- digital_access_county %>%
@@ -273,7 +343,13 @@ digital_access_county <- digital_access_county %>%
     digital_access_black = black_digital / black, 
     digital_access_hispanic = hispanic_digital / hispanic,
     digital_access_white = white_digital / white
-  )
+  ) 
+
+map_dbl(digital_access_county, ~sum(is.nan(.x)))
+
+# replace instances with division by zero
+digital_access_county <- digital_access_county %>%
+  mutate(across(everything(), ~if_else(is.nan(.x), NA, .x)))
 
 digital_access_city <- digital_access_city %>%
   mutate(
@@ -284,61 +360,63 @@ digital_access_city <- digital_access_city %>%
     digital_access_white = white_digital / white
   )
 
+map_dbl(digital_access_city, ~sum(is.nan(.x)))
+
+# replace instances with division by zero
+digital_access_city <- digital_access_city %>%
+  mutate(across(everything(), ~if_else(is.nan(.x), NA, .x)))
 
 ###################################################################
-# (5) Create a data quality flag
+# (5) Create data quality flags
 
-# For any ratio that's being calculated with a count of individuals less than 30, make the flag = 1
-digital_access_county <- digital_access_county %>% 
-  mutate(total_size_flag = case_when((total_people_digital < 30 | total_people < 30) ~ 1,
-                                     (total_people_digital >= 30 & total_people >= 30) ~ 0),
-         asian_size_flag = case_when((asian_other_digital < 30 | asian_other < 30) ~ 1,
-                                     (asian_other_digital >= 30 & asian_other >= 30) ~ 0),
-         black_size_flag = case_when((black_digital < 30 | black < 30) ~ 1,
-                                     (black_digital >= 30 & black >= 30) ~ 0),
-         hispanic_size_flag = case_when((hispanic_digital < 30 | hispanic < 30) ~ 1,
-                                        (hispanic_digital >= 30 & hispanic >= 30) ~ 0),
-         white_size_flag = case_when((white_digital < 30 | white < 30) ~ 1,
-                                     (white_digital >= 30 & white >= 30) ~ 0))
-
-digital_access_city <- digital_access_city %>% 
-  mutate(total_size_flag = case_when((total_people_digital < 30 | total_people < 30) ~ 1,
-                                     (total_people_digital >= 30 & total_people >= 30) ~ 0),
-         asian_size_flag = case_when((asian_other_digital < 30 | asian_other < 30) ~ 1,
-                                     (asian_other_digital >= 30 & asian_other >= 30) ~ 0),
-         black_size_flag = case_when((black_digital < 30 | black < 30) ~ 1,
-                                     (black_digital >= 30 & black >= 30) ~ 0),
-         hispanic_size_flag = case_when((hispanic_digital < 30 | hispanic < 30) ~ 1,
-                                        (hispanic_digital >= 30 & hispanic >= 30) ~ 0),
-         white_size_flag = case_when((white_digital < 30 | white < 30) ~ 1,
-                                     (white_digital >= 30 & white >= 30) ~ 0))
+# We only look at the CVs for the numerator, which is less precise than the 
+# denominator. We use 0.1, 0.2, and 0.5 as thresholds because the CV only
+# accounts for sampling error in the numerator. This is stricter than for some
+# other metrics
 
 # Generate the quality var
-digital_access_county <- digital_access_county %>% 
-  mutate(digital_access_total_quality = case_when((total_size_flag == 1) ~ 2,
-                                                  (total_size_flag == 0) ~ 1),
-         digital_access_asian_other_quality = case_when((asian_size_flag == 1) ~ 2,
-                                                        (asian_size_flag == 0) ~ 1),
-         digital_access_black_quality = case_when((black_size_flag == 1) ~ 2,
-                                                  (black_size_flag == 0) ~ 1),
-         digital_access_hispanic_quality = case_when((hispanic_size_flag == 1) ~ 2,
-                                                     (hispanic_size_flag == 0) ~ 1),
-         digital_access_white_quality = case_when((white_size_flag == 1) ~ 2,
-                                                  (white_size_flag == 0) ~ 1))
+set_quality <- function(cv, digital_access) {
+  
+  quality <- case_when(
+    cv < 0.1 ~ 1,
+    cv < 0.2 ~ 2,
+    cv < 0.5 ~ 3,
+    TRUE ~ NA_real_
+  )
+  
+  quality <- if_else(is.na(digital_access), NA_real_, quality)
+  
+}
 
+digital_access_county <- digital_access_county %>% 
+  mutate(
+    digital_access_total_quality = set_quality(total_people_digital_cv, total_people_digital),
+    digital_access_asian_other_quality = set_quality(asian_other_digital_cv, asian_other_digital),
+    digital_access_black_quality = set_quality(black_digital_cv, black_digital),
+    digital_access_hispanic_quality = set_quality(hispanic_digital_cv, hispanic_digital),
+    digital_access_white_quality = set_quality(white_digital_cv, white_digital)
+  )
+
+count(digital_access_county, digital_access_total_quality)
+count(digital_access_county, digital_access_asian_other_quality)
+count(digital_access_county, digital_access_black_quality)
+count(digital_access_county, digital_access_hispanic_quality)
+count(digital_access_county, digital_access_white_quality)
 
 digital_access_city <- digital_access_city %>% 
-  mutate(digital_access_total_quality = case_when((total_size_flag == 1) ~ 2,
-                                                  (total_size_flag == 0) ~ 1),
-         digital_access_asian_other_quality = case_when((asian_size_flag == 1) ~ 2,
-                                                        (asian_size_flag == 0) ~ 1),
-         digital_access_black_quality = case_when((black_size_flag == 1) ~ 2,
-                                                  (black_size_flag == 0) ~ 1),
-         digital_access_hispanic_quality = case_when((hispanic_size_flag == 1) ~ 2,
-                                                     (hispanic_size_flag == 0) ~ 1),
-         digital_access_white_quality = case_when((white_size_flag == 1) ~ 2,
-                                                  (white_size_flag == 0) ~ 1))
+  mutate(
+    digital_access_total_quality = set_quality(total_people_digital_cv, total_people_digital),
+    digital_access_asian_other_quality = set_quality(asian_other_digital_cv, asian_other_digital),
+    digital_access_black_quality = set_quality(black_digital_cv, black_digital),
+    digital_access_hispanic_quality = set_quality(hispanic_digital_cv, hispanic_digital),
+    digital_access_white_quality = set_quality(white_digital_cv, white_digital)
+  )
 
+count(digital_access_city, digital_access_total_quality)
+count(digital_access_city, digital_access_asian_other_quality)
+count(digital_access_city, digital_access_black_quality)
+count(digital_access_city, digital_access_hispanic_quality)
+count(digital_access_city, digital_access_white_quality)
 
 ###################################################################
 # (6) Prepare the data for saving & export final Metrics files
@@ -522,12 +600,32 @@ place_digital_access <- place_digital_access %>%
          subgroup_type, subgroup,
          digital_access, digital_access_quality)
 
+# suppress values with horrible CVs
+
+county_digital_access <- county_digital_access %>%
+  mutate(
+    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+  )
+
+place_digital_access <- place_digital_access %>%
+  mutate(
+    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+  )
+
 # Export each of the files as CSVs
-# view(county_digital_access)
-# view(place_digital_access)
-write_csv(county_digital_access, "08_education/digital_access_county_2021.csv")
 
-write_csv(place_digital_access, "08_education/digital_access_city_2021.csv")
+county_digital_access %>%
+  filter(subgroup == "All") %>%
+  select(-subgroup_type, -subgroup) %>%
+  write_csv("08_education/digital_access_county_2021.csv")
 
+county_digital_access %>%
+  write_csv("08_education/digital_access_county_subgroup_2021.csv")
 
+place_digital_access %>%
+  filter(subgroup == "All") %>%
+  select(-subgroup_type, -subgroup) %>%
+  write_csv("08_education/digital_access_city_2021.csv")
 
+place_digital_access %>%
+  write_csv("08_education/digital_access_subgroup_city_2021.csv")
