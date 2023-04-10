@@ -1,0 +1,254 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+```{r}
+files <- c(
+  ### CROSSWALK ###
+  #here("geographic-crosswalks", "data", "long-xwalk_place.csv"),
+  
+  ### EDUCATION ###
+  #Missing preschool 
+  here("08_education", "data", "built", "SEDA_all_subgroups_city.csv"), 
+  #missing college
+  #missing  broadband
+  
+  ### FINANCIAL WELLBEING ###
+  #Missing income:
+  #here("01_financial-well-being", ""),
+  
+  #THis is race share data:
+  #here("01_financial-well-being", "city-debt-col-shares_CORRECT.csv"),
+
+  ### HEALTH ###
+  #no city-level disaggregated health data
+
+  ### HOUSING ###
+  #Children homeless????? - follow up with data reshaping
+  #
+  
+  ### LOCAL GOVERNANCE ### 
+  # This exists but idk if it is in the right format: 
+  # here("05_local-governance", "descriptive-representation", "data", "descriptive_rep_denominator_city_2022.csv")
+  
+  ### NEIGHBORHOODS ### 
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv") #,
+  
+  #This is race share: 
+  #here("06_neighborhoods", "environment", "data", "output", "environment_place_sub_all.csv") #,
+  
+  
+  ### SAFETY ###
+  #Place data not ready for prime-time
+  
+  ### WORK ### 
+  #unemployment not ready yet
+
+)
+
+```
+
+```{r}
+read_csv_and_clean <- function(file) {
+  
+  print(file)
+  
+  df <- read_csv(file, guess_max = 5000) 
+  
+  if ("metro" %in% colnames(df)) {
+    df <- df %>%
+      rename(place = metro)
+  } else if("city" %in% colnames(df)){
+    print("CITY IN DF")
+    df <- df %>%
+      rename(place = city)
+  }
+  
+  df <- df %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           place = stringr::str_pad(place, width = 5, pad = "0"))  %>%  
+    #fix column name inconsistencies:
+    mutate(subgroup_type = str_replace(subgroup_type, "Race-ethnicity", "race-ethnicity")) %>%
+    mutate(subgroup = str_replace(subgroup, "Other Races and Eth$", "Other Races and Ethnicities")) %>%
+    mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
+    mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
+    filter(subgroup_type == "race-ethnicity" | 
+             subgroup_type == "all")
+  
+    
+}
+
+db_unclean <- map(files, read_csv_and_clean) %>%
+  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup"))
+
+```
+
+
+
+```{r clean-data}
+#' Function to clean db, largely by updating names
+#' @param db_unclean (data.frame) dataframe joined by map reduce logic above
+#' @return db (data.frame) the cleaned dataframe
+
+
+clean_data <- function(db_unclean){
+  db <- db_unclean %>%
+    rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
+                ) %>%
+    rename_with(.cols = starts_with("pctl"), 
+              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
+    #Commenting out as we don't currently process exposure
+    rename_with(.cols = contains("exposure"),
+              .fn = ~paste0("share_", .x)
+              ) #%>%
+    # rename(
+    #       share_in_preschool_quality = preschool_quality,
+    #        share_hs_degree_quality = hs_degree_quality,
+    #        share_employed_quality = employed_quality
+    #        ) 
+  return(db)
+  
+}
+
+db <- clean_data(db_unclean)
+
+```
+
+
+
+
+```{r}
+read_csv_recent <- function(file) {
+  
+  print(file)
+  
+  df <- read_csv(file, guess_max = 5000)
+  
+  
+  
+  if ("metro" %in% colnames(df)) {
+    df <- df %>%
+      rename(place = metro)
+  } else if("city" %in% colnames(df)){
+    print("CITY IN DF")
+    df <- df %>%
+      rename(place = city)
+  }
+  df <- df %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           place = stringr::str_pad(place, width = 5, pad = "0")) %>%
+    mutate(subgroup_type = str_replace(subgroup_type, "Race-ethnicity", "race-ethnicity")) %>%
+    mutate(subgroup = str_replace(subgroup, "Other Races and Eth$", "Other Races and Ethnicities")) %>%
+    mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
+    mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
+    slice_max(year) %>% 
+    select(-year) %>%
+    filter(subgroup_type == "race-ethnicity" | 
+         subgroup_type == "all")
+  
+  return(df)
+  
+}
+
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(full_join, by = c("state", "place", "subgroup_type", "subgroup")) %>%
+  clean_data()
+```
+
+
+
+
+```{r}
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality)
+
+```
+
+### Recent Database
+
+```{r}
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+```
+
+## Test
+
+### Full Database
+
+```{r}
+db_values <- db %>%
+  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb"))
+
+db_quality <- db %>%
+  select(ends_with("_quality"))
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+db_values %>%
+  assert(within_bounds(-2.5, 10), rate_learning) %>%
+  assert(within_bounds(0, 1), starts_with("share_"))
+
+```
+
+Test confidence interval bounds. 
+
+```{r}
+
+db %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning) %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning_ub) %>%
+  verify(is.na(rate_learning) | rate_learning < rate_learning_ub)
+
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+## Write the File
+
+```{r}
+write_csv(db_recent, here("data", "06_mobility-metrics_place_race-ethnicity_recent.csv"))
+write_csv(db, here("data", "06_mobility-metrics_place_race-ethnicity_longitudinal.csv"))
+
+```
