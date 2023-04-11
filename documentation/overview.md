@@ -28,8 +28,10 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * [College readiness](#college-readiness)
 * [Employment](#employment)
 * [Access to jobs paying a living wage](#access-to-jobs-paying-a-living-wage)
+* [Digital access](#digital-access)
 * [Social Capital](#social-capital)
 * [Descriptive Representation](#descriptive-representation)
+
 
 ---
 
@@ -671,31 +673,42 @@ There are several limitations to this choice. There is no 'other' race category,
 
 ### Overview
 
-* **Analyst & Programmer:** Peace Gwam
-* **Year(s):** 2014 (2010-2014 ACS)
+* **Analyst & Programmer:** Rebecca Marx
+* **Year(s):** 2014 & 2018 (2010-2014 ACS & 2014-2018 ACS)
 * **Final data name(s):** `county_enviro_all.csv`, `county_enviro_subgroups.csv`
-* **Data Source(s):** Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
+* **Data Source(s):** Environmental Protection Agency’s National Air Toxics Assessment data, 2014 & AirToxScreen data, 2018 (based on 2014 & 2017 National Emissions Inventory data); 2014 & 2018 5-year ACS data; Missouri Census Data Center Geocorr 2022: Geographic Correspondence Engine 2022
 * **Notes:**
-* **Data Quality Index:** `1` for main environmental index. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.029% of the overall population for the county (see variable `na_perc` for the `All` subgroup type in `county_level_enviro.csv`). There are 147 census tracts with missing poverty information and a population > 0. For the `Poverty` subgroup type, counties with missing hazard or poverty information of more than 5 percent of the county were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. There was one county  for the `Poverty` subgroup type with a quality flag of `2`. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. There was one county with the `Race` subgroup type that had a quality flag of `2`. 
-* **Limitations:** AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
-* **Missingness:** All 3,142 counties in the United States are represented. There are, however, some caveats: 
+* **Data Quality Index:** Census tracts with missing poverty information and a population > 0 for the `Poverty` subgroup type,  with missing hazard or poverty information of more than 5 percent were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. Remaining census tracts were given a data quality flag of '1'. 
+* **Limitations:** These data may not be updated with enough frequency for some communities. Annual data for a different derrivation of an air quality index are available via the EPA for a subset (about 1/3) of counties and core-based statistical areas (see  https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual). 
+* **Missingness:** All 3,142 counties in the United States are represented and all but one census place contains census tracts with data. Some additional details:
   1. There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 are dropped in the data sets.
   2. There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
   3. There are 147 additional tracts without populations that count for poverty estimates. 10 of the 147 tracts with zero population for the people that are counted for the poverty metric do not have a `haz_idx`. Tracts with a population = 0 for the poverty metric are dropped for the poverty subgroup data set.
 
 ### Process
 
-1. Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.  
-2. Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise.   
-3. Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis  
-4. Merged ACS data with cleaned AFFH data  
-5. Checked Missingness  
-6. Created county-level metrics  
-  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level  
-  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"  
-  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".    
-7. Expanded subgroup data to represent unique values for each subgroup and county  
-8. Appended data together, cleaned, and wrote to `.csv`  
+*Original data:
+  *https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
+  *https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
+*Description: 
+
+*create environmental hazard indicators
+*(1) create tract level indicators of environmental hazards for 2018 
+*(2) create tract level indicators of environmental hazards for 2014
+*compare to affh data previoulsy used for the envrionmental indicator
+
+*create county files 
+*(3) population weight tract-level environmental indicators using poverty ("high_poverty" or "low_poverty") and race-idenity ("Majority Non-White", "Majority White, Non-Hispanic", "No Majoirty Race/Ethnicity") subgroups for 2018
+*(4) create county level environmental index by race-identity and poverty-level for 2018
+*(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
+*(6) create county level environmental index by race-identity and poverty-level for 2014
+*(7) bind 2018 and 2014 county files for final files 
+
+*create place files 
+*(8) prep city crosswalk data from geocorr
+*(9) create place-level environmental indicators using poverty and race-idenity subgroups for 2018 and percent of tract in place
+*(10) create place-level environmental indicators using poverty and race-idenity subgroups for 2014 and percent of tract in place
+*(11) bind 2018 and 2014 place files for final files 
 
 ---
 
@@ -833,37 +846,37 @@ The process for creating the subgroup metric is the same as the process for crea
 
 ## Effective public education
 
-This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or metro is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space.
+This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or city is learning at an average rate or on track with grade level; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space. This metric is available at the county level using county level SEDA data and at the city level using school district level SEDA data. 
 
 ### Overview
 
 * **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2013-14 school year through 2017-2018 school year
-* **Final data name(s):** `SEDA.csv`
+* **Year(s):** County Level: 2014-15 school year through 2017-2018 school year. City Level: 2016-17 school year through 2017-18 school year. 
+* **Final data name(s):** `SEDA_all_subgroups_city.csv` `SEDA_all_subgroups_county.csv` `SEDA_all_city.csv` `SEDA_all_county.csv`
 * **Data Source(s):** 
   *  https://cepa.stanford.edu/content/seda-data https://edopportunity.org/get-the-data/seda-archive-downloads/ exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta
 	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., & Chavez, B. (2021). 
 	Stanford Education Data Archive (Version 4.1). Retrieved from http://purl.stanford.edu/db586ns4974.
 * Subgroups: all; gender; race/ethnicity; income
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup.
-* **Limitations:** Not all counties report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
+* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup. For city level data, metrics are calculataed at the school district level and are aggregated to be a subgroup-weighted average for each metric. Similarly, the data quality flags are aggregated and rounded to the nearest integer. 
+* **Limitations:** Not all counties and school districts report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
 * **Missingness:** The following years have the following missing data: 
 
-						County					Metro
-subgroup					2013	2014	2015	2016	2017								2013	2014	2015	2016	2017
-All						81	85	76	75	102		All						0	1	0	0	10
-Black, Non-Hispanic				1784	1812	1821	1844	1855		Black, Non-Hispanic			334	346	346	359	370
-Economically Disadvantaged		211	212	219	223	278		Economically Disadvantaged		5	6	3	4	25
-Female					207	202	207	210	245		Female					0	1	0	0	13
-Hispanic					1757	1706	1694	1653	1659		Hispanic					221	207	205	198	193
-Male						193	196	198	205	237		Male						0	1	0	0	13
-Not Economically Disadvantaged		326	328	344	354	410		Not Economically Disadvantaged	6	7	6	5	30
-White, Non-Hispanic				204	218	216	214	252		White, Non-Hispanic			10	14	12	9	22
+						County										City
+subgroup					2014	2015	2016	2017							2016	2017
+All						85	76	75	102		All					83	86
+Black, Non-Hispanic				1812	1821	1844	1855		Black, Non-Hispanic			125	135
+Economically Disadvantaged			212	219	223	278		Economically Disadvantaged		85	92
+Female						202	207	210	245		Female					83	86
+Hispanic					1706	1694	1653	1659		Hispanic				85	93
+Male						196	198	205	237		Male					83	87
+Not Economically Disadvantaged			328	344	354	410		Not Economically Disadvantaged		85	92
+White, Non-Hispanic				218	216	214	252		White, Non-Hispanic			89	90
 
 ### Process
 
-SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in order to obtain county-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
+SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in the county data and school district in the city data in order to obtain county/school district-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county/school district. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
 
 ---
 
@@ -983,11 +996,27 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 ---
 
-## Social Capital
+## Digital access
 
 ### Overview
 
 * **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2021
+* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
+* **Data Source(s):** Census Bureau's American Community Survey 
+* **Notes:**
+* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Limitations:**
+* **Missingness:** There are no missing county or city level observations.
+
+### Process
+
+This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+
+This metric is calculated using `digital_access.R' in the 04_education folder.
+  
+## Social Capital
+  
 * **Year(s):** 2020
 * **Final data name(s):** `social_associations_geography_2022.csv`
 * **Data Source(s):** Census County Business Patterns (CBP) Survey 
