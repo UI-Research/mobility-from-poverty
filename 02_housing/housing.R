@@ -8,8 +8,8 @@
 # Process:
 # (1) Housekeeping
 # (2) Import microdata (PUMA Place combination already done)
-# (3) Create a Vacant units dataframe (e.g. limit the microdata to vacant units, 
-#     which will not be accounted for when we isolate households in Steps 4 & 5)
+# (3) Create a Vacant unit dataframe (vacant units will not be accounted for when we isolate households in Steps 4 & 5)
+#     Note that to get vacant unit data, need to pull a separate extract from IPUMS; see instructions below.
 #       (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
 #       (3b) Add PMI, taxes, and insurance estimates, to get total monthly cost of vacant units for ownership
 #               This "total_monthly_cost" variable will be used to calculate affordability in Step 6
@@ -52,38 +52,69 @@ library(readxl)
 # this one should already match the PUMAs to places
 # acs2021clean <- read_csv("data/temp/2021microdata.csv")
 
-# isolate to only GQ under 3 (only want households and vacant units)
+# For HH side: isolate original microdata to only GQ under 3 (only want households)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 acs2021clean <- acs2021clean %>%
   filter(GQ < 3) 
+
+acs2021clean <- acs2021clean %>%
+  arrange(statefip, place)
 # 2230328 obs to 2130573 obs (99,755 obs dropped)
+
+# For VACANT UNIT side: Import vacant-unit-specific data
+# This IPUMS extract has HHWT, GQ, ADJUST, STATEFIP, PUMA, VALUEH, and VACANCY
+# When you click "Create Data Extract", must click "SELECT CASES" -> 
+# check off "GQ" and click "SUBMIT" -> Check off "O Vacant Unit" under GQ status and click "SUBMIT"
+# THEN:
+# Under "STRUCTURE:" , click "Change" -> switch from 'Rectangular' to 'Hierarchical' -> "APPLY SELECTIONS"
+vacant_microdata <- 'C:/Users/tchelidze/Downloads/usa_00020.xml'
+ddi <- read_ipums_ddi(vacant_microdata)
+vacant_microdata21 <- read_ipums_micro(ddi)
+
+# drop observations missing VALUEH (we can't evaluate the affordability of vacant units we don't know the value of)
+#vacant_microdata21 <- vacant_microdata21 %>%
+#  filter(VALUEH != 9999999)
+
+# keep only the variables we need/can even have given this hierarchical structure
+vacant_microdata21 <- vacant_microdata21 %>%
+  select(STATEFIP, PUMA, VACANCY, VALUEH, ADJUST)
+vacant_microdata21 <- vacant_microdata21 %>% 
+  dplyr::rename("puma" = "PUMA",
+                "statefip" = "STATEFIP")
+vacant_microdata21 <- vacant_microdata21 %>%
+  dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+                puma = sprintf("%0.5d", as.numeric(puma)),
+  )
+vacant_microdata21 <- vacant_microdata21 %>% arrange(statefip, puma)
+
+# acs2021clean = subset(acs2021clean, select = -c(VACANCY) )
+
+# acs2021vacant <- left_join(vacant_microdata21, acs2021clean, by = c("statefip", "puma"))
+# 71078007 obs
 
 ###################################################################
 
-# (3) Create a Vacant units dataframe (e.g. limit the microdata to vacant units, 
-#     which will not be accounted for when we isolate households in Steps 4 & 5)
+# (3) Create a Vacant units dataframe (vacant units
+#    will not be accounted for when we isolate households in Steps 4 & 5)
 
 # Vacancy = 1 (for rent)
 # Vacancy = 2 (for sale)
 # Vacancy - 3 (rented or sold but not yet occupied)
 # Choosing only 1-3 excludes seasonal, occasional, and migratory units
 # drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
-vacant <- acs2021clean %>%
-  mutate(vacant = case_when((VACANCY==1 | VACANCY==2 | VACANCY==3) ~ 1,
-                            (VACANCY==0 | VACANCY>3) ~ 0)) %>%
-  filter(VALUEH != 9999999)
 
-# adjust needed variables
-vacant <- vacant %>%
-  mutate(RENT = RENT*ADJUST)
+vacant_microdata21 <- vacant_microdata21 %>%
+  filter(VACANCY==1 | VACANCY==2 | VACANCY==3)
+# still 9776 obs - no drops
+
+
 
 # (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
 
-# Kevin used 3.69% as the effective mortgage rate for DC in 2016, *look up rates on FHFA*
 # Using 6% for the USA to match the choice made by Kevin/Aaron
 # Calculate monthly P & I payment using monthly mortgage rate and compounded interest calculation
 
-vacant <- vacant %>%
+vacant <- vacant_microdata21 %>%
   mutate(VALUEH = VALUEH*ADJUST,
          loan = 0.9 * VALUEH,
          month_mortgage = (6 / 12) / 100,
@@ -100,9 +131,11 @@ vacant <- vacant %>%
   )
 
 # (3c) Now create accurate gross rent variable for vacant units for rent: 
+# This needs to come from the original ACS microdata file (rectangularized rather than hierarchical), which
+# has HH-level vars like RENT, RENTGRS, and HHINCOME (unlike the Vacant Unit extract)
 
 rent_ratio <- acs2021clean %>% 
-  select(RENT, RENTGRS, PERNUM, OWNERSHP, statefip, place)
+  select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, place)
 # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
 rent_ratio <- rent_ratio %>%
   filter(PERNUM == 1,
@@ -118,24 +151,33 @@ rent_ratio <- rent_ratio %>%
 # Collapse (mean) ratio by place
 rent_ratio <- rent_ratio %>% 
   dplyr::group_by(statefip, place) %>% 
-  dplyr::summarize(ratio_rentgrs_rent = mean(ratio_rentgrs_rent, na.rm=TRUE))
+  dplyr::summarize(ratio_rentgrs_rent = mean(ratio_rentgrs_rent, na.rm=TRUE),
+                   RENT = mean(RENT), na.rm=TRUE,
+                   HHINCOME = mean(HHINCOME), na.rm=TRUE,
+                   HHWT = mean(HHWT), na.rm=TRUE
+  )
 
 
 # (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
 #      This "RENTGRS" variable will be used to calculate affordability in Step 6
 
+# in order to be able to merge in rent_ratio, need to have places in the vacant data file
+# merge in places
+vacant_places  <- left_join(vacant, puma_place, by=c("statefip","puma"))
+
 # create a concatenated GEOID for each city(e.g. census place)
 places$GEOID <- paste(places$statefip,places$place, sep = "")
-vacant$GEOID <- paste(vacant$statefip,vacant$place, sep = "")
+vacant_places$GEOID <- paste(vacant_places$statefip,vacant_places$place, sep = "")
 # limit only to places of interest
-vacant <- vacant %>%
+vacant_places <- vacant_places %>%
   filter(GEOID %in% places$GEOID)
+# 11183 obs to 5848 obs (5335 obs dropped)
 
 # Merge rent ratio into vacant unit microdata
-vacant <- left_join(vacant, rent_ratio, by = c("statefip", "place"))
+vacant_final<- left_join(vacant_places, rent_ratio, by = c("statefip", "place"))
 
 # Update the RENTGRS variable with our calculated ratio
-vacant <- vacant %>%
+vacant_final <- vacant_final %>%
   mutate(RENTGRS = RENT*ratio_rentgrs_rent)
 
 
@@ -207,31 +249,42 @@ FMR_2021 <- left_join(FMR_Income_Levels_2021, county_place, by=c("state", "count
 place_income_limits_2021 <- FMR_2021 %>%
   dplyr::group_by(state, place) %>%
   dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop2017),
-                    l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
-                    l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
-                    l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
-                    l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
-                    l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
-                    l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
-                    l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
-                    ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
-                    ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
-                    ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
-                    ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
-                    ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
-                    ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
-                    ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
-                    ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
-                    l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
-                    l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
-                    l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
-                    l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
-                    l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
-                    l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
-                    l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
-                    l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
-                    n = n()
+                   l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
+                   l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
+                   l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
+                   l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
+                   l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
+                   l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
+                   l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
+                   ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
+                   ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
+                   ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
+                   ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
+                   ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
+                   ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
+                   ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
+                   ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
+                   l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
+                   l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
+                   l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
+                   l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
+                   l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
+                   l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
+                   l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
+                   l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
+                   n = n()
   )
+place_income_limits_2021 <- place_income_limits_2021 %>% 
+  dplyr::rename("statefip" = "state")
+place_income_limits_2021 <- place_income_limits_2021 %>%
+  dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+                place = sprintf("%0.5d", as.numeric(place)),
+  )
+place_income_limits_2021$GEOID <- paste(place_income_limits_2021$statefip,place_income_limits_2021$place, sep = "")
+# limit only to places of interest
+place_income_limits_2021 <- place_income_limits_2021 %>%
+  filter(GEOID %in% places$GEOID)
+# 31893 obs to 486 obs
 
 ###################################################################
 
@@ -250,14 +303,11 @@ microdata_housing <- acs2021clean %>%
   filter(PERNUM == 1)
 # 853,918 obs
 
-# create new dataset called "households_year" to merge microdata & place income limits (FMR_2021) by state and place
-# first rename state so it will merge
-FMR_2021 <- FMR_2021 %>% 
-  dplyr::rename(statefip = state) %>%
-  mutate(place = sprintf("%0.5d", as.numeric(place)))
 
-households_2021 <- left_join(microdata_housing, FMR_2021, by=c("statefip","place"))
-# 1,886,942 obs
+# create new dataset called "households_year" to merge microdata & place income limits (place_income_limits_2021) by state and place
+
+households_2021 <- left_join(microdata_housing, place_income_limits_2021, by=c("statefip","place"))
+# 853,918 obs
 
 
 # Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
@@ -310,21 +360,21 @@ households_2021 <- households_2021 %>%
 # gross rent (RENTGRS), use that for the cost. Otherwise, if there is a valid house value, use the 
 # housing cost that was calculated and prepared above in the "vacant" df.
 
-vacant_2021 <- left_join(vacant, FMR_2021, by=c("statefip","place"))
-# 3,073,390 obs
+vacant_2021 <- left_join(vacant_final, place_income_limits_2021, by=c("statefip","place"))
+# 4,622,690 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 # NOTE that we will need to create a Below50AMI_vacantHH (the count of vacant HH) for the Data Quality flag in step 8
 vacant_2021 <- vacant_2021 %>%
   mutate(Affordable80AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l80_4*0.30)) ~ 1,
-                                     RENTGRS ==0 & ((total_monthly_cost*12) <= (l80_4*0.30)) ~ 0),
+                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (l80_4*0.30)) ~ 0),
          Affordable50AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l50_4*0.30)) ~ 1,
-                                     RENTGRS ==0 & ((total_monthly_cost*12) <= (l50_4*0.30)) ~ 0),
+                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (l50_4*0.30)) ~ 0),
          Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
                                 (HHINCOME>l50_4) ~ 0),
          Below50AMI_vacantHH = HHWT*Below50AMI,
          Affordable30AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (ELI_4*0.30)) ~ 1,
-                                     RENTGRS ==0 & ((total_monthly_cost*12) <= (ELI_4*0.30)) ~ 0)
+                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (ELI_4*0.30)) ~ 0)
   )
 
 
@@ -336,12 +386,12 @@ vacant_2021 <- vacant_2021 %>%
 households_summed_2021 <- households_2021 %>% 
   dplyr::group_by(statefip, place) %>%
   dplyr::summarize(Below80AMI = sum(Below80AMI*HHWT, na.rm = TRUE),
-                  Affordable80AMI = sum(Affordable80AMI*HHWT, na.rm = TRUE),
-                  Below50AMI = sum(Below50AMI*HHWT, na.rm = TRUE),
-                  Affordable50AMI = sum(Affordable50AMI*HHWT, na.rm = TRUE),
-                  Below30AMI = sum(Below30AMI*HHWT, na.rm = TRUE),
-                  Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
-                  HHobs_count = n())
+                   Affordable80AMI = sum(Affordable80AMI*HHWT, na.rm = TRUE),
+                   Below50AMI = sum(Below50AMI*HHWT, na.rm = TRUE),
+                   Affordable50AMI = sum(Affordable50AMI*HHWT, na.rm = TRUE),
+                   Below30AMI = sum(Below30AMI*HHWT, na.rm = TRUE),
+                   Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
+                   HHobs_count = n())
 
 households_summed_2021 <- households_summed_2021 %>% 
   rename("state" = "statefip")
@@ -380,7 +430,7 @@ housing_2021 <- housing_2021 %>%
 # Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
 housing_2021 <- housing_2021 %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-           size_flag = case_when((affordableHH_sum < 30) ~ 1,
+         size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
@@ -394,9 +444,9 @@ housing_2021 <- left_join(housing_2021, place_puma, by=c("state","place"))
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing_2021 <- housing_2021 %>% 
   mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
-                                             size_flag==0 & puma_flag==2 ~ 2,
-                                             size_flag==0 & puma_flag==3 ~ 3,
-                                             size_flag==1 ~ 3))
+                                     size_flag==0 & puma_flag==2 ~ 2,
+                                     size_flag==0 & puma_flag==3 ~ 3,
+                                     size_flag==1 ~ 3))
 
 ###################################################################
 
