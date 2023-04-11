@@ -71,11 +71,6 @@ bind_rows(
 ) %>%
   write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
   
-
-
-
-
-
 concatenate_files(
   c(
     here("04_health", "final_data", "neonatal_health_2018.csv"),
@@ -113,22 +108,6 @@ concatenate_files(c(
     here("data", "temp", "race-ethnicity-exposure_county.csv")
   )
 
-
-
-jv_arrest <- read_csv_and_clean(here(
-  "07_safety",
-  "juvenile_arrests",
-  "2016_arrest_by_county_subgroup.csv"
-)) %>% 
-  filter(subgroup_type == "all") %>%
-  select(-c(subgroup, subgroup_type)) %>%
-  write_csv(here(
-    "data",
-    "temp",
-    "jvarrestrate_county_2016_CORRECT.csv"
-  )
-  )
-
 ```
 
 ```{r}
@@ -158,6 +137,25 @@ bind_rows(
 read_csv(here("02_housing", "data", "built", "homelessness_all_county.csv")) %>%
   mutate(homeless_share = pmin(homeless_share, 1)) %>%
   write_csv(here("data", "temp", "homelessness_all_county.csv"))
+
+read_csv(here("07_safety", "modified data", "2021_crime_rate_county.csv")) %>%
+  select(-total_people) %>%
+  rename(
+    rate_violent_crime = crime_violent_rate,
+    rate_property_crime = crime_property_rate,
+    rate_crime_quality = crime_rate_quality
+  ) %>%
+  write_csv(here("data", "temp", "2021_crime_rate_county.csv"))
+
+read_csv(here("07_safety", "modified data", "2021_juv_arrest_rate_county.csv")) %>%
+  select(-age_1017, -juv_arrest_rate_violent, -juv_arrest_rate_property,
+         -core_reporting, -agencies_reporting) %>%
+  rename(
+    rate_juv_arrest = juv_arrest_rate, 
+    rate_juv_arrest_quality = juv_arrest_rate_quality
+  ) %>%
+  write_csv(here("data", "temp", "2021_juv_arrest_rate_county.csv"))
+
 
 ```
 
@@ -280,8 +278,8 @@ files <- c(
   here("06_neighborhoods", "social-capital", "data", "social_associations_county_2022.csv"),
 
   ### SAFETY ###
-  here("07_safety", "modified data", "2021_crime_rate_county.csv"),
-  here("07_safety", "modified data", "2021_juv_arrest_rate_county.csv"),
+  here("data", "temp", "2021_crime_rate_county.csv"),
+  here("data", "temp", "2021_juv_arrest_rate_county.csv"),
 
   ### WORK ###
   here("09_employment", "metrics_employment.csv"),
@@ -371,7 +369,7 @@ clean_data <- function(db_unclean){
               ) %>%
   rename_with(~str_replace(.x,
                            "transit_trips",
-                           "count_transportation_trips")
+                           "index_transit_trips")
               ) %>%
   rename_with(~str_replace(.x, 
                            "economic_connectedness",
@@ -381,16 +379,6 @@ clean_data <- function(db_unclean){
                            "social_connection",
                            "count_membership_associations_per_10k")
                ) %>%
-  rename_with(.cols = contains("crime_rate"),
-              ~paste0("rate_",
-                      str_replace(.x, "crime_rate", "crime")
-                      )
-              ) %>%
-  rename_with(.cols = contains("arrest_rate"),
-              ~paste0("rate_",
-                      str_replace(.x, "arrest_rate", "arrest")
-                      )
-                ) %>%
   rename_with(
     ~str_replace(.x, "pc_phys_ratio", "ratio_population_pc_physician")
               ) %>%
@@ -571,7 +559,7 @@ db_values %>%
   ### NEIGHBORHOODS ### 
   assert(within_bounds(0, 1), share_poverty_exposure) %>%
   assert(within_bounds(0, 1), ends_with("exposure")) %>%
-  assert(within_bounds(0, 100), transportation_cost, count_transportation_trips) %>%
+  assert(within_bounds(0, 100), transportation_cost, index_transit_trips) %>%
   assert(within_bounds(0, 100), count_membership_associations_per_10k) %>%
   assert(within_bounds(0, 10), ratio_high_low_ses_fb_friends) %>%
 
