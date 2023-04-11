@@ -4,6 +4,7 @@ author: ""
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 format:
   html:
+    embed-resources: true
     code-fold: true
     css: 10_construct-database/www/web_report.css
     toc: true
@@ -11,13 +12,6 @@ format:
 editor_options: 
   chunk_output_type: console
 ---
-
-```{=html}
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
-```
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
 ```{r quarto-setup, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
@@ -38,92 +32,85 @@ library(gt)
 
 read_csv_and_clean <- function(file) {
   
-  read_csv(file, guess_max = 5000) %>%
-    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
-           county = stringr::str_pad(county, width = 3, pad = "0"))
+  read_csv(
+    file, 
+    guess_max = Inf,
+    col_types = cols(
+      state = col_character(),
+      county = col_character()
+    )
+  )
 }
-
-```
-
-```{r fix-neonatal-health}
 
 concatenate_files <- function(files){
   lapply(files, read_csv) %>%
     bind_rows()
 }
 
+```
 
-debt_18 <- read_csv_and_clean(
-  here(
-    "01_financial-well-being",
-    "share_debt_2018.csv"
-  )
+```{r fix-neonatal-health}
+
+
+
+bind_rows(
+  read_csv_and_clean(
+    here("01_financial-well-being",
+         "county-debt-coll-shares-2022.csv")
+  ) %>%
+    filter(subgroup == "All") %>%
+    mutate(share_debt_col_lb = NA, 
+           share_debt_col_ub = NA) %>%
+    select(-c(subgroup, subgroup_type)) %>%
+    arrange(year, state, county, share_debt_coll, share_debt_col_ub, 
+            share_debt_col_lb, share_debt_coll_quality) %>%
+    rename(share_debt_col = share_debt_coll,
+           share_debt_col_quality = share_debt_coll_quality),
+  read_csv(here("01_financial-well-being", "share_debt_2018.csv")) %>%
+    rename_all(str_replace, "coll", "col")
 ) %>%
-  rename_with(~str_replace(.x, "coll", "col"))
-
-  
-debt_22 <- read_csv_and_clean(
-  here("01_financial-well-being",
-       "county-debt-coll-shares-2022.csv")
-) %>%
-  filter(subgroup == "All") %>%
-  mutate(share_debt_col_lb = NA, 
-         share_debt_col_ub = NA) %>%
-  select(-c(subgroup, subgroup_type)) %>%
-  arrange(year, state, county, share_debt_coll, share_debt_col_ub, 
-          share_debt_col_lb, share_debt_coll_quality) %>%
-  rename(share_debt_col = share_debt_coll,
-         share_debt_col_quality = share_debt_coll_quality)
-
-
-debt <- bind_rows(debt_18, debt_22) %>%
-  write_csv(here(
-    "01_financial-well-being",
-    "county_debt_longitudinal.csv"
-  ))
+  write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
   
 
 
-neonatal <- concatenate_files(
+
+
+
+concatenate_files(
   c(
     here("04_health", "final_data", "neonatal_health_2018.csv"),
     here("04_health", "final_data", "neonatal_health_2020.csv")
   )
   ) %>%
   rename_with(~ gsub("lbw", "rate_low_birth_weight", .x, fixed = TRUE)) %>%
-  write_csv(
-          here::here("04_health", "final_data", "neonatal_health_CORRECT.csv")
-          )
+  write_csv(here::here("data", "temp", "neonatal_health_CORRECT.csv"))
 
-voter_turnout <- concatenate_files(
+concatenate_files(
   c(
     here("05_local-governance", "voter-turnout", "voter-turnout-2016.csv"),
     here("05_local-governance", "voter-turnout", "voter-turnout-2020.csv")
   )
   ) %>%
-  write_csv(here("05_local-governance",
-                 "voter-turnout",
-                 "voter-turnout.csv")
-            )
+  write_csv(here("data", "temp", "voter-turnout.csv"))
 
 
-poverty_exposure <- concatenate_files(c(
+concatenate_files(c(
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2018.csv"),
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2021.csv")
   )
   ) %>%
   write_csv(
-    here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county.csv")
+    here("data", "temp", "poverty-exposure_county.csv")
   )
 
 
-re_exposure <- concatenate_files(c(
+concatenate_files(c(
   here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2018.csv"),
   here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2021.csv")
   )
   ) %>%
   write_csv(
-    here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure_county.csv")
+    here("data", "temp", "race-ethnicity-exposure_county.csv")
   )
 
 
@@ -136,14 +123,43 @@ jv_arrest <- read_csv_and_clean(here(
   filter(subgroup_type == "all") %>%
   select(-c(subgroup, subgroup_type)) %>%
   write_csv(here(
-    "07_safety",
-    "juvenile_arrests",
+    "data",
+    "temp",
     "jvarrestrate_county_2016_CORRECT.csv"
   )
   )
 
 ```
 
+```{r}
+#| label: combine-data
+
+bind_rows(
+  read_csv(here("02_housing", "metrics_housing.csv")) %>%
+    rename(share_affordable_quality = housing_quality),
+  read_csv(here("02_housing", "metrics_housing_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_housing_combined.csv"))
+
+bind_rows(
+  read_csv(here("08_education", "metrics_preschool.csv")) %>%
+    rename(share_in_preschool_quality = preschool_quality),
+  read_csv(here("08_education", "metrics_preschool_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_preschool.csv"))
+
+bind_rows(
+  read_csv(here("08_education", "metrics_college.csv")) %>%
+    rename(share_hs_degree_quality = hs_degree_quality),
+  read_csv(here("08_education", "metrics_college_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_college.csv"))
+
+read_csv(here("02_housing", "data", "built", "homelessness_all_county.csv")) %>%
+  mutate(homeless_share = pmin(homeless_share, 1)) %>%
+  write_csv(here("data", "temp", "homelessness_all_county.csv"))
+
+```
 
 ```{r set-up-crosswalk}
 #This code expands the crosswalk files for two reasons:
@@ -216,6 +232,10 @@ write_csv(long_xwalk_race_eth,
 
 ```
 
+
+
+
+
 ```{r}
 files <- c(
   
@@ -225,25 +245,25 @@ files <- c(
   here("geographic-crosswalks", "data", "long-xwalk_county.csv"),
   
   ### EDUCATION: ### 
-  here("08_education", "metrics_preschool.csv"),
-  here("08_education", "SEDA_all_county.csv"), #Note: this is effective public education
-  here("08_education", "data", "built", "MEPS_2014-2018_county.csv"),#Student poverty
-  here("08_education", "metrics_college.csv"),
-  #Missing digital access
+  here("data", "temp", "metrics_preschool.csv"),
+  here("08_education", "SEDA_all_county.csv"), # Note: this is effective public education
+  here("08_education", "data", "built", "MEPS_2014-2018_county.csv"), # Student poverty
+  here("data", "temp", "metrics_college.csv"),
+  here("08_education", "digital_access_county_2021.csv"),
   
   ### FINANCIAL WELL-BEING ###
   here("01_financial-well-being", "metrics_income.csv"),
-  here("01_financial-well-being", "county_debt_longitudinal.csv"),
+  here("data", "temp", "county_debt_longitudinal.csv"),
   here("01_financial-well-being", "home-values", "county_hh_hw_raceeth_2014_2021.csv"),
 
   ### HEALTH ### 
   here("04_health", "access-health-services", "access-health-services-2019.csv"),
-  here("04_health", "final_data", "neonatal_health_CORRECT.csv"),
+  here("data", "temp", "neonatal_health_CORRECT.csv"),
   here("04_health", "exposure-to-trauma", "exposure-to-trauma-2019.csv"), 
 
   ### HOUSING ### 
-  here("02_housing", "metrics_housing.csv"),
-  here("02_housing", "homelessness_all.csv"),
+  here("data", "temp", "metrics_housing_combined.csv"),
+  here("data", "temp", "homelessness_all_county.csv"),
 
   ### LOCAL GOVERNANCE ### 
   here("05_local-governance", "voter-turnout", "voter-turnout.csv"),
@@ -381,14 +401,14 @@ clean_data <- function(db_unclean){
     ~str_replace(.x, "environmental", "air_quality_index")
   ) %>%
   rename(
-    share_in_preschool_quality = preschool_quality, 
-    share_hs_degree_quality = hs_degree_quality,
-    share_affordable_quality = housing_quality, 
+    #share_in_preschool_quality = preschool_quality, 
+    #share_hs_degree_quality = hs_degree_quality,
+    #share_affordable_quality = housing_quality, 
     share_homeless = homeless_share,
     share_employed_quality = employed_quality,
     ratio_average_to_living_wage = average_to_living_wage_ratio,
     ratio_average_to_living_wage_quality = wage_ratio_quality, 
-    rate_injury_deaths_quality = injury_deaths_quality,
+    rate_injury_death_quality = injury_deaths_quality,
     ratio_population_pc_physician_quality = pc_phys_quality
   )
   
@@ -423,6 +443,7 @@ read_csv_recent <- function(file) {
 db_recent <- map(files, read_csv_recent) %>%
   reduce(left_join, by = c("state", "county")) %>%
   clean_data()
+
 ```
 
 ## Quality and Completeness
@@ -506,6 +527,7 @@ db_values %>%
   ### EDUCATION ###
   assert(within_bounds(0, 1), share_hs_degree, share_in_preschool) %>%
   assert(within_bounds(-1.5, 10), rate_learning) %>% #There are some values below -1, but these could be legit, so changed to -1.5
+  assert(within_bounds(0, 1), digital_access) %>%
 
   #Potential concern!!!
   #assert(within_bounds(0, 1), starts_with("meps20")) #student poverty
@@ -522,7 +544,7 @@ db_values %>%
   ### HEALTH ###
   assert(within_bounds(0, 1), rate_low_birth_weight) %>%
   assert(within_bounds(0, 100), air_quality_index) %>%
-  assert(within_bounds(0, Inf), rate_injury_death) %>%
+  assert(within_bounds(0, 10000), rate_injury_death) %>%
   assert(within_bounds(0, Inf), pcp) %>%
   
   ### HOUSING ###
