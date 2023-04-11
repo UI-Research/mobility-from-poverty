@@ -4,6 +4,7 @@ author: ""
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 format:
   html:
+    embed-resources: true
     code-fold: true
     css: 10_construct-database/www/web_report.css
     toc: true
@@ -11,12 +12,6 @@ format:
 editor_options: 
   chunk_output_type: console
 ---
-
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
-
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
 ```{r rmarkdown-setup, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
@@ -56,21 +51,48 @@ neonatal <- concatenate_files(
 ) %>%
   rename_with(~ gsub("lbw", "rate_low_birth_weight", .x, fixed = TRUE)) %>%
   write_csv( 
-          here::here("04_health", "final_data", "neonatal_health_subgroup_CORRECT.csv")
+          here::here("data", "temp", "neonatal_health_subgroup_CORRECT.csv")
           )
 ```
 
 
 ```{r combine-poverty-exposure}
-poverty_exposure <- concatenate_files(
+concatenate_files(
   c(
     here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2018.csv"),
     here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2021.csv")
   )
 ) %>%
   write_csv(
-    here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county.csv")
+    here("data", "temp", "poverty-exposure_race-ethnicity_county.csv")
   )
+
+bind_rows(
+  read_csv(here("08_education", "metrics_pre_subgroup_2021.csv")),
+  read_csv(here("08_education", "metrics_preschool_subgroup.csv")) %>%
+    rename(share_in_preschool_quality = preschool_quality)
+) %>%
+  write_csv(here("data", "temp", "metrics_preschool_subgroup.csv"))
+
+bind_rows(
+  read_csv(here("08_education", "metrics_college_subgroup.csv")) %>%
+    rename(share_hs_degree_quality = hs_degree_quality),
+  read_csv(here("08_education", "metrics_college_subgroup_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_college_subgroup.csv"))
+
+bind_rows(
+  read_csv(here("09_employment", "metrics_employment_subgroup.csv")) %>%
+    rename(share_employed_quality = employed_quality),
+  read_csv(here("09_employment", "metrics_employ_subgroup_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_employment_subgroup.csv"))
+
+bind_rows(
+  read_csv(here("01_financial-well-being", "metrics_income_subgroup.csv")),
+  read_csv(here("01_financial-well-being", "metrics_income_subgroup_2021.csv"))
+) %>%
+  write_csv(here("data", "temp", "metrics_income_subgroup.csv"))
 
 ```
 
@@ -120,9 +142,10 @@ Add the "all" data to the subgroup data.
 files <- c(
   
   ### EDUCATION ###
-  here("08_education", "metrics_preschool_subgroup.csv"),
-  here("08_education", "metrics_college_subgroup.csv"),
+  here("data", "temp", "metrics_preschool_subgroup.csv"),
+  here("data", "temp", "metrics_college_subgroup.csv"),
   here("08_education", "SEDA_all_subgroups_county.csv"), #Effective public education
+  here("08_education", "digital_access_county_subgroup_2021.csv"),
   
   ### FINANCIAL WELLBEING ###
   here("01_financial-well-being", "metrics_income_subgroup.csv"),
@@ -139,9 +162,10 @@ files <- c(
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county.csv"),
   
   ### SAFETY ###
-
+  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"), 
+  
   ### WORK ### 
-  here("09_employment", "metrics_employment_subgroup.csv")
+  here("data", "temp", "metrics_employment_subgroup.csv")
 )
 
 ```
@@ -169,9 +193,9 @@ db <- map(files, read_csv_and_clean) %>%
 db <- db %>%
   mutate(
     pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
-    preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
-    employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
+    share_hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), share_hs_degree_quality),
+    share_in_preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), share_in_preschool_quality),
+    share_employed_quality = if_else(is.na(share_employed), as.numeric(NA), share_employed_quality)
   ) %>%
   
   #remove non-race and ethnicity related subgroups:
@@ -228,9 +252,10 @@ clean_data <- function(db_unclean){
     # rename_with(.cols = contains("exposure"),
     #           .fn = ~paste0("share_", .x)
     #           ) %>%   
-    rename(share_in_preschool_quality = preschool_quality,
-           share_hs_degree_quality = hs_degree_quality,
-           share_employed_quality = employed_quality
+    rename(share_digital_access = digital_access,
+           share_digital_access_quality = digital_access_quality,
+           share_poverty_exposure = poverty_exposure,
+           share_poverty_exposure_quality = poverty_exposure_quality
            ) 
   return(db)
   
@@ -277,9 +302,9 @@ db_recent <- map(files, read_csv_recent) %>%
 db_recent <- db_recent %>%
   mutate(
     pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), hs_degree_quality),
-    preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), preschool_quality),
-    employed_quality = if_else(is.na(share_employed), as.numeric(NA), employed_quality)
+    share_hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), share_hs_degree_quality),
+    share_in_preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), share_in_preschool_quality),
+    share_employed_quality = if_else(is.na(share_employed), as.numeric(NA), share_employed_quality)
   ) %>%
   #get rid of non race/ethnicity groups:
  filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
@@ -431,6 +456,6 @@ db_recent <- db_recent %>%
 ## Write the File
 
 ```{r}
-write_csv(db_recent, here("data", "01_mobility-metrics_race-ethnicity_recent.csv"))
+#write_csv(db_recent, here("data", "01_mobility-metrics_race-ethnicity_recent.csv"))
 write_csv(db, here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv"))
 ```
