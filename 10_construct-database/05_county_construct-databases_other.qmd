@@ -35,21 +35,38 @@ library(gt)
 
 
 
-<!-- Gm note: environmental index is updated to have subgroups by race share  -->
-<!-- ## Environmental  -->
+```{r add-labels}
+county_pop <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  select(state, county, state_name, county_name) %>%
+  distinct()
 
-<!-- ```{r} -->
-<!-- read_csv(here("06_neighborhoods", "environment", "enviro_poverty.csv"), guess_max = 5000) %>% -->
-<!--   mutate( -->
-<!--     subgroup = recode( -->
-<!--       subgroup, -->
-<!--       `High Poverty` = "High Poverty Tracts", -->
-<!--       `Not High Poverty` = "Not High Poverty Tracts" -->
-<!--     ) -->
-<!--   ) %>% -->
-<!--   write_csv(here("data", "environmental-exposure_poverty.csv")) -->
+```
 
-<!-- ``` -->
+Gm note: environmental index is updated to have subgroups by race share
+## Environmental
+
+
+```{r}
+environment <- 
+  read_csv(here("06_neighborhoods", "environment", "data", "output", "environment_county_sub_all.csv"), guess_max = 5000) %>%
+  mutate(
+    subgroup = recode(
+      subgroup,
+      `High Poverty` = "High Poverty Tracts",
+      `Not High Poverty` = "Not High Poverty Tracts"
+    )
+  ) %>%
+  left_join(county_pop) %>%
+  relocate(year, state, county, state_name, county_name) 
+
+write_csv(environment, here("data", "04_environmental-exposure_poverty_longitudinal.csv")) 
+
+env_18 <- environment %>% 
+  slice_max(year) %>%
+  write_csv(here("data", "04_environmental-exposure_poverty_longitudinal.csv"))
+
+```
+
 
 ```{r}
 SEDA <- read_csv(here("08_education", "SEDA_all_subgroups_county.csv")) %>%
@@ -61,7 +78,10 @@ SEDA <- read_csv(here("08_education", "SEDA_all_subgroups_county.csv")) %>%
       subgroup == "Economically Disadvantaged" ~ "Low Income",
       subgroup == "Not Economically Disadvantaged" ~ "Not Low-Income"
     )
-  )
+  ) %>%
+  left_join(county_pop) %>%
+  relocate(year, state, county, state_name, county_name)
+
 
 SEDA_recent <- SEDA %>%
   slice_max(year) %>%
@@ -80,12 +100,16 @@ files <- c(
 
 pov_exposure_race_ethnicity <- lapply(files, read_csv) %>%
   bind_rows() %>%
+  left_join(county_pop) %>% 
+  relocate(year, state, county, state_name, county_name) %>%
   write_csv(here("data", "04_poverty-exposure_race-ethnicity_longitudinal.csv"))
 
 
 read_csv(  
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2021.csv")
   ) %>%
+  left_join(county_pop) %>%
+  relocate(year, state, county, state_name, county_name) %>%
   write_csv(
     here("data", "04_poverty-exposure_race-ethnicity_recent.csv")
 
