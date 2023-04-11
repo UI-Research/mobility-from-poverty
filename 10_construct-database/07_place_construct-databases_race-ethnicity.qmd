@@ -40,7 +40,6 @@ files <- c(
   
   ### FINANCIAL WELLBEING ###
   here("01_financial-well-being", "metrics_income_subgroup_city_2021.csv"),
-  here("01_financial-well-being", "city-debt-col-shares_CORRECT.csv"),
 
   ### HEALTH ###
   #no city-level health data
@@ -65,7 +64,7 @@ files <- c(
 ```
 
 ```{r}
-read_csv_and_clean <- function(file) {
+read_csv_and_clean <- function(file, is_recent = FALSE) {
   
   print(file)
   
@@ -80,8 +79,10 @@ read_csv_and_clean <- function(file) {
   }
   if("subgroup" %in% colnames(df) & !("subgroup_type" %in% colnames(df))){
     df <- df %>%
-      rename(subgroup_type = subgroup) %>%
-      mutate(subgroup = "race-ethnicity")
+      #rename(subgroup_type = subgroup) %>%
+      mutate(subgroup_type = "race-ethnicity")
+    
+    print(head(df))
   }
   
   df <- df %>%
@@ -91,7 +92,11 @@ read_csv_and_clean <- function(file) {
     mutate(subgroup_type = str_replace(subgroup_type, "Race-ethnicity", "race-ethnicity")) %>%
     mutate(subgroup = str_replace(subgroup, "Other Races and Eth$", "Other Races and Ethnicities")) %>%
     mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
-    mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
+    mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) 
+  
+  print(head(df))
+  
+  df <- df %>%
     filter(subgroup_type == "race-ethnicity" | 
              subgroup_type == "all")
   
@@ -99,15 +104,12 @@ read_csv_and_clean <- function(file) {
 }
 
 db_unclean <- map(files, read_csv_and_clean) %>%
-  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup"))
+  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
+  distinct()
 
 
-#Ensure join works perfectly so we have a row for each unique place (identified by
-# state and place fips codes ) for each year 
-n_years <- length(unique(db_unclean$year))
-n_places <- length(unique(str_c(db_unclean$state, db_unclean$place)))
-stopifnot(nrow(db_unclean) == n_years * n_places)
-
+#We do not check shape here
+#different groups have different race-share subgroups making this to much of a headache
 ```
 
 
@@ -128,13 +130,12 @@ clean_data <- function(db_unclean){
     rename_with(.cols = contains("exposure"),
               .fn = ~paste0("share_", .x)
               ) %>%
-     rename_with(~str_replace_all(.x, "homeless_count", "count_homeless")
-              ) #%>%
-    # rename(
-    #       share_in_preschool_quality = preschool_quality,
-    #        share_hs_degree_quality = hs_degree_quality,
-    #        share_employed_quality = employed_quality
-    #        ) 
+    rename_with(~str_replace_all(.x, "homeless_count", "count_homeless")
+              ) %>%
+    rename_with(~str_replace_all(.x, "digital_access", "share_digital_access")) %>%
+    rename(
+      share_homeless = homeless_share
+            ) 
   return(db)
   
 }
@@ -158,10 +159,15 @@ read_csv_recent <- function(file) {
   if ("metro" %in% colnames(df)) {
     df <- df %>%
       rename(place = metro)
-  } else if("city" %in% colnames(df)){
+  } else if("city" %in% colnames(df) & !("place" %in% colnames(df))){
     print("CITY IN DF")
     df <- df %>%
       rename(place = city)
+  }
+  if("subgroup" %in% colnames(df) & !("subgroup_type" %in% colnames(df))){
+    df <- df %>%
+      rename(subgroup_type = subgroup) %>%
+      mutate(subgroup = "race-ethnicity")
   }
   df <- df %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
@@ -171,7 +177,11 @@ read_csv_recent <- function(file) {
     mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
     mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
     slice_max(year) %>% 
-    select(-year) %>%
+    select(-year) 
+  
+  print(head(df))
+  
+  df <- df %>%
     filter(subgroup_type == "race-ethnicity" | 
          subgroup_type == "all")
   
@@ -224,9 +234,17 @@ db_bounds <- db %>%
 ```
 
 ```{r}
+value_col_names <- colnames(db_values)
+share_cols <- value_col_names[grepl("share_", value_col_names)]
+count_cols <- value_col_names[grepl("count_", value_col_names)]
+
+
 db_values %>%
+  assert(within_bounds(0, 1), starts_with("share_")) %>%
+  assert(within_bounds(0, 100000), all_of(count_cols)) %>%
   assert(within_bounds(-2.5, 10), rate_learning) %>%
-  assert(within_bounds(0, 1), starts_with("share_"))
+  assert(within_bounds(0, 15000000), starts_with("pctl_income")) %>%
+  assert(within_bounds(0, 100000), count_homeless)
 
 ```
 
@@ -239,7 +257,7 @@ db %>%
   verify(is.na(rate_learning) | rate_learning_lb < rate_learning_ub) %>%
   verify(is.na(rate_learning) | rate_learning < rate_learning_ub)
 
-# 
+#Problem to be debugged here:
 # db %>%
 #   verify(is.na(count_homeless) | count_homeless_lb <= count_homeless) %>%
 #   verify(is.na(count_homeless) | count_homeless_lb <= count_homeless_ub) %>%
