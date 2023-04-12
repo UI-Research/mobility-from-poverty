@@ -55,13 +55,17 @@ environment <- read_csv(here("06_neighborhoods", "environment", "data", "output"
   ) %>% 
   left_join(place_pop, by = c("state", "place")) %>%
   relocate(year, state, place, state_name, place_name) %>%
+  rename(
+    air_quality_index = environmental,
+    air_quality_index_quality = environmental_quality
+  ) %>%
+  filter(subgroup_type == "all" | subgroup_type == "poverty") %>%
   write_csv(here("data", "09_place_environmental-exposure_poverty_longitudinal.csv"))
 
-
-environment_recent <- environment %>%
-  slice_max(year) %>%
-  relocate(year, state, place, state_name, place_name) %>%
-  write_csv(here("data", "09_place_environmental-exposure_poverty_recent.csv"))
+# 
+# environment_recent <- environment %>%
+#   slice_max(year) %>%
+#   write_csv(here("data", "09_place_environmental-exposure_poverty_recent.csv"))
 
 ```
 
@@ -75,13 +79,14 @@ SEDA <- read_csv(here("08_education", "data", "built", "SEDA_all_subgroups_city.
       subgroup == "Economically Disadvantaged" ~ "Low Income",
       subgroup == "Not Economically Disadvantaged" ~ "Not Low-Income"
     )
-  )
-
-SEDA_recent <- SEDA %>%
-  slice_max(year) %>%
-  left_join(place_pop, by = c("state", "place")) %>%
-  relocate(year, state, place, state_name, place_name) %>%
-  write_csv(here("data", "09_place_SEDA-income_recent.csv"))
+  ) %>%
+  rename_with(~str_replace(.x, "learning_rate", "rate_learning"))
+# 
+# SEDA_recent <- SEDA %>%
+#   slice_max(year) %>%
+#   left_join(place_pop, by = c("state", "place")) %>%
+#   relocate(year, state, place, state_name, place_name) %>%
+#   write_csv(here("data", "09_place_SEDA-income_recent.csv"))
 
 SEDA_longitudinal <- SEDA %>%
   left_join(place_pop, by = c("state", "place")) %>%
@@ -93,16 +98,31 @@ SEDA_longitudinal <- SEDA %>%
 ## Poverty Exposure
 
 ```{r}
-files <-read_csv(
+poverty <-read_csv(
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv")
   )%>%
   left_join(place_pop, by = c("state", "place")) %>%
+  rename_with(~str_replace(.x, "poverty_exposure", "share_poverty_exposure")) %>%
   relocate(year, state, place, state_name, place_name) %>%
+  filter(subgroup_type %in% c("all", "poverty")) %>%
   write_csv(here("data", "09_place_poverty-exposure_race-ethnicity.csv"))
 
-#Fix names here!
 ```
 
+```{r check-quality}
+environment %>%
+  assert(in_set(1, 2, 3), air_quality_index_quality) %>%
+  assert(within_bounds(0, 100), air_quality_index)
 
+SEDA_longitudinal %>%
+  assert(in_set(1, 2, 3), rate_learning_quality) %>%
+  assert(within_bounds(-2.5, 10), rate_learning) %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning) %>%
+  verify(is.na(rate_learning) | rate_learning < rate_learning_ub) %>%
+  verify(is.na(rate_learning) | rate_learning_lb < rate_learning_ub)
 
-
+poverty %>%
+  assert(in_set(1, 2, 3), share_poverty_exposure_quality) %>%
+  assert(within_bounds(0, 1), share_poverty_exposure)
+  
+```
