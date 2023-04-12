@@ -4,6 +4,7 @@ author: ""
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 format:
   html:
+    embed-resources: true
     code-fold: true
     css: 10_construct-database/www/web_report.css
     toc: true
@@ -11,12 +12,6 @@ format:
 editor_options: 
   chunk_output_type: console
 ---
-
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
-
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
 ```{r quarto-setup, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
@@ -27,7 +22,6 @@ options(knitr.kable.NA = "")
 
 
 ```{r}
-
 read_csv_and_clean <- function(file) {
   print(file)
   
@@ -71,20 +65,42 @@ social_capital %>%
   mutate(state = str_sub(place, 1, 2), 
          place = str_sub(place, 3, 7)
          ) %>%
-  write_csv(here("temp", "social_associations_city_2022.csv"))
+  write_csv(here("data", "temp", "social_associations_city_2022.csv"))
 
-debt <- read_csv(
+read_csv(
   here("01_financial-well-being", 
        "city-debt-coll-shares-2021.csv")
   ) %>%
-  rename(place = place_fips) %>%
+  rename(
+    share_debt_col = share_debt_coll,
+    share_debt_col_quality = share_debt_coll_quality,
+    place = place_fips
+  ) %>%
+  mutate(subgroup_type = case_when(subgroup == "All" ~ "all",
+                                   TRUE ~ subgroup)) %>%
   write_csv(
-    here("temp", 
+    here("data", "temp", 
        "city-debt-col-shares_CORRECT.csv")
   )
     
+read_csv(here("05_local-governance", "descriptive-representation",
+       "data", "descriptive_rep_denominator_city_2022.csv")) %>%
+  select(
+    year, state, place, 
+    share_desc_rep_asian_other = desc_rep_asian_other,
+    share_desc_rep_black_nonhispanic = desc_rep_black_nonhispanic,
+    share_desc_rep_hispanic = desc_rep_total_hispanic, 
+    share_desc_rep_white_nonhispanic = desc_rep_white_nonhispanic
+  ) %>%
+  write_csv(here("data", "temp", "descriptive_rep_denominator_city_2022.csv"))
 
-
+read_csv(here("01_financial-well-being", "metrics_income_city_2021.csv")) %>%
+  select(year, state, place,
+         pctl_income_20 = pctl_20, 
+         pctl_income_50 = pctl_50, 
+         pctl_income_80 = pctl_80,
+         pctl_income_quality = pctl_20_quality) %>%
+  write_csv(here("data", "temp", "metrics_income_city_2021.csv"))
 
 ```
 
@@ -127,8 +143,8 @@ files <- c(
   here("08_education", "digital_access_city_2021.csv"),
   
   ### FINANCIAL WELL-BEING ###
-  here("01_financial-well-being", "metrics_income_city_2021.csv"),
-  here("temp", 
+  here("data", "temp", "metrics_income_city_2021.csv"),
+  here("data", "temp", 
        "city-debt-col-shares_CORRECT.csv"), 
   here("01_financial-well-being", "home-values", "place_hh_hw_raceeth_2014_2021.csv"),
 
@@ -140,8 +156,7 @@ files <- c(
 
   ### LOCAL GOVERNANCE ### 
   here("05_local-governance", "voter-turnout", "voter-turnout-city-2020.csv"),
-  here("05_local-governance", "descriptive-representation",
-       "data", "descriptive_rep_denominator_city_2022.csv"),
+  here("data", "temp", "descriptive_rep_denominator_city_2022.csv"),
   
   ### NIEGHBORHOODS: ###
   here("06_neighborhoods", "poverty-exposure", "poverty-exposure_city_2021.csv"),
@@ -191,8 +206,6 @@ clean_data <- function(db_unclean){
 
   db <- db_unclean %>%
   #Address issues in disparate naming conventions:
-  rename_with(.cols = starts_with("pctl"),
-              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
 
   rename_with(~gsub("hv_hh", "house_value_households", .x, fixed=TRUE)) %>%
   rename_with(.cols = contains("wealth_quality"),
@@ -217,14 +230,6 @@ clean_data <- function(db_unclean){
   #the 2022 descriptive representation file is organized to have total
   # and total non-hispanics in the same file as percentages for different
   # race /ethnicity groups, so this separates those with different prefixes
-  rename_with(~str_replace_all(.x, "desc_rep_total", "count_desc_rep_total")
-              ) %>%
-  
-  rename_with(.cols = starts_with("desc_rep_"),
-              ~str_replace(.x, 
-                          "desc_rep_",
-                          "share_desc_rep_")
-              ) %>%
   rename_with(.cols = contains("exposure"),
               .fn = ~paste0("share_", .x)
               ) %>%
@@ -241,6 +246,9 @@ clean_data <- function(db_unclean){
     ) %>%
   rename_with(
     ~str_replace(.x, "digital_access", "share_digital_access")
+  ) %>%
+  rename_with(
+    ~str_replace(.x, "transit_trips", "index_transit_trips")
   ) %>%
   # rename_with(.cols = contains("crime_rate"),
   #             ~paste0("rate_",
@@ -450,11 +458,11 @@ map(.x = values, .f = check_year)
 
 ```{r check-lb-up-content}
 
-cols_with_bounds <- colnames(db)[grepl("_ub", colnames(db))]
-for(i in 1:length(cols_with_bounds)){
-  cols_with_bounds[i] <- str_sub(cols_with_bounds[i], start = 1, end = -4)
-}
-cols_with_bounds
+# cols_with_bounds <- colnames(db)[grepl("_ub", colnames(db))]
+# for(i in 1:length(cols_with_bounds)){
+#   cols_with_bounds[i] <- str_sub(cols_with_bounds[i], start = 1, end = -4)
+# }
+# cols_with_bounds
 
 db %>%
   verify(is.na(rate_learning) | rate_learning <= rate_learning_ub) %>%

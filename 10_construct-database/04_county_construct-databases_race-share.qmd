@@ -12,12 +12,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
-
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
-
 ```{r, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
@@ -34,7 +28,7 @@ library(gt)
 ```
 
 ```{r}
-read_csv(here("01_financial-well-being", "share_debt_2018_long.csv"), guess_max = 5000) %>%
+read_csv(here("01_financial-well-being", "share_debt_2018_long.csv"), guess_max = Inf) %>%
   select(-county_name) %>%
   mutate(subgroup_type = if_else(subgroup == "All", "all", subgroup_type)) %>%
   mutate(subgroup = 
@@ -46,15 +40,22 @@ read_csv(here("01_financial-well-being", "share_debt_2018_long.csv"), guess_max 
   ) %>%
   arrange(year, state, county, subgroup_type, subgroup) %>%
   mutate(share_debt_coll_quality = if_else(is.na(share_debt_coll), true = as.numeric(NA), false = share_debt_coll_quality)) %>%  
-  write_csv(here("01_financial-well-being", "share_debt_race-ethnicity.csv"))
+  write_csv(here("data", "temp", "share_debt_race-ethnicity.csv"))
+
+read_csv(here("06_neighborhoods", "transportation", "output", "county_transport_stats_by_race_final.csv"))  %>%
+  mutate(subgroup_type = if_else(subgroup == "All", "all", subgroup_type)) %>%
+  write_csv(here("data", "temp", "county_transport_stats_by_race_final.csv"))
+  
+
+
 
 ```
 
 ```{r}
 #these are same for update as of 2023-04-03 (GM)
 files <- c(
-  here("01_financial-well-being", "share_debt_race-ethnicity.csv"),
-  here("06_neighborhoods", "transportation", "output", "county_transport_stats_by_race_final.csv"),
+  here("data", "temp", "share_debt_race-ethnicity.csv"),
+  here("data", "temp", "county_transport_stats_by_race_final.csv"),
   here("06_neighborhoods", 
        "environment", 
        "data", 
@@ -69,7 +70,7 @@ files <- c(
 ```{r}
 read_csv_and_clean <- function(file) {
   
-  read_csv(file, guess_max = 5000) %>%
+  read_csv(file, guess_max = Inf) %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            county = stringr::str_pad(county, width = 3, pad = "0")) %>%
     filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
@@ -127,12 +128,29 @@ db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "s
 
 ```
 
+```{r}
+db <- db %>%
+  rename(
+    transportation_cost = transit_cost,
+    transportation_cost_quality = transit_cost_quality,
+    index_transit_trips = transit_trips,
+    index_transit_trips_quality = transit_trips_quality,
+    share_debt_col = share_debt_coll,
+    share_debt_col_ub = share_debt_coll_ub,
+    share_debt_col_lb = share_debt_coll_lb,
+    share_debt_col_quality = share_debt_coll_quality,
+    air_quality_index = environmental,
+    air_quality_index_quality = environmental_quality
+  )
+
+```
+
 # Recent-year Database
 
 ```{r}
 read_csv_recent <- function(file) {
   
-  file <- read_csv(file, guess_max = 5000)  %>%
+  file <- read_csv(file, guess_max = Inf)  %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            county = stringr::str_pad(county, width = 3, pad = "0")) %>%
     mutate(
@@ -182,6 +200,9 @@ db_recent <- full_join(frame_recent, db_recent, by = c("state", "county", "subgr
 
 ```
 
+
+
+
 ## Quality and Completeness
 
 ### Full Database
@@ -230,8 +251,8 @@ db_bounds <- db %>%
 
 db_values %>%
   #filter(!is.na(share_debt_coll)) %>%
-  assert(within_bounds(0, 1), share_debt_coll) %>%
-  assert(within_bounds(0, 100), transit_cost, transit_trips, environmental)
+  assert(within_bounds(0, 1), share_debt_col) %>%
+  assert(within_bounds(0, 100), transportation_cost, index_transit_trips, air_quality_index)
 
 ```
 
@@ -239,9 +260,9 @@ Test confidence interval bounds.
 
 ```{r}
  db %>%
-  verify(is.na(share_debt_coll) | share_debt_coll_lb < share_debt_coll) %>%
-  verify(is.na(share_debt_coll) | share_debt_coll_lb < share_debt_coll_ub) %>%
-  verify(is.na(share_debt_coll) | share_debt_coll < share_debt_coll_ub)
+  verify(is.na(share_debt_col) | share_debt_col_lb < share_debt_col) %>%
+  verify(is.na(share_debt_col) | share_debt_col_lb < share_debt_col_ub) %>%
+  verify(is.na(share_debt_col) | share_debt_col < share_debt_col_ub)
 
 ```
 
@@ -268,9 +289,6 @@ db_recent <- db_recent %>%
 ## Write the File
 
 ```{r}
-
-
-write_csv(db_recent, here("data", "03_mobility-metrics_race-share_recent.csv"))
 write_csv(db, here("data", "03_mobility-metrics_race-share_longitudinal.csv"))
 
 ```
