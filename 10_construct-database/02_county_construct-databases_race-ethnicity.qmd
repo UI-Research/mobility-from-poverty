@@ -28,14 +28,6 @@ library(gt)
 
 ```
 
-```{r}
-# read_csv(here("08_education", "SEDA_all_subgroups.csv")) %>%
-#   filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
-#   filter(year == 2015) %>%
-#   write_csv(here("08_education", "SEDA_race-ethnicity.csv"))
-
-```
-
 ```{r, combine-neonatal-health}
 
 concatenate_files <- function(files){
@@ -56,17 +48,7 @@ neonatal <- concatenate_files(
 ```
 
 
-```{r combine-poverty-exposure}
-concatenate_files(
-  c(
-    here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2018.csv"),
-    here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2021.csv")
-  )
-) %>%
-  write_csv(
-    here("data", "temp", "poverty-exposure_race-ethnicity_county.csv")
-  )
-
+```{r combine-some-data}
 bind_rows(
   read_csv(here("08_education", "metrics_pre_subgroup_2021.csv")),
   read_csv(here("08_education", "metrics_preschool_subgroup.csv")) %>%
@@ -93,6 +75,7 @@ bind_rows(
   read_csv(here("01_financial-well-being", "metrics_income_subgroup_2021.csv"))
 ) %>%
   write_csv(here("data", "temp", "metrics_income_subgroup.csv"))
+
 
 ```
 
@@ -145,24 +128,18 @@ files <- c(
   here("data", "temp", "metrics_preschool_subgroup.csv"),
   here("data", "temp", "metrics_college_subgroup.csv"),
   here("08_education", "SEDA_all_subgroups_county.csv"), #Effective public education
-  here("08_education", "digital_access_county_subgroup_2021.csv"),
   
   ### FINANCIAL WELLBEING ###
-  here("01_financial-well-being", "metrics_income_subgroup.csv"),
+  here("data", "temp", "metrics_income_subgroup.csv"),
 
   ### HEALTH ###
-  here("04_health", "final_data", "neonatal_health_subgroup_CORRECT.csv"),
+  here("data", "temp", "neonatal_health_subgroup_CORRECT.csv"),
 
   ### HOUSING ###
   
   ### NEIGHBORHOODS ### 
   
-  #GM: While nominally race-ethnicity, this dataset does not break out Black by Non-Hispanic
-  #     commenting out here until we get the updated version (this one throws off the subgroup categories)
-  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county.csv"),
-  
   ### SAFETY ###
-  here("07_safety", "juvenile_arrests", "2016_arrest_by_county_subgroup.csv"), 
   
   ### WORK ### 
   here("data", "temp", "metrics_employment_subgroup.csv")
@@ -197,42 +174,49 @@ db <- db %>%
     share_in_preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), share_in_preschool_quality),
     share_employed_quality = if_else(is.na(share_employed), as.numeric(NA), share_employed_quality)
   ) %>%
-  
   #remove non-race and ethnicity related subgroups:
-  filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
+  filter(subgroup_type == "race-ethnicity" | subgroup_type == "all") 
 
-#GM note: shape here a moving target:
-# In theory we should have number of years * number of race-ethnic groups * number of counties 
-# This is not the case because we are missing other data from our rate-learning data which
-# constitute much of the non-2018 and 2020 data
+```
+
+Remove an extra county from Alaska.
+
+```{r}
+db <- db %>%
+  filter(!(state == "02" & county == "261"))
+
+```
 
 
+157,150 rows = 3,143 counties by 10 years by 5 subgroups
 
+```{r}
+frame <-
+  bind_rows(
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-populations.csv"), guess_max = Inf) %>%
+        filter(year == 2020) %>%
+        select(-year),
+      year = 2013:2022,
+      subgroup_type = c("all"),
+      subgroup = c("All")
+    ),
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-populations.csv"), guess_max = Inf) %>%
+        filter(year == 2020) %>%
+        select(-year),
+      year = 2013:2022,
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+    )
+  ) %>%
+  arrange(year, state, county, subgroup_type, subgroup)
 
-# GM: IDK why we use this "frame" dataset at all. I join in the crosswalk for all years below 
-# frame <- 
-#   bind_rows(
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
-#       subgroup_type = c("all"),
-#       subgroup = c("All")
-#     ),
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"), guess_max = 5000),
-#       subgroup_type = c("race-ethnicity"),
-#       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
-#     )
-#   ) %>%
-#   arrange(year, state, county, subgroup_type, subgroup)
-#   
-# db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
+db <- full_join(frame, db, by = c("year", "state", "county", "subgroup_type", "subgroup"))
 
-#This check does not make sense because we are reading in multiple years of data only at the county scale,
-# and this makes data only from 2020 at the tract scale
-# 
-# stopifnot(
-#   nrow(db) == nrow(frame)
-# )
+stopifnot(
+  nrow(db) == nrow(frame)
+)
 
 ```
 
@@ -247,16 +231,8 @@ clean_data <- function(db_unclean){
     rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
                 ) %>%
     rename_with(.cols = starts_with("pctl"), 
-              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
-    #Commenting out as we don't currently process exposure
-    # rename_with(.cols = contains("exposure"),
-    #           .fn = ~paste0("share_", .x)
-    #           ) %>%   
-    rename(share_digital_access = digital_access,
-           share_digital_access_quality = digital_access_quality,
-           share_poverty_exposure = poverty_exposure,
-           share_poverty_exposure_quality = poverty_exposure_quality
-           ) 
+              ~str_replace_all(.x, "pctl_", "pctl_income_"))
+  
   return(db)
   
 }
@@ -270,10 +246,6 @@ t <- db %>%
 
 nrow(db) / nrow(t)
 ```
-
-
-
-
 
 # Recent-year Database
 
@@ -312,14 +284,18 @@ db_recent <- db_recent %>%
   
 db_recent <- clean_data(db_recent)
 
+```
+
+```{r}
 #Check below:
 #5 racial categories(all, nh-White, nh-Black, Hispanic, Other)
 # 3144 counties, there were 3142 pre-2020, then one in Alaska split into 2 others
 #   hence why we have a total of 3144 appearing here 
-#stopifnot(nrow(db_recent) == ((3142 + 2) * 5))
+
+stopifnot(nrow(db_recent) == ((3142 + 2) * 5))
 
 # 
-# frame <- 
+# frame <-
 #   bind_rows(
 #     expand_grid(
 #       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
@@ -389,7 +365,6 @@ db_bounds <- db %>%
 ```{r}
 db_values %>%
   assert(within_bounds(0, Inf), pctl_income_20, pctl_income_50, pctl_income_80) %>%
-  assert(within_bounds(0, 1), starts_with("famstruc_")) %>%
   assert(within_bounds(0, 1), rate_low_birth_weight) %>%
   assert(within_bounds(-2, 10), rate_learning) %>%
   assert(within_bounds(0, 1), starts_with("share_"))
