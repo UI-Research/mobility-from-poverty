@@ -265,6 +265,33 @@ replace `var'_quality = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_coun
 replace `var'_quality = 3 if `var'_quality==. & `var'_count!=.
 }
 
+*new as of 4/13
+	*replace quality = 3 if enrollment is less than 30
+	replace homeless_quality = 3 if enrollment<30 // there were 4 instances of this
+
+	*replace subgroup metrics =1 (will be NA in string form) for subgroup enrollments<10
+	foreach var in black white hispanic other {
+	replace `var'_count=-1  if enroll_`var'<10
+	replace `var'_count_lb=-1 if enroll_`var'<10
+	replace `var'_count_ub=-1 if enroll_`var'<10
+	replace `var'_share=-1 if enroll_`var'<10
+	*replace subgroup quality flag=-1 (NA) for subgroup enrollment<10
+	replace `var'_quality=-1 if enroll_`var'<10
+	*replace subgroup quality flag =3 if subgroup enrollment is 10-29
+	replace `var'_quality=3 if enroll_`var'>=10 & enroll_`var'<30
+	}
+	
+	*foreach subgroup and total homeless metric, set all = -1 (NA) if share>1
+	foreach var in homeless black white hispanic other {
+	replace `var'_count=-1  if `var'_share>1 & `var'_share!=.
+	replace `var'_count_lb=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_count_ub=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_share=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_quality=-1 if `var'_share>1 & `var'_share!=.
+	}
+*end of 4/13
+
+
 sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
@@ -311,6 +338,28 @@ drop city_name state_name
 order year state place
 gsort -year state place
 
+*data quality check 
+gen check1 = 1 if homeless_count<homeless_count_lb
+gen check2 = 1 if homeless_count>homeless_count_ub
+tab check1, m
+tab check2, m 
+drop check*
+
+**new as of 4/13
+	*string variables, and replace -1 with NA & . with blank	
+	*tostring the rest of the variables
+	tostring *share, replace force
+	tostring *count* *share *quality, replace
+
+foreach group in homeless black white hispanic other {
+	foreach var in count count_lb count_ub quality share {
+	replace `group'_`var' = "NA" if  `group'_`var'=="-1"
+	replace `group'_`var' = "" if  `group'_`var'=="."
+	}
+	}
+*end of 4/13
+
+
 *save "all" separately
 preserve
 keep year state place homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
@@ -342,11 +391,5 @@ rename count_lb homeless_count_lb
 rename count_ub homeless_count_ub
 rename share homeless_share
 rename quality homeless_quality
-
-*data quality check 
-gen check1 = 1 if homeless_count<homeless_count_lb
-gen check2 = 1 if homeless_count>homeless_count_ub
-bysort subgroup: tab check1, m
-bysort subgroup: tab check2, m
 
 export delimited using "built/homelessness_all_subgroups_city.csv", replace 
