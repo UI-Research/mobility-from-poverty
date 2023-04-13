@@ -210,13 +210,6 @@ clean_data <- function(db_unclean){
 }
 
 db <- clean_data(db)
-
-
-t <- db %>%
-  group_by(state, county, year) %>% 
-  count()
-
-nrow(db) / nrow(t)
 ```
 
 
@@ -242,45 +235,35 @@ read_csv_recent <- function(file) {
   
 }
 
-# construct multiyear database
+# construct database
 db_recent <- map(files, read_csv_recent) %>%
-  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup"))
-
-# fix non-missing quality flags
-db_recent <- db_recent %>%
+  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup")) %>%
   #get rid of non race/ethnicity groups:
- filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
+  filter(subgroup_type == "race-ethnicity" | subgroup_type == "all") %>%
+  clean_data()
 
-  
-db_recent <- clean_data(db_recent)
 
-#Check below:
-#5 racial categories(all, nh-White, nh-Black, Hispanic, Other)
-# 3144 counties, there were 3142 pre-2020, then one in Alaska split into 2 others
-#   hence why we have a total of 3144 appearing here 
-#stopifnot(nrow(db_recent) == ((3142 + 2) * 5))
+frame <-
+  bind_rows(
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-populations.csv"), guess_max = 5000),
+      subgroup_type = c("all"),
+      subgroup = c("All"),
+    ),
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "county-populations.csv"), guess_max = 5000),
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black", "Hispanic", "Other Races and Ethnicities", "White"),
 
-# 
-# frame <- 
-#   bind_rows(
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-#       subgroup_type = c("all"),
-#       subgroup = c("All")
-#     ),
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-#       subgroup_type = c("race-ethnicity"),
-#       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
-#     )
-#   ) %>%
-#   arrange(year, state, county, subgroup_type, subgroup) %>%
-#   filter(year == max(year)) %>%
-#   select(-year)
-# 
-# db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
-# 
-# stopifnot(nrow(frame) == nrow(db_recent)) #todo(aaron): resolve
+    )
+  ) %>%
+  arrange(year, state, county, subgroup_type, subgroup) %>%
+  filter(year == max(year)) %>%
+  select(-year)
+
+db_recent <- tidylog::full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
+
+stopifnot(nrow(frame) == nrow(db_recent)) 
 
 ```
 
@@ -331,7 +314,8 @@ db_bounds <- db %>%
 ```{r}
 db_values %>%
   assert(within_bounds(0, Inf), rate_juv_arrest) %>%
-  assert(within_bounds(0, 1), starts_with("share_"))
+  assert(within_bounds(0, 1), starts_with("share_")) %>%
+  assert(within_bounds(0, Inf), age_1017)
 
 ```
 
@@ -370,13 +354,14 @@ write_csv(db, here("data", "02_mobility-metrics_race_longitudinal.csv"))
 ```
 
 ```{r}
-read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county.csv")) %>%
-  left_join(county_pop, by = c("state", "county")) %>%
-  rename(
-    share_poverty_exposure = poverty_exposure,
-    share_poverty_exposure_quality = poverty_exposure_quality
-  ) %>%
-  write_csv(here("data", "02_poverty-exposure_race-ethnicity.csv"))
+pov_exposure <- 
+  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county.csv")) %>%
+    left_join(county_pop, by = c("state", "county")) %>%
+    rename(
+      share_poverty_exposure = poverty_exposure,
+      share_poverty_exposure_quality = poverty_exposure_quality
+    ) %>%
+    write_csv(here("data", "02_poverty-exposure_race-ethnicity.csv"))
 
 
 ```
