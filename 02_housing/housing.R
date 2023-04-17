@@ -56,10 +56,11 @@ library(readxl)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 acs2021clean <- acs2021clean %>%
   filter(GQ < 3) 
-
-acs2021clean <- acs2021clean %>%
-  arrange(statefip, place)
 # 2230328 obs to 2130573 obs (99,755 obs dropped)
+
+#acs2021clean <- acs2021clean %>%
+#  arrange(statefip, place)
+
 
 # For VACANT UNIT side: Import vacant-unit-specific data
 # This IPUMS extract has HHWT, GQ, ADJUST, STATEFIP, PUMA, VALUEH, and VACANCY
@@ -67,17 +68,11 @@ acs2021clean <- acs2021clean %>%
 # check off "GQ" and click "SUBMIT" -> Check off "O Vacant Unit" under GQ status and click "SUBMIT"
 # THEN:
 # Under "STRUCTURE:" , click "Change" -> switch from 'Rectangular' to 'Hierarchical' -> "APPLY SELECTIONS"
-vacant_microdata <- 'C:/Users/tchelidze/Downloads/usa_00020.xml'
+vacant_microdata <- 'usa_00020.xml'
 ddi <- read_ipums_ddi(vacant_microdata)
 vacant_microdata21 <- read_ipums_micro(ddi)
 
-# drop observations missing VALUEH (we can't evaluate the affordability of vacant units we don't know the value of)
-#vacant_microdata21 <- vacant_microdata21 %>%
-#  filter(VALUEH != 9999999)
-
 # keep only the variables we need/can even have given this hierarchical structure
-vacant_microdata21 <- vacant_microdata21 %>%
-  select(STATEFIP, PUMA, VACANCY, VALUEH, ADJUST)
 vacant_microdata21 <- vacant_microdata21 %>% 
   dplyr::rename("puma" = "PUMA",
                 "statefip" = "STATEFIP")
@@ -87,10 +82,7 @@ vacant_microdata21 <- vacant_microdata21 %>%
   )
 vacant_microdata21 <- vacant_microdata21 %>% arrange(statefip, puma)
 
-# acs2021clean = subset(acs2021clean, select = -c(VACANCY) )
-
-# acs2021vacant <- left_join(vacant_microdata21, acs2021clean, by = c("statefip", "puma"))
-# 71078007 obs
+# 119390 obs
 
 ###################################################################
 
@@ -105,7 +97,7 @@ vacant_microdata21 <- vacant_microdata21 %>% arrange(statefip, puma)
 
 vacant_microdata21 <- vacant_microdata21 %>%
   filter(VACANCY==1 | VACANCY==2 | VACANCY==3)
-# still 9776 obs - no drops
+# 28436 obs from 119390 obs (90954 dropped)
 
 
 
@@ -171,14 +163,14 @@ vacant_places$GEOID <- paste(vacant_places$statefip,vacant_places$place, sep = "
 # limit only to places of interest
 vacant_places <- vacant_places %>%
   filter(GEOID %in% places$GEOID)
-# 11183 obs to 5848 obs (5335 obs dropped)
+#  33097 obs to 20419 obs (12678 obs dropped)
 
 # Merge rent ratio into vacant unit microdata
 vacant_final<- left_join(vacant_places, rent_ratio, by = c("statefip", "place"))
 
 # Update the RENTGRS variable with our calculated ratio
 vacant_final <- vacant_final %>%
-  mutate(RENTGRS = RENT*ratio_rentgrs_rent)
+  mutate(RENTGRS = RENT.x*ratio_rentgrs_rent)
 
 
 ###################################################################
@@ -192,13 +184,13 @@ vacant_final <- vacant_final %>%
 url <- "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile <- "data/temp/FMR_Income_Levels_2021.xlsx"
+destfile <- "data/FMR_Income_Levels_2021.xlsx"
 
 # Import the data file & save locally
 download.file(url, destfile, mode="wb")
 
 # Import the data file as a dataframe
-FMR_Income_Levels_2021 <- read_excel("data/temp/FMR_Income_Levels_2021.xlsx")
+FMR_Income_Levels_2021 <- read_excel("data/FMR_Income_Levels_2021.xlsx")
 
 # Import data file (FY&year_4050_FMRs_rev.csv) FY2021_4050_FMRs_rev
 # Access via https://www.huduser.gov/portal/datasets/fmr.html#2021_data
@@ -207,13 +199,13 @@ FMR_Income_Levels_2021 <- read_excel("data/temp/FMR_Income_Levels_2021.xlsx")
 url_FMR <- "https://www.huduser.gov/portal/datasets/fmr/fmr2021/FY21_4050_FMRs_rev.xlsx"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile_FMR <- "data/temp/FMR_pop_2021.xlsx"
+destfile_FMR <- "data/FMR_pop_2021.xlsx"
 
 # Import the data file & save locally
 download.file(url_FMR, destfile_FMR, mode="wb")
 
 # Import the data file as a dataframe
-FMR_pop_2021 <- read_excel("data/temp/FMR_pop_2021.xlsx")
+FMR_pop_2021 <- read_excel("data/FMR_pop_2021.xlsx")
 
 # (4a) Merge the 2 files
 
@@ -248,30 +240,30 @@ FMR_2021 <- left_join(FMR_Income_Levels_2021, county_place, by=c("state", "count
 
 place_income_limits_2021 <- FMR_2021 %>%
   dplyr::group_by(state, place) %>%
-  dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop2017),
-                   l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
-                   l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
-                   l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
-                   l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
-                   l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
-                   l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
-                   l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
-                   ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
-                   ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
-                   ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
-                   ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
-                   ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
-                   ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
-                   ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
-                   ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
-                   l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
-                   l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
-                   l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
-                   l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
-                   l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
-                   l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
-                   l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
-                   l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
+  dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop20),
+                   l50_2 = weighted.mean(l50_2, na.rm = T, w = pop20),
+                   l50_3 = weighted.mean(l50_3, na.rm = T, w = pop20),
+                   l50_4 = weighted.mean(l50_4, na.rm = T, w = pop20),
+                   l50_5 = weighted.mean(l50_5, na.rm = T, w = pop20),
+                   l50_6 = weighted.mean(l50_6, na.rm = T, w = pop20),
+                   l50_7 = weighted.mean(l50_7, na.rm = T, w = pop20),
+                   l50_8 = weighted.mean(l50_8, na.rm = T, w = pop20),
+                   ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop20),
+                   ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop20),
+                   ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop20),
+                   ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop20),
+                   ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop20),
+                   ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop20),
+                   ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop20),
+                   ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop20),
+                   l80_1 = weighted.mean(l80_1, na.rm = T, w = pop20),
+                   l80_2 = weighted.mean(l80_2, na.rm = T, w = pop20),
+                   l80_3 = weighted.mean(l80_3, na.rm = T, w = pop20),
+                   l80_4 = weighted.mean(l80_4, na.rm = T, w = pop20),
+                   l80_5 = weighted.mean(l80_5, na.rm = T, w = pop20),
+                   l80_6 = weighted.mean(l80_6, na.rm = T, w = pop20),
+                   l80_7 = weighted.mean(l80_7, na.rm = T, w = pop20),
+                   l80_8 = weighted.mean(l80_8, na.rm = T, w = pop20),
                    n = n()
   )
 place_income_limits_2021 <- place_income_limits_2021 %>% 
@@ -361,21 +353,33 @@ households_2021 <- households_2021 %>%
 # housing cost that was calculated and prepared above in the "vacant" df.
 
 vacant_2021 <- left_join(vacant_final, place_income_limits_2021, by=c("statefip","place"))
-# 4,622,690 obs
+# 20419 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
-# NOTE that we will need to create a Below50AMI_vacantHH (the count of vacant HH) for the Data Quality flag in step 8
-vacant_2021 <- vacant_2021 %>%
-  mutate(Affordable80AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l80_4*0.30)) ~ 1,
-                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (l80_4*0.30)) ~ 0),
-         Affordable50AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (l50_4*0.30)) ~ 1,
-                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (l50_4*0.30)) ~ 0),
-         Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
-                                (HHINCOME>l50_4) ~ 0),
-         Below50AMI_vacantHH = HHWT*Below50AMI,
-         Affordable30AMI = case_when(RENTGRS > 0 & ((RENTGRS*12) <= (ELI_4*0.30)) ~ 1,
-                                     VALUEH != 9999999 & ((total_monthly_cost*12) <= (ELI_4*0.30)) ~ 0)
-  )
+vacant_2021_new <- vacant_2021 %>%
+  mutate(Affordable80AMI = ifelse(!is.na(l80_4), 
+                                  ifelse(RENTGRS > 0, 
+                                         (RENTGRS*12) <= (l80_4*0.30), 
+                                         ifelse(VALUEH != 9999999, 
+                                                (total_monthly_cost*12) <= (l80_4*0.30), NA)), 
+                                  NA),
+         Affordable50AMI = ifelse(!is.na(l50_4), 
+                                  ifelse(RENTGRS > 0, 
+                                         (RENTGRS*12) <= (l50_4*0.30), 
+                                         ifelse(VALUEH != 9999999, 
+                                                (total_monthly_cost*12) <= (l50_4*0.30), NA)), 
+                                  NA),
+         Affordable30AMI = ifelse(!is.na(ELI_4), 
+                                  ifelse(RENTGRS > 0, 
+                                         (RENTGRS*12) <= (ELI_4*0.30), 
+                                         ifelse(VALUEH != 9999999, 
+                                                (total_monthly_cost*12) <= (ELI_4*0.30), NA)), 
+                                  NA))
+
+vacant_2021_new$Affordable80AMI <- as.integer(vacant_2021_new$Affordable80AMI)
+vacant_2021_new$Affordable50AMI <- as.integer(vacant_2021_new$Affordable50AMI)
+vacant_2021_new$Affordable30AMI <- as.integer(vacant_2021_new$Affordable30AMI)
+
 
 
 ###################################################################
@@ -400,11 +404,11 @@ households_summed_2021 <- households_summed_2021 %>%
 # from 'vacant_2021', grouped by statefip and place, and weighted by HHWT
 # save as df 'vacant_summed_2021'
 
-vacant_summed_2021 <- vacant_2021 %>% 
+vacant_summed_2021 <- vacant_2021_new %>% 
   dplyr::group_by(statefip, place) %>%
-  dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT, na.rm = TRUE),
-                   Affordable50AMI_vacant = sum(Affordable50AMI*HHWT, na.rm = TRUE),
-                   Affordable30AMI_vacant = sum(Affordable30AMI*HHWT, na.rm = TRUE),
+  dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT.x, na.rm = TRUE),
+                   Affordable50AMI_vacant = sum(Affordable50AMI*HHWT.x, na.rm = TRUE),
+                   Affordable30AMI_vacant = sum(Affordable30AMI*HHWT.x, na.rm = TRUE),
                    vacantHHobs_count = n())
 
 vacant_summed_2021 <- vacant_summed_2021 %>% 
