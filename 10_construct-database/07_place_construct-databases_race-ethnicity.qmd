@@ -28,6 +28,20 @@ library(gt)
 ```
 
 ```{r}
+read_csv(here("01_financial-well-being", "metrics_income_subgroup_city_2021.csv")) %>%
+  mutate(subgroup_type = "race-ethnicity") %>%
+  select(year, state, place, subgroup, subgroup_type,
+         pctl_income_20 = pctl_20, 
+         pctl_income_50 = pctl_50, 
+         pctl_income_80 = pctl_80,
+         pctl_income_quality = pctl_20_quality) %>%
+  write_csv(here("data", "temp", "metrics_income_subgroup_city_2021.csv"))
+
+
+
+```
+
+```{r}
 files <- c(
   ### CROSSWALK ###
   #here("geographic-crosswalks", "data", "long-xwalk_place.csv"),
@@ -36,10 +50,9 @@ files <- c(
   here("08_education", "metrics_preschool_subgroup_city_2021.csv"),
   here("08_education", "data", "built", "SEDA_all_subgroups_city.csv"), 
   here("08_education", "metrics_college_subgroup_city_2021.csv"),
-  here("08_education", "digital_access_subgroup_city_2021.csv"),
   
   ### FINANCIAL WELLBEING ###
-  here("01_financial-well-being", "metrics_income_subgroup_city_2021.csv"),
+  here("data", "temp", "metrics_income_subgroup_city_2021.csv"),
 
   ### HEALTH ###
   #no city-level health data
@@ -51,7 +64,6 @@ files <- c(
 
   
   ### NEIGHBORHOODS ### 
-  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"), 
   
   ### SAFETY ###
   #Place data not ready for prime-time
@@ -124,15 +136,9 @@ clean_data <- function(db_unclean){
   db <- db_unclean %>%
     rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
                 ) %>%
-    rename_with(.cols = starts_with("pctl"), 
-              ~str_replace_all(.x, "pctl_", "pctl_income_")) %>%
     #Commenting out as we don't currently process exposure
-    rename_with(.cols = contains("exposure"),
-              .fn = ~paste0("share_", .x)
-              ) %>%
     rename_with(~str_replace_all(.x, "homeless_count", "count_homeless")
               ) %>%
-    rename_with(~str_replace_all(.x, "digital_access", "share_digital_access")) %>%
     rename(
       share_homeless = homeless_share
             ) 
@@ -144,8 +150,37 @@ db <- clean_data(db_unclean)
 
 ```
 
+rows = 486 places by 10 years by 5 subgroups
 
+```{r}
+frame <-
+  bind_rows(
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "place-populations.csv"), guess_max = Inf) %>%
+        filter(year == 2020) %>%
+        select(-year),
+      year = 2013:2022,
+      subgroup_type = c("all"),
+      subgroup = c("All")
+    ),
+    expand_grid(
+      read_csv(here("geographic-crosswalks", "data", "place-populations.csv"), guess_max = Inf) %>%
+        filter(year == 2020) %>%
+        select(-year),
+      year = 2013:2022,
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
+    )
+  ) %>%
+  arrange(year, state, place, subgroup_type, subgroup)
 
+db <- full_join(frame, db, by = c("year", "state", "place", "subgroup_type", "subgroup"))
+
+stopifnot(
+  nrow(db) == nrow(frame)
+)
+
+```
 
 ```{r}
 read_csv_recent <- function(file) {
@@ -291,7 +326,6 @@ db_recent <- db_recent %>%
 ## Write the File
 
 ```{r}
-write_csv(db_recent, here("data", "06_mobility-metrics_place_race-ethnicity_recent.csv"))
 write_csv(db, here("data", "06_mobility-metrics_place_race-ethnicity_longitudinal.csv"))
 
 ```
