@@ -68,7 +68,7 @@ acs2021clean <- acs2021clean %>%
 # check off "GQ" and click "SUBMIT" -> Check off "O Vacant Unit" under GQ status and click "SUBMIT"
 # THEN:
 # Under "STRUCTURE:" , click "Change" -> switch from 'Rectangular' to 'Hierarchical' -> "APPLY SELECTIONS"
-vacant_microdata <- 'usa_00020.xml'
+vacant_microdata <- 'C:/Users/ARogin/Downloads/usa_00020.xml'
 ddi <- read_ipums_ddi(vacant_microdata)
 vacant_microdata21 <- read_ipums_micro(ddi)
 
@@ -356,25 +356,25 @@ vacant_2021 <- left_join(vacant_final, place_income_limits_2021, by=c("statefip"
 # 20419 obs
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
+
+# (6a) create same 30%, 50%, and 80% AMI affordability indicators
 vacant_2021_new <- vacant_2021 %>%
-  mutate(Affordable80AMI = ifelse(!is.na(l80_4), 
-                                  ifelse(RENTGRS > 0, 
-                                         (RENTGRS*12) <= (l80_4*0.30), 
-                                         ifelse(VALUEH != 9999999, 
-                                                (total_monthly_cost*12) <= (l80_4*0.30), NA)), 
-                                  NA),
-         Affordable50AMI = ifelse(!is.na(l50_4), 
-                                  ifelse(RENTGRS > 0, 
-                                         (RENTGRS*12) <= (l50_4*0.30), 
-                                         ifelse(VALUEH != 9999999, 
-                                                (total_monthly_cost*12) <= (l50_4*0.30), NA)), 
-                                  NA),
-         Affordable30AMI = ifelse(!is.na(ELI_4), 
-                                  ifelse(RENTGRS > 0, 
-                                         (RENTGRS*12) <= (ELI_4*0.30), 
-                                         ifelse(VALUEH != 9999999, 
-                                                (total_monthly_cost*12) <= (ELI_4*0.30), NA)), 
-                                  NA))
+  mutate(
+    Affordable80AMI = case_when(
+      is.na(l80_4) ~ NA, 
+      RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30), 
+      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l80_4*0.30), 
+      VALUEH == 9999999 ~ NA),
+    Affordable50AMI = case_when(
+      is.na(l50_4) ~ NA,
+      RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30), 
+      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l50_4*0.30), 
+      VALUEH == 9999999 ~ NA), 
+    Affordable30AMI = case_when(
+      is.na(ELI_4) ~ NA, 
+      RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30), 
+      VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
+      VALUEH == 9999999 ~ NA))
 
 vacant_2021_new$Affordable80AMI <- as.integer(vacant_2021_new$Affordable80AMI)
 vacant_2021_new$Affordable50AMI <- as.integer(vacant_2021_new$Affordable50AMI)
