@@ -148,8 +148,7 @@ read_csv(here("07_safety", "modified data", "2021_crime_rate_county.csv")) %>%
   write_csv(here("data", "temp", "2021_crime_rate_county.csv"))
 
 read_csv(here("07_safety", "modified data", "2021_juv_arrest_rate_county.csv")) %>%
-  select(-age_1017, -juv_arrest_rate_violent, -juv_arrest_rate_property,
-         -core_reporting, -agencies_reporting) %>%
+  select(-juv_arrest_rate_violent, -juv_arrest_rate_property) %>%
   rename(
     rate_juv_arrest = juv_arrest_rate, 
     rate_juv_arrest_quality = juv_arrest_rate_quality
@@ -408,7 +407,7 @@ clean_data <- function(db_unclean){
     ~str_replace(.x, "injury_death_rate", "rate_injury_death")
   ) %>%
   rename_with(
-    ~str_replace(.x, "environmental", "air_quality_index")
+    ~str_replace(.x, "environmental", "index_air_quality")
   ) %>%
   rename(
     #share_in_preschool_quality = preschool_quality, 
@@ -492,8 +491,13 @@ db_recent %>%
 ### Full Database
 
 ```{r}
+quality_boolean <- grepl("_quality", colnames(db))
+quality_variables <- colnames(db)[quality_boolean]
+quality_variables <- quality_variables[quality_variables != "index_air_quality"]
+
+
 db_values <- db %>%
-  select(-ends_with("_quality"), -ends_with("_ub"), -ends_with("_lb")) %>%
+  select(-all_of(quality_variables), -ends_with("_ub"), -ends_with("_lb")) %>%
   
   #Separate ratios out to assess them: 
   separate(ratio_hispanic_house_value_households, 
@@ -523,7 +527,8 @@ db_values <- db %>%
     )
 
 db_quality <- db %>%
-  select(ends_with("_quality"))
+  select(ends_with("_quality")) %>%
+  select(-index_air_quality)
 
 db_bounds <- db %>%
   select(ends_with("_ub"), ends_with("_lb"))
@@ -538,10 +543,7 @@ db_values %>%
   assert(within_bounds(0, 1), share_hs_degree, share_in_preschool) %>%
   assert(within_bounds(-1.5, 10), rate_learning) %>% #There are some values below -1, but these could be legit, so changed to -1.5
   assert(within_bounds(0, 1), share_digital_access) %>%
-
-  #Potential concern!!!
-  #assert(within_bounds(0, 1), starts_with("meps20")) #student poverty
-
+  assert(within_bounds(0, 1), starts_with("meps20")) %>% #student poverty
 
   ### FINANCIAL WELLBEING ###
   assert(within_bounds(0, Inf), starts_with("pctl_income_")) %>%
@@ -553,7 +555,6 @@ db_values %>%
 
   ### HEALTH ###
   assert(within_bounds(0, 1), rate_low_birth_weight) %>%
-  assert(within_bounds(0, 100), air_quality_index) %>%
   assert(within_bounds(0, 10000), rate_injury_death) %>%
   assert(within_bounds(0, Inf), pcp) %>%
   
@@ -578,6 +579,7 @@ db_values %>%
   ### NEIGHBORHOODS ### 
   assert(within_bounds(0, 1), share_poverty_exposure) %>%
   assert(within_bounds(0, 1), ends_with("exposure")) %>%
+  assert(within_bounds(0, 100), index_air_quality) %>%
   assert(within_bounds(0, 100), transportation_cost, index_transit_trips) %>%
   assert(within_bounds(0, 100), count_membership_associations_per_10k) %>%
   assert(within_bounds(0, 10), ratio_high_low_ses_fb_friends) %>%
@@ -585,6 +587,7 @@ db_values %>%
   ### SAFETY ### 
   assert(within_bounds(0, 100000), ends_with("crime")) %>%
   assert(within_bounds(0, 100000), starts_with("juvenile_arrest")) %>%
+  assert(within_bounds(0, 2), agencies_reporting) %>%
 
   ### WORK ### 
   assert(within_bounds(0, 1), share_employed) %>%
