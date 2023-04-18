@@ -153,6 +153,7 @@ files <- c(
   
   ### HOUSING ### 
   here("02_housing", "data", "built",  "homelessness_all_city.csv"),
+  here("02_housing", "data", "housing_city_2021.csv"), 
 
   ### LOCAL GOVERNANCE ### 
   here("05_local-governance", "voter-turnout", "voter-turnout-city-2020.csv"),
@@ -166,8 +167,8 @@ files <- c(
   here("06_neighborhoods", "social-capital", "data", "social_associations_city_2022.csv"),
 
   ### SAFETY ###
-  #Missing crime!
-  #missing juvenile arrests 
+  here("07_safety", "modified data", "2021_juv_arrest_rate_place.csv"),
+  here("07_safety", "modified data", "2021_crime_rate_place.csv"),
 
   ### WORK ###
   here("09_employment", "metrics_employment_city_2021.csv")
@@ -247,28 +248,31 @@ clean_data <- function(db_unclean){
   rename_with(
     ~str_replace(.x, "digital_access", "share_digital_access")
   ) %>%
-  rename_with(
-    ~str_replace(.x, "transit_trips", "index_transit_trips")
-  ) %>%
-  # rename_with(.cols = contains("crime_rate"),
-  #             ~paste0("rate_",
-  #                     str_replace(.x, "crime_rate", "crime")
-  #                     )
-  #             ) %>%
-  # rename_with(.cols = contains("arrest_rate"),
-  #             ~paste0("rate_",
-  #                     str_replace(.x, "arrest_rate", "arrest")
-  #                     )
-  #               ) %>%
+  # rename_with(
+  #   ~str_replace(.x, "transit_trips", "index_transit_trips")
+  # ) %>%
+  rename_with(.cols = contains("arrest_rate"),
+              ~paste0("rate_",
+                      str_replace(.x, "arrest_rate", "arrest")
+                      )
+                ) %>%
   rename(
-    share_homeless = homeless_share
+    share_homeless = homeless_share,
+    rate_violent_crime = crime_violent_rate,
+    rate_property_crime = crime_property_rate,
+    rate_crime_quality = crime_rate_quality,
+    share_affordable_30_ami = share_affordable_30AMI,
+    share_affordable_50_ami = share_affordable_50AMI,
+    share_affordable_80_ami = share_affordable_80AMI,
+
   #   share_in_preschool_quality = preschool_quality, 
   #   share_hs_degree_quality = hs_degree_quality,
   #   share_affordable_quality = housing_quality, 
   #   share_employed_quality = employed_quality,
   #   ratio_average_to_living_wage = average_to_living_wage_ratio,
   #   ratio_average_to_living_wage_quality = wage_ratio_quality
-  )
+  ) %>%
+    select(-c(rate_juv_arrest_violent, rate_juv_arrest_property))
   # 
   
   #Note: Don't rename MEPS because it is hard to get a short variable name
@@ -376,6 +380,8 @@ db_bounds <- db %>%
 
 value_col_names <- colnames(db_values)
 share_cols <- value_col_names[grepl("share_", value_col_names)]
+share_cols <- share_cols[!(grepl("affordable", share_cols))]
+
 count_cols <- value_col_names[grepl("count_", value_col_names)]
 exposure_cols <- value_col_names[grepl("_exposure", value_col_names)]
 
@@ -399,24 +405,25 @@ db_values %>%
   ### HEALTH ###
   
   ### HOUSING ###
+  assert(within_bounds(0, 10), starts_with("share_affordable")) %>%
 
   ### LOCAL GOVERNANCE ###
 
   ### NEIGHBORHOODS ### 
   assert(within_bounds(0, 1), all_of(exposure_cols)) %>%
   assert(within_bounds(0, 10), ratio_high_low_ses_fb_friends) %>%
-  assert(within_bounds(0, 100), air_quality_index) #%>%
+  assert(within_bounds(0, 100), air_quality_index) %>%
 
 
   ### SAFETY ### 
-  # assert(within_bounds(0, 100000), ends_with("crime")) %>%
-  # assert(within_bounds(0, 100000), starts_with("juvenile_arrest")) %>%
+  assert(within_bounds(0, 100000), ends_with("crime")) %>%
+  assert(within_bounds(0, 100000), starts_with("juvenile_arrest"))# %>%
 
-  ### WORK ### 
+  ### WORK ###
   # assert(within_bounds(0, 10), ratio_average_to_living_wage)
 
-  
-  
+
+
   #Missing:
     
   #EDUCATION:

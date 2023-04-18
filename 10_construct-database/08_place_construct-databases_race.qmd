@@ -27,6 +27,29 @@ library(gt)
 
 ```
 
+```{r clean-up-messy-data}
+juv_crime <- read_csv(
+  here("07_safety", 
+       "modified data",
+       "2021_juv_arrest_rate_place_subgroup.csv")
+  ) %>%
+  mutate(subgroup = case_when(
+      subgroup == "white" ~ "White",
+      subgroup == "black" ~ "Black",
+      subgroup == "asian_other" ~ "Other Races and Ethnicities",
+      subgroup == "hispanic" ~ "Hispanic",
+      subgroup == "all" ~ "All",
+      TRUE ~ subgroup
+    )
+  ) %>%
+  rename(
+    rate_juv_arrest = juv_arrest_rate,
+    rate_juv_arrest_quality = juv_arrest_rate_quality
+  ) %>%
+  write_csv(here("data", "temp", "2021_juv_arrest_rate_place_subgroup.csv"))
+
+```
+
 ```{r}
 files <- c(
   ### CROSSWALK ###
@@ -46,10 +69,10 @@ files <- c(
 
   
   ### NEIGHBORHOODS ### 
-  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv")
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"), 
   
   ### SAFETY ###
-  #Place data not ready for prime-time
+  here("data", "temp", "2021_juv_arrest_rate_place_subgroup.csv")
   
   ### WORK ### 
 
@@ -71,14 +94,14 @@ read_csv_and_clean <- function(file, is_recent = FALSE) {
     df <- df %>%
       rename(place = city)
   }
-  if("subgroup" %in% colnames(df) & !("subgroup_type" %in% colnames(df))){
-    df <- df %>%
-      #rename(subgroup_type = subgroup) %>%
-      mutate(subgroup_type = "race-ethnicity")
-    
-    print(head(df))
-  }
-  
+  # if("subgroup" %in% colnames(df) & !("subgroup_type" %in% colnames(df))){
+  #   df <- df %>%
+  #     #rename(subgroup_type = subgroup) %>%
+  #     mutate(subgroup_type = "race-ethnicity")
+  #   
+  #   print(head(df))
+  # }
+  # 
   df <- df %>%
     mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
            place = stringr::str_pad(place, width = 5, pad = "0"))  %>%  
@@ -88,25 +111,31 @@ read_csv_and_clean <- function(file, is_recent = FALSE) {
     mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
     mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) 
   
-  print(head(df))
-  
+
   df <- df %>%
     filter(subgroup_type == "race-ethnicity" | 
-             subgroup_type == "all")
+             subgroup_type == "all") %>%
+    mutate(
+      subgroup_type = case_when(
+        subgroup == "All" ~ "all",
+        TRUE ~ subgroup_type
+        ))
   
     
 }
 
 db_unclean <- map(files, read_csv_and_clean) %>%
-  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
-  distinct()
+  reduce(full_join, by = c("year", "state", "place", "subgroup_type", "subgroup")) 
 
 
+places <- length(unique(paste0(db_unclean$state, db_unclean$place)))
+years <- length(unique(db_unclean$year))
+#5 groups for each dataset (this varies between White and NH White)
+
+stopifnot(places*years * 5 == nrow(db_unclean))
 #We do not check shape here
 #different groups have different race-share subgroups making this to much of a headache
 ```
-
-
 
 ```{r clean-data}
 #' Function to clean db, largely by updating names
@@ -132,7 +161,6 @@ db <- clean_data(db_unclean)
 
 ```
 
-
 rows = 486 places by 10 years by 5 subgroups
 
 ```{r}
@@ -142,7 +170,7 @@ frame <-
       read_csv(here("geographic-crosswalks", "data", "place-populations.csv"), guess_max = Inf) %>%
         filter(year == 2020) %>%
         select(-year),
-      year = 2013:2022,
+      year = c(2020:2021),
       subgroup_type = c("all"),
       subgroup = c("All")
     ),
@@ -150,14 +178,23 @@ frame <-
       read_csv(here("geographic-crosswalks", "data", "place-populations.csv"), guess_max = Inf) %>%
         filter(year == 2020) %>%
         select(-year),
-      year = 2013:2022,
+      year = c(2020:2021),
       subgroup_type = c("race-ethnicity"),
       subgroup = c("Black", "Hispanic", "Other Races and Ethnicities", "White")
-    )
-  ) %>%
+      )
+    ) %>%
+    
+  #Note: adjustment here made because juv_arrest and digital_access data are from 2021
+  # and list White (race without ethnicity) while poverty exposure comes from 2020
+  # and lists Non-Hispanic White. With this change we have a perfect join
+   mutate(subgroup = case_when(
+        subgroup == "White" & year == 2020 ~  "White, Non-Hispanic",
+        TRUE ~ subgroup
+        )
+        )%>%
   arrange(year, state, place, subgroup_type, subgroup)
 
-db <- full_join(frame, db, by = c("year", "state", "place", "subgroup_type", "subgroup"))
+db1 <- full_join(frame, db, by = c("year", "state", "place", "subgroup_type", "subgroup"))
 
 # stopifnot(
 #   nrow(db) == nrow(frame)
@@ -213,9 +250,6 @@ db_recent <- map(files, read_csv_recent) %>%
   clean_data()
 ```
 
-
-
-
 ```{r}
 db %>%
   select(ends_with("_quality")) %>%
@@ -256,11 +290,13 @@ value_col_names <- colnames(db_values)
 share_cols <- value_col_names[grepl("share_", value_col_names)]
 count_cols <- value_col_names[grepl("count_", value_col_names)]
 
-
+db_values %>%
+  ### All columns with prefixes count or share
+  assert(within_bounds(0, 1), all_of(share_cols)) %>%
+  assert(within_bounds(0, Inf), all_of(count_cols))
 ```
 
-Test confidence interval bounds. 
-
+Test confidence interval bounds.
 
 ```{r}
 
@@ -268,9 +304,6 @@ db_quality %>%
   assert(in_set(1, 2, 3), everything())
 
 ```
-
-
-
 
 ```{r add-labels}
 place <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
