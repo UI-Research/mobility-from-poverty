@@ -68,7 +68,7 @@ acs2021clean <- acs2021clean %>%
 # check off "GQ" and click "SUBMIT" -> Check off "O Vacant Unit" under GQ status and click "SUBMIT"
 # THEN:
 # Under "STRUCTURE:" , click "Change" -> switch from 'Rectangular' to 'Hierarchical' -> "APPLY SELECTIONS"
-vacant_microdata <- 'usa_00020.xml'
+vacant_microdata <- 'C:/Users/ARogin/Downloads/usa_00020.xml'
 ddi <- read_ipums_ddi(vacant_microdata)
 vacant_microdata21 <- read_ipums_micro(ddi)
 
