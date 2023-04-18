@@ -55,6 +55,8 @@ acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geogra
 # B28009F_004E # Some Other Race Alone
 # B28009G_004E # Two or More Races
 # B28009H_004E # White Alone, not Hispanic or Latino (won't use this since not consistent, it's the only one)
+#GM update: in future we will want to use White Non-Hispanic
+
 # B28009I_004E # Hispanic or Latino
 
 # The table doesn't report person-level total tabulations of broadband access
@@ -88,6 +90,7 @@ digitalvars <- c(
   "B28009E_004E",
   "B28009F_004E",
   "B28009G_004E",
+
   "B28009I_004E"
 )
 
