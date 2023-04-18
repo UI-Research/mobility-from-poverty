@@ -55,6 +55,8 @@ acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geogra
 # B28009F_004E # Some Other Race Alone
 # B28009G_004E # Two or More Races
 # B28009H_004E # White Alone, not Hispanic or Latino (won't use this since not consistent, it's the only one)
+#GM update: using White Alone not Hispanic!
+
 # B28009I_004E # Hispanic or Latino
 
 # The table doesn't report person-level total tabulations of broadband access
@@ -81,13 +83,14 @@ popvars <- c(
 )
 
 digitalvars <- c(
-  "B28009A_004E",
+  #"B28009A_004E",
   "B28009B_004E", 
   "B28009C_004E",
   "B28009D_004E",
   "B28009E_004E",
   "B28009F_004E",
   "B28009G_004E",
+  "B28009H_004E",
   "B28009I_004E"
 )
 
@@ -139,14 +142,15 @@ wide_places_digital <- places_digital %>%
 wide_county_pop <- wide_county_pop %>% 
   rename(
     "total_people" = "B02001_001",
-    "white" = "B02001_002",
+    #"white" = "B02001_002",
     "black" = "B02001_003", 
     "aian" = "B02001_004",
     "asian" = "B02001_005",
     "nhpi" = "B02001_006",
     "other" = "B02001_007",
     "two_or_more" = "B02001_008",
-    "hispanic" = "B03001_003"
+    "hispanic" = "B03001_003",
+    "nh_white" = "B28009H_004E"
   )
 
 wide_places_pop <- wide_places_pop %>% 
