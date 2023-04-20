@@ -94,34 +94,58 @@ clean_data <- function(db_unclean){
   
     rename_with(
       ~str_replace(.x, "environmental", "index_air_quality")
-      ) %>%
-    
-    #using the lookup here: https://www2.census.gov/library/publications/2001/compendia/ccdb00/tabD1.pdf
-    mutate(
-      state_name = case_when(
-        state == "51" & place == "03000" ~ "Virginia",
-        state == "32" & place == "54600" ~ "Nevada",
-        state == "32" & place == "71400" ~ "Nevada",
-        TRUE ~ state_name
-      ),
-      place_name = case_when(
-        state == "51" & place == "03000" ~ "Arlington",
-        state == "32" & place == "54600" ~ "Paradise",
-        state == "32" & place == "71400" ~ "Nevada",
-        TRUE ~ state_name
-      )
-      )
+      ) 
   
  
 }
 
-db <- clean_data(db_unclean) 
+db <- clean_data(db_unclean) %>%
+  select(-c(place_name, state_name))
 
 
 ```
 
 ```{r}
+xwalk <- read_csv(here("geographic-crosswalks", 
+                          "data", 
+                          "place-populations.csv"), 
+                     guess_max = 5000) %>%
+  filter(year == 2018) %>%
+  select(-year) 
 
+
+#We have three places not in the lookup table- they are the three identified using the lookup here: https://www2.census.gov/library/publications/2001/compendia/ccdb00/tabD1.pdf
+arlington <- list(state = "51", place = "03000", state_name = "Virginia", place_name = "Arlington", population = 0)
+paradise <- c(state = "32", place = "54600", state_name = "Nevada", place_name = "Paradise", population = 0)
+temple_terrace <- c(state = "32", place = "71400", state_name = "Nevada", place_name = "Temple Terrace", population = 0)
+
+xwalk <- rbind(xwalk, arlington, paradise, temple_terrace)
+
+frame <- bind_rows(
+    expand_grid(
+      xwalk,
+      subgroup_type = c("all"),
+      subgroup = c("All"),
+      year = c(2014, 2018, 2021)
+    ),
+    expand_grid(
+      xwalk,
+      subgroup_type = c("race-ethnicity"),
+      subgroup = c("Mixed Race and Ethnicity", "Majority Non-White", "Majority White, Non-Hispanic"),
+      year = c(2014, 2018, 2021)
+    )
+  ) %>%
+  arrange(year, state, place, subgroup_type, subgroup) 
+
+db <- tidylog::full_join(db, frame, by = c("state", "place", "year", "subgroup_type", "subgroup")) 
+
+
+
+
+```
+
+
+```{r}
 db %>%
   select(ends_with("_quality")) %>%
   select(-index_air_quality) %>%
