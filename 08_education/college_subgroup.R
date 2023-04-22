@@ -159,6 +159,26 @@ metrics_college <- metrics_college %>%
   select(year, state, place, subgroup_type, subgroup, share_hs_degree, 
          share_hs_degree_quality)
 
+
+###################################################################
+
+# Import the original overall population values to add as "All" under "subgroup"
+college_all <- read_csv("08_education/metrics_college_city_2021.csv")
+
+college_all <- college_all %>%
+  mutate(
+    subgroup = "All",
+    subgroup_type = "race-ethnicity"
+  )
+
+# Append the "All" version of the data
+metrics_college <- bind_rows(metrics_college, college_all)
+
+# Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+metrics_college <- metrics_college %>%
+  arrange(state, place)
+
+
 # Save as "metrics_employment.csv"
 write_csv(metrics_college, "08_education/metrics_college_subgroup_city_2021.csv")  
 
