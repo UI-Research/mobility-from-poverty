@@ -107,6 +107,26 @@ metrics_income <- metrics_income %>%
   select(year, state, place, subgroup, pctl_20, pctl_20_quality, pctl_50, 
          pctl_50_quality, pctl_80, pctl_80_quality)
 
+
+
+###################################################################
+
+# Import the original overall population values to add as "All" under "subgroup"
+income_all <- read_csv("01_financial-well-being/metrics_income_city_2021.csv")
+
+income_all <- income_all %>%
+  mutate(
+    subgroup = "All"
+  )
+
+# Append the "All" version of the data
+metrics_income <- bind_rows(metrics_income, income_all)
+
+# Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+metrics_income <- metrics_income %>%
+  arrange(state, place)
+
+
 # export as CSV
 write_csv(metrics_income, "01_financial-well-being/metrics_income_subgroup_city_2021.csv")
 
