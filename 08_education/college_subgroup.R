@@ -168,7 +168,7 @@ college_all <- read_csv("08_education/metrics_college_city_2021.csv")
 college_all <- college_all %>%
   mutate(
     subgroup = "All",
-    subgroup_type = "race-ethnicity"
+    subgroup_type = "all"
   )
 
 # Append the "All" version of the data

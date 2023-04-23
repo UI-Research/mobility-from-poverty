@@ -125,14 +125,14 @@ preschool_all <- read_csv("08_education/metrics_preschool_city_2021.csv")
 preschool_all <- preschool_all %>%
   mutate(
     subgroup = "All",
-    subgroup_type = "race-ethnicity"
+    subgroup_type = "all"
   )
 
 # Append the "All" version of the data
 metrics_preschool <- bind_rows(metrics_preschool, preschool_all)
 
 # Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
-metrics_college <- metrics_college %>%
+metrics_preschool <- metrics_preschool %>%
   arrange(state, place)
 
 

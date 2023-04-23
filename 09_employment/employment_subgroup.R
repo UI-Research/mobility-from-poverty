@@ -122,7 +122,7 @@ employment_all <- read_csv("09_employment/metrics_employment_city_2021.csv")
 employment_all <- employment_all %>%
   mutate(
     subgroup = "All",
-    subgroup_type = "race-ethnicity"
+    subgroup_type = "all"
   )
 
 # Append the "All" version of the data
