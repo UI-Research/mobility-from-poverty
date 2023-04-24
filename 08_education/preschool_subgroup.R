@@ -116,6 +116,27 @@ metrics_preschool <- metrics_preschool %>%
   select(year, state, place, subgroup_type, subgroup, share_in_preschool, 
          share_in_preschool_quality)
 
+
+###################################################################
+
+# Import the original overall population values to add as "All" under "subgroup"
+preschool_all <- read_csv("08_education/metrics_preschool_city_2021.csv")
+
+preschool_all <- preschool_all %>%
+  mutate(
+    subgroup = "All",
+    subgroup_type = "all"
+  )
+
+# Append the "All" version of the data
+metrics_preschool <- bind_rows(metrics_preschool, preschool_all)
+
+# Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+metrics_preschool <- metrics_preschool %>%
+  arrange(state, place)
+
+
+
 # Save as "metrics_preschool.csv"
 write_csv(metrics_preschool, "08_education/metrics_preschool_subgroup_city_2021.csv")  
 
