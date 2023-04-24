@@ -113,6 +113,27 @@ metrics_employment <- metrics_employment %>%
 metrics_employment <- metrics_employment %>%
   select(year, state, place, subgroup_type, subgroup, share_employed, share_employed_quality)
 
+
+###################################################################
+
+# Import the original overall population values to add as "All" under "subgroup"
+employment_all <- read_csv("09_employment/metrics_employment_city_2021.csv")
+
+employment_all <- employment_all %>%
+  mutate(
+    subgroup = "All",
+    subgroup_type = "all"
+  )
+
+# Append the "All" version of the data
+metrics_employment <- bind_rows(metrics_employment, employment_all)
+
+# Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+metrics_employment <- metrics_employment %>%
+  arrange(state, place)
+
+
+
 # Save as "metrics_employment.csv"
 write_csv(metrics_employment, "09_employment/metrics_employment_subgroup_city_2021.csv")  
 
