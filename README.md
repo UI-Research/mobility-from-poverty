@@ -5,7 +5,7 @@ This repository contains code to construct 26 county-level metrics across 9 doma
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
 
-Detailed documentation of code and data is available [here](https://ui-research.github.io/mobility-from-poverty/documentation/overview).
+Detailed documentation of code and data is available [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md).
 
 # Motivation
 
@@ -73,6 +73,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 ## Subgroups Files
 
 * The subgroups county files contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
+
 * The subgroups city file contains multiple observations per census place per year. The file is long and the multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
 # Project Organization

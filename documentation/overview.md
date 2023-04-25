@@ -28,6 +28,10 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 * [College readiness](#college-readiness)
 * [Employment](#employment)
 * [Access to jobs paying a living wage](#access-to-jobs-paying-a-living-wage)
+* [Digital access](#digital-access)
+* [Social Capital](#social-capital)
+* [Descriptive Representation](#descriptive-representation)
+
 
 ---
 
@@ -40,7 +44,7 @@ Click [here](https://ui-research.github.io/gates-mobility-metrics/) to return to
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_income.csv`
 * **Data Source(s):** ACS 1-yr for original and ACS 5-yr for subgroup.
 * **Notes:** I used the `quantreg` procedure to get the percentiles. The three programs beginning `1_`, `2_`, and `3_` must be run before computing these metrics. These programs `infile` some .csv files which can be found on Box under "ACS-based metrics." For the subgroup analysis, I have changed from the `quantreg` procedure to `proc means`. I get the percentiles for each state-county-race combination with proc means. To run the subgroup programs, you must run the programs `1_`, `2_`, and then `3_prepate_microdata_5_year`. 
@@ -62,56 +66,51 @@ Please note that all of the metrics mentioned above use data_quality (or data_qu
 
 ---
 
-## Financial security
+## Financial security - county-level
 
-Share debt in collections is the estimated share of people with a credit bureau record who have any debt in collections. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor’s books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
+Share with debt in collections is the estimated share of adults with a credit bureau record who have any debt in collections. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor's books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
 
-We also calculate 95 percent confidence interval (upper and lower bounds) for the estimate, where we redefine the few negative lower bounds to be equal to zero.
+Data citation: Alexander Carther, Kassandra Martinchek, Breno Braga, Signe-Mary McKernan, and Caleb Quakenbush. 2021. Debt in America 2022. Accessible from https://datacatalog.urban.org/dataset/debt-america-2022.
 
 ### Overview
 
 * **Analyst & Programmer:** Breno Braga, Alex Carther
-* **Year(s):** 2018
-* **Final data name(s):** `share_debt_coll.csv`, `share_debt_coll__ub_long.csv`
+* **Year(s):** 2018, 2022
+* **Final data name(s):** `share_debt_2018.csv`, `share_debt_2018_long.csv`, `county-debt-coll-shares-2022.csv`
 * **Data Source(s):** [Debt in America](https://apps.urban.org/features/debt-interactive-map/?type=overall&variable=pct_debt_collections)
-* **Notes:** Debt in America data is derived from a 2 percent random sample of de-identified, consumer-level records from a major credit bureau. The credit bureau data are from August 2018 and contain more than 5 million records. These data exclude information on roughly 11 percent of US adults with no credit file.
-* **Data Quality Index:** quality flag is a 1 for all observations except for those which are suppressed due to n<50, which are designated 3, and missing observations, which are designated missing. 
-* **Limitations:** The raw data file for the credit bureau microdata cannot be uploaded online due to contract restrictions. This data is available on the STATA3 server. Please do NOT move this data online.
-* **Missingness:** Variable is missing for 197 counties due to suppression for n<50 and 6 counties where data was not available.
+* **Notes:** Debt in America data is derived from a 2 percent (August 2018) or 4 percent (February 2022) random sample of de-identified, consumer-level records from a major credit bureau. The August 2018 data contain more than 5 million records and the February 2022 data contain more than 10 million records. These data exclude information on roughly 11 percent of US adults with no credit file.
+* **Data Quality Index:** Data quality flag is a 1 for all observations except for those which are suppressed due to small sample size or are not available. 
+* **Limitations:** These aggregated data are accessed from publicly available Urban Institute data features. The raw microdata cannot be published. The Financial Health & Wealth Dashboard city-level measure captures derogatory debt, including collections, while the Debt in America county-level measure captures debt in collections only.
+* **Missingness:** Value is missing when suppressed due to small sample size or when data is not available.
 
 ### Process
 
+See Urban Institute's Debt in America for details. The county-level measure captures the share of adults in an area with a credit bureau record with debt that has progressed from being past-due to being in collections. For county-level August 2018 and February 2022 data, "majority" means that at least 60% of residents in a zip code are members of the specified population group.
 
 ---
 
-## Financial security
+## Financial security - city-level
 
-Metric definition: share of consumers (with credit files) who have derogatory debt, including collections.
+Metric definition: share of adults with a credit record who have derogatory debt, including collections.
 
-Examples of derogatory status include collections, charge-offs, repossessions, and foreclosures. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor’s books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
+Examples of derogatory status include collections, charge-offs, repossessions, and foreclosures. Debt in collections includes past-due credit lines that have been closed and charged-off on the creditor's books as well as unpaid bills reported to the credit bureaus that the creditor is attempting to collect. For example, credit card accounts enter collections status once they are 180 days past due.
 
-This metric differs slightly from the debt in collections metric used in Debt in America, which includes external collections and internal collections/charge-offs only. The consumer-level binary indicators under these two approaches are equivalent for 99.89% of observations. For 0.10% of observations, the indicator used here is 1 while the Debt in America indicator is 0. For less than 0.01% of observations, the indicator used here is 0 while the Debt in America indicator is 1. The city-level shares generated under this approach are always greater than or equal to the Debt in America version of shares, with a max difference of 0.9 percentage points, a mean difference of 0.11 percentage points, and median difference of 0.09 percentage points.
-
-Note: The raw data file for the credit bureau microdata cannot be moved online due to contract restrictions.
-
-Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. “Financial Health and Wealth Dashboard: A Local Picture of Residents’ Financial Well-Being.” Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
+Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, and Signe-Mary McKernan. 2022. "Financial Health and Wealth Dashboard: A Local Picture of Residents' Financial Well-Being." Accessible from https://datacatalog.urban.org/dataset/financial-health-and-wealth-dashboard-2022.
 
 ### Overview
 
 * **Analyst & Programmer:** Jen Andre, Breno Braga
 * **Year(s):** 2021
-* **Final data name(s):** `city-debt-coll-shares.csv`
-* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt)
+* **Final data name(s):** `city-debt-coll-shares-2021.csv`
+* **Data Source(s):** [Financial Health and Wealth Dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/), state FIPS codes from [US Census Bureau](https://www2.census.gov/geo/docs/reference/state.txt), CDP FIPS codes from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section)
 * **Notes:** The credit bureau data is a 4 percent random sample of de-identified, consumer-level records from a major credit bureau. We use the August 2021 data pull, which contains more than 10 million records before filtering to the included cities. These data exclude information on roughly 11 percent of US adults with no credit file.
-* **Data Quality Index:** Observations that are suppressed due to small sample size (n < 50) or that do not exist because no communities meet the race/ethnicity threshold for a given subgroup are designated 3. All other observations are designated 1.
-* **Limitations:** As described above, this metric differs from Debt in America approach.
-* **Missingness:** Variable is replaced as missing for 3 city-subgroup records due to suppression when number of consumers < 50. Variable also replaced as missing for 19 city-subgroup records for cities that do not have communities meeting the race/ethnicity threshold for a given subgroup.
+* **Data Quality Index:** Data quality flag is a 1 for all observations except for those which are suppressed due to small sample size or are not available.
+* **Limitations:** These aggregated data are accessed from publicly available Urban Institute data features. The raw microdata cannot be published. The Financial Health & Wealth Dashboard city-level measure captures derogatory debt, including collections, while the Debt in America county-level measure captures debt in collections only.
+* **Missingness:** Value is missing when suppressed due to small sample size or when data is not available.
 
 ### Process
-* Consumer-level records are aggregated at the city and subgroup level to create city-level shares of consumers with debt in collections.
-* PUMAs are mapped to cities using "2010 PUMA Match Summary by Large Place (>75,000 Population)" from [IPUMS](https://usa.ipums.org/usa-action/variables/CITY#comparability_section). Cities with at least 2 best-matching PUMAs are included.
-* Consumer-level race information is not available. The "Majority white" and "Majority non-white" subgroups aggregate individuals that live in zip codes that are majority (50%+) white or majority (50%+) non-white. The resulting values are interpreted as "X% of people living in majority-Y zip codes in city Z have derogatory debt, including collections". There are 19 cities that do not have either the "Majority white" or the "Majority non-white" subgroup because there are no such communities in those cities.
 
+See Urban Institute's Financial Health and Wealth Dashboard for details. The city-level measure captures the share of people in an area with a credit bureau record with any derogatory debt, which is primarily debt in collections. For city-level 2021 data, "majority" means that at least 50% of residents in a zip code are members of the specified population group.
 
 ---
 
@@ -120,7 +119,7 @@ Data citation: Mingli Zhong, Aaron R. Williams, Alexander Carther, Breno Braga, 
 ### Overview
 
 * **Analyst & Programmer:** Paul Johnson and Kevin Werner
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_housing.csv`
 * **Data Source(s):** ACS 1-year
 * **Notes:**
@@ -169,7 +168,7 @@ Counts of students experiencing homelessness are downloaded from the EDFacts web
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_famstruc.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup. 
 * **Notes:** 
@@ -674,31 +673,44 @@ There are several limitations to this choice. There is no 'other' race category,
 
 ### Overview
 
-* **Analyst & Programmer:** Peace Gwam
-* **Year(s):** 2014 (2010-2014 ACS)
-* **Final data name(s):** `county_enviro_all.csv`, `county_enviro_subgroups.csv`
-* **Data Source(s):** Affirmatively Furthering Fair Housing (AFFHT0006) & 2010-2014 ACS. 
+* **Analyst & Programmer:** Rebecca Marx
+* **Year(s):** 2014 & 2018 (2010-2014 ACS & 2014-2018 ACS)
+* **Final data name(s):** `environment_county_all.csv`, `environment_county_sub_all.csv`, `environment_place_all.csv`, `environment_place_sub_all.csv` 
+* **Data Source(s):** Environmental Protection Agency’s National Air Toxics Assessment data, 2014 & AirToxScreen data, 2018 (based on 2014 & 2017 National Emissions Inventory data); 2014 & 2018 5-year ACS data; Missouri Census Data Center Geocorr 2018: Geographic Correspondence Engine 2018
 * **Notes:**
-* **Data Quality Index:** `1` for main environmental index. All counties are represented, and of the tracts with missing `haz_idx`, they represent at most 0.029% of the overall population for the county (see variable `na_perc` for the `All` subgroup type in `county_level_enviro.csv`). There are 147 census tracts with missing poverty information and a population > 0. For the `Poverty` subgroup type, counties with missing hazard or poverty information of more than 5 percent of the county were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. There was one county  for the `Poverty` subgroup type with a quality flag of `2`. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. There was one county with the `Race` subgroup type that had a quality flag of `2`. 
-* **Limitations:** AFFH data are old and are not currently updated under the current administration. Codebooks and access to the data are only available via the Urban Institute data catalog
-* **Missingness:** All 3,142 counties in the United States are represented. There are, however, some caveats: 
-  1. There are 618 tracts without populations. Logically, most do not have hazard, race and income indices: 508 of the 618 tracts with zero population do not have a `haz_idx`. All tracts with a population = 0 are dropped in the data sets.
-  2. There are 22 tracts with populations > 0 with missing `haz_idx`. This represents 0.015% of all observations in the data set. 6 tracts have populations > 100 with missing `haz_idx`. 
-  3. There are 147 additional tracts without populations that count for poverty estimates. 10 of the 147 tracts with zero population for the people that are counted for the poverty metric do not have a `haz_idx`. Tracts with a population = 0 for the poverty metric are dropped for the poverty subgroup data set.
+* **Data Quality Index:** Census tracts with missing poverty information and a population > 0 for the `Poverty` subgroup type,  with missing hazard or poverty information of more than 5 percent were given a quality flag of `2`. This calculation was done using people in poverty for the `high_poverty` subgroup and people not in poverty for the `low_poverty` subgroup. Similarly, for the `Race` subgroup type, counties with missing hazard or race information of more than 5 percent of the county were given a quality flag of `2`, and the indicator used to weight the metric was used to generate the quality flag. Remaining census tracts were given a data quality flag of '1'. 
+* **Limitations:** These data may not be updated with enough frequency for some communities. Annual data for a different derrivation of an air quality index are available via the EPA for a subset (about 1/3) of counties and core-based statistical areas (see  https://aqs.epa.gov/aqsweb/airdata/download_files.html#Annual). 
+* **Missingness:** All 3,142 counties in the United States are represented and all but three census places contain census tracts with data. Some additional details:
+  1. In the county file for 2018 there are 645 tracts without populations.  In 2014 there are 618 tracts without populations. All tracts with a population = 0 are dropped in the data sets.
+  2. In the county file for 2018 there are 13 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 22 tracts with populations > 0 with missing `haz_idx`.
+  3. In place file for 2018 there are 137 tracts without populations. In 2014 there are 117 tracts in places without populations. All tracts with a population = 0 are dropped in the data sets.
+  4. In the place file for 2018 there are 5 tracts with populations > 0 with missing `haz_idx`. In 2014 there are 2 tracts with populations > 0 with missing `haz_idx`.  
+ 
 
 ### Process
 
-1. Downloaded 2010-2014 5-year ACS tract level total_population, race, and poverty information and cleaned.  
-2. Created Indicators for Race and Poverty based on ACS information. For Race, the indicator is valued at "Predominantly People of Color" if the number of people of color was at or more than 60 percent of the total population of the tract, "Predominantly White, Non-Hispanic" if the number of White, Non-Hispanic people were more than 60 percent of the total population, and "No Predominant Racial Group" if neither of the above were true. For the Poverty indicator, tracts were considered "high_poverty" if the poverty rate was at or higher than 40 percent in the tract, and was "low_poverty" otherwise.   
-3. Downloaded tract-level 2014 AFFH, cleaned to conform with changing geography, and selected the hazard indicator relevant to this analysis  
-4. Merged ACS data with cleaned AFFH data  
-5. Checked Missingness  
-6. Created county-level metrics  
-  * Main metric: The weighted tract-level mean of the hazard index, weighted by total_population, grouped at the county level  
-  * Poverty metric: The weighted tract-level mean of the hazard index, weighted by number of people in poverty for "high_poverty" tracts and by number of people not in poverty for "low_poverty tracts", grouped at the county level and whether or not the tract was "high_poverty" or "low_poverty"  
-  * Race metric: The weighted tract-level mean of the hazard index, weighted by total population for tracts that have "No Predominant Racial Group", weighted by People of Color for tracts that are "Predominantly People of Color", and weighted by non-Hispanic White people for tracts that are "Predominantly White, Non-Hispanic".    
-7. Expanded subgroup data to represent unique values for each subgroup and county  
-8. Appended data together, cleaned, and wrote to `.csv`  
+*Original data:
+  *https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide
+  *https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results
+*Description: 
+
+*create environmental hazard indicators
+*(1) create tract level indicators of environmental hazards for 2018 
+*(2) create tract level indicators of environmental hazards for 2014
+*compare to affh data previoulsy used for the envrionmental indicator
+
+*create county files 
+*(3) population weight tract-level environmental indicators using poverty ("high_poverty" or "low_poverty") and race-idenity ("Majority Non-White", "Majority White, Non-Hispanic", "No Majoirty Race/Ethnicity") subgroups for 2018
+*(4) create county level environmental index by race-identity and poverty-level for 2018
+*(5) population weight tract-level environmental indicators using poverty and race-idenity subgroups for 2014
+*(6) create county level environmental index by race-identity and poverty-level for 2014
+*(7) bind 2018 and 2014 county files for final files 
+
+*create place files 
+*(8) prep city crosswalk data from geocorr
+*(9) create place-level environmental indicators using poverty and race-identity subgroups for 2018 and percent of tract in place
+*(10) create place-level environmental indicators using poverty and race-identity subgroups for 2014 and percent of tract in place
+*(11) bind 2018 and 2014 place files for final files 
 
 ---
 
@@ -812,7 +824,7 @@ A codebook with definitions for the original arrest data used can be found here:
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_preschool.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:** This metric uses Paul Johnson's method of finding county FIPS code from PUMAs. PUMAs can sometimes span counties, which is adjusted for with weights.
@@ -836,37 +848,37 @@ The process for creating the subgroup metric is the same as the process for crea
 
 ## Effective public education
 
-This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or metro is learning at an average rate; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space.
+This metric reflects the average annual learning growth in English/language arts (ELA) among public school students between third grade and eighth grade. For the 2015 cohort (students who were in eighth grade in the 2015-16 school year), this measure is the slope of the best fit line of the 2009-10 third grade assessment, the 2010-11 fourth grade assessment, etc. Assessments normed so that a typical third grade assessment would score 3, a typical fourth grade assessment would score 4, etc. Thus, typical learning growth is roughly 1 grade level per year. 1 indicates a county or city is learning at an average rate or on track with grade level; below 1 is slower than average, and above 1 is faster than average. Assessments are state- and year-specific, but the Stanford Education Data Archive (SEDA) has normed these to be comparable over time and space. This metric is available at the county level using county level SEDA data and at the city level using school district level SEDA data. 
 
 ### Overview
 
 * **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2013-14 school year through 2017-2018 school year
-* **Final data name(s):** `SEDA.csv`
+* **Year(s):** County Level: 2014-15 school year through 2017-2018 school year. City Level: 2016-17 school year through 2017-18 school year. 
+* **Final data name(s):** `SEDA_all_subgroups_city.csv` `SEDA_all_subgroups_county.csv` `SEDA_all_city.csv` `SEDA_all_county.csv`
 * **Data Source(s):** 
   *  https://cepa.stanford.edu/content/seda-data https://edopportunity.org/get-the-data/seda-archive-downloads/ exact file: https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta
 	Reardon, S. F., Ho, A. D., Shear, B. R., Fahle, E. M., Kalogrides, D., Jang, H., & Chavez, B. (2021). 
 	Stanford Education Data Archive (Version 4.1). Retrieved from http://purl.stanford.edu/db586ns4974.
 * Subgroups: all; gender; race/ethnicity; income
 * **Notes:**
-* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup.
-* **Limitations:** Not all counties report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
+* **Data Quality Index:** Data quality of "1" requires at least 5 or 6 years of data to be included, with at least 30 students tested in each year (a commonly used minimum  sample size for stability of estimates). Data quality of "2" requires at least 4 years  included with at least 30 students in each year. Data quality of "3" is assigned to the  remainder. These quality flags are determined separately for each subgroup, such that the quality flag for one subgroup in a county may differ from that of another subgroup. For city level data, metrics are calculataed at the school district level and are aggregated to be a subgroup-weighted average for each metric. Similarly, the data quality flags are aggregated and rounded to the nearest integer. 
+* **Limitations:** Not all counties and school districts report assessments for all grades, so some estimates may be based on fewer than 6 data points; underlying data have been manipulated by SEDA to introduce noise to ensure confidentiality; migration into or out of a county may result in the "cohort" not being exactly the same between third and eighth grades.
 * **Missingness:** The following years have the following missing data: 
 
-						County					Metro
-subgroup					2013	2014	2015	2016	2017								2013	2014	2015	2016	2017
-All						81	85	76	75	102		All						0	1	0	0	10
-Black, Non-Hispanic				1784	1812	1821	1844	1855		Black, Non-Hispanic			334	346	346	359	370
-Economically Disadvantaged		211	212	219	223	278		Economically Disadvantaged		5	6	3	4	25
-Female					207	202	207	210	245		Female					0	1	0	0	13
-Hispanic					1757	1706	1694	1653	1659		Hispanic					221	207	205	198	193
-Male						193	196	198	205	237		Male						0	1	0	0	13
-Not Economically Disadvantaged		326	328	344	354	410		Not Economically Disadvantaged	6	7	6	5	30
-White, Non-Hispanic				204	218	216	214	252		White, Non-Hispanic			10	14	12	9	22
+						County										City
+subgroup					2014	2015	2016	2017							2016	2017
+All						85	76	75	102		All					83	86
+Black, Non-Hispanic				1812	1821	1844	1855		Black, Non-Hispanic			125	135
+Economically Disadvantaged			212	219	223	278		Economically Disadvantaged		85	92
+Female						202	207	210	245		Female					83	86
+Hispanic					1706	1694	1653	1659		Hispanic				85	93
+Male						196	198	205	237		Male					83	87
+Not Economically Disadvantaged			328	344	354	410		Not Economically Disadvantaged		85	92
+White, Non-Hispanic				218	216	214	252		White, Non-Hispanic			89	90
 
 ### Process
 
-SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in order to obtain county-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
+SEDA data are manually downloaded and read in, and a regression of mean assessment scores was run on grade (as a continuous variable) interacted with each county in the county data and school district in the city data in order to obtain county/school district-specific grade slopes. Regressions are weighted by the number of test-takers for each year, grade, and county/school district. 95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. A flag indicates how many grades are included in each estimate.  
 
 ---
 
@@ -897,7 +909,7 @@ Outline the process for creating the data: Schools were flagged as having 20% or
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_college.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis. 
 * **Notes:**
@@ -928,7 +940,7 @@ The process for creating the subgroup metric is the same as the process for crea
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Paul Johnson
-* **Year(s):** 2018
+* **Year(s):** 2021 and 2018
 * **Final data name(s):** `metrics_employment.csv`
 * **Data Source(s):** ACS 1-yr and ACS 5-yr for subgroup analysis.
 * **Notes:**
@@ -957,7 +969,7 @@ The process for the subgroup analysis is the same. You must run the file `3_prep
 ### Overview
 
 * **Analyst & Programmer:** Kevin Werner and Aaron Williams
-* **Year(s):** 2018 and 2014
+* **Year(s):** 2021, 2018, and 2014
 * **Final data name(s):** `metrics_wage_ratio.csv`
 * **Data Source(s):** QCEW and MIT Living Wage Calculator 
 * **Notes:**
@@ -977,11 +989,100 @@ This metric shows the living wage in each county.
     * The row where the ownership variable equals “Total Covered” is used for each county.
 *	The living wage data is scraped from the MIT website using the scrape-living-wages R program. 
 
-There are three .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, and the MIT living wage data Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
+There are 5 .csvs that are read into the Stata .do file: 2014 QCEW data, 2018 QCEW data, 2021 QCEW data and the MIT living wage data (two years). Those .csvs are merged into one Stata file; the MIT wage is converted into weekly by dividing by 52. 
 
-For 2018, I compute the living wage  ratio by dividing the 2018 QCEW data by the MIT data. For 2014, I first deflate the MIT data (because it is only available for 2018) to 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
+For 2021, the MIT data has to be deflated from 2022 to 2021 using the consumer price index. I compute the living wage ratio by dividing the 2021 QCEW data by the MIT data. For 2018, I first deflate the 2019 MIT data to 2018 using the consumer price index. I compute the living wage ratio by dividing the 2018 QCEW data by the MIT data. For 2014, MIT datato 2014 using the consumer price index. I then divide the QCEW by the deflated value to get the ratio for 2014.
 
 Please note that the denominator we use is the living wage for a single full-time worker with two children. The average weekly wage includes part time workers.
+
+
+---
+
+## Digital access
+
+### Overview
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2021
+* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
+* **Data Source(s):** Census Bureau's American Community Survey 
+* **Notes:**
+* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Limitations:**
+* **Missingness:** There are no missing county or city level observations.
+
+### Process
+
+This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+
+This metric is calculated using `digital_access.R' in the 04_education folder.
+  
+## Social Capital
+  
+* **Year(s):** 2020
+* **Final data name(s):** `social_associations_geography_2022.csv`
+* **Data Source(s):** Census County Business Patterns (CBP) Survey 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
+* **Missingness:** 152 missing observations for county-level data. No missing observations for city-level data.
+
+### Process
+
+This metric shows the number of membership associations per 10,000 people in each county and city. 
+
+
+* The social organization counts come from the CBP: https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html
+    * The data must be isolated to the following NAICS organization codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920. These are the codes/associations included in the County Health Rankings metric -- see here for more: https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022
+
+
+These data, once downloaded, are combined with population data from the ACS. The social association (metric) ratio is constructed with the count of appropriate social organizations as the numerator, and the denominator is the population divided by 10000. For the city-level data, ZIP-code level data is re-aggregated to the Census Place geography using a ZCTA to Place crosswalk. Values are weighted by the percent of the area of the ZCTA that falls into each Census Place.
+
+	
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `economic_connectedness_geography_2022.csv.csv`
+* **Data Source(s):** Social Capital Atlas data for Economic Connectedness 
+* **Notes:**
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 50% or more of the ZIPs fall mostly (>50%) in the census place, `2' means 15% to 50% of the ZIPs fall mostly (>50%) in the census place, and `3' means less than 15% of the ZIP falls mostly into the census place.
+* **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place, unlike the county-level data which is already calculated at the county level.
+* **Missingness:** 168 missing observations for city-level data. No missing observations for city-level data. 126 missing observations for county-level data.
+
+### Process
+
+This metric shows the level of economic connectedness, or the ratio of Facebook friends with higher socioeconomic status to Facebook friends with lower socioeconomic status, in each county and city. 
+
+
+* The economic connectedness data comes from the Social Capital Atlas: https://data.humdata.org/dataset/social-capital-atlas
+    * The data must be downloaded at the county level to calculate the county-level metric, and at the ZIP code (2010 ZCTA) level to calculate the city metric.
+
+
+For the city-level metric, these data, once downloaded, are combined with a ZIP to Census Place crosswalk to re-aggregate the data at the right geography. The economic connectedness variable is averaged by Census Place, weighted by the percent of the area of the ZCTA in that Place.
+
+---
+
+## Descriptive Representation 
+
+### Overview
+
+This metric is a county-level and city-level estimate of population count by racial subgroup, which is meant to be used as the denominator for the Descriptive Representation mobility metric.
+
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2020
+* **Final data name(s):** `descriptive_rep_denominator_geography_2022.csv`
+* **Data Source(s):** 2017-2021 5-year ACS estimates
+* **Notes:**
+* **Data Quality Index:** `1` means this metric is reliable calculated at the geography.
+* **Limitations:** None
+* **Missingness:** None 
+
+### Process
+
+1. Pull demographics for Census Places and Census Counties from ACS 5-year 2021
+2. Clean and reshape to move data into the race variables accordingly
+3. Test for errors
+4. Add data quality flags
+5. Save the data  
 
 
 ## Housing wealth

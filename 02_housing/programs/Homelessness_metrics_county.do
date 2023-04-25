@@ -156,11 +156,15 @@ foreach var in homeless black hispanic white twomore nh_pi asian amin_an { //
 }
 
 *collapsing American Indian/Alaskan Native,  two/more, Native Hawaiian/Pacific Islander, and Asian to other
-egen other = rowtotal(twomore nh_pi asian amin_an) 
+egen other = rowtotal(twomore nh_pi asian amin_an) , missing
+
+*because there are only suppressions and no true missings in other
+	*we replace other==. to other==1 to mirror lines 147 in the other 4 race categories
+	replace other = 1 if other==. & year==2019
 
 foreach var in other { // 
 	di "`var'"
-	gen supp_`var' = 1 if supp_twomore==1 | supp_nh_pi==1 | supp_asian==1 | supp_amin_an==1
+	gen supp_`var' = 1 if other==1
 	*replace `var'="1" if `var'=="S"
 	*destring `var', replace
 	bysort year fipst subgrant_status: egen min_`var' = min(`var')
@@ -233,6 +237,32 @@ replace `var'_quality = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_coun
 replace `var'_quality = 3 if `var'_quality==. & `var'_count!=.
 }
 
+*new as of 4/13
+	*replace quality = 3 if enrollment is less than 30
+	replace homeless_quality = 3 if enrollment<30 // there were 4 instances of this
+
+	*replace subgroup metrics =1 (will be NA in string form) for subgroup enrollments<10
+	foreach var in black white hispanic other {
+	replace `var'_count=-1  if enroll_`var'<10
+	replace `var'_count_lb=-1 if enroll_`var'<10
+	replace `var'_count_ub=-1 if enroll_`var'<10
+	replace `var'_share=-1 if enroll_`var'<10
+	*replace subgroup quality flag=-1 (NA) for subgroup enrollment<10
+	replace `var'_quality=-1 if enroll_`var'<10
+	*replace subgroup quality flag =3 if subgroup enrollment is 10-29
+	replace `var'_quality=3 if enroll_`var'>=10 & enroll_`var'<30
+	}
+	
+	*foreach subgroup and total homeless metric, set all = -1 (NA) if share>1
+	foreach var in homeless black white hispanic other {
+	replace `var'_count=-1  if `var'_share>1 & `var'_share!=.
+	replace `var'_count_lb=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_count_ub=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_share=-1 if `var'_share>1 & `var'_share!=.
+	replace `var'_quality=-1 if `var'_share>1 & `var'_share!=.
+	}
+*end of 4/13
+
 sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
@@ -240,6 +270,7 @@ sum coverage*, d, if homeless_quality==3
 foreach var in homeless black white hispanic other {
 drop `var'_districts_suppress
 }
+
 drop enrollment coverage* enroll_*
 
 *EG:changes for 2014 - this was part of the original code, not sure why its here
@@ -279,4 +310,60 @@ tab year if homeless_count==.
 order year state county 
 gsort -year state county
 
-export delimited using "built/homelessness_county.csv", replace // EG: 2014 & 2018 match old data
+*data quality check 
+gen check1 = 1 if homeless_count<homeless_count_lb
+gen check2 = 1 if homeless_count>homeless_count_ub
+tab check1, m
+tab check2, m 
+drop check*
+
+**new as of 4/13
+	*string variables, and replace -1 with NA & . with blank	
+	*tostring the rest of the variables
+	tostring *share, replace force
+	tostring *count* *share *quality, replace
+
+foreach group in homeless black white hispanic other {
+	foreach var in count count_lb count_ub quality share {
+	replace `group'_`var' = "NA" if  `group'_`var'=="-1"
+	replace `group'_`var' = "" if  `group'_`var'=="."
+	}
+	}
+*end of 4/13
+
+*save "all" separately
+preserve
+keep year state county homeless_count homeless_count_lb homeless_count_ub homeless_share homeless_quality
+export delimited using "built/homelessness_all_county.csv", replace
+restore
+
+rename homeless* all*
+
+rename all_* *All
+rename black_* *Black
+rename hispanic_* *Hispanic
+rename other_* *Other
+rename white_* *White
+rename county code_county
+
+reshape long count count_lb count_ub share quality, i(year state code_county) j(subgroup) string
+rename code_county county
+
+gen subgroup_type = ""
+replace subgroup_type = "all" if subgroup=="All"
+replace subgroup_type = "race-ethnicity" if subgroup!="All"
+
+replace subgroup = "Black, Non-Hispanic" if subgroup=="Black"
+replace subgroup = "White, Non-Hispanic" if subgroup=="White"
+replace subgroup = "Other Races and Ethnicities" if subgroup=="Other"
+rename count homeless_count
+rename count_lb homeless_count_lb
+rename count_ub homeless_count_ub
+rename share homeless_share
+rename quality homeless_quality
+
+order year state county  subgroup_type subgroup
+gsort -year state county subgroup_type subgroup
+
+export delimited using "built/homelessness_all_subgroups_county.csv", replace // EG: 2014 & 2018 match old data
+
