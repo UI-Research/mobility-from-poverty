@@ -1,0 +1,246 @@
+---
+title: "Access to Health Services"
+author: "Vincent Pancini"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+library(urbnthemes)
+library(tidyverse)
+library(rvest)
+library(glue)
+library(fs)
+library(tidycensus)
+
+set_urbn_defaults(style = "print")
+
+options(scipen = 999)
+
+```
+
+## 1. Prepare for file download
+```{r}
+base_url <- "https://www.countyhealthrankings.org"
+
+url <- paste0(base_url, "/explore-health-rankings/rankings-data-documentation")
+
+download_urls <-
+  read_html(url) %>% 
+  html_elements('span.field-content') %>%  
+  html_element('a') %>% 
+  html_attr('href') %>%
+  paste0(base_url, .)
+
+out_state <-
+  read_html(url) %>% 
+  html_elements('span.field-content') %>% 
+  html_text2() %>% 
+  str_replace_all(' ', '-')
+
+get_state_data_url <- function(url){
+  read_html(url) %>% 
+    html_elements('span.download-link') %>% 
+    html_element('a') %>% 
+    html_attr('href') %>% 
+    str_subset('.xls') %>% 
+    str_subset('2022') %>% 
+    paste0(base_url, .)
+}
+
+state_data_url <- purrr::map_chr(.x = download_urls, .f = get_state_data_url)
+
+```
+
+
+## 2. Download files
+
+Download all 51 Excel files from each state's URL
+```{r}
+# # create a data folder for intermediate data files
+# intermediate_files <- here::here("04_health",
+#                                  "access-health-services",
+#                                  "data/")
+# 
+# if (!dir.exists(intermediate_files)) {
+#   
+#   dir.create(intermediate_files)
+#   
+# }
+# 
+# chr_data <- here::here("04_health",
+#                        "access-health-services",
+#                        "data",
+#                        out_state
+# )
+# 
+# download_data <- function(state_data_url, state_name){
+#   if (!file.exists(here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))) {
+#     
+#     download.file(state_data_url, 
+#                   destfile = here::here(glue("04_health/access-health-services/data/{state_name}.xlsx")))
+#     
+#   }
+# }
+# 
+# walk2(state_data_url, out_state, download_data)
+
+```
+
+
+## 3. Read in, clean, and append each Excel sheet
+```{r, message = FALSE}
+physicians <- map_dfr(out_state,
+                     ~{readxl::read_excel(path = here::here(
+                       paste0('04_health/access-health-services/data/', .x, '.xlsx')),
+                       sheet = 'Ranked Measure Data',
+                       skip = 1
+                     ) %>%
+                         select(fips = 'FIPS',
+                                pc_phys_ratio = 'Primary Care Physicians Ratio',
+                                number_pc_phys = '# Primary Care Physicians',
+                                pc_phys_rate = 'Primary Care Physicians Rate'
+                                ) %>%
+                         filter(!str_detect(fips, '000$')) %>%
+                         mutate(state = str_sub(fips, 1, 2),
+                                county = str_sub(fips, 3, 5)
+                                )
+                     }
+)
+
+```
+
+```{r}
+physicians <- physicians %>%
+  separate(col = pc_phys_ratio,
+           into = c('antecedent', 'consequent'),
+           remove = FALSE) %>%
+  mutate(pc_phys_ratio = case_when(consequent == "1" ~ pc_phys_ratio,
+                                   consequent == "0" ~ "0",
+                                   is.na(pc_phys_ratio) ~ "0"),
+         year = 2019
+         )
+
+```
+
+
+## 4. Add data quality flags
+
+First we need to get population estimates from the US Census Bureau Population Estimation Program. # Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at https://api.census.gov/data/key_signup.html if you don't have one.
+```{r}
+# census_api_key("YOUR-KEY-HERE")
+
+pop <- tidycensus::get_estimates("county", year = 2019, variables = "POP") %>%
+  rename(fips = GEOID)
+
+pop <- pop %>%
+  # Drop PR observations
+  filter(!str_detect(fips, '^72')) %>%
+  select(fips,
+         population = value)
+
+```
+
+Join the population data to the physicians data.
+```{r}
+joined_data <- left_join(physicians, pop, by = "fips")
+
+joined_data <- joined_data %>%
+  mutate(
+    # Convert the antecedent of the primary care physicians:population ratio to numeric so we can use it for calculations
+    antecedent = as.numeric(antecedent),
+    # Divide the 2019 PEP population by the 2019 CHR Number of Physicians. Compare this value to the antecedent of the ratio.
+    check_antecedent = population / number_pc_phys,
+    diff_pop = abs(antecedent - check_antecedent)
+  )
+```
+
+Any differences in the ratio are likely due to rounding. This means the population variable we pulled from PEP is a good proxy for the population variable used by County Health Rankings to construct this ratio.
+```{r}
+test <- joined_data %>%
+  filter(number_pc_phys != 0)
+  
+quantile(test$diff_pop, probs = seq(0, 1, 0.25), na.rm = TRUE)
+
+```
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(
+    # Add 1 to the denominator of the ratio and reconstruct the ratio
+    plus1 = population / (number_pc_phys + 1),
+    # Calculate the differences between each of the new ratios and the original ratio
+    plus1_diff = abs(plus1 - as.numeric(antecedent)),
+    sensitivity = abs((plus1 - antecedent) / antecedent)
+  )
+
+```
+
+```{r}
+test <- joined_data %>%
+  filter(number_pc_phys != 0)
+  
+quantile(test$sensitivity, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm = TRUE)
+
+```
+
+
+```{r}
+joined_data %>%
+  filter(!is.na(antecedent)) %>%
+  ggplot(aes(number_pc_phys, sensitivity)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Counties with the lowest number of PC physicians have the highest sensitivity",
+       subtitle = "") +
+  scatter_grid()
+
+```
+
+To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of the number of population per primary care physician. If the ratio changes less than 20 percentage points we assign a quality value of 1. If the ratio changes by more than 20 percentage points we assign a quality value of 2.
+
+```{r}
+# Assign a data quality flag
+joined_data <- joined_data %>%
+  mutate(pc_phys_quality = 
+           case_when(
+             sensitivity < 0.2 ~ 1,
+             sensitivity < 0.4 ~ 2,
+             sensitivity < 0.6 ~ 3
+           )
+  )
+
+joined_data %>%
+  count(pc_phys_quality)
+
+```
+
+## 5. Save the data
+
+```{r}
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  tidylog::filter(year == 2019) %>%
+  select(-year)
+
+joined_data <- joined_data %>%
+  select(-population) %>%
+  left_join(all_counties, by = c("state", "county"))
+
+test <- anti_join(all_counties, physicians, by = c("state", "county"))
+
+joined_data <- joined_data %>%
+  mutate(year = 2019) %>%
+  select(year, state, county, pc_phys_ratio, pc_phys_quality) %>%
+  arrange(year, state, county)
+
+joined_data %>%
+  write_csv(here::here("04_health",
+                       "access-health-services",
+                       "access-health-services-2019.csv"))
+
+```
+
+

@@ -1,0 +1,514 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r quarto-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+
+```{r}
+read_csv_and_clean <- function(file) {
+  print(file)
+  
+  data <- read_csv(file, guess_max = 5000) %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           place = stringr::str_pad(place, width = 5, pad = "0"))
+  
+  if ("subgroup" %in% colnames(data)){
+    data <- data %>%
+      filter(subgroup == "All")
+  }
+  
+  col_names_to_remove <- c("subgroup", "subgroup_type", "city", "state_place", "state_name", "place_name")
+  data <- data[, !names(data) %in% col_names_to_remove]
+  data <- distinct(data)
+  
+ return(data)
+}
+
+```
+
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+```
+
+```{r data-fixes}
+
+sc <- here("06_neighborhoods", 
+           "social-capital", 
+           "data", 
+           "social_associations_city_2022.csv"
+           )
+social_capital <- read_csv(sc) 
+
+social_capital %>%
+  mutate(state = str_sub(place, 1, 2), 
+         place = str_sub(place, 3, 7)
+         ) %>%
+  write_csv(here("data", "temp", "social_associations_city_2022.csv"))
+
+read_csv(
+  here("01_financial-well-being", 
+       "city-debt-coll-shares-2021.csv")
+  ) %>%
+  rename(
+    share_debt_col = share_debt_coll,
+    share_debt_col_quality = share_debt_coll_quality,
+    place = place_fips
+  ) %>%
+  mutate(subgroup_type = case_when(subgroup == "All" ~ "all",
+                                   TRUE ~ subgroup)) %>%
+  write_csv(
+    here("data", "temp", 
+       "city-debt-col-shares_CORRECT.csv")
+  )
+    
+read_csv(here("05_local-governance", "descriptive-representation",
+       "data", "descriptive_rep_denominator_city_2022.csv")) %>%
+  select(
+    year, state, place, 
+    share_desc_rep_asian_other = desc_rep_asian_other,
+    share_desc_rep_black_nonhispanic = desc_rep_black_nonhispanic,
+    share_desc_rep_hispanic = desc_rep_total_hispanic, 
+    share_desc_rep_white_nonhispanic = desc_rep_white_nonhispanic
+  ) %>%
+  write_csv(here("data", "temp", "descriptive_rep_denominator_city_2022.csv"))
+
+read_csv(here("01_financial-well-being", "metrics_income_city_2021.csv")) %>%
+  select(year, state, place,
+         pctl_income_20 = pctl_20, 
+         pctl_income_50 = pctl_50, 
+         pctl_income_80 = pctl_80,
+         pctl_income_quality = pctl_20_quality) %>%
+  write_csv(here("data", "temp", "metrics_income_city_2021.csv"))
+
+```
+
+
+```{r create-place-year-xwalk}
+#Create structure of db and db_recent on which we join individual data files:
+cities <- read_csv(here("geographic-crosswalks", 
+                        "data", 
+                        "place-populations.csv"))
+
+
+years <- c(2014:2021)
+
+place_years <- expand_grid(cities, years) %>%
+  select(-c(population, year)) %>%
+  distinct() %>%
+  rename(year = years)
+
+write_csv(place_years,
+          here("geographic-crosswalks", 
+               "data",
+               "long-xwalk_place.csv")
+          )
+
+```
+
+```{r}
+files <- c(
+  
+  ### CROSSWALK ### 
+  
+  #Note: combined 2018 and 2020 above:
+  here("geographic-crosswalks", "data", "long-xwalk_place.csv"),
+  
+  ### EDUCATION: ### 
+  here("08_education", "metrics_preschool_city_2021.csv"),
+  here("08_education", "data", "built", "SEDA_all_city.csv"), #Note: this is effective public education
+  here("08_education", "data", "built", "MEPS_2016-2018_city.csv"),
+  here("08_education", "metrics_college_city_2021.csv"),
+  here("08_education", "digital_access_city_2021.csv"),
+  
+  ### FINANCIAL WELL-BEING ###
+  here("data", "temp", "metrics_income_city_2021.csv"),
+  here("data", "temp", 
+       "city-debt-col-shares_CORRECT.csv"), 
+  here("01_financial-well-being", "home-values", "place_hh_hw_raceeth_2014_2021.csv"),
+
+  ### HEALTH ### 
+  #no place level data for this section
+  
+  ### HOUSING ### 
+  here("02_housing", "data", "built",  "homelessness_all_city.csv"),
+  here("02_housing", "data", "housing_city_2021.csv"), 
+
+  ### LOCAL GOVERNANCE ### 
+  here("05_local-governance", "voter-turnout", "voter-turnout-city-2020.csv"),
+  here("data", "temp", "descriptive_rep_denominator_city_2022.csv"),
+  
+  ### NIEGHBORHOODS: ###
+  here("06_neighborhoods", "poverty-exposure", "poverty-exposure_city_2021.csv"),
+  here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-city-2021.csv"), 
+  here("06_neighborhoods", "environment", "data", "output", "environment_place_all.csv"), 
+  here("06_neighborhoods", "social-capital", "data", "economic_connectedness_city_2022.csv"),
+  here("06_neighborhoods", "social-capital", "data", "social_associations_city_2022.csv"),
+
+  ### SAFETY ###
+  here("07_safety", "modified data", "2021_juv_arrest_rate_place.csv"),
+  here("07_safety", "modified data", "2021_crime_rate_place.csv"),
+
+  ### WORK ###
+  here("09_employment", "metrics_employment_city_2021.csv")
+)
+
+```
+
+
+# Multi-year Database
+
+```{r}
+# construct multiyear database
+db_unclean <- map(files, read_csv_and_clean) %>%
+  reduce(left_join, by = c("year", "state", "place"))
+
+#Ensure join works perfectly so we have a row for each unique place (identified by
+# state and place fips codes ) for each year 
+n_years <- length(unique(db_unclean$year))
+n_places <- length(unique(str_c(db_unclean$state, db_unclean$place)))
+stopifnot(nrow(db_unclean) == n_years * n_places)
+```
+
+```{r clean-db}
+#' Function to clean database. 
+#' 
+#' The naming conventions implemented here are:
+#' Everything that is a percentage/share begins with share_, a ratio begins with ratio_ , a rate begins with rate_ , and a percentile with pctl_ 
+#' Only a handful of variables don't have these prefixes (transportation_cost and meps20...)
+#' All _quality variables match the name of their respective variables unless the quality column refers to multiple variables
+#' 
+#' @param db_unclean (data.frame) - a dataframe joined together by the map-reduce
+#'                                  logic above
+#' @return db (data.frame) - a cleaned dataframe 
+
+clean_data <- function(db_unclean){
+
+  db <- db_unclean %>%
+  #Address issues in disparate naming conventions:
+
+  rename_with(~gsub("hv_hh", "house_value_households", .x, fixed=TRUE)) %>%
+  rename_with(.cols = contains("wealth_quality"),
+              ~paste0("ratio_", 
+                      str_replace(
+                        .x,
+                        "wealth_quality", 
+                        "house_value_households_quality"
+                        )
+                      )
+              ) %>%
+
+  rename_with(.cols = starts_with("r_"), 
+              ~str_replace(.x, "r_", "ratio_")) %>%
+  rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
+              ) %>%
+  rename_with(~str_replace_all(.x, "homeless_count", "count_homeless")
+              ) %>%
+  rename_with(~str_replace_all(.x, "election_turnout", "share_election_turnout")
+              ) %>%
+    
+  #the 2022 descriptive representation file is organized to have total
+  # and total non-hispanics in the same file as percentages for different
+  # race /ethnicity groups, so this separates those with different prefixes
+  rename_with(.cols = contains("exposure"),
+              .fn = ~paste0("share_", .x)
+              ) %>%
+  rename_with(~str_replace(.x, 
+                           "economic_connectedness",
+                           "ratio_high_low_ses_fb_friends")
+              ) %>%
+  rename_with(~str_replace(.x, 
+                           "social_connection",
+                           "count_membership_associations_per_10k")
+               ) %>%
+  rename_with(
+    ~str_replace(.x, "environmental", "index_air_quality")
+    ) %>%
+  rename_with(
+    ~str_replace(.x, "digital_access", "share_digital_access")
+  ) %>%
+  # rename_with(
+  #   ~str_replace(.x, "transit_trips", "index_transit_trips")
+  # ) %>%
+  rename_with(.cols = contains("arrest_rate"),
+              ~paste0("rate_",
+                      str_replace(.x, "arrest_rate", "arrest")
+                      )
+                ) %>%
+  rename(
+    share_homeless = homeless_share,
+    rate_violent_crime = crime_violent_rate,
+    rate_property_crime = crime_property_rate,
+    rate_crime_quality = crime_rate_quality,
+    share_affordable_30_ami = share_affordable_30AMI,
+    share_affordable_50_ami = share_affordable_50AMI,
+    share_affordable_80_ami = share_affordable_80AMI,
+    share_affordable_quality = housing_quality
+
+  #   share_in_preschool_quality = preschool_quality, 
+  #   share_hs_degree_quality = hs_degree_quality,
+  #   share_affordable_quality = housing_quality, 
+  #   share_employed_quality = employed_quality,
+  #   ratio_average_to_living_wage = average_to_living_wage_ratio,
+  #   ratio_average_to_living_wage_quality = wage_ratio_quality
+  ) %>%
+    select(-c(rate_juv_arrest_violent, rate_juv_arrest_property))
+  # 
+  
+  #Note: Don't rename MEPS because it is hard to get a short variable name
+  # and pct_ prefix inappropriate because the metric itself is a percentage
+
+  
+}
+
+db <- clean_data(db_unclean) 
+
+
+```
+
+```{r create recent dataset}
+
+read_csv_recent <- function(file) {
+  
+  data <- read_csv(file, guess_max = 5000)  %>%
+    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
+           place = stringr::str_pad(place, width = 5, pad = "0")) %>%
+    filter(year == max(year, na.rm = TRUE)) %>%
+    select(-year)
+  
+  if ("subgroup" %in% colnames(data)){
+    data <- data %>%
+      filter(subgroup == "All")
+    
+  }
+  col_names_to_remove <- c("subgroup", "subgroup_type", "city", "state_place", "state_name", "place_name")
+  data <- data[, !names(data) %in% col_names_to_remove]
+  data <- distinct(data)
+  
+  return(data)
+  
+}
+# construct multiyear database
+db_recent <- map(files, read_csv_recent) %>%
+  reduce(left_join, by = c("state", "place")) %>%
+  clean_data() %>%
+  distinct()
+```
+
+```{r}
+
+db %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  filter(!is.na(quality)) %>%
+  print(n = 100)
+```
+
+
+```{r}
+
+### Recent Database
+db_recent %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
+  count(variable, quality) %>%
+  gt()
+
+stopifnot(nrow(db_recent) == n_places)
+
+```
+
+
+```{r}
+
+quality_boolean <- grepl("_quality", colnames(db))
+quality_variables <- colnames(db)[quality_boolean]
+quality_variables <- quality_variables[quality_variables != "index_air_quality"]
+
+
+db_values <- db %>%
+  select(-all_of(quality_variables), -ends_with("_ub"), -ends_with("_lb")) %>%
+  
+  #Separate ratios out to assess them: 
+  separate(ratio_hispanic_house_value_households, 
+           sep = ":", 
+           into = c("hispanic_house_value", "hispanic_households")
+           ) %>%
+  separate(ratio_black_nh_house_value_households, 
+           sep = ":", 
+           into = c("black_nh_house_value", "black_nh_households")
+           ) %>%
+  separate(ratio_white_nh_house_value_households,
+           sep = ":", 
+           into = c("white_nh_house_value", "white_nh_households")
+           ) %>% 
+  separate(ratio_other_nh_house_value_households, 
+           sep = ":", 
+           into = c("other_nh_house_value", "other_nh_households")
+           )%>%
+  mutate(across(black_nh_house_value:white_nh_households, 
+                ~as.numeric(
+                  str_sub(.x, end = -2)
+                  ) / 100
+                )
+         )
+
+db_quality <- db %>%
+  select(ends_with("_quality")) %>%
+  select(-index_air_quality)
+
+db_bounds <- db %>%
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+```{r}
+
+value_col_names <- colnames(db_values)
+share_cols <- value_col_names[grepl("share_", value_col_names)]
+share_cols <- share_cols[!(grepl("affordable", share_cols))]
+
+count_cols <- value_col_names[grepl("count_", value_col_names)]
+exposure_cols <- value_col_names[grepl("_exposure", value_col_names)]
+
+
+db_values %>%
+  
+  ### All columns with prefixes count or share
+  assert(within_bounds(0, 1), all_of(share_cols)) %>%
+  assert(within_bounds(0, Inf), all_of(count_cols)) %>%
+  
+  ### EDUCATION ###
+  assert(within_bounds(-1.5, 10), rate_learning) %>% #There are some values below -1, but these could be legit, so changed to -1.5
+  assert(within_bounds(0, 1), starts_with("meps20")) %>% #student poverty
+
+  ### FINANCIAL WELLBEING ###
+  assert(within_bounds(0, Inf), starts_with("pctl_income_")) %>%
+  assert(within_bounds(0, Inf), ends_with("house_value")) %>%
+  assert(within_bounds(0, 1), ends_with("_households")) %>% 
+  #Currently not doing assert statements for the wealth-building opportunities:
+
+  ### HEALTH ###
+  
+  ### HOUSING ###
+  assert(within_bounds(0, 10), starts_with("share_affordable")) %>%
+
+  ### LOCAL GOVERNANCE ###
+
+  ### NEIGHBORHOODS ### 
+  assert(within_bounds(0, 1), all_of(exposure_cols)) %>%
+  assert(within_bounds(0, 10), ratio_high_low_ses_fb_friends) %>%
+  assert(within_bounds(0, 100), index_air_quality) %>%
+
+
+  ### SAFETY ### 
+  assert(within_bounds(0, 100000), ends_with("crime")) %>%
+  assert(within_bounds(0, 100000), starts_with("juvenile_arrest"))# %>%
+
+  ### WORK ###
+  # assert(within_bounds(0, 10), ratio_average_to_living_wage)
+
+
+
+  #Missing:
+    
+  #EDUCATION:
+  #digital access
+  
+  #HEALTH:
+  #no place health data
+  
+  #NEIGHBORHOODS:
+  #Environment
+
+
+```
+
+```{r}
+
+db_quality %>%
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### Check multi-year data
+
+```{r}
+
+check_year <- function(col_name) {
+  print(col_name)
+  db_values %>%
+    count(year, !is.na(!!sym(col_name)))
+  
+}
+
+values <- colnames(db_values)
+
+map(.x = values, .f = check_year)
+
+```
+
+
+```{r check-lb-up-content}
+
+# cols_with_bounds <- colnames(db)[grepl("_ub", colnames(db))]
+# for(i in 1:length(cols_with_bounds)){
+#   cols_with_bounds[i] <- str_sub(cols_with_bounds[i], start = 1, end = -4)
+# }
+# cols_with_bounds
+
+db %>%
+  verify(is.na(rate_learning) | rate_learning <= rate_learning_ub) %>%
+  verify(is.na(rate_learning) | rate_learning_lb <= rate_learning) %>%
+  verify(is.na(rate_learning) | rate_learning_lb <= rate_learning_ub)
+
+db %>%
+  verify(is.na(count_homeless) | count_homeless <= count_homeless_ub) %>%
+  verify(is.na(count_homeless) | count_homeless_lb <= count_homeless) %>%
+  verify(is.na(count_homeless) | count_homeless_lb <= count_homeless_ub)
+
+```
+
+```{r add-labels}
+place <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  select(state, place, state_name, place_name) %>%
+  distinct()
+
+db <- db %>%
+  tidylog::left_join(place) %>%
+  relocate(year, state, place, state_name, place_name)
+  
+db_recent <- db_recent %>%
+  tidylog::left_join(place) %>%
+  relocate(state, place, state_name, place_name)
+```
+
+
+## Write the File
+
+```{r}
+write_csv(db, here("data", "05_mobility-metrics_place_longitudinal.csv"))
+write_csv(db_recent, here("data", "05_mobility-metrics_place_recent.csv"))
+```
