@@ -1,10 +1,11 @@
 summarize_metric <- function(.data, var, quality_var, decimals = 2) {
   
-  cat("#### Variable: ")
+  cat("#### **Variable:** ")
   
   .data %>%
     dplyr::select({{ var }}) %>%
     names() %>%
+    paste0("`", ., "`") %>%
     cat()
   
   cat("\n")
@@ -60,6 +61,8 @@ summarize_metric <- function(.data, var, quality_var, decimals = 2) {
     gt::as_raw_html() %>%
     cat()
 
+  cat("\n")
+  cat("\n")
   cat("\n")
   
 }
