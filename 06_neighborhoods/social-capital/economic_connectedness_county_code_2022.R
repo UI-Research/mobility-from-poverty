@@ -113,7 +113,13 @@
       merged_ec <- merged_ec %>% 
         rename(year = year.y)
       merged_ec <- merged_ec %>% 
-        rename(ec_county_quality = data_quality)
+        rename(ec_county_quality = data_quality) %>%
+        
+      #G. Morrison addition March 2023 to clean table and prepare for join
+        select(-c(state_name, county_name)) %>%
+        rename(economic_connectedness = ec_county,
+               economic_connectedness_quality = ec_county_quality,
+               economic_connectedness_se = ec_se_county)
       
       # export as .csv
       write_csv(merged_ec, "06_neighborhoods/social-capital/data/economic_connectedness_county_2022.csv")

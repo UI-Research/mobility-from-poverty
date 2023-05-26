@@ -47,7 +47,8 @@ cbp_zip <- getCensus(
   name = "cbp",
   vintage = 2020,
   vars = c("EMP", "ESTAB", "NAICS2017"),
-  region = "zipcode:*")
+  region = "zipcode:*",
+  key = key)
 head(cbp_zip)
 
 
@@ -232,10 +233,19 @@ sa_city_data <- sa_city_data %>%
 
 # rename vars as needed
 sa_city_data <- sa_city_data %>% 
-  rename(place = GEOID)
+  rename(place = GEOID,
+         
+ #G. Morrison addition April 2023 to make variable name more human-readible
+ social_connection = socassn,
+ social_connection_quality = socassn_quality
+  ) %>%
+  mutate(state = str_sub(place, 1, 2), 
+         place = str_sub(place, 3, 7)
+         ) %>%
+  arrange(year, state, place, social_connection, social_connection_quality)
 
 # check how many missing
-sum(is.na(sa_city_data$socassn))
+sum(is.na(sa_city_data$social_connection))
 
 # export our file as a .csv
 write_csv(sa_city_data, "06_neighborhoods/social-capital/data/social_associations_city_2022.csv")
