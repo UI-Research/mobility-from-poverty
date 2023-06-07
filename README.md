@@ -78,7 +78,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 ## Multi-Year Files
 
-* The multi-year county file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,143 observations per year. 
+* The multi-year county file contains one observation per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,143 observations per year. 
 * The multi-year city file contains one observations per large city per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 486 observations per year. 
 
 ## Subgroups Files
@@ -149,13 +149,13 @@ The final combined subgroup dataset will contain a subset of metrics in the orig
 
 ### Variable Names
 
-Currently, we rename variables when building the database so the names are consistent and descriptive. All names satrt with the following:
+Currently, we rename variables when building the database so the names are consistent and descriptive. All names start with the following:
 
 * shares prefixed with `share_`
 * percentiles prefixed with `pctl_`
 * rates prefixed with `rate_`
 * counts prefixed with `count_`
-* index prefixed with `index` 
+* index prefixed with `index_` 
 
 The goal is to migrate these standardized variable names into the earlier code in future updates.
 
@@ -321,11 +321,7 @@ When you are done, you can switch back to your branch with `git checkout branch-
 
 # Creating the Final File
 
-The code to create the final files is in 
-
-
-
-
+The code to create the final files is in `10_construct-database/`
 
 There will be two final files. The first file with be a year-county file with one row per county per year. The second file will be county-level file with only the most recent year of data for each variable. Both files will be [tidy data](https://vita.had.co.nz/papers/tidy-data.pdf) with each variable in its own column, each observation in its own row, and each value in its own cell. 
 
