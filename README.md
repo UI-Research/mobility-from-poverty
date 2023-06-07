@@ -1,11 +1,18 @@
 # Boosting Upward Mobility from Poverty
 
-This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
+This repository contains code to construct 26 metrics for 25 predictors of mobility across 5 pillars that broadly measure mobility from poverty. The data are available for 3,143 counties (example: [Los Angeles County](https://upward-mobility.urban.org/sites/default/files/mobility-metrics-data-pages/999_county-pages/06037/index.html)) and 486 selected cities (example: [Philadelphia](https://upward-mobility.urban.org/sites/default/files/mobility-metrics-data-pages/998_place-pages/4260000/index.html)). 
 
-* [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
-* [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
+To learn more about the upward mobility framework, please read:
 
-Detailed documentation of code and data is available [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md).
+* [Project website](https://upward-mobility.urban.org/)
+* [Boosting Upward Mobility: Metrics to Inform Local Action (2nd Edition)](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-second-edition)
+* [Boosting Upward Mobility: Metrics to Inform Local Action Technical Report (2nd Edition)](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-second-edition-technical-report)
+
+To learn more about the data, please read:
+
+* [Mobility metrics Urban Institute Data Catalog page](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action)
+* [Mobility metrics data dictionary](https://ui-research.github.io/mobility-from-poverty/)
+* [Mobility metrics methodological notes](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md)
 
 # Motivation
 
@@ -27,12 +34,14 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [GitHub Workflow](#github-workflow)
 * [Data Standards](#data-standards)
     * [Joining Variables](#joining-variables)
+    * [Variable Names](#variable-names)
     * [Values](#values)
     * [Sorting](#sorting)
     * [Standard Errors](#standard-errors)
     * [Quality Flags](#quality-flags)
     * [Data Dictionary](#data-dictionary)
     * [Subgroups File Structure](#subgroups-file-structure)
+    * [File names](#file-names)
 * [Code Standards](#code-standards)
     * [Subgroups Code](#subgroups-code)
 * [Code and technical Review](#code-and-technical-review)
@@ -41,39 +50,40 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     * [Code Reviews in GitHub](#code-reviews-in-github)
     * [Code Branching for Reviewers](#code-branching-for-reviewers)
 * [Creating the Final File](#creating-the-final-file)
+* [Data Dictionary](#data-dictionary)
 * [License](#license)
 * [Contact](#contact)
 
 # Repository Contents
 
-| Domain                  |      Metrics      |
+**Note:** The code is organized by nine domains for legacy reasons even though the updated framework is organized into five pillars. 
+
+| Domain                  |      Predictors      |
 |:-------------------------|:-------------|
-| 01_financial-well-being | Income <br/> Financial security  | 
-| 02_housing              | Affordable housing <br/> Housing instability and homelessness |
-| 03_family               | Family structure and stability  |
-| 04_health               | Access to and utilization of health services <br/> Neonatal health  |
-| 05_local-governments    | Political participation  |
-| 06_neighborhoods        | Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality  |
-| 07_safety               | Exposure to crime <br/> Overly punitive policing  |
-| 08_education            | Access to preschool <br/> Effective public education <br/> Student poverty concentration <br/> College readiness |
-| 09_employment           | Employment <br/> Access to jobs paying a living wage  |
+| 01_financial-well-being | Opportunities for income <br/> Financial security <br/> Wealth-building opportunities | 
+| 02_housing              | Housing affordability <br/> Housing stability |
+| 04_health               | Access to health services <br/> Neonatal health <br/> Safety from trauma |
+| 05_local-governments    | Political participation <br/> Descriptive representation |
+| 06_neighborhoods        | Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality <br/> Social capital |
+| 07_safety               | Safety from crime <br/> Just policing  |
+| 08_education            | Access to preschool <br/> Effective public education <br/> School economic diversity <br/> Preparation for college <br/> Digital access |
+| 09_employment           | Employment opportunities <br/> Access to jobs paying a living wage  |
 
 # File Description
 
 ## Recent Files
 
-* The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,142 observations and contain missing values where metrics were unavailable or not computed.
+* The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,143 observations and contain missing values where metrics were unavailable or not computed.
 * The recent city file has one row per census place and contains the most recent year for each of the mobility metrics. This file should have 486 observations and contain missing values where metrics were unavailable or not computed.
 
 ## Multi-Year Files
 
-* The multi-year county file contains one observations per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,142 observations per year. 
+* The multi-year county file contains one observation per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,143 observations per year. 
 * The multi-year city file contains one observations per large city per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 486 observations per year. 
 
 ## Subgroups Files
 
 * The subgroups county files contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
-
 * The subgroups city file contains multiple observations per census place per year. The file is long and the multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
 # Project Organization
@@ -126,7 +136,7 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 * All final files should be in the `.csv` format. The files should be delimited with a comma. 
 * Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
 * Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
-* Important intermediate files should be added to Box. Final data files should be added to Box and the GitHub repository.
+* Starting data should be pulled using code or should be added to Box. Final data files should be added GitHub repository.
 * FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits. 
 
 ### Joining variables
@@ -135,16 +145,28 @@ Email awilliams@urban.org if you have questions about working with Mac or Linux.
 
 The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
 
-`subgroup_type` will be `all`, `race-ethnicity`, or `income`. `subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The next section further addresses race/ethnicity.  
+`subgroup_type` will be `all`, `race-ethnicity`, or `income`. `subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The next section further addresses race/ethnicity.
+
+### Variable Names
+
+Currently, we rename variables when building the database so the names are consistent and descriptive. All names start with the following:
+
+* shares prefixed with `share_`
+* percentiles prefixed with `pctl_`
+* rates prefixed with `rate_`
+* counts prefixed with `count_`
+* index prefixed with `index_` 
+
+The goal is to migrate these standardized variable names into the earlier code in future updates.
 
 ### Values
 
-* Include all counties/cities even if a county is all missing values. Every join to the master file should be one-to-one within a year.
+* Include all counties/cities even if a county is all missing values. Every join to the main file should be one-to-one within a year.
 * Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
 * Percentages should be stored as proportions between 0 and 1 inclusive with a leading zero. (75% should be 0.75)
 * Missing values should be coded as empty cells.
 
-Subgroups will depend on data availability and prioritization. For race, the objective is to pull "Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", and "White, Non-Hispanic." If a subgroup lacks the precision to be responsibly reported, then report an `NA` and set the data quality to a 3. Do not combine groups such as “Other Races and Ethnicities” with “White, Non-Hispanic”.  
+Subgroups will depend on data availability and prioritization. For race, the objective is to pull "Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", and "White, Non-Hispanic." If a subgroup lacks the precision to be responsibly reported, then report an `NA` and set the data quality to `NA`. Try to not combine groups such as “Other Races and Ethnicities” with “White, Non-Hispanic”.  
 
 ### Sorting
 
@@ -171,18 +193,17 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 
 * Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`. 
 
-### Data Dictionary 
-
-* We will construct a detailed data dictionary for users of the data. 
-* Be sure to include information about the format of your metrics in the metric-specific READMEs. Completed metrics will be added to the [variables table](#variables) in this README.
-
 ### Subgroups File Structure
 
 A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows. This database will be in a long format and contain the "all" group. For example, if there are four subgroups then there should be 3,142x4 + 3,142x1 = 15,710 observations per year. This may seem foreign to some Stata and SAS programmers but it has several advantages.  
 
 1. It limits the challenges in standardization of naming conventions and the number of variables. For example, imagine adding four subgroups in a wide format. This would mean adding four variables, four lower bounds, four upper bounds, and four quality metrics. In addition to being unwieldy, it would result in burdensome variable names (e.g. `share_debt_coll_nonhispanic_white_quality1). 
 2. This format is [tidy](https://www.jstatsoft.org/article/view/v059i10) (Wickham, 2014) and has many appealing features for data analysis.  
-3. The format will transfer better into the county-level data sheets we will need to produce for communities.  
+3. The format works best for the Mobility Metrics Data Tables.
+
+### File Names
+
+Save data in subdirectories to keep the repository organized. When saving files, include the year, geography (county or place), and subgroup information in the file name unless the file is combined (e.g. the file contains multiple years). 
 
 # Code Standards 
 
@@ -245,7 +266,8 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
 * Data access should be abundantly clear. Scripts should download the data or instructions for the necessary files located on Box should be included. 
 * State if special computation was used (i.e. the Stata server or SAS server). 
 * If scripts use many variable names, make sure to include a codebook so reviewers can follow along.
-* For calculations, code should be commented with clear variable labels. 
+* Clearly comment each step with a focus on why the step is needed. 
+* Use clear object and file names. 
 
 ## Code Reviews in GitHub
 
@@ -285,7 +307,7 @@ Line-by-line edits and feedback should be handled by reviewers through the point
 
 Suppose you are reviewing code from branch `malcolm`. You need to "fetch" the `malcolm` branch on to your local computer to run and review the code. Steps:
 
-1. Open up Git Bash in the directory by right clicking in the `gates-mobility-metrics` directory and and selecting Git Bash Here (on Windows).
+1. Open up Git Bash in the directory by right clicking in the `mobility-from-poverty` directory and and selecting Git Bash Here (on Windows).
 2. Submit `git status` and ensure that you don't have any tracked changes that have not been commited. 
 3. Use `git branch` to see your current branch and other available branches. You should at least see `main`. 
 4. Submit `git fetch` to getch remote branches. 
@@ -299,9 +321,22 @@ When you are done, you can switch back to your branch with `git checkout branch-
 
 # Creating the Final File
 
+The code to create the final files is in `10_construct-database/`
+
 There will be two final files. The first file with be a year-county file with one row per county per year. The second file will be county-level file with only the most recent year of data for each variable. Both files will be [tidy data](https://vita.had.co.nz/papers/tidy-data.pdf) with each variable in its own column, each observation in its own row, and each value in its own cell. 
 
-todo(aaron): Write a program to pull the most recent year from the county-year file
+# Data Dictionary
+
+The data dictionary is a website created with Quarto and hosted on GitHub pages. The Quarto documents are stored in `mobility-from-poverty-documentation/`. The folder contains its own `.Rproj` for Quarto reasons. The website is contained in `docs/`. Use the following steps to update the website. 
+
+1. Open `mobility-from-poverty-documentation/mobility-from-poverty-documentation.Rproj`
+2. Update files but **do not click render**. Common types of changes include
+    * Updating .qmd files with additional information
+    * Re-rendering the documentation after updating the mobility metrics
+    * Updating R functions to change the information included in the data dictionary
+3. Run `quarto render` at the command line. 
+4. Add, commit, and push the files to GitHub. 
+5. Open a pull request to the branch that GitHub pages uses.
 
 # License
 
