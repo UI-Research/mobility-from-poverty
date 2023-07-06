@@ -307,6 +307,3 @@ todo(aaron): Write a program to pull the most recent year from the county-year f
 
 todo(aaron): find the appropriate license
 
-# Contact
-
-Please contact [Aaron R. Williams](awilliams@urban.org) with questions. 
