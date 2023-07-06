@@ -83,7 +83,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * If possible, download your data with code or pull your data from an API with code. 
-* **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
+* **Do not include any credentials in the repository.**
 * Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
 
 # GitHub
@@ -109,7 +109,6 @@ After installing Git and setting up a GitHub account, follow these steps to get 
 
 After this, you should be able to edit files and then add them to Git with the process outlined in the guide above. 
 
-Email awilliams@urban.org if you have questions about working with Mac or Linux. 
 
 ## GitHub Workflow
 
