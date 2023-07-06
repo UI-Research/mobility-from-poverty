@@ -11,7 +11,7 @@ Detailed documentation of code and data is available [here](https://github.com/U
 
 The objective of this repository is to make all results reproducible, to document processes and assumptions, and to make it easier for analysts to produce metrics in future years. A little extra effort today can make a big difference in the future. For more motivation, please read the motivation for a style guide by  [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation). If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
-This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org). 
+This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact Aaron R. Williams.
 
 # Table of Contents
 
