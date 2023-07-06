@@ -1,6 +1,6 @@
 # Boosting Upward Mobility from Poverty
 
-This repository contains code to construct 26 county-level metrics across 9 domains that broadly measure mobility from poverty. To learn more please read
+This repository contains code to construct 26 county- and city-level metrics across 24 predictors that broadly measure mobility from poverty. To learn more please read
 
 * [Boosting Upward Mobility: Metrics to Inform Local Action](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action)
 * [Boosting Upward Mobility: Metrics to Inform Local Action Summary](https://www.urban.org/research/publication/boosting-upward-mobility-metrics-inform-local-action-summary)
