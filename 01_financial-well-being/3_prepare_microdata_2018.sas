@@ -2,6 +2,8 @@
 *Macro to prepare an IPUMS extract for metrics processing;
 *=========================================================;
 
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically for external users. This code can be reviewed to determine the process and chronology for contructing the ACS-based Mobility Metrics.
+
 /*
 The input files USA_00027 and puma_to_county are created by the preceeding SAS programs,
 1_init.sas and 2_puma_to_county

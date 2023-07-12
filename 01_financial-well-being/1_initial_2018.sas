@@ -1,3 +1,7 @@
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically
+  for external users. This code can be reviewed to determine process and chronology for contructing the
+  ACS-based Mobility Metrics.
+
 *set options to print "%include" statements in log (source2), show statements executed by macros (mprint),
  warn if merged datasets have same variables (msglevel=i), show resolved values of macro varsiables (symbolgen);
 options source2 mprint msglevel=i symbolgen;

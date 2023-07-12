@@ -2,6 +2,8 @@
 *Macro to prepare an IPUMS extract for metrics processing;
 *=========================================================;
 
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically for external users. This code can be reviewed to determine the process and chronology for contructing the ACS-based Mobility Metrics.
+
 /*
 
 This program creates the 5-year ACS data file for the update using the 2017-2021 5-year ACS

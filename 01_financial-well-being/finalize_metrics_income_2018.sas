@@ -4,6 +4,8 @@ put it in the right format, and outputs it as a csv
 Kevin Werner
 7/22/20
 NOTE: per email from Greg on 9/10/20, I have removed the confidence interval code.
+
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically for external users. This code can be reviewed to determine the process and chronology for contructing the ACS-based Mobility Metrics.
 *************/
 
 %let filepath = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income.csv;

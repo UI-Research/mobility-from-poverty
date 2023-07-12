@@ -1,3 +1,5 @@
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically for external users. This code can be reviewed to determine the process and chronology for contructing the ACS-based Mobility Metrics.
+
 
 proc import datafile="&networkDir.\geocorr2014_puma_to_county.csv" out=puma_to_county dbms=csv replace;
   getnames=yes;

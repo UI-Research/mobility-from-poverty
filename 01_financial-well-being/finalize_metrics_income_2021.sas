@@ -9,6 +9,8 @@ Kevin Werner
 
 NOTE: per email from Greg on 9/10/20, I have removed the confidence interval code.
 
+* Note that the directories and IPUMS extracts used in this code mean that the code will not run automatically for external users. This code can be reviewed to determine the process and chronology for contructing the ACS-based Mobility Metrics.
+
 *************/
 
 %let filepath21 = V:\Centers\Ibp\KWerner\Kevin\Mobility\gates-mobility-metrics\01_financial-well-being\metrics_income_2021.csv;
