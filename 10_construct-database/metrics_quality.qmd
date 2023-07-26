@@ -1,0 +1,236 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format:
+  html:
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r rmarkdown-setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+options(scipen = 999)
+
+library(tidyverse)
+library(tidycensus)
+library(urbnthemes)
+library(reactable)
+library(readxl)
+
+set_urbn_defaults()
+
+```
+
+# File Quality
+
+The following table describes the quality of the data at the county level. Most variables for most communities have "Good" quality.
+
+```{r check-quality}
+metrics_county <- read_csv(here::here("data", "00_mobility-metrics_recent.csv"))
+
+metrics_quality_county <- metrics_county %>%
+  select(county_name, state_name, ends_with("_quality")) %>%
+  pivot_longer(cols = -c(state_name, county_name)) %>%
+  group_by(state_name, county_name) %>%
+  summarize(quality_good = sum(value == 1, na.rm = TRUE),
+            quality_marginal = sum(value == 2, na.rm = TRUE),
+            quality_poor = sum(value == 3, na.rm = TRUE),
+            missing_values = sum(is.na(value))) %>% 
+  mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
+         shr_good = quality_good / total_metrics,
+         shr_poor = quality_poor / total_metrics,
+         shr_missing = missing_values / total_metrics,
+         good_score = quality_good * 2,
+         marginal_score = quality_marginal,
+         poor_score = quality_poor * -1,
+         missing_score = missing_values * -2,
+         total_score = good_score + marginal_score + poor_score + missing_score) 
+
+metrics_quality_county %>%
+  reactable(
+    # columns = list(
+    #   density = colDef(format = colFormat(digits = 1)),
+    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
+    #   black = colDef(format = colFormat(digits = 2)),
+    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
+    #   foreign_born = colDef(format = colFormat(digits = 2)),
+    #   poverty = colDef(format = colFormat(digits = 2))
+    # ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+write_csv(metrics_quality_county, here::here("10_construct-database", "mobility-metrics-quality-county.csv"))
+
+```
+
+This table shows the share of each metric that have "Good" quality for each county.
+
+```{r}
+metrics_county %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(cols = everything()) %>%
+  mutate(value = if_else(is.na(value), 0, value)) %>%
+  group_by(name) %>%
+  summarize(share_good = mean(value == 1)) %>%
+  reactable(
+    columns = list(
+      share_good = colDef(format = colFormat(digits = 3))
+    ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+```
+
+
+The following table describes the quality of the data at the city place level.
+
+```{r check-quality}
+metrics_place <- read_csv(here::here("data", "05_mobility-metrics_place_recent.csv"))
+
+metrics_quality_place <- metrics_place %>%
+  select(place_name, state_name, ends_with("_quality")) %>%
+  pivot_longer(cols = -c(state_name, place_name)) %>%
+  group_by(state_name, place_name) %>%
+  summarize(quality_good = sum(value == 1, na.rm = TRUE),
+            quality_marginal = sum(value == 2, na.rm = TRUE),
+            quality_poor = sum(value == 3, na.rm = TRUE),
+            missing_values = sum(is.na(value))) %>% 
+    mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
+         shr_good = quality_good / total_metrics,
+         shr_poor = quality_poor / total_metrics,
+         shr_missing = missing_values / total_metrics,
+         #Create a scoring system: Good data quality is weighted by 2, marginal by 1, poor by -1 and missing by -2
+         good_score = quality_good * 2,
+         marginal_score = quality_marginal,
+         poor_score = quality_poor * -1,
+         missing_score = missing_values * -2,
+         total_score = good_score + marginal_score + poor_score + missing_score) 
+
+metrics_quality_place %>%
+  arrange(desc(total_score)) %>% 
+  reactable(
+    # columns = list(
+    #   density = colDef(format = colFormat(digits = 1)),
+    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
+    #   black = colDef(format = colFormat(digits = 2)),
+    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
+    #   foreign_born = colDef(format = colFormat(digits = 2)),
+    #   poverty = colDef(format = colFormat(digits = 2))
+    # ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+write_csv(metrics_quality_place, here::here("10_construct-database", "mobility-metrics-quality-place.csv"))
+
+```
+
+This table shows the share of each metric that have "Good" quality for each county.
+
+```{r}
+metrics_place %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(cols = everything()) %>%
+  mutate(value = if_else(is.na(value), 0, value)) %>%
+  group_by(name) %>%
+  summarize(share_good = mean(value == 1)) %>%
+  reactable(
+    columns = list(
+      share_good = colDef(format = colFormat(digits = 3))
+    ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+```
+
+This table recreates the data quality comparison tables but only for counties and places with comparable population size to Cook County and Chicago 
+```{r check-quality}
+
+census_api_key("12db876db6814295f40abdb4d6a0547fe2e575db")
+
+county_households <- get_acs(geography = "county",
+        variables = "B25003_001") %>% 
+  mutate(state = str_sub(GEOID, 1, 2),
+         county = str_sub(GEOID, 3, 5)) %>% 
+  mutate(hh_percentile = percent_rank(estimate)) %>% 
+  select(state, county, hh_percentile) 
+
+
+comparable_county_quality <- metrics_county %>% 
+  left_join(county_households, by = c("state" = "state", "county" = "county")) %>% 
+  filter(hh_percentile > 0.90) %>% 
+  select(county_name, state_name, ends_with("_quality")) %>%
+  pivot_longer(cols = -c(state_name, county_name)) %>%
+  group_by(state_name, county_name) %>%
+  summarize(quality_good = sum(value == 1, na.rm = TRUE),
+            quality_marginal = sum(value == 2, na.rm = TRUE),
+            quality_poor = sum(value == 3, na.rm = TRUE),
+            missing_values = sum(is.na(value))) %>% 
+  mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
+         shr_good = quality_good / total_metrics,
+         shr_poor = quality_poor / total_metrics,
+         shr_missing = missing_values / total_metrics,
+         good_score = quality_good * 2,
+         marginal_score = quality_marginal,
+         poor_score = quality_poor * -1,
+         missing_score = missing_values * -2,
+         total_score = good_score + marginal_score + poor_score + missing_score) 
+
+write_csv(comparable_county_quality, here::here("10_construct-database", "mobility-metrics-quality-county-comp.csv"))
+
+
+place_households <- get_acs(geography = "place",
+        variables = "B25003_001") %>% 
+    mutate(state = str_sub(GEOID, 1, 2),
+         place = str_sub(GEOID, 3, 7)) %>% 
+  mutate(hh_percentile = percent_rank(estimate)) %>% 
+  select(state, place, hh_percentile) 
+
+
+comparable_place_quality <- metrics_place %>%
+   left_join(place_households, by = c("state" = "state", "place" = "place")) %>% 
+  filter(hh_percentile > 0.99) %>% 
+  select(place_name, state_name, ends_with("_quality")) %>%
+  pivot_longer(cols = -c(state_name, place_name)) %>%
+  group_by(state_name, place_name) %>%
+  summarize(quality_good = sum(value == 1, na.rm = TRUE),
+            quality_marginal = sum(value == 2, na.rm = TRUE),
+            quality_poor = sum(value == 3, na.rm = TRUE),
+            missing_values = sum(is.na(value))) %>% 
+    mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
+         shr_good = quality_good / total_metrics,
+         shr_poor = quality_poor / total_metrics,
+         shr_missing = missing_values / total_metrics,
+          #Create a scoring system: Good data quality is weighted by 2, marginal by 1, poor by -1 and missing by -2
+         good_score = quality_good * 2,
+         marginal_score = quality_marginal,
+         poor_score = quality_poor * -1,
+         missing_score = missing_values * -2,
+         total_score = good_score + marginal_score + poor_score + missing_score) 
+
+write_csv(comparable_place_quality, here::here("10_construct-database", "mobility-metrics-quality-place-comp.csv"))
+
+```
+
