@@ -5,7 +5,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 format:
   html:
     code-fold: true
-    css: 10_construct-database/www/web_report.css
+    css: Output/www/web_report.css
     toc: true
     toc_float: true
 editor_options: 
@@ -23,349 +23,35 @@ options(knitr.kable.NA = "")
 options(scipen = 999)
 
 library(tidyverse)
+library(ggplot2)
 library(tidycensus)
-library(urbnthemes)
+library(plotly)
 library(reactable)
+library(data.table)
 library(readxl)
-
-set_urbn_defaults()
+library(qreport)
 
 ```
 
 #Overveiew 
 
-I'm order to sort the best and worst quality counties/places I developed a scoring metric that weights the data quality result for every variable in the data and sums these results to create a "total_score". Good data quality is given a weight of 2, marginal 1, poor -1 and missing -2. This method makes the assumption missing data lowers quality more than poor quality data.
+This document shows summary stats of the available variables in the NW HSPC data 
 
-I first use this method to pull the 15 best and worst qulaity counties/places from the total list of counties and places. Second, because Chicago and Cook County are both in the 99th percentile by household count, I also look at the top and worst performers among comparable areas (only counties in the 95th percentile and only places in the 99th percentile).
 
-In each table I also include the share of variables with "good quality" and share missing. Please excuse the formatting, I can clean these up once we decide how to proceed. Based on the results I suggest we use the comparable geography tables. The impact is greater for counties, but for both including all areas pads the worst quality geographies with very small areas. 
-
-# File Quality Counties
-
-## All counties
+## All variables
 
 The following table shows the 15 "highest" data quality counties based on a scoring metric.The highest score is 66 (all good quality, no missing) and 9 out of the 15 highest quality counties have a perfect score.
 
 ```{r county-quality-high-all}
-metrics_county <- read_csv(here::here("data", "00_mobility-metrics_recent.csv"))
-
-metrics_quality_county <- metrics_county %>%
-  select(county_name, state_name, ends_with("_quality")) %>%
-  pivot_longer(cols = -c(state_name, county_name)) %>%
-  group_by(state_name, county_name) %>%
-  summarize(quality_good = sum(value == 1, na.rm = TRUE),
-            quality_marginal = sum(value == 2, na.rm = TRUE),
-            quality_poor = sum(value == 3, na.rm = TRUE),
-            missing_values = sum(is.na(value))) %>% 
-  mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
-         shr_good = quality_good / total_metrics,
-         shr_poor = quality_poor / total_metrics,
-         shr_missing = missing_values / total_metrics,
-         good_score = quality_good * 2,
-         marginal_score = quality_marginal,
-         poor_score = quality_poor * -1,
-         missing_score = missing_values * -2,
-         total_score = good_score + marginal_score + poor_score + missing_score) 
+metrics_nw <- read_csv(here::here("Data", "hscp_data.csv"))%>% 
+  select(-PCode, -`1.1 Sub_Grantee_CCE_ID`, -Lat, -Lon, -`1.2 Client_Unique_Ident`, -`1.6 Intake_Date`,
+         -`1.24 Address_Before_Geocoding`, -`1.25 Apt_Before_Geocoding`, -`1.26 City_Before_Geocoding`, -`1.27 State_Before_Geocoding`,
+         -`1.28 Zip_Before_Geocoding`, -GeoLevel, -Geocoded_Address, -Geocoded_Address2, -Geocoded_AddressPlusSuite, -Geocoded_Full_Address,
+         -Geocoded_City, -Geocoded_Zip, -Geocoded_State, -`1.42 Level_Completion_Date`, -`1.43 Record_Complete_For_Review_Payment`)
 
 
 #write_csv(metrics_quality_county, here::here("10_construct-database", "mobility-metrics-quality-county.csv"))
-
-metrics_quality_county %>%
-  select(state_name, county_name, total_score, shr_good, shr_missing) %>% 
-  arrange(desc(total_score)) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = FALSE,
-    defaultPageSize = 15,
-    highlight = TRUE
-  )
-
-```
-
-
-The following table shows the 15 "lowest" data quality counties based on the scoring metric described above. The lowest possible score is -66, and the worst county has a score of -49. Several very remote counties (two in Alaska, one in Hawaii), are outliers for worst quality. 
-```{r county-quality-low-all}
-
-metrics_quality_county %>%
-  select(state_name, county_name, total_score, shr_good, shr_missing) %>% 
-  arrange(total_score) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = FALSE,
-    defaultPageSize = 15,
-    highlight = TRUE
-  )
+dataOverview(metrics_nw)
 
 
 ```
-
-
-##Comparable counties
-
-Given that Cook county is in the high 99th percentile of counties by household count we may want to focus on comprable counties by size. This table shows the 15 highest quality counties in the 95th percentile (which includes 161 counties) based on household size using the scoring method described above.  There are three "perfect quality" counties in this group and the rest are either 1 or 2 points away.
-
-``` {r county-quality-high-99th}
-
-census_api_key("12db876db6814295f40abdb4d6a0547fe2e575db")
-
-county_households <- get_acs(geography = "county",
-        variables = "B25003_001") %>% 
-  mutate(state = str_sub(GEOID, 1, 2),
-         county = str_sub(GEOID, 3, 5)) %>% 
-  mutate(hh_percentile = percent_rank(estimate)) %>% 
-  select(state, county, hh_percentile) 
-
-
-comparable_county_quality <- metrics_county %>% 
-  left_join(county_households, by = c("state" = "state", "county" = "county")) %>% 
-  filter(hh_percentile > 0.95) %>% 
-  select(county_name, state_name, ends_with("_quality")) %>%
-  pivot_longer(cols = -c(state_name, county_name)) %>%
-  group_by(state_name, county_name) %>%
-  summarize(quality_good = sum(value == 1, na.rm = TRUE),
-            quality_marginal = sum(value == 2, na.rm = TRUE),
-            quality_poor = sum(value == 3, na.rm = TRUE),
-            missing_values = sum(is.na(value))) %>% 
-  mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
-         shr_good = quality_good / total_metrics,
-         shr_poor = quality_poor / total_metrics,
-         shr_missing = missing_values / total_metrics,
-         good_score = quality_good * 2,
-         marginal_score = quality_marginal,
-         poor_score = quality_poor * -1,
-         missing_score = missing_values * -2,
-         total_score = good_score + marginal_score + poor_score + missing_score) 
-
-#write_csv(comparable_county_quality, here::here("10_construct-database", "mobility-metrics-quality-county-comp.csv"))
-
-comparable_county_quality %>%
-  select(state_name, county_name, total_score, shr_good, shr_missing) %>% 
-  arrange(desc(total_score)) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = FALSE,
-    defaultPageSize = 15,
-    highlight = TRUE
-  )
-
-
-```
-
-This table shows the 15 lowest quality counties in the 95th percentile based on household size using the scoring method described above. The low scores are much higher than when we look at the total county population, with the lowest being a score of 55 (still 90 percent of variables have "good" quality)
-
-```{r county-quality-low-99th}
-
-comparable_county_quality %>%
-  select(state_name, county_name, total_score, shr_good, shr_missing) %>% 
-  arrange(total_score) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = FALSE,
-    defaultPageSize = 15,
-    highlight = TRUE
-  )
-
-
-```
-
-# File Quality Place
-## All places in dataset
-
-The following table shows the 15 "highest" data quality places based on the same scoring method for counties. Because of the variables includes for place differ, the high score is now 54. Only one place has a "perfect score" in the top 15. Chicago is in the top 15 based on this quality metric.
-
-```{r place-quality-high-all}
-metrics_place <- read_csv(here::here("data", "05_mobility-metrics_place_recent.csv"))
-
-metrics_quality_place <- metrics_place %>%
-  select(place_name, state_name, ends_with("_quality")) %>%
-  pivot_longer(cols = -c(state_name, place_name)) %>%
-  group_by(state_name, place_name) %>%
-  summarize(quality_good = sum(value == 1, na.rm = TRUE),
-            quality_marginal = sum(value == 2, na.rm = TRUE),
-            quality_poor = sum(value == 3, na.rm = TRUE),
-            missing_values = sum(is.na(value))) %>% 
-    mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
-         shr_good = quality_good / total_metrics,
-         shr_poor = quality_poor / total_metrics,
-         shr_missing = missing_values / total_metrics,
-         #Create a scoring system: Good data quality is weighted by 2, marginal by 1, poor by -1 and missing by -2
-         good_score = quality_good * 2,
-         marginal_score = quality_marginal,
-         poor_score = quality_poor * -1,
-         missing_score = missing_values * -2,
-         total_score = good_score + marginal_score + poor_score + missing_score) 
-
-metrics_quality_place %>%
-  select(state_name, place_name, total_score, shr_good, shr_missing) %>% 
-  arrange(desc(total_score)) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = TRUE,
-    defaultPageSize = 20,
-    highlight = TRUE
-  )
-
-#write_csv(metrics_quality_place, here::here("10_construct-database", "mobility-metrics-quality-place.csv"))
-
-```
-
-
-The following table shows the 15 "lowest" data quality places based on the scoring metric described above. The lowest possible score is -54. The lowest scoring place is -8, which only has 14% of metrics as good quality. 
-
-```{r place-quality-low-all}
-
-metrics_quality_place %>%
-  select(state_name, place_name, total_score, shr_good, shr_missing) %>% 
-  arrange(total_score) %>% 
-  head(15) %>% 
-  arrange(total_score) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = TRUE,
-    defaultPageSize = 20,
-    highlight = TRUE
-  )
-
-```
-
-## Comparable places
-The City of Chicago is in the high 99th percentile of places included in the metric dataset. This table shows the 15 highest quality places in the 99th percentile based on household size using the scoring method described above. The list of best quality is very similar.
-
-```{r place-quality-high-99th}
-
-
-place_households <- get_acs(geography = "place",
-        variables = "B25003_001") %>% 
-    mutate(state = str_sub(GEOID, 1, 2),
-         place = str_sub(GEOID, 3, 7)) %>% 
-  mutate(hh_percentile = percent_rank(estimate)) %>% 
-  select(state, place, hh_percentile) 
-
-
-comparable_place_quality <- metrics_place %>%
-   left_join(place_households, by = c("state" = "state", "place" = "place")) %>% 
-  filter(hh_percentile > 0.99) %>% 
-  select(place_name, state_name, ends_with("_quality")) %>%
-  pivot_longer(cols = -c(state_name, place_name)) %>%
-  group_by(state_name, place_name) %>%
-  summarize(quality_good = sum(value == 1, na.rm = TRUE),
-            quality_marginal = sum(value == 2, na.rm = TRUE),
-            quality_poor = sum(value == 3, na.rm = TRUE),
-            missing_values = sum(is.na(value))) %>% 
-    mutate(total_metrics = quality_good + quality_marginal + quality_poor + missing_values,
-         shr_good = quality_good / total_metrics,
-         shr_poor = quality_poor / total_metrics,
-         shr_missing = missing_values / total_metrics,
-          #Create a scoring system: Good data quality is weighted by 2, marginal by 1, poor by -1 and missing by -2
-         good_score = quality_good * 2,
-         marginal_score = quality_marginal,
-         poor_score = quality_poor * -1,
-         missing_score = missing_values * -2,
-         total_score = good_score + marginal_score + poor_score + missing_score) 
-
-
-comparable_place_quality %>%
-  select(state_name, place_name, total_score, shr_good, shr_missing) %>% 
-  arrange(desc(total_score)) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = TRUE,
-    defaultPageSize = 20,
-    highlight = TRUE
-  )
-
-
-#write_csv(comparable_place_quality, here::here("10_construct-database", "mobility-metrics-quality-place-comp.csv"))
-
-```
-
-The City of Chicago is in the high 99th percentile of places included in the metric dataset. This table shows the 15 highest quality places in the 99th percentile based on household size using the scoring method described above. 
-
-
-```{r place-quality-low-99th}
-
-comparable_place_quality %>%
-  select(state_name, place_name, total_score, shr_good, shr_missing) %>% 
-  arrange(total_score) %>% 
-  head(15) %>% 
-  reactable(
-    # columns = list(
-    #   density = colDef(format = colFormat(digits = 1)),
-    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
-    #   black = colDef(format = colFormat(digits = 2)),
-    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
-    #   foreign_born = colDef(format = colFormat(digits = 2)),
-    #   poverty = colDef(format = colFormat(digits = 2))
-    # ),
-    filterable = TRUE,
-    searchable = TRUE,
-    defaultPageSize = 20,
-    highlight = TRUE
-  )
-
-```
-
-
-
