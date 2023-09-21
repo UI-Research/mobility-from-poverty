@@ -56,41 +56,60 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 # Repository Contents
 
-**Note:** The code is organized by nine domains for legacy reasons even though the updated framework is organized into five pillars. 
+**Note:** The code is organized by nine domains for legacy reasons even though the updated framework is organized into five pillars.  Below is a table showing each predictor by Pillar, and the Domain it was previously assigned to. 
 
-| Domain                  |      Predictors      |
+| Pillar|      Predictors      |      Legacy Domains      |
 |:-------------------------|:-------------|
-| 01_financial-well-being | Opportunities for income <br/> Financial security <br/> Wealth-building opportunities | 
-| 02_housing              | Housing affordability <br/> Housing stability |
-| 04_health               | Access to health services <br/> Neonatal health <br/> Safety from trauma |
-| 05_local-governments    | Political participation <br/> Descriptive representation |
-| 06_neighborhoods        | Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality <br/> Social capital |
-| 07_safety               | Safety from crime <br/> Just policing  |
-| 08_education            | Access to preschool <br/> Effective public education <br/> School economic diversity <br/> Preparation for college <br/> Digital access |
-| 09_employment           | Employment opportunities <br/> Access to jobs paying a living wage  |
+| 01_opportunity_rich_&_inclusive_neighborhoods | Housing affordability | 02_housing <br/> Housing stability | 02_housing <br/> Economic inclusion | 05_neighborhoods <br/> Racial diversity | 06_neighborhoods <br/> Social capital  | 06_nieghborhoods<br/> Transportation access | 06_nieghborhoods | 
+| 02_high_quality_education             | Access to preschool | 08_education <br/> Effective public education | 08_education <br/> 
+School economic diversity | 08_education <br/> Preparation for college | 08_education <br/> Digital access | 08_education|
+| 03_rewarding_work               | Employment opportunities  | 09_employment <br/> Jobs paying living wages | 09_employment <br/> Opportunities for income  | 01_financial-well-being<br/> Financial security | 01_financial-well-being <br/> Wealth-building opportunities | 01_wealth_building_oppertunities |
+| 04_healthy_environment_&_access_to_good_health_care    | Access to health services  | 04_health<br/> Neonatal health | 04_health <br/> Environmental quality | 06_nieghborhoods <br/> Safety from trauma | 04_health |
+| 05_responsive_&_just_governance           | Political participation  | 05_local-government<br/> Descriptive representation | 05_local-government<br/> Safety from crime  | 07_safety<br/> Just policing | 07_safety |
 
 # File Description
+The [final datasets](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10) for this project are read out into several file formats which are described below. The main difference is the number of years included and whether subgroups (i.e. race/ethnicity) are included. The data are hosted publicly on the [Urban Institute data catalog](https://datacatalog.urban.org/). 
 
 ## Recent Files
 
-* The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,143 observations and contain missing values where metrics were unavailable or not computed.
-* The recent city file has one row per census place and contains the most recent year for each of the mobility metrics. This file should have 486 observations and contain missing values where metrics were unavailable or not computed.
+* The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics. This file should have exactly 3,143 observations and contain missing values where metrics were unavailable, suppressed, or not computed.
+| state  | county   | state_name   | county_name     | Var1…   |
+| :-----:|:--------:| :--------: |:---------------:| :---: |
+| 01     | 001      | “Alabama”  |“Autauga County” |       | 
+| 01     | 003      | “Alabama”  |“Baldwin County” |       |
+| 01     | 005	   |  “Alabama” |“Barbour County”   |       |
+
+* The recent city file has one row per census place and contains the most recent year for each of the mobility metrics. This file should have exactly 486 observations and contain missing values where metrics were unavailable, suppressed, or not computed.
 
 ## Multi-Year Files
 
-* The multi-year county file contains one observation per county per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 3,143 observations per year. 
-* The multi-year city file contains one observations per large city per year. It contains missing values where metrics are unavailable or have not been computed. This file should have about 486 observations per year. 
+* The multi-year county file contains one observation per county per year. It contains missing values where metrics are unavailable, supressed, or have not been computed. This file should have about 3,143 observations per year. 
+|year | state  | county   | state_name   | county_name     | Var1…   |
+|:---:| :-----:|:--------:| :--------: |:---------------:| :---: |
+|2014 | 01     | 001      | “Alabama”  |“Autauga County” |       | 
+|2014 | 01     | 003      | “Alabama”  |“Baldwin County” |       |
+|2014 | 01     | 005	| “Alabama”  | “Barbour County”    |       |
+
+* The multi-year city file contains one observation per large city per year. It contains missing values where metrics are unavailable, suppressed, or have not been computed. This file should have about 486 observations per year. 
 
 ## Subgroups Files
 
-* The subgroups county files contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
+* The subgroups county file contains multiple observations per county per year. The file is long and the multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
+
+|year | state  |county | state_name   | county_name     | subgroup_type       |subgroup                            |
+|:---:| :-----:|:----: | :--------: |:---------------:| :----------:   | :--------------:    |        |2013 | 01     | 001   | “Alabama”  |“Autauga County” |“all”           |“All”                |        
+|2013 | 01     | 001   | “Alabama”  |“ Autauga County”|“race-ethnicity”|“Black, Non-Hispanic”           |        
+|2013 | 01     | 001	 | “Alabama”  |“ Autauga County”|“race-ethnicity”|“Hispanic”              |      
+|2013 | 01     | 001	 |  “Alabama” |“ Autauga County”|“race-ethnicity”|“Other Races and Ethnicities”|
+|2013 | 01     | 001	 |  “Alabama” |“ Autauga County”|“race-ethnicity”|“White, Non-Hispanic”           |
+
 * The subgroups city file contains multiple observations per census place per year. The file is long and the multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
 # Project Organization
 
 * Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces. 
 * The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
-* Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
+* Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * If possible, download your data with code or pull your data from an API with code. 
 * **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
@@ -122,51 +141,60 @@ After this, you should be able to edit files and then add them to Git with the p
 Email awilliams@urban.org if you have questions about working with Mac or Linux. 
 
 ## GitHub Workflow
-
-1. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
-2. Commit changes regularly with detailed commit messages. 
-3. Regularly push your code to your remote branch on GitHub. 
-4. To contribute to the `main` branch, put in a Pull Request. Tag Aaron R. Williams as a reviewer (@awunderground). Briefly describe what the PR does. 
+1. Set up Git
+2. Add instructions on cloning the repo
+3. From the mobility-from-poverty folder you have cloned to your local computer, make sure you are on the `main` branch of the `mobility-from-poverty` repository, and ensure it is up to date with GitHub:
+o	`git checkout main`
+o	`git pull origin main`
+4. Check out a branch with your first name in lowercase. Additional branching is allowed but merge all changes into your main branch.
+3. Create a GitHub issue with a description of the work to be completed 
+4. From your branch, create a branch for the issue you just created, e.g. `git checkout -b iss171`
+5.	Add your changes to the code. 
+o	`git status` is a helpful command showing which files have changed.
+o	`git diff [filename]` will highlight which lines have been modified. Use the arrow keys to scroll, and press `q` if you need to exit the prompt.
+o	`git add [filename]` will stage files to commit. (`git add -u` will add all modified files).
+o	`git commit -m "[your message here]"` will commit changes to version control. Commit messages should be clear and meaningful.
+o	git push origin [your branch name] will push committed changes up to your Github branch. 
+4. To contribute to the `main` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does. 
 5. Aaron R. Williams will review and incorporate changes into the `main` branch. He may ask you to make changes. 
-
 **Please reach out Aaron with any questions.** The only thing he loves more than version control is helping people learn version control. 
 
 # Data Standards
 
 * All final files should be in the `.csv` format. The files should be delimited with a comma. 
-* Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
-* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults are not sensible and lead to analytic errors. 
-* Starting data should be pulled using code or should be added to Box. Final data files should be added GitHub repository.
-* FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits. 
+* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults  lead to analytic errors. 
+## Starting or raw data practices
+* Starting or raw data should be pulled using code or should be added to Box. Final data files should be added GitHub repository.
+* Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API]( https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package] ( https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS micro data from the Census API using code.
+* When it is not possible to pull data in code, please download the data raw data files into Box so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s). 
 
-### Joining variables
+## Joining variables
 
 * The first three variables in every file should be `year`, `state`, and `county`/`place`. `year` should be a four digit numeric variable. `state` should be a two characters FIPS code. `county` should be a three character FIPS code. `place` should the 5-digit census place FIPS. Intermediate files at the tract-level should include `tract` as the fourth variable. `tract` should be a six character FIPS code. All geography variables should have leading zeros for ids beginning in zeros. 
 
 The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis. The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.  
 
-`subgroup_type` will be `all`, `race-ethnicity`, or `income`. `subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The next section further addresses race/ethnicity.
+`subgroup_type` will be the broader category that the descriptive variable the data is being broken out by falls into, for example `race ethnicity`, or `income`. . `subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The next section further addresses race/ethnicity.
 
 ### Variable Names
+In addition to the prescribed variable names (year, state, county, place, subgroup_type, and subgroup) each dataset will also have (a) variable(s) specific to the metric. 
 
-Currently, we rename variables when building the database so the names are consistent and descriptive. All names start with the following:
+In previous rounds of this work, we renamed variables for metrics when building the database so the names are consistent and descriptive. All names start with the following:
 
-* shares prefixed with `share_`
-* percentiles prefixed with `pctl_`
-* rates prefixed with `rate_`
-* counts prefixed with `count_`
-* index prefixed with `index_` 
+* shares prefixed with `share_`: For example, the variable showing the share with debt in collections is titled share_debt_col 
+* percentiles prefixed with `pctl_`: For example, the variable showing the 20th percentile of income is titled pctl_income_20
+* rates prefixed with `rate_`: For example, the variable showing the reported violent crimes per 100,000 people is titled rate_violent_crime
+* counts prefixed with `count_`: For example, the variable showing the count of individuals experiencing homelessness is titled rate_injury_death
+* index prefixed with `index_` : For example, the variable showing the air quality index is titled index_air_quality
 
-The goal is to migrate these standardized variable names into the earlier code in future updates.
-
+Moving forward, please use these standardized variable names in the program for each of your assigned metrics.
+* Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
 ### Values
 
-* Include all counties/cities even if a county is all missing values. Every join to the main file should be one-to-one within a year.
-* Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). 
-* Percentages should be stored as proportions between 0 and 1 inclusive with a leading zero. (75% should be 0.75)
 * Missing values should be coded as empty cells.
+* FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits.
 
-Subgroups will depend on data availability and prioritization. For race, the objective is to pull "Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", and "White, Non-Hispanic." If a subgroup lacks the precision to be responsibly reported, then report an `NA` and set the data quality to `NA`. Try to not combine groups such as “Other Races and Ethnicities” with “White, Non-Hispanic”.  
+Values for subgroups will depend on data availability and prioritization. For race, the objective is to pull "Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", and "White, Non-Hispanic." If a subgroup lacks the precision to be responsibly reported, then report an `NA` and set the data quality to `NA`. Try to not combine groups such as “Other Races and Ethnicities” with “White, Non-Hispanic”.  
 
 ### Sorting
 
@@ -181,7 +209,7 @@ Subgroups will depend on data availability and prioritization. For race, the obj
 
 ### Quality Flags
 
-* Construct a "quality" flag for each constructed metric. Include it as a variable the suffix `_quality`. 
+* Construct a "quality" flag for each constructed metric. Include it as a variable with the suffix `_quality`. 
 * All observations should receive one of the following three grades or a missing value. 
 
 | Score | Description |
@@ -200,23 +228,19 @@ A new database with one observation per subgroup per county per year, so that me
 1. It limits the challenges in standardization of naming conventions and the number of variables. For example, imagine adding four subgroups in a wide format. This would mean adding four variables, four lower bounds, four upper bounds, and four quality metrics. In addition to being unwieldy, it would result in burdensome variable names (e.g. `share_debt_coll_nonhispanic_white_quality1). 
 2. This format is [tidy](https://www.jstatsoft.org/article/view/v059i10) (Wickham, 2014) and has many appealing features for data analysis.  
 3. The format works best for the Mobility Metrics Data Tables.
+For R programmers, creating long versions of the data using the pivot_longer function. 
 
 ### File Names
-
+* Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces.
 Save data in subdirectories to keep the repository organized. When saving files, include the year, geography (county or place), and subgroup information in the file name unless the file is combined (e.g. the file contains multiple years). 
+###Final Files
+* All final files should be in the `.csv` format. The files should be delimited with a comma. 
+* Do not open and save any `.csv` files in Microsoft Excel. Excel defaults lead to analytic errors.
 
 # Code Standards 
 
 * The [tidyverse style guide](https://style.tidyverse.org/) was written for R but contains lots of good language-agnostic suggestions for programming. 
-* Use descriptive names for all variables, data sets, functions, and macros. Avoid abbreviations. 
-* Include comments that state "why", not "what". Include comments for all assumptions. 
-* Use ISO 8601 dates (YYYY-MM-DD).
-* Write assertions and in-line tests. Assertions, things expected to always be true about the code, should be tested in-line. [healthinequality-code](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#assert-what-youre-expecting-to-be-true) offers some good background. `assert` is useful in Stata and `stopifnot()` is useful in R. 
-* Write tests for final files. Write a test if all numbers should be non-negative. Write a test if values should not exceed $3,000. 
-* Write tests for macros and functions to ensure appropriate behavior. 
-
-> Whenever you are tempted to type something into a print statement or a debugger expression, write it as a test instead. — Martin Fowler
-
+##Setting up and organizing scripts
 * The top of each script should clearly label the purpose of the script. Here is an example Stata header:
 
 ```
@@ -231,6 +255,23 @@ Description: [Overall description]
 /*************************/
 
 ```
+*Scripts should be clearly organized so others can follow them. 
+*If a directory needs to be set, it should be set at the top of a script. If multiple directories are needed, you can use macros (e.g., “global” in Stata) to name them and reference them throughout. It should not be necessary to change multiple file pathways throughout a script to run it on a different computer. 
+##Commenting
+*Include comments throughout your scripts so others can follow your work and decisions. 
+* Include comments that state "why", not "what". Include comments for all assumptions.
+##Naming & Dates
+* Use descriptive names for all variables, data sets, functions, and macros. 
+*Avoid abbreviations. 
+* Use ISO 8601 dates (YYYY-MM-DD).
+##Assertions and Tests
+* Write assertions and in-line tests. Assertions, things expected to always be true about the code, should be tested in-line. [healthinequality-code](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#assert-what-youre-expecting-to-be-true) offers some good background. `assert` is useful in Stata and `stopifnot()` is useful in R. 
+* Write tests for final files. Write a test if all numbers should be non-negative. Write a test if values should not exceed $3,000. 
+* Write tests for macros and functions to ensure appropriate behavior. 
+
+> Whenever you are tempted to type something into a print statement or a debugger expression, write it as a test instead. — Martin Fowler
+##Benchmarking
+*Check final calculations against state and/or national numbers if available. 
 
 ## Subgroups Code
 
@@ -260,14 +301,18 @@ Code and documentation will be reviewed by Aaron R. Williams and possibly additi
     * Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function or macro.
     * Is there a place where a variable is rebuilt or changed later on?
     * Are values transcribed by hand?
+4. Public Release
+*Is the code clearly commented for public release (e.g., no use of abbreviations or acronyms that are Urban Institute specific)
+*Is the code free from any licenses, PII, or proprietary information. 
 
 ## How to Prepare for a Code Review
 
-* Data access should be abundantly clear. Scripts should download the data or instructions for the necessary files located on Box should be included. 
-* State if special computation was used (i.e. the Stata server or SAS server). 
-* If scripts use many variable names, make sure to include a codebook so reviewers can follow along.
-* Clearly comment each step with a focus on why the step is needed. 
-* Use clear object and file names. 
+* Data access should be abundantly clear. Scripts should download the data or instructions for the necessary files located on Box should be included (see Starting or raw data practices above). 
+* State if special computation was used when running the program (i.e. the Stata server or SAS server, anything off of a standard desktop). 
+* If scripts use many variable names, make sure to include a codebook so reviewers can follow along. Code books should include variable names along with definitions of the variable. For categorical variables, please include a list of the possible categories for the given variable.
+* Clearly comment each step in the program with a focus on why the step is needed. Make sure to explain the logic behind the step so that a reviewer can judge whether the code effectively accomplishes this.
+* Use clear object (names of data frames or macro variables) and file names. For file names see the file naming convention above. 
+*All scripts should run all the way through without errors. This should be the case regardless of the user/computer. 
 
 ## Code Reviews in GitHub
 
@@ -327,7 +372,7 @@ There will be two final files. The first file with be a year-county file with on
 
 # Data Dictionary
 
-The data dictionary is a website created with Quarto and hosted on GitHub pages. The Quarto documents are stored in `mobility-from-poverty-documentation/`. The folder contains its own `.Rproj` for Quarto reasons. The website is contained in `docs/`. Use the following steps to update the website. 
+The [data dictionary]( https://ui-research.github.io/mobility-from-poverty/) is a website created with Quarto and hosted on GitHub pages. The Quarto documents are stored in `mobility-from-poverty-documentation/`. The folder contains its own `.Rproj` for Quarto reasons. The website is contained in `docs/`. Use the following steps to update the website. 
 
 1. Open `mobility-from-poverty-documentation/mobility-from-poverty-documentation.Rproj`
 2. Update files but **do not click render**. Common types of changes include
@@ -344,4 +389,4 @@ todo(aaron): find the appropriate license
 
 # Contact
 
-Please contact [Aaron R. Williams](awilliams@urban.org) with questions. 
+Please contact [Aaron R. Williams](awilliams@urban.org) with questions.
