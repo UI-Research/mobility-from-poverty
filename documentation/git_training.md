@@ -228,3 +228,11 @@ git checkout --track origin/<issue name>
 ```
 
 ## Reviewing Code
+
+After changes are pushed from Git, GitHub via the mobility-from-poverty repository page, will show that a new pull request is ready.
+
+![](images/image-1895120824.png)
+
+![](images/image-267968374.png)
+
+After you submit work you should assign a reviewer (using the reviewers tab circled in red) to the pull request and create the pull request. This will notify that reviewer that your changes are ready to be looked at.
