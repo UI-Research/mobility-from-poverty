@@ -18,7 +18,7 @@ To learn more about the data, please read:
 
 The objective of this repository is to make all results reproducible, to document processes and assumptions, and to make it easier for analysts to produce metrics in future years. A little extra effort today can make a big difference in the future. For more motivation, please read the motivation for a style guide by  [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation). If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
-This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org). 
+This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact Aaron R. Williams. 
 
 # Table of Contents
 
@@ -93,7 +93,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 * Avoid absolute file paths. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable. 
 * **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub. 
 * If possible, download your data with code or pull your data from an API with code. 
-* **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues. 
+* **Do not include any credentials in the repository.** Please reach out to Aaron R. Williams if this creates issues. 
 * Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
 
 # GitHub
@@ -118,8 +118,6 @@ After installing Git and setting up a GitHub account, follow these steps to get 
 5. Submit `git checkout -b aaron` but replace `aaron` with your name.
 
 After this, you should be able to edit files and then add them to Git with the process outlined in the guide above. 
-
-Email awilliams@urban.org if you have questions about working with Mac or Linux. 
 
 ## GitHub Workflow
 
@@ -338,10 +336,6 @@ The data dictionary is a website created with Quarto and hosted on GitHub pages.
 4. Add, commit, and push the files to GitHub. 
 5. Open a pull request to the branch that GitHub pages uses.
 
-# License
-
-todo(aaron): find the appropriate license
-
 # Contact
 
-Please contact [Aaron R. Williams](awilliams@urban.org) with questions. 
+Please contact Aaron R. Williams with questions. 
