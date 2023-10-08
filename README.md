@@ -70,40 +70,39 @@ If there are any ambiguities or unresolved questions, please contact [Aaron R. W
 **Note:** The code is organized by nine domains for legacy reasons even though the [updated framework](https://upward-mobility.urban.org/mobility-metrics-framework) is organized into five pillars.
 Below is a table showing each predictor by pillar, and the domain it was previously assigned to.
 
-|-------------------------|--------------------------------------------------|-------------------------------------|
 | Legacy Domain           | Pillar                                           | Predictors                          |
 |:-----------------------:|:------------------------------------------------:|:-----------------------------------:|
-| 01_financial-well-being | Rewarding Work                                   | Opportunities for income\           |
-|                         |                                                  | Financial security\                 |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-|                         |                                                  | Wealth-building opportunities\      |
-| 02_housing              | Opportunity-Rich & InclusiveNeighborhoods        | Housing affordability\              |
-|                         |                                                  | Housing stability                   |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 03_health               | Healthy Environment & Access to Good Health Care | Access to health services\          |
-|                         |                                                  | Neonatal health\                    |
-|                         |                                                  | Safety from trauma                  |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 05_local-governments    | Responsive & Just Governance                     | Political participation\            |
-|                         |                                                  | Descriptive representation          |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 06_neighborhoods        | Opportunity-Rich & Inclusive Neighborhoods       | Economic inclusion\                 |
-|                         |                                                  | Racial diversity\                   |
-|                         |                                                  | Transportation access\              |
-|                         |                                                  | Environmental quality\              |
-|                         |                                                  | Social capital                      |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 07_safety               | Responsive & Just Governance                     | Safety from crime\                  |
-|                         |                                                  | Just policing                       |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 08_education            | High-Quality Education                           | Access to preschool\                |
-|                         |                                                  | Effective public education\         |
-|                         |                                                  | School economic diversity\          |
-|                         |                                                  | Preparation for college\            |
-|                         |                                                  | Digital access                      |
-|-------------------------|--------------------------------------------------|-------------------------------------|
-| 09_employment           | Rewarding Work                                   | Employment opportunities\           |
-|                         |                                                  | Access to jobs paying a living wage |
+| 01_financial-well-being   Rewarding Work                                   | Opportunities for income            |
+|                                                                            | Financial security                  |
+|                                                                            |                                     |
+|                         |                                                  | Wealth-building opportunities       |
+| 02_housing                Opportunity-Rich & Inclusive Neighborhoods       | Housing affordability               |
+|                                                                            | Housing stability                   |
+|                         |                                                  |                                     |
+| 03_health                 Healthy Environment & Access to Good Health Care | Access to health services           |
+|                                                                            | Neonatal health                     |
+|                                                                            | Safety from trauma                  |
+|                         |                                                  |                                     |
+| 05_local-governments      Responsive & Just Governance                     | Political participation             |
+|                                                                            | Descriptive representation          |
+|                         |                                                  |                                     |
+| 06_neighborhoods          Opportunity-Rich & Inclusive Neighborhoods       | Economic inclusion                  |
+|                                                                            | Racial diversity                    |
+|                                                                            | Transportation access               |
+|                                                                            | Environmental quality               |
+|                                                                            | Social capital                      |
+|                         |                                                  |                                     |
+| 07_safety                 Responsive & Just Governance                     | Safety from crime                   |
+|                                                                            | Just policing                       |
+|                         |                                                  |                                     |
+| 08_education             High-Quality Education                            | Access to preschool                 |
+|                                                                            | Effective public education          |
+|                                                                            | School economic diversity           |
+|                                                                            | Preparation for college             |
+|                                                                            | Digital access                      |
+|                         |                                                  |                                     |
+| 09_employment             Rewarding Work                                   | Employment opportunities            |
+                                                                             | Access to jobs paying a living wage |
 
 
 
@@ -149,7 +148,6 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 -   The subgroups county files contain multiple observations per county per year. These files are long and have multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
 
-|--------|--------|--------|------------|------------------|------------------|-------------------------------|
 | year   | state  | county | state_name | county_name      | subgroup_type    | subgroup                      |
 |:------:|:------:|:------:|:----------:|:----------------:|:----------------:|:-----------------------------:|
 | 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "all"            | "All"                         |
