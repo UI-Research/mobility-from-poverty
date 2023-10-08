@@ -70,41 +70,39 @@ If there are any ambiguities or unresolved questions, please contact [Aaron R. W
 **Note:** The code is organized by nine domains for legacy reasons even though the [updated framework](https://upward-mobility.urban.org/mobility-metrics-framework) is organized into five pillars.
 Below is a table showing each predictor by pillar, and the domain it was previously assigned to.
 
-| Legacy Domain           | Pillar                                           | Predictors                          |
-|:-----------------------:|:------------------------------------------------:|:-----------------------------------:|
-| 01_financial-well-being   Rewarding Work                                   | Opportunities for income            |
-|                                                                            | Financial security                  |
-|                                                                            |                                     |
-|                         |                                                  | Wealth-building opportunities       |
-| 02_housing                Opportunity-Rich & Inclusive Neighborhoods       | Housing affordability               |
-|                                                                            | Housing stability                   |
-|                         |                                                  |                                     |
-| 03_health                 Healthy Environment & Access to Good Health Care | Access to health services           |
-|                                                                            | Neonatal health                     |
-|                                                                            | Safety from trauma                  |
-|                         |                                                  |                                     |
-| 05_local-governments      Responsive & Just Governance                     | Political participation             |
-|                                                                            | Descriptive representation          |
-|                         |                                                  |                                     |
-| 06_neighborhoods          Opportunity-Rich & Inclusive Neighborhoods       | Economic inclusion                  |
-|                                                                            | Racial diversity                    |
-|                                                                            | Transportation access               |
-|                                                                            | Environmental quality               |
-|                                                                            | Social capital                      |
-|                         |                                                  |                                     |
-| 07_safety                 Responsive & Just Governance                     | Safety from crime                   |
-|                                                                            | Just policing                       |
-|                         |                                                  |                                     |
-| 08_education             High-Quality Education                            | Access to preschool                 |
-|                                                                            | Effective public education          |
-|                                                                            | School economic diversity           |
-|                                                                            | Preparation for college             |
-|                                                                            | Digital access                      |
-|                         |                                                  |                                     |
-| 09_employment             Rewarding Work                                   | Employment opportunities            |
-                                                                             | Access to jobs paying a living wage |
-
-
+|            Legacy Domain            |                      Pillar                      |          Predictors                  |
+|:----------------:|:-----------------------------:|:---------------------:|
+|       01_financial-well-being       |                  Rewarding Work                  |   Opportunities for income           |
+|                                     |                                                  |      Financial security              |
+|                                     |                                                  |                                      |
+|                                     |                                                  | Wealth-building opportunities        |
+|             02_housing              |    Opportunity-Rich & Inclusive Neighborhoods    |     Housing affordability            |
+|                                     |                                                  |       Housing stability              |
+|                                     |                                                  |                                      |
+|              03_health              | Healthy Environment & Access to Good Health Care |   Access to health services          |
+|                                     |                                                  |        Neonatal health               |
+|                                     |                                                  |      Safety from trauma              |
+|                                     |                                                  |                                      |
+|        05_local-governments         |           Responsive & Just Governance           |    Political participation           |
+|                                     |                                                  |  Descriptive representation          |
+|                                     |                                                  |                                      |
+|          06_neighborhoods           |    Opportunity-Rich & Inclusive Neighborhoods    |      Economic inclusion              |
+|                                     |                                                  |       Racial diversity               |
+|                                     |                                                  |     Transportation access            |
+|                                     |                                                  |     Environmental quality            |
+|                                     |                                                  |        Social capital                |
+|                                     |                                                  |                                      |
+|              07_safety              |           Responsive & Just Governance           |       Safety from crime              |
+|                                     |                                                  |         Just policing                |
+|                                     |                                                  |                                      |
+|            08_education             |              High-Quality Education              |      Access to preschool             |
+|                                     |                                                  |  Effective public education          |
+|                                     |                                                  |   School economic diversity          |
+|                                     |                                                  |    Preparation for college           |
+|                                     |                                                  |        Digital access                |
+|                                     |                                                  |                                      |
+|            09_employment            |                  Rewarding Work                  |   Employment opportunities           |
+|                                     |                                                  |   Access to jobs paying a living wage|
 
 # File Description
 
@@ -148,13 +146,13 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 -   The subgroups county files contain multiple observations per county per year. These files are long and have multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
 
-| year   | state  | county | state_name | county_name      | subgroup_type    | subgroup                      |
-|:------:|:------:|:------:|:----------:|:----------------:|:----------------:|:-----------------------------:|
-| 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "all"            | "All"                         |
-| 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "race-ethnicity" | "Black, Non-Hispanic"         |
-| 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "race-ethnicity" | "Hispanic"                    |
-| 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "race-ethnicity" | "Other Races and Ethnicities" |
-| 2014   | 01     | 001    | "Alabama"  | "Autauga County" | "race-ethnicity" | "White, Non-Hispanic"         |
+| year | state | county | state_name |   county_name    |  subgroup_type   |           subgroup            |
+|:--------:|:--------:|:--------:|:--------:|:--------:|:--------:|:-----------:|
+| 2014 |  01   |  001   | "Alabama"  | "Autauga County" |      "all"       |             "All"             |
+| 2014 |  01   |  001   | "Alabama"  | "Autauga County" | "race-ethnicity" |     "Black, Non-Hispanic"     |
+| 2014 |  01   |  001   | "Alabama"  | "Autauga County" | "race-ethnicity" |          "Hispanic"           |
+| 2014 |  01   |  001   | "Alabama"  | "Autauga County" | "race-ethnicity" | "Other Races and Ethnicities" |
+| 2014 |  01   |  001   | "Alabama"  | "Autauga County" | "race-ethnicity" |     "White, Non-Hispanic"     |
 
 -   The subgroups city files contain multiple observations per census place per year. These files are long and have multiple observations per census place per year are for subgroups like race/ethnicity and poverty status.
 
@@ -304,17 +302,12 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 -   Construct a "quality" flag for each constructed metric. Include it as a variable with the suffix `_quality`. For example, the variable showing the air quality index is titled `index_air_quality`.
 -   All observations should receive one of the following three grades or a missing value.
 
-+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Score   | Description                                                                                                                                                                                                                                                       |
-+=========+===================================================================================================================================================================================================================================================================+
-| 1       | The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.                                                                                                   |
-+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| 2       | There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.                                                                                                               |
-+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| 3       | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information. |
-+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-|         | It was not possible to calculate a metric for the county or city.                                                                                                                                                                                                 |
-+---------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Score | Description                                                                                                                                                                                                                                                       |
+|-----------|------------------------------------------------------------|
+| 1     | The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.                                                                                                   |
+| 2     | There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.                                                                                                               |
+| 3     | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information. |
+|       | It was not possible to calculate a metric for the county or city.                                                                                                                                                                                                 |
 
 -   Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`.
 
