@@ -1,9 +1,3 @@
----
-editor_options: 
-  markdown: 
-    wrap: sentence
----
-
 # Boosting Upward Mobility from Poverty
 
 This repository contains code to construct 26 metrics for 25 predictors of mobility across 5 pillars that broadly measure mobility from poverty.
@@ -82,7 +76,7 @@ Below is a table showing each predictor by pillar, and the domain it was previou
 |            09_employment            |                  Rewarding Work                  |   Employment opportunities <br/> Access to jobs paying a living wage         |
                                                                                              
 
-# File Description
+# File Descriptions
 
 The [final datasets](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10) for this project are read out into several file formats which are described below.
 The main difference is the geographic level of the data (city vs county), the number of years included and whether subgroups (i.e. race/ethnicity) are included.
