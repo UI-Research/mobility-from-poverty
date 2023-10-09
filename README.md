@@ -72,37 +72,37 @@ Below is a table showing each predictor by pillar, and the domain it was previou
 
 |            Legacy Domain            |                      Pillar                      |          Predictors                  |
 |:----------------:|:-----------------------------:|:---------------------:|
-|       01_financial-well-being       |                  Rewarding Work                  |   Opportunities for income           |
-|                                     |                                                  |      Financial security              |
-|                                     |                                                  |                                      |
-|                                     |                                                  | Wealth-building opportunities        |
-|             02_housing              |    Opportunity-Rich & Inclusive Neighborhoods    |     Housing affordability            |
-|                                     |                                                  |       Housing stability              |
-|                                     |                                                  |                                      |
+        01_financial-well-being                          Rewarding Work                      Opportunities for income           
+                                                                                                Financial security              
+                                                                                                                                
+|             02_housing              |                                                  | Wealth-building opportunities        |
+                                           Opportunity-Rich & Inclusive Neighborhoods          Housing affordability            
+                                                                                                 Housing stability              
+                                                                                                                                
 |              03_health              | Healthy Environment & Access to Good Health Care |   Access to health services          |
-|                                     |                                                  |        Neonatal health               |
-|                                     |                                                  |      Safety from trauma              |
-|                                     |                                                  |                                      |
+                                                                                                  Neonatal health                
+                                                                                                Safety from trauma              
+                                                                                                                                
 |        05_local-governments         |           Responsive & Just Governance           |    Political participation           |
-|                                     |                                                  |  Descriptive representation          |
-|                                     |                                                  |                                      |
+                                                                                            Descriptive representation           
+                                                                                                                                
 |          06_neighborhoods           |    Opportunity-Rich & Inclusive Neighborhoods    |      Economic inclusion              |
-|                                     |                                                  |       Racial diversity               |
-|                                     |                                                  |     Transportation access            |
-|                                     |                                                  |     Environmental quality            |
-|                                     |                                                  |        Social capital                |
-|                                     |                                                  |                                      |
+                                                                                                 Racial diversity                
+                                                                                               Transportation access            
+                                                                                               Environmental quality            
+                                                                                                  Social capital                
+                                                                                                                                
 |              07_safety              |           Responsive & Just Governance           |       Safety from crime              |
-|                                     |                                                  |         Just policing                |
-|                                     |                                                  |                                      |
+                                                                                                   Just policing                 
+                                                                                                                                
 |            08_education             |              High-Quality Education              |      Access to preschool             |
-|                                     |                                                  |  Effective public education          |
-|                                     |                                                  |   School economic diversity          |
-|                                     |                                                  |    Preparation for college           |
-|                                     |                                                  |        Digital access                |
-|                                     |                                                  |                                      |
+                                                                                            Effective public education           
+                                                                                             School economic diversity          
+                                                                                             Preparation for college           
+                                                                                                 Digital access                
+                                                                                                                               
 |            09_employment            |                  Rewarding Work                  |   Employment opportunities           |
-|                                     |                                                  |   Access to jobs paying a living wage|
+                                                                                             Access to jobs paying a living wage
 
 # File Description
 
