@@ -22,8 +22,7 @@ A little extra effort today can make a big difference in the future.
 For more motivation, please read the motivation for a style guide by [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation).
 If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
-This guide is a work-in-progress.
-If there are any ambiguities or unresolved questions, please contact [Aaron R. Williams](awilliams@urban.org).
+If there are any ambiguities or unresolved questions, please contact Aaron R. Williams.
 
 # Table of Contents
 
@@ -42,7 +41,7 @@ If there are any ambiguities or unresolved questions, please contact [Aaron R. W
     -   [Variable Names](#variable-names)
     -   [Values](#values)
     -   [Sorting](#sorting)
-    -   [Standard Errors](#standard-errors)
+    -   [Standard Errors and Confidence Intervals](#standard-errors-and-confidence-intervals)
     -   [Quality Flags](#quality-flags)
     -   [Data Dictionary](#data-dictionary)
     -   [Subgroups File Structure](#subgroups-file-structure)
@@ -56,7 +55,6 @@ If there are any ambiguities or unresolved questions, please contact [Aaron R. W
     -   [Code Branching for Reviewers](#code-branching-for-reviewers)
 -   [Creating the Final File](#creating-the-final-file)
 -   [Data Dictionary](#data-dictionary)
--   [License](#license)
 -   [Contact](#contact)
 
 # Repository Contents
@@ -78,9 +76,9 @@ Below is a table showing each predictor by pillar, and the domain it was previou
 
 # File Descriptions
 
-The [final datasets](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10) for this project are read out into several file formats which are described below.
+The [all metrics combined datasets](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10) for this project are read out into several file formats which are described below.
 The main difference is the geographic level of the data (city vs county), the number of years included and whether subgroups (i.e. race/ethnicity) are included.
-The final data files are in the ["long" format](https://www.theanalysisfactor.com/wide-and-long-data/) as opposed to a "wide" format, meaning that in the files covering multiple years or subgroup each unique geography will account for more than one row.
+The all metrics combined files are in the ["long" format](https://www.theanalysisfactor.com/wide-and-long-data/) as opposed to a "wide" format, meaning that in the files covering multiple years or subgroup each unique geography will account for more than one row.
 The data are hosted publicly on the [Urban Institute data catalog](https://datacatalog.urban.org/).
 
 ## Recent Files
@@ -130,12 +128,12 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 # Project Organization
 
--   Each domain should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
+-   Each domain should have its own directory (e.g. 01_financial-well-being, 02_housing, etc.). The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
 -   The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 -   Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable.
--   **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub.
+-   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric data should be added to GitHub.
 -   If possible, download your data with code or pull your data from an API with code.
--   **Do not include any credentials in the repository.** Please reach out to [Aaron R. Williams](awilliams@urban.org) if this creates issues.
+-   **Do not include any credentials in the repository.** Please reach out to Aaron R. Williams if this creates issues.
 -   Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
 
 # GitHub 
@@ -143,7 +141,7 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 ## GitHub Standards 
 
 -   Do not work on the `main` branch.
--   **Only add final data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final file should be added to GitHub.
+-   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric files should be added to GitHub.
 -   Regularly pull from the remote `main` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
 -   [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) exist for each metric and work branches should always be tied to an issue.
 
@@ -160,8 +158,6 @@ After installing Git and setting up a GitHub account, follow these steps to get 
 5.  Submit `git checkout -b <"issue name">` but replace `"issue name"` with the issue you are working on. You should always be working on a branch that is not "main".
 
 After this, you should be able to edit files and then add them to Git with the process outlined in the guide above.
-
-Email [awilliams\@urban.org](mailto:awilliams@urban.org){.email} if you have questions about working with Mac or Linux.
 
 ## GitHub Workflow
 
@@ -192,7 +188,7 @@ These issues will be organized and tracked using [GitHub projects](https://githu
 
     -   git push origin [issue branch name] will push committed changes up to the GitHub branch.
 7.  To contribute to the `main` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does.
-8.  Aaron R. Williams will review and incorporate changes into the `main` branch. He may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
+8. All code will go through a code review process with an assigned reviewer. After a succesful review, the changes will be pulled into the `main` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
 
 # Data Standards
 
@@ -201,13 +197,14 @@ This section will walk through the standards around data starting with the raw d
 ### Starting or raw data practices
 
 -   Starting or raw data should be pulled using code or should be added to Box. Only final data files should be added GitHub repository.
--   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package] ( <https://developer.ipums.org/docs/v2/apiprogram/clients/>) is a great tool for pulling ACS micro data from the Census API using code.
+-   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS micro data from the Census API using code.
 -   When it is not possible to pull data in code, please download the data raw data files into Box so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
 -   Programs should have detailed commentary on where the data is being pulled from and any specifics around accessing it (where to go, what to select, etc.) regardless of whether it is downloaded in the code or on to Box.
 
 ## Joining variables
 
 -   The first three variables in every file should be `year`, `state`, and `county`/`place`. `year` should be a four digit numeric variable.
+
     -   `state` should be a two characters FIPS code.
 
     -   `county` should be a three character FIPS code.
@@ -220,13 +217,22 @@ This section will walk through the standards around data starting with the raw d
 
 #### Subgroups Specific Variables
 
-The final combined subgroup dataset will contain a subset of metrics in the original/years dataset because not all metrics will be extended for subgroup analysis.
-The only variables in the second database that will not be in the first database will be `subgroup_type` and `subgroup`.
+The all metrics combined subgroup datasets will contain a subset of metrics from the original/years dataset because not all metrics will be extended for subgroup analysis.
 
-`subgroup_type` will be the broader category that the descriptive variable the data is being broken out by falls into, for example `race ethnicity`, or `income`.
-. `subgroup` will be the name of the specific subgroup.
-These may differ some across metrics so we will need to converge on the appropriate names.
-The next section further addresses race/ethnicity.
+The only variables in the subgroup datasets that will not be in the aggregate datasets will be `subgroup_type` and `subgroup`.
+
+`subgroup_type` will be the broader category that the descriptive variable the data is being broken out by falls into, for example `race-ethnicity`
+
+`subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The table below shows the current list of subgroup types and subgroup values, if your metric has subgroup data the values should match the names in the table below.
+
+| subgroup category | subgroup_type (variable name) | subgroup | 
+|:--------:|:--------:|:--------:|
+| Race and ethnicity | race-ethnicity | All Black, Non-Hispanic <br/> Hispanic <br/> Other Races and Ethnicities <br/> White, Non-Hispanic | 
+| Race | race-ethnicity |  All <br/> Black <br/> Hispanic <br/> Other Races and Ethnicities <br/> White | 
+| Race share | race-share | All <br/> Majority Non-White <br/> Majority White, Non-Hispanic <br/> Mixed Race and Ethnicity| 
+| Income | income | All <br/> Low Income <br/> Not Low-Income | 
+
+**If you are an Urban employee and believe that the values of the subgroup do not align with the table above please reach out to the umf-mobilitymetrics3 slack channel for guidance.**
 
 ### Variable Names
 
@@ -235,14 +241,13 @@ In addition to the prescribed variable names (year, state, county, place, subgro
 In previous rounds of this work, we renamed variables for metrics when building the database so the names are consistent and descriptive.
 All names start with the following:
 
--   shares prefixed with `share_`: For example, the variable showing the share with debt in collections is titled share_debt_col
--   percentiles prefixed with `pctl_`: For example, the variable showing the 20th percentile of income is titled pctl_income_20
--   rates prefixed with `rate_`: For example, the variable showing the reported violent crimes per 100,000 people is titled rate_violent_crime
--   counts prefixed with `count_`: For example, the variable showing the number of public-schol children who are ever homeless during the school year is titled count_homeless
--   index prefixed with `index_` : For example, the variable showing the air quality index is titled index_air_quality
+-   shares prefixed with `share_`: For example, the variable showing the share with debt in collections is titled `share_debt_col`
+-   percentiles prefixed with `pctl_`: For example, the variable showing the 20th percentile of income is titled `pctl_income_20`
+-   rates prefixed with `rate_`: For example, the variable showing the reported violent crimes per 100,000 people is titled `rate_violent_crime`
+-   counts prefixed with `count_`: For example, the variable showing the number of public-schol children who are ever homeless during the school year is titled `count_homeless`
+-   index prefixed with `index_` : For example, the variable showing the air quality index is titled `index_air_quality`
 
-Moving forward, please use these standardized variable names in the program for each of your assigned metrics.
-\* Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
+Moving forward, please use these standardized variable names in the program for each of your assigned metrics. Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
 
 ### Values
 
@@ -262,7 +267,7 @@ Try to not combine groups such as "Other Races and Ethnicities" with "White, Non
 
 A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows.
 This database will be in a long format and contain the "all" group.
-For example, if there are four subgroups then there should be 3,142x4 + 3,142x1 = 15,710 observations per year.
+For example, if there are four subgroups then there should be 3,143x4 + 3,143x1 = 15,715 observations per year.
 This may seem foreign to some Stata and SAS programmers but it has several advantages.
 
 1.  It limits the challenges in standardization of naming conventions and the number of variables. For example, imagine adding four subgroups in a wide format. This would mean adding four variables, four lower bounds, four upper bounds, and four quality metrics. In addition to being unwieldy, it would result in burdensome variable names (e.g. \`share_debt_coll_nonhispanic_white_quality1).
@@ -284,7 +289,7 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 -   Describe how you determined the grades in your methodology description. For example, observations with more than 20% missing values received a score of `3`.
 
-### Standard Errors
+### Standard Errors and Confidence Intervals
 
 -   If possible, construct 95 percent confidence intervals for metrics.
 -   Add confidence bounds as columns in the `.csv` files. The variables should have the suffixes `_lb` for lower bound and `_ub` for upper bound.
@@ -292,15 +297,17 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 ### File Names
 
-1.  Files should have descriptive names about the metrics and only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
-    Do not use spaces.
+1.  Final metric files should have descriptive names related to the metric and must only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
+    Do not use spaces.It is up to you how to name the files for your metric but the file names need to be consistent (meaning you should refer to the metric in the file name the same way every time) and should be concise.
 
-    -   For example, any file name that refrences neonatal health should refer to the topic as "neonatal_health"
+    -   For example, the 2022 county metric file for the share of low-weight births metric, which fall under the Neonatal Health predictor, could be named "lwb_metric_2022_county.csv"
+  
 
-2.  Save data in subdirectories to keep the repository organized.
+2.  Save data in a folder titled "final" to keep the repository organized.
     When saving files, include the year, geography (county or place), and subgroup information in the file name unless the file is combined (e.g. the file contains multiple years).
 
-    -   For example, the file containing environment data should be titled "environment_county_all" but for 2018 data it should be "environment_county_2018"
+    -   For combined files, replace the year with "all". Continuing with the low-weight birth example, to be consistent with the name above the combined place level file  would be named "lwb_metric_all_place.csv" 
+    - For subgroup data, a combined county file with subgroup data would be titled "lwb_metric_all_subgroups_plce.csv"
 
 ### Final Metric Files
 
@@ -309,7 +316,8 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 # Code Standards
 
--   The [tidyverse style guide](https://style.tidyverse.org/) was written for R but contains lots of good language-agnostic suggestions for programming. ##Setting up and organizing scripts
+-   The [tidyverse style guide](https://style.tidyverse.org/) was written for R but contains lots of good language-agnostic suggestions for programming. 
+
 -   The top of each script should clearly label the purpose of the script. Here is an example Stata header:
 
 <!-- -->
@@ -328,10 +336,6 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
     /*************************/
 
 *Scripts should be clearly organized so others can follow them.*
-
-If a directory needs to be set, it should be set at the top of a script.
-If multiple directories are needed, you can use macros (e.g., "global" in Stata) to name them and reference them throughout.
-It should not be necessary to change multiple file pathways throughout a script to run it on a different computer.
 
 #### Commenting
 
@@ -414,7 +418,9 @@ The scope of the review will involve the following three levels:
 -   State if special computation was used when running the program (i.e. the Stata server or SAS server, anything off of a standard desktop).
 -   If scripts use many variable names, make sure to include a codebook so reviewers can follow along. Code books should include variable names along with definitions of the variable. For categorical variables, please include a list of the possible categories for the given variable.
 -   Clearly comment each step in the program with a focus on why the step is needed. Make sure to explain the logic behind the step so that a reviewer can judge whether the code effectively accomplishes this.
--   Use clear object (names of data frames or macro variables) and file names. For file names see the file naming convention above. \*All scripts should run all the way through without errors. This should be the case regardless of the user/computer.
+-   Use clear object (names of data frames or macro variables) and file names. For file names see the file naming convention above. 
+
+**All scripts should run all the way through without errors. This should be the case regardless of the user/computer.**
 
 ## Code Reviews in GitHub
 
@@ -479,7 +485,7 @@ When you are done, you can switch back to your branch with `git checkout branch-
 If you have un-commited changes, you will need to get rid of them with `git stash`.
 You shouldn't make substantive changes on some else's branch.
 
-# Creating the Final File
+# Creating the All Metrics Combined Files
 
 The code to create the final collective files that combine all metrics is in `10_construct-database/`
 
@@ -505,10 +511,6 @@ Use the following steps to update the website.
 4.  Add, commit, and push the files to GitHub.
 5.  Open a pull request to the branch that GitHub pages uses.
 
-# License 
-
-todo(aaron): find the appropriate license
-
 # Contact
 
-**For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.** For external users please contact [Aaron R. Williams](awilliams@urban.org) with questions.
+**For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.** For external users please contact Aaron R. Williams with questions.
