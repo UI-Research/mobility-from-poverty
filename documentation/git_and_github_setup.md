@@ -2,7 +2,7 @@
 
 This guide will walk through the steps to ensure that you have access to Git and Github. For those that are active users this will not apply to you.
 
-## Make sure you have installed Git 
+## Setting up a GitHub account and installing Git software 
 
 ### Returning Contributers 
 
@@ -21,7 +21,7 @@ After creating the github account ask, them to fill out the Urban GitHub [intake
 
 If you have not already installed the Git software, please complete the installation process from the following [website](https://git-scm.com/downloads). You will know it installed successfully if upon completion when you left click in any folder on your computer you see an option to “Open Git Bash here”. 
 
-## Configure Git and Github to account and email
+## Configuring Git and Github to your account and email
 
 Open git bash on your computers (does not matter where you do it we are just checking that Git is aligned with your Github account)
 
