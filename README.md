@@ -22,7 +22,7 @@ A little extra effort today can make a big difference in the future.
 For more motivation, please read the motivation for a style guide by [Michael Stepner](https://github.com/michaelstepner/healthinequality-code/tree/master/code#motivation).
 If that isn't enough, read the section on [technical debt](https://github.com/michaelstepner/healthinequality-code/blob/master/code/readme.md#technical-debt).
 
-If there are any ambiguities or unresolved questions, please contact Aaron R. Williams.
+This guide is a work-in-progress. If there are any ambiguities or unresolved questions, please contact Aaron R. Williams. 
 
 # Table of Contents
 

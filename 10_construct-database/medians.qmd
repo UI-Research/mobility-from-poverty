@@ -1,0 +1,117 @@
+---
+title: "Calculate Medians for Dashboard"
+author: "Aaron R. Williams"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load Packages
+
+```{r}
+#| label: load-packages
+
+options(scipen = 999)
+
+library(tidyverse)
+library(here)
+library(tidycensus)
+
+```
+
+## Load Data
+
+```{r}
+#| label: load-data
+metrics <- read_csv(here("data", "00_mobility-metrics_recent.csv")) |>
+  select(-ends_with("_quality"), -ends_with("_lb"), -ends_with("_ub"))
+
+```
+
+We load county-level population estimates from the 2020 decennial census.
+
+```{r}
+population <- get_decennial(
+  geography = "county", 
+  variables = "P1_001N", 
+  year = 2020
+) |>
+  mutate(
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  ) |>
+  select(state, county, population = value)
+
+metrics <- left_join(metrics, population, by = c("state", "county"))
+
+sum(is.na(metrics$population))
+
+```
+
+## Calculate Medians
+
+We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. 
+
+We exclude missing values and calculate the proportion of counties and proportion of population missing for each metric. 
+
+```{r}
+missing_share <- function(x, weight) {
+  
+  sum(as.numeric(is.na(x)) * weight) / sum(weight)
+  
+}
+
+```
+
+Calculate 
+
+* The population-weighted median
+* The proportion of counties that are missing
+* The proportion of people that are missing
+
+```{r}
+weighted_median <- metrics |>
+  select(where(is.numeric)) |>
+  summarize(
+    across(
+      .cols = everything(), 
+      .fns = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    )
+  ) |>
+  pivot_longer(cols = everything(), values_to = "weighted_median")
+
+missing_population <- metrics |>
+  select(where(is.numeric)) |>
+  summarize(
+    across(
+      .cols = everything(), 
+      .fns = ~missing_share(.x, weight = population)
+    )
+  ) |>
+  pivot_longer(cols = everything(), values_to = "missing_population")
+
+missing_county <- metrics |>
+  select(where(is.numeric)) |>
+  summarize(
+    across(
+      .cols = everything(), 
+      .fns = ~sum(is.na(.x)) / n()
+    )
+  ) |>
+  pivot_longer(cols = everything(), values_to = "missing_county")
+
+weighted_median |>
+  full_join(missing_population, by = "name") |>
+  full_join(missing_county, by = "name") |>
+  filter(name != "population") |>
+  print(n = Inf)
+
+```
+
