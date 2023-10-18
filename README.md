@@ -42,6 +42,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     -   [Variable Names](#variable-names)
     -   [Values](#values)
     -   [Sorting](#sorting)
+    -   [Crosswalks](#crosswalks)
     -   [Standard Errors and Confidence Intervals](#standard-errors-and-confidence-intervals)
     -   [Quality Flags](#quality-flags)
     -   [Data Dictionary](#data-dictionary)
@@ -100,7 +101,7 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 ## Multi-Year Files
 
 -   The multi-year county file contains one observation per county per year.
-    It contains missing values where metrics are unavailable, supressed, or have not been computed.
+    It contains missing values where metrics are unavailable, suppressed, or have not been computed.
     Prior to 2020 this file has 3,142 observations per year and 3,143 for the years 2020 to the most recent.
 
     | year | state | county | state_name |   county_name    | Var1... |
@@ -209,7 +210,7 @@ This section will walk through the standards around data starting with the raw d
 
 -   Starting or raw data should be pulled using code or should be added to Box. Only final data files should be added GitHub repository.
 -   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS micro data from the Census API using code.
--   When it is not possible to pull data in code, please download the data raw data files into this [Box folder](https://urbanorg.box.com/s/oukcxeui2scth07aseir53xpajnqwm1x) so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
+-   When it is not possible to pull data in code, please download the data raw data files into this [Box folder](https://urbanorg.app.box.com/folder/223119131501?s=8piiqr6vs0se0m4zqhxhu6hei4wh2w9q) so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
 -   Programs should have detailed commentary on where the data is being pulled from and any specifics around accessing it (where to go, what to select, etc.) regardless of whether it is downloaded in the code or on to Box.
 
 ## Joining variables
@@ -274,6 +275,11 @@ Try to not combine groups such as "Other Races and Ethnicities" with "White, Non
 -   All files should be sorted by `year`, `state`, and `county`/`place`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block).
 -   Subgroup files should be sorted by `year`, `state`, `county`/`place`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that "Black, Non-Hispanic" appears first and "White, Non-Hispanic" appears last.
 
+### Crosswalks
+
+- The project repository contains crosswalk files for matching geographies between years and from data that is available at different levels then county and place. If your code performs a crosswalk it should be using the files provided in this folder.
+- Crosswalk joins should join the metric data onto the crosswalk (for example, with a `leftjoin` in R you should have the crosswalk be the X variable). This ensures that the geographies included in the data are consistent across metrics (it is okay if your metric data is missing certain geographies). 
+
 ### Subgroups File Structure
 
 A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows.
@@ -326,7 +332,7 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 -   Do not open and save any `.csv` files in Microsoft Excel. Excel defaults lead to analytic errors.
 -   Final metric files should have a row for all geographies that are included in the all files combined data set 
        -   For county files with 2020 data and onward this will be 3,143 observations.
-       -   For place files this will be 386 observations.
+       -   For place files this will be 486 observations.
 
 # Code Standards
 
