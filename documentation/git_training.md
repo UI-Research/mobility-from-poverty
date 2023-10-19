@@ -192,7 +192,9 @@ Before running the git push command, your code and commits could only be accesse
 
 *Switching between branches*
 
-If you are working on multiple issues you will likely want to be able to switch between branches. The easiest way to switch between branches without losing work is to `git commit` the changes you made prior to switching branches. If you try to change branches with untracked changes that are not commited generally Git will stop you.
+If you are working on multiple issues you will likely want to be able to switch between branches. The easiest way to switch between branches without losing work is to `git commit` the changes you made prior to switching branches. If you try to change branches with untracked changes that are not committed generally Git will stop you.
+
+
 
 *Oops! I forgot to switch branches and did a lot of work!*
 

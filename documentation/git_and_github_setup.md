@@ -15,11 +15,11 @@ If you still have the mobility-from-poverty repository cloned to your local comp
  
 ### New Contributors
 
-If you have not so already, please create a [GitHub](https://github.com/) account.  
+If you have not done so already, please create a [GitHub](https://github.com/) account.  
 
-After creating the github account ask, them to fill out the Urban GitHub [intake form](https://app.smartsheet.com/b/form/9f0c5ba330dd4b73980fe5a6e17216b5) requesting access to UI Research. After recieving access you should be able to access the [mobility-from-poverty](https://github.com/UI-Research/mobility-from-poverty) project repository page. 
+After creating the github account, fill out the Urban GitHub [intake form](https://app.smartsheet.com/b/form/9f0c5ba330dd4b73980fe5a6e17216b5) requesting access to UI Research. Once given access to the Urban GitHub you should be able to access the [mobility-from-poverty](https://github.com/UI-Research/mobility-from-poverty) project repository page. 
 
-If you have not already installed the Git software, please complete the installation process from the following [website](https://git-scm.com/downloads). You will know it installed successfully if upon completion when you left click in any folder on your computer you see an option to “Open Git Bash here”. 
+If you have not already installed the Git software, please complete the installation process from the following [website](https://git-scm.com/downloads). This may require assistance from the Helpdesk, though on most new computers it should already be installed. You will know it installed successfully if upon completion when you left click in any folder on your computer you see an option to “Open Git Bash here”. 
 
 ## Configuring Git and Github to your account and email
 
