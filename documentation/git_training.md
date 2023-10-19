@@ -194,7 +194,38 @@ Before running the git push command, your code and commits could only be accesse
 
 If you are working on multiple issues you will likely want to be able to switch between branches. The easiest way to switch between branches without losing work is to `git commit` the changes you made prior to switching branches. If you try to change branches with untracked changes that are not committed generally Git will stop you.
 
+Say you have done some work on original_branch. You can check to see what changes have been made.
 
+```{bash}
+git status
+```
+The changes you have made will be in green.Add all untracked documents to prepare for commit. 
+
+```{bash}
+git add -u
+```
+Now that these are added when we check git status again the changed files should be green.
+
+```{bash}
+git status
+```
+Now commit the changes with a message saying what has changed.
+
+```{bash}
+git commit -m <"commit message here">
+```
+
+Now you are good to switch to the other branch you want to work on.
+
+```{bash}
+git checkout other_branch
+```
+
+When you return to the original the changes you made will be available. 
+
+```{bash}
+git checkout branch_original
+```
 
 *Oops! I forgot to switch branches and did a lot of work!*
 
