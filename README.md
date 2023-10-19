@@ -36,11 +36,13 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     -   [GitHub Standards](#github-standards)
     -   [Github Basic](#github-basics)
     -   [GitHub Workflow](#github-workflow)
+    -   [Working with issues](#working-with-issues)
 -   [Data Standards](#data-standards)
     -   [Joining Variables](#joining-variables)
     -   [Variable Names](#variable-names)
     -   [Values](#values)
     -   [Sorting](#sorting)
+    -   [Crosswalks](#crosswalks)
     -   [Standard Errors and Confidence Intervals](#standard-errors-and-confidence-intervals)
     -   [Quality Flags](#quality-flags)
     -   [Data Dictionary](#data-dictionary)
@@ -99,7 +101,7 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 ## Multi-Year Files
 
 -   The multi-year county file contains one observation per county per year.
-    It contains missing values where metrics are unavailable, supressed, or have not been computed.
+    It contains missing values where metrics are unavailable, suppressed, or have not been computed.
     Prior to 2020 this file has 3,142 observations per year and 3,143 for the years 2020 to the most recent.
 
     | year | state | county | state_name |   county_name    | Var1... |
@@ -140,9 +142,9 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 ## GitHub Standards 
 
--   Do not work on the `main` branch.
+-   Do not work on the `main` branch. This project uses a staging branch called `version2024` that all updates should work through as if it were the main branch. All updates should be pushed to this branch.
 -   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric files should be added to GitHub.
--   Regularly pull from the remote `main` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
+-   Regularly pull from the remote `version2024` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
 -   [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) exist for each metric and work branches should always be tied to an issue.
 
 ## GitHub Basics
@@ -155,7 +157,9 @@ After installing Git and setting up a GitHub account, follow these steps to get 
 2.  Submit `git clone https://github.com/UI-Research/mobility-from-poverty.git`. You will need to enter your user email and password. Everything will then copy to your computer.
 3.  Close Git Bash.
 4.  Enter the `gates-mobility-metrics` folder, right click, and select "Git Bash Here".
-5.  Submit `git checkout -b <"issue name">` but replace `"issue name"` with the issue you are working on. You should always be working on a branch that is not "main".
+5.  Submit `git checkout -b version2024` to get to the staging branch. 
+6.  This project uses an issue based branching system. When you start working on an issue you will create a branch for it using `git checkout -b <"issue name">` but replace `"issue name"` with the issue you are working on. 
+7. For issues that already have branches created you can switch to them using the command `git checkout <"issue name">`
 
 After this, you should be able to edit files and then add them to Git with the process outlined in the guide above.
 
@@ -169,26 +173,34 @@ These issues will be organized and tracked using [GitHub projects](https://githu
 
 1.  Set up Git
 2.  Clone the repository
-3.  From the mobility-from-poverty folder you have cloned to your local computer, make sure you are on the `main` branch - `mobility-from-poverty` - and ensure it is up to date with GitHub:
-    -   `git checkout main` o `git pull origin main`
+3.  From the mobility-from-poverty folder you have cloned to your local computer, make sure you are on the `version2024` branch - `mobility-from-poverty` - and ensure it is up to date with GitHub:
+    -   `git checkout version2024` o `git pull origin version2024`
 4.  Check out a branch with the same name as the issue connected to that metric
     -   `git checkout -b <"issue name">`
-5.  . Additional branching is allowed but merge all changes into the branch tied to the issue.
+5.  Additional branching is allowed but merge all changes into the branch tied to the issue.
 6.  Add your changes to the code.
     -   The command `git status` shows which files have changed.
 
-    -   `git diff [filename]` will highlight which lines have been modified.
+    -   `git diff <"filename">` will highlight which lines have been modified.
 
     -   Use the arrow keys to scroll, and press `q` if you need to exit the prompt.
 
     -   `git add [filename]` will stage files to commit (`git add -u` will add all modified files).
 
-    -   `git commit -m "[your message here]"` will commit changes to version control.
+    -   `git commit -m <"your message here">` will commit changes to version control.
         Commit messages should be clear and meaningful.
 
-    -   git push origin [issue branch name] will push committed changes up to the GitHub branch.
+    -   `git push origin <"issue branch name">` will push committed changes up to the GitHub for review.
 7.  To contribute to the `main` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does.
-8. All code will go through a code review process with an assigned reviewer. After a succesful review, the changes will be pulled into the `main` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
+8. All code will go through a code review process with an assigned reviewer. After a succesful review, the changes will be pulled into the `version2024` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
+
+## Working with issues
+
+Issues exist for each metric update that needs to be completed. Metric leads will be assigned to their issues using GitHub (assignments will be linked to GitHub accounts).
+
+Note that issues will include notes on what needs to be completed outside of updating to the latest data. There are two types of recurring notes that appear on most issues:
+- Renaming: There will be specific requests for renaming variables that will include the new variable names.
+- Adding subgroups: There will be requests that read like "Add race or sex". These refer to adding these subgroups to the final metric data.
 
 # Data Standards
 
@@ -198,7 +210,7 @@ This section will walk through the standards around data starting with the raw d
 
 -   Starting or raw data should be pulled using code or should be added to Box. Only final data files should be added GitHub repository.
 -   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS micro data from the Census API using code.
--   When it is not possible to pull data in code, please download the data raw data files into Box so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
+-   When it is not possible to pull data in code, please download the data raw data files into this [Box folder](https://urbanorg.app.box.com/folder/223119131501?s=8piiqr6vs0se0m4zqhxhu6hei4wh2w9q) so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
 -   Programs should have detailed commentary on where the data is being pulled from and any specifics around accessing it (where to go, what to select, etc.) regardless of whether it is downloaded in the code or on to Box.
 
 ## Joining variables
@@ -263,6 +275,11 @@ Try to not combine groups such as "Other Races and Ethnicities" with "White, Non
 -   All files should be sorted by `year`, `state`, and `county`/`place`, the first three variables in every file. Files at different geographic levels should be sorted by `year` and then in order by largest geographic level (i.e. state) to smallest geographic level (i.e. Census block).
 -   Subgroup files should be sorted by `year`, `state`, `county`/`place`, `subgroup_type`, and `subgroup`. All sorting should be alphanumeric. Importantly, the race/ethnicity groups should be sorted alphabetically so that "Black, Non-Hispanic" appears first and "White, Non-Hispanic" appears last.
 
+### Crosswalks
+
+- The project repository contains crosswalk files for matching geographies between years and from data that is available at different levels then county and place. If your code performs a crosswalk it should be using the files provided in this folder.
+- Crosswalk joins should join the metric data onto the crosswalk (for example, with a `leftjoin` in R you should have the crosswalk be the X variable). This ensures that the geographies included in the data are consistent across metrics (it is okay if your metric data is missing certain geographies). 
+
 ### Subgroups File Structure
 
 A new database with one observation per subgroup per county per year, so that metric values for subgroups are rows.
@@ -313,6 +330,9 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 -   All final files should be in the `.csv` format. The files should be delimited with a comma.
 -   Do not open and save any `.csv` files in Microsoft Excel. Excel defaults lead to analytic errors.
+-   Final metric files should have a row for all geographies that are included in the all files combined data set 
+       -   For county files with 2020 data and onward this will be 3,143 observations.
+       -   For place files this will be 486 observations.
 
 # Code Standards
 
@@ -430,9 +450,9 @@ Our code review process will be handled through GitHub, which has powerful tools
 ### 1. Request
 
 In our workflow, every analyst will push their code to the repository on its own branch named after the issue created for that task.
-The process of reconciling these different branches into one branch called `main` is handled through pull requests.
+The process of reconciling these different branches into one branch called `version2024` is handled through pull requests.
 
-For example, I will put in a pull request from `"issexample"` to `main`.
+For example, I will put in a pull request from `"issexample"` to `version2024`.
 At this point, a reviewer will be requested in the pull request.
 Aaron and Claudia will flag the reviewers.
 
@@ -440,9 +460,9 @@ Aaron and Claudia will flag the reviewers.
 
 ### 2. Review
 
-The code will not be merged to `main` until the reviewer(s) approve the pull request.
+The code will not be merged to `version2024` until the reviewer(s) approve the pull request.
 
-GitHub will generate a line-by-line comparison of every line that is added or removed from `"issexample"` to `main`.
+GitHub will generate a line-by-line comparison of every line that is added or removed from `"issexample"` to `version2024`.
 
 <img src="images/line-by-line.png" width="800" height="300"/>
 
@@ -469,9 +489,10 @@ You need to "fetch" the `"issexample2"` branch on to your local computer to run 
 Steps:
 
 1.  Open up Git Bash in the directory by right clicking in the `mobility-from-poverty` directory and and selecting Git Bash Here (on Windows).
-2.  Submit `git status` and ensure that you don't have any tracked changes that have not been commited.
-3.  Use `git branch` to see your current branch and other available branches. You should at least see `main`.
-4.  Submit `git fetch` to getch remote branches.
+3.  Make sure you are on the `version2024` branch `git checkout version2024`
+2.  Submit `git status` and ensure that you don't have any tracked changes that have not been committed.
+3.  Use `git branch` to see your current branch and other available branches. You should at least see `version2024` and `main`.
+4.  Submit `git fetch` to get remote branches.
 5.  Submit `git checkout --track origin/issexample2` to switch to the `issexample2` branch. Submit `git branch` to confirm the change.
 
 At this point, you should be able to run and review the code.
@@ -484,6 +505,8 @@ If you request changes, you will need to `git pull issexample2` after the analys
 When you are done, you can switch back to your branch with `git checkout branch-name` where `branch-name` is the name of the branch you wish to switch to.
 If you have un-commited changes, you will need to get rid of them with `git stash`.
 You shouldn't make substantive changes on some else's branch.
+
+*After all metrics have updated on `version2024`, reviewed and approved will the changes be merged with the `main` repository.*
 
 # Creating the All Metrics Combined Files
 
