@@ -27,7 +27,7 @@ We will now take some steps to ensure everyone has access to Git and Github. For
 
 ### Check Configuration of Git and Github to account and email
 
-To start, left click in any folder on your computer and select "Open Git Bash here". You should see the Git command prompt pop up. 
+To start, left click in any folder on your computer and select "Open Git Bash here". You should see the Git command prompt pop up.
 
 Now check if your account is properly configured with the following commands. First we can check if the correct email is synced with git bash.
 
@@ -101,12 +101,9 @@ git checkout -b branch_name
 #Existing branch
 git checkout branch_name
 ```
-For this round of updates we will be pushing primarily to the `version2024` branch which will be utilized as a staging space for the official main branch. To ensure you are working through this branch we will checkout to it before starting any work.
 
-```{bash}
-#Create the branch version2024 on your local repository 
-git checkout -b version2024
-```
+For this round of updates we will be creating pull requests primarily on the `version2024` branch which will be utilized as a staging space for the official main branch. We will provide an example in the practice section of how to create your pull request on `version2024` instead of the default `main`.
+
 *Git issues as branches*
 
 Git issues is a feature of GitHub that allows you to track different tasks and changes. Below is an example of an issue from the mobility from poverty repository. There are currently [issues](https://github.com/UI-Research/mobility-from-poverty/issues) created for each metric update/change that need to be completed in the 2023-24 update.
@@ -120,8 +117,7 @@ For the workflow of this update cycle we will be using issues as branches. So wh
 git checkout -b iss222
 ```
 
-Note we checked out to this branch from the `version2024` branch - now when we push and commit our changes it will go to the `version2024` and not `main` branch.
-One of the benefits of issues is that it helps keep the workflow organized, linking code changes with their original goal.
+One of the main benefits of working through issues is that it helps keep the workflow organized, linking code changes with their original goal.
 
 *Finding your current branch*
 
@@ -186,9 +182,17 @@ We have now committed the changes and it's time to send them to the version2024 
 git push origin iss228
 ```
 
-You will always follow up git push with "origin" and then the name of the branch you are working on ( in this case iss228).
+You will always follow up git push with "origin" and then the name of the branch you are working on (in this case iss228).
 
 Before running the git push command, your code and commits could only be accessed on your local computer. After pushing the code, it will appear on the main repo as a pull request that needs to be reviewed.
+
+#### Creating a pull request
+
+Once you push your changes they will show up on GitHub as a new pull request under the branch you are working from. By default if you create a new pull request GitHub will assume you want to merge to `main`.
+
+In order to create your pull request under `version2024` select this branch as the base under the drop-down list.
+
+![](images/image-1988299247.png)
 
 *Switching between branches*
 
@@ -201,28 +205,32 @@ Say you have been working on a hypothetical branch original_branch. You can chec
 ```{bash}
 git status
 ```
-The changes you have made will be in green. Add all untracked documents to prepare for commit. 
+
+The changes you have made will be in green. Add all untracked documents to prepare for commit.
 
 ```{bash}
 git add -u
 ```
+
 Now that these are added when we check git status again the changed files should be green.
 
 ```{bash}
 git status
 ```
+
 Now commit the changes with a message saying what has changed.
 
 ```{bash}
 git commit -m <"commit message here">
 ```
+
 Now you will be able to switch to the other branch you want to work on.
 
 ```{bash}
 git checkout other_branch
 ```
 
-When you return to the original branch, the changes you made will be available and you can continue working. 
+When you return to the original branch, the changes you made will be available and you can continue working.
 
 ```{bash}
 git checkout branch_original
@@ -260,7 +268,7 @@ git stash apply stash^{/<stashName>}
 
 These will return the work you had done previously to the branch. However, note these changes will not be available to other project users or on Git Hub which requires pushing.
 
-After you have successfully completed your stash apply you can delete the stashed information. 
+After you have successfully completed your stash apply you can delete the stashed information.
 
 ```{bash}
 #Retrive unnamed stash
