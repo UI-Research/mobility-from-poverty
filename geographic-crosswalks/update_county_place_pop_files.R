@@ -28,12 +28,12 @@ county_pops <- read_csv("Census_PEP_county.csv")
 
 # rename columns
 county_pops <- county_pops %>% 
-  rename("2021" = "POPESTIMATE2021",
-         "2022" = "POPESTIMATE2022",
-         "state" = "STATE",
-         "county" = "COUNTY",
-         "state_name" = "STNAME",
-         "county_name" = "CTYNAME")
+  rename('2021' = POPESTIMATE2021,
+         '2022' = POPESTIMATE2022,
+         state = STATE,
+         county = COUNTY,
+         state_name = STNAME,
+         county_name = CTYNAME)
 
 # remove unnecessary data before reshaping
 county_pops <- county_pops %>%
@@ -81,12 +81,12 @@ place_pops <- read_csv("Census_PEP_city.csv")
 
 # rename columns
 place_pops <- place_pops %>% 
-  rename("2021" = "POPESTIMATE2021",
-         "2022" = "POPESTIMATE2022",
-         "state" = "STATE",
-         "place" = "PLACE",
-         "state_name" = "STNAME",
-         "place_name" = "NAME")
+  rename('2021' = POPESTIMATE2021,
+         '2022' = POPESTIMATE2022,
+         state = STATE,
+         place = PLACE,
+         state_name = STNAME,
+         place_name = NAME)
 
 # remove unnecessary data before reshaping
 place_pops <- place_pops %>%
