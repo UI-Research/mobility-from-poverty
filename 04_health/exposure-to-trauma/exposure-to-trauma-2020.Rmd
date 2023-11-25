@@ -1,0 +1,439 @@
+---
+title: "Exposure to Trauma"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+This metric is a county-level estimate of exposure to trauma, defined as the number of deaths due to injury per 100,000 population.
+
+For the 2022 Mobility Metrics, we pulled this data from the 2022 County Health Rankings, which uses 2016-2020 data from the National Center for Health Statistics - Mortality Files.
+https://wonder.cdc.gov/controller/saved/D76/D362F794. See the [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/measures-data-sources/county-health-rankings-model/health-factors/social-and-economic-factors/community-safety/injury-deaths) for more information.
+
+For the 2023 Mobility Metrics, we want to use the original source data which is the National Center for Health Statistics - Mortality Files. The 2023 County Health Rankings requested the Mortality-All County (micro-data) file from the National Center for Health Statistics, which we do not want to do because it is not public and makes this metric less reproducible. 
+
+Instead, we can pull a less complete version of the mortality data from CDC WONDER. There are two options for these mortality data on CDC WONDER:
+1. 2018-2021: Underlying Cause of Death by Single-Race Categories
+2. 1999-2020: Underlying Cause of Death by Bridged-Race Categories
+
+We already have pooled data from 2016-2020 for the 2022 Metric via County Health Rankings, so to get an additional year of data we will have to use the Single-Race Categories version. To create the extract, select the following options. This extract is saved [here](https://wonder.cdc.gov/controller/saved/D158/D366F044).
+1. Organize table layout:
+  + Group Results By: County
+  + Measures: 95% Confidence Interval, Standard Error
+      * NOTE: Age Adjusted Rates are not available when county level locations, including urbanization categories and US-Mexico Border areas, are selected in section 2, or if County, US-Mexico Border areas, or Urbanization appears in Group Results By list in section 1. Therefore, we cannot select the Age Adjusted Rates checkbox.
+2. Select location:
+  + States
+  + States: *All* (The United States)
+  + 2013 Urbanization: All Categories
+3. Select demographics:
+  + Ten-Year Age Groups: All Ages
+  + Gender: All Genders
+  + Hispanic Origin: All Origins
+  + Single Race 6: All Races
+4. Select year and month:
+  + Year/Month: 2018, 2019, 2020. 2021
+5. Select weekday, autopsy and place of death:
+  + Weekday: All Weekdays
+  + Autopsy: All Values
+  + Place of Death: All Places
+6. Select cause of death:
+  + ICD-10 Codes
+  + ICD-10 Codes:
+    *U01 (Terrorism - Assault (homicide) )
+    *U02 (Sequelae of terrorism)
+    *U03 (Terrorism Intentional (Suicide))
+    V01-V99 (Transport accidents)
+    W00-X59 (Other external causes of accidental injury)
+    X60-X84 (Intentional self-harm)
+    X85-Y09 (Assault)
+    Y10-Y34 (Event of undetermined intent)
+    Y35-Y36 (Legal intervention and operations of war)
+    Y85 (Sequelae of transport accidents)
+    Y86 (Sequelae of other accidents)
+    Y87 (Sequelae of intentional self-harm, assault and events of undetermined intent)
+    Y89 (Sequelae of other external causes)
+7. Other options:
+  + Show Totals
+  + Show Zero Values
+  + Show Suppressed Values
+  + Precision: 1 decimal places
+  + Data Access Timeout: 10 minutes
+
+Once the extract is created, select "Export" to generate a .txt file to read into R.
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+# library(urbnthemes)
+library(tidyverse)
+library(readxl)
+library(writexl)
+
+library(rvest)
+library(glue)
+library(fs)
+# library(reactable)
+
+# set_urbn_defaults(style = "print")
+
+```
+
+*U01 (Terrorism - Assault (homicide) )
+*U02 (Sequelae of terrorism)
+*U03 (Terrorism Intentional (Suicide))
+V01-V99 (Transport accidents)
+W00-X59 (Other external causes of accidental injury)
+X60-X84 (Intentional self-harm)
+X85-Y09 (Assault)
+Y10-Y34 (Event of undetermined intent)
+Y35-Y36 (Legal intervention and operations of war)
+Y85 (Sequelae of transport accidents)
+Y86 (Sequelae of other accidents)
+Y87 (Sequelae of intentional self-harm, assault and events of undetermined intent)
+Y89 (Sequelae of other external causes)
+
+
+```{r}
+# Underlying Cause of Death. 2016-2020, by Bridged-Race Categories
+cdc2020 <- read.delim(
+  file = here::here("04_health", "exposure-to-trauma", "cdc2020.txt")
+) %>%
+  select(
+    county_name = County,
+    county_fips = County.Code,
+    deaths = Deaths,
+    population = Population,
+    crude_rate = Crude.Rate,
+    crude_rate_lb = Crude.Rate.Lower.95..Confidence.Interval,
+    crude_rate_ub = Crude.Rate.Upper.95..Confidence.Interval,
+    crude_rate_se = Crude.Rate.Standard.Error,
+    adj_rate = Age.Adjusted.Rate,
+    adj_rate_lb = Age.Adjusted.Rate.Lower.95..Confidence.Interval,
+    adj_rate_ub = Age.Adjusted.Rate.Upper.95..Confidence.Interval,
+    adj_rate_se = Age.Adjusted.Rate.Standard.Error
+  )
+
+# Underlying Cause of Death, 2018-2021, by Single-Race Categories
+cdc2021 <- read.delim(
+  file = here::here("04_health", "exposure-to-trauma", "cdc2021_single_race.txt")
+) %>%
+  select(
+    county_name = County,
+    county_fips = County.Code,
+    deaths = Deaths,
+    population = Population,
+    crude_rate = Crude.Rate,
+    crude_rate_lb = Crude.Rate.Lower.95..Confidence.Interval,
+    crude_rate_ub = Crude.Rate.Upper.95..Confidence.Interval,
+    crude_rate_se = Crude.Rate.Standard.Error
+  )
+
+# There are a bunch of empty rows for some reason, and also a total row
+cdc2021 <- cdc2021 %>%
+  filter(!is.na(county_fips))
+
+```
+
+```{r}
+chr_counties <- readxl::read_excel(
+  path = here::here("04_health", "exposure-to-trauma", "chr2023.xlsx"),
+  range = "Ranked Measure Data!A2:C3195"
+) %>%
+  mutate(
+    ID = row_number()
+  )
+
+chr_data <- readxl::read_excel(
+  path = here::here("04_health", "exposure-to-trauma", "chr2023.xlsx"),
+  range = "Ranked Measure Data!GD2:GW3195"
+) %>%
+  mutate(
+    ID = row_number()
+  )
+
+joined_data <- left_join(
+  x = chr_counties, y = chr_data, by = "ID"
+) %>%
+  filter(!is.na(County)) %>%
+  select(
+    county_fips ="FIPS",
+    state_name = "State",
+    county_name = "County",
+    number_injury_deaths = "# Injury Deaths",
+    death_rate = "Injury Death Rate",
+    death_rate_lb = "95% CI - Low",
+    death_rate_ub = "95% CI - High"
+    # "Quartile",
+    # "Injury Death Rate (AIAN)",
+    # "Injury Death Rate (AIAN) 95% CI - Low",
+    # "Injury Death Rate (AIAN) 95% CI - High",
+    # "Injury Death Rate (Asian)",
+    # "Injury Death Rate (Asian) 95% CI - Low",
+    # "Injury Death Rate (Asian) 95% CI - High",
+    # "Injury Death Rate (Black)",
+    # "Injury Death Rate (Black) 95% CI - Low",
+    # "Injury Death Rate (Black) 95% CI - High",
+    # "Injury Death Rate (Hispanic)",
+    # "Injury Death Rate (Hispanic) 95% CI - Low",
+    # "Injury Death Rate (Hispanic) 95% CI - High",
+    # "Injury Death Rate (White)",
+    # "Injury Death Rate (White) 95% CI - Low",
+    # "Injury Death Rate (White) 95% CI - High"
+  ) %>%
+  mutate(county_fips = as.numeric(county_fips))
+```
+
+There are several instances where the CDC WONDER value is suppressed, but the CHR value is not. I suspect this is because the CHR data for 2023 used the Mortality-All County (micro-data) file. One way to check this would be to use a previous year from CHR.
+```{r}
+joined_data <- left_join(x = cdc2020, y = joined_data, by = "county_fips")
+
+test <- joined_data %>%
+  mutate(death_rate = round(death_rate, 1)) %>%
+  select(county_fips, crude_rate, death_rate) %>%
+  mutate(diff = as.numeric(crude_rate) - death_rate)
+
+```
+
+
+
+```{r, message = FALSE}
+# 141 counties have suppressed values
+cdc2021 %>%
+  filter(crude_rate == "Suppressed") %>%
+  count()
+
+
+```
+
+
+
+## 1. Prepare for file download
+
+```{r}
+states <- c(state.name, "district_of_columbia") %>%
+  str_replace(" ", "_") %>%
+  str_to_lower()
+
+urls <- paste0(
+  "https://www.countyhealthrankings.org/sites/default/files/media/document/",
+  "2023_county_health_rankings_", 
+  states, 
+  "_data_-_v1.xlsx"
+)
+
+out_files <- paste0(states, ".xlsx")
+
+```
+
+## 2. Download files
+
+Download all 51 Excel files from each state's URL
+
+```{r}
+# create a data folder for intermediate data files
+intermediate_files <- here::here("04_health",
+                                 "exposure-to-trauma",
+                                 "data/")
+
+if (!dir.exists(intermediate_files)) {
+  
+  dir.create(intermediate_files)
+  
+}
+
+# chr_data <- here::here("04_health",
+#                        "exposure-to-trauma",
+#                        "data",
+#                        out_files
+# )
+
+download_data <- function(state_data_url, state_name){
+  if (!file.exists(here::here(glue("04_health/exposure-to-trauma/data/{state_name}.xlsx")))) {
+    
+    download.file(state_data_url, 
+                  destfile = here::here(glue("04_health/exposure-to-trauma/data/{state_name}.xlsx")))
+    
+  }
+}
+
+walk2(.x = urls, .y = states, .f = download_data)
+
+```
+
+## 3. Read in, clean, and append each Excel sheet
+
+```{r, message = FALSE}
+read_data <- function(file) {
+  
+  # load the file
+  temp <- read_excel(
+    file, 
+    sheet = "Ranked Measure Data", 
+    skip = 1
+  )
+
+  # find the columns that neighbor our variable of interest
+  # note: this will change if the data change
+  columns <- -1:2 + which(names(temp) == "Injury Death Rate")
+
+  pop_col <- which(str_detect(names(temp), "Population"))
+  
+  # clean the data
+  temp %>%
+    select(
+      fips = "FIPS",
+      population = pop_col,
+      number_injury_deaths = columns[1],
+      injury_death_rate = columns[2],
+      injury_death_rate_lb = columns[3],
+      injury_death_rate_ub = columns[4]
+    ) %>%
+    filter(!str_detect(fips, '000$')) %>%
+    mutate(
+      state = str_sub(fips, 1, 2),
+      county = str_sub(fips, 3, 5),
+      injury_death_rate = round(injury_death_rate, 2)
+    )
+
+}
+
+files <- list.files(here::here("04_health", "exposure-to-trauma", "data"), full.names = TRUE)
+
+injury_deaths <- map_df(.x = files, .f = read_data)
+
+```
+
+105 counties are missing an injury death rate value
+
+```{r, message = FALSE}
+injury_deaths %>%
+  summarize(
+    missing = sum(is.na(injury_death_rate))
+  )
+
+```
+
+The table shows the injury death rates in each county. Click on the variable columns to sort the table. 
+
+```{r table, echo = FALSE}
+injury_deaths %>%
+  select(
+    fips,
+    injury_death_rate
+  ) %>%
+  reactable(
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 10,
+    highlight = TRUE
+  )
+
+```
+
+### Validation
+
+```{r}
+injury_deaths %>%
+  mutate(size = if_else(population1 < 200000, "1. small population", "2. big population")) %>%
+  ggplot(aes(population1, injury_death_rate)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size, scales = "free_x") +
+  labs(title = "High Injury Death Rates are Concentrated in Smaller Counties") +
+  scatter_grid()
+
+```
+
+```{r}
+injury_deaths %>%
+  ggplot(aes(number_injury_deaths, injury_death_rate)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Injury Death Rates are Concentrated in Counties with Few Injury Deaths") +  
+  scatter_grid()
+
+```
+
+## 4. Add data quality flags
+
+```{r}
+injury_deaths <- injury_deaths %>%
+  mutate(se = (injury_death_rate_ub - injury_death_rate) / 1.96,
+         cv = se / injury_death_rate,
+         injury_deaths_quality = case_when(
+           cv < 0.2 ~ 1,
+           cv < 0.4 ~ 2,
+           cv >= 0.4 ~ 3
+         )
+  )
+
+```
+
+Most estimates have small coefficients of variation and are therefore of high quality.
+
+```{r}
+injury_deaths %>%
+  ggplot(aes(x = injury_deaths_quality)) +
+  geom_bar()
+  
+```
+
+Most estimates have small standard errors.
+
+```{r}
+injury_deaths %>%
+  ggplot(aes(injury_death_rate, se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Most Estimates Have Small SEs",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+```
+
+## 5. Save the data
+
+```{r}
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  tidylog::filter(year == 2020) %>%
+  select(-year)
+
+all_counties <- left_join(all_counties, injury_deaths, by = c("state", "county"))
+
+test <- anti_join(all_counties, injury_deaths, by = c("state", "county"))
+
+all_counties <- all_counties %>%
+  mutate(year = 2019) %>%
+  select(year,
+         state,
+         county,
+         injury_death_rate,
+         injury_death_rate_lb,
+         injury_death_rate_ub,
+         injury_deaths_quality)
+
+all_counties %>%
+  arrange(year, state, county) %>%
+  write_csv(here::here("04_health",
+                       "exposure-to-trauma",
+                       "exposure-to-trauma-2019.csv"))
+
+```
+
