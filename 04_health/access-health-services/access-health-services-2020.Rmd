@@ -10,7 +10,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ```{r setup}
-library(urbnthemes)
+# library(urbnthemes)
 library(tidyverse)
 library(haven)
 library(rvest)
@@ -18,11 +18,18 @@ library(glue)
 library(fs)
 library(tidycensus)
 
-set_urbn_defaults(style = "print")
+# set_urbn_defaults(style = "print")
 
 options(scipen = 999)
 
 ```
+
+For the 2022 Mobility Metrics, we used data from [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2022). 
+
+For the 2023 Mobility Metrics, we want to use the underlying source data used by CHR, which is the [Area Health Resource File, 2021-2022 County Level Data](https://data.hrsa.gov/data/download?data=AHRF#AHRF). The Area Health Resource File is a collection of data from more than 50 sources, including the American Medical Association, which maintains the Physician Masterfile. The Physician Masterfile contains information on nearly all the Doctors of Medicine and Doctors of Osteopathic Medicine in the nation.
+
+The right side of the ratio is the number of primary care physicians in a county. Primary care physicians include practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics. It does not include nurse practitioners, physician assistants, or other practitioners available for primary care services.
+
 
 ## 1. Download data
 The data for this metric come from the [Area Health Resource File 2021-2022 County-Level Data](https://data.hrsa.gov/data/download). 
@@ -42,24 +49,39 @@ ahrf2022 <- ahrf2022 %>%
     f0453020, # census population, 2020
     f1198420, # population estimate, 2020
     f1467520, # phys, primary care, patient care - non-fed, excludes hospital residents & 75+
-    f1467920, # DOs, primary care, patient care 2020
-    f1212920, # total active MDs, non-fed and fed, 2020
-    f0482020, # total MDs, male, 2020
-    f0482120, # total MDs, female, 2020
-    f0490020, # MDs inactive, male, 2020
-    f0490120, # MDs inactive, female, 2020
+    
+    f1390620, # pop total male, 2020, whole numbers, estimates, census county char file 
+    f0482020, # Total MDs, male, non-fed, includes inactive
+    f1470020, # Total DOs, male, non-fed, includes inactive
+    f0490020, # MDs, inactive, male (non-fed)
+    f1470220, # DOs, inactive, male (non-fed)
+    
+    f1390720, # pop total male, 2020, whole numbers, estimates, census county char file
+    f0482120, # Total MDs, female, non-fed, includes inactive
+    f1470120, # Total DOs, female, non-fed, includes inactive
+    f0490120, # MDs, inactive, female (non-fed)
+    f1470320, # DOs, inactive, female (non-fed)
   ) %>%
   filter(
     !f00011 %in% c('66', '72', '78')
   )
 
 ahrf2022 <- ahrf2022 %>%
+  mutate(
+    male_pcp = (f0482020 + f1470020 - f0490020 - f1470220),
+    fmle_pcp = (f0482120 + f1470120 - f0490120 - f1470320)
+  ) %>%
   select(
     county_fips = f00002,
     state_fips = f00011,
-    population = f0453020,
-    pc_physicians = f1467520
+    tot_pop_2020 = f0453020,
+    tot_pcp = f1467520,
+    male_pop_2020 = f1390620,
+    fmle_pop_2020 = f1390720,
+    male_pcp,
+    fmle_pcp
   )
+
 
 # Even after filtering out Guam, Puerto Rico, and the Virgin Islands, there seem to be 7 extra counties. I suspect these are weird Alaska counties
 count(ahrf2022, state_fips) %>% view()
@@ -72,7 +94,7 @@ count(ahrf2022, state_fips) %>% view()
 ahrf2022 <- ahrf2022 %>%
   mutate(
     pc_phys_ratio = case_when(
-      pc_physicians > 0 ~ population/pc_physicians,
+      pc_physicians > 0 ~ round(population/pc_physicians, 1),
       pc_physicians == 0 ~ 0),
     low_pop_flag = case_when(
       population < 2000 ~ "1",
