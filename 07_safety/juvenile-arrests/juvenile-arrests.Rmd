@@ -1,0 +1,204 @@
+---
+title: "Juvenile Arrests"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+# library(urbnthemes)
+library(tidyverse)
+library(skimr)
+library(readxl)
+library(writexl)
+
+library(rvest)
+library(glue)
+library(fs)
+# library(reactable)
+
+# set_urbn_defaults(style = "print")
+
+```
+
+## 1. Load Data
+
+These data come from [Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view) via Open ICPSR. We use Version 9 of these data. We download the following two files:
+1. [nibrs_1991_2022_arrestee_segment_rds.zip](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view?path=/openicpsr/118281/fcr:versions/V9/nibrs_1991_2022_arrestee_segment_rds.zip&type=file)
+2. [nibrs_1991_2022_group_b_arrest_report_segment_rds.zip](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view?path=/openicpsr/118281/fcr:versions/V9/nibrs_1991_2022_group_b_arrest_report_segment_rds.zip&type=file)
+
+Download both zip files. Each folder will contain files for 1991-2022, but we only need the 2022 files. I move them to `C:\mobility-from-poverty\07_safety\juvenile-arrests` and delete the remaining files
+
+```{r}
+# 2022 NIBRS group A arrestee segment from Jacob Kaplan
+nibrs2022 <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "nibrs_arrestee_segment_2022.rds"))
+
+# 2022 NIBRS group B arrest segment from Jacob Kaplan
+nibrs2022_b <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "nibrs_group_b_arrest_report_segment_2022.rds"))
+```
+
+Create crime categories according to the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf).
+```{r}
+property <- c(
+  "all other larceny",
+  "arson",
+  "bribery",
+  "burglary/breaking and entering",
+  "counterfeiting/forgery",
+  "credit card/atm fraud", 
+  "destruction/damage/vandalism of property",
+  "embezzlement",
+  "extortion/blackmail",
+  "false pretenses/swindle/confidence game",
+  "hacking/computer invasion",
+  "identity theft",
+  "impersonation",
+  "motor vehicle theft",
+  "pocket-picking",
+  "purse-snatching",
+  "robbery",
+  "shoplifting",
+  "stolen property offenses (receiving, selling, etc.)",
+  "theft from building",
+  "theft from coin-operated machine or device",
+  "theft from motor vehicle",
+  "theft of motor vehicle parts/accessories",
+  "welfare fraud",
+  "wire fraud"
+)
+
+person <- c(
+  "aggravated assault",
+  "fondling (incident liberties/child molest)",
+  "human trafficking - commercial sex acts",
+  "human trafficking - involuntary servitude",
+  "incest",
+  "intimidation",
+  "kidnapping/abduction", 
+  "murder/nonnegligent manslaughter",
+  "negligent manslaughter",
+  "rape",
+  "sexual assault with an object",
+  "simple assault",
+  "sodomy",
+  "statutory rape"
+)
+```
+
+## 2. Process Data
+
+Combine group A and group B files
+```{r}
+# rename variable and select only necessary variables from group B
+nibrs2022_b <- nibrs2022_b %>%
+  select(
+    year,
+    ori, 
+    incident_number = arrest_transaction_incident_num,
+    ucr_arrest_offense_code,
+    age_of_arrestee,
+    race_of_arrestee,
+    ethnicity_of_arrestee
+  ) %>%
+  mutate(group = "B")
+
+# bind group b file with group a file
+nibrs2022_ab <- nibrs2022 %>%
+  select(
+    year, 
+    ori, 
+    incident_number, 
+    ucr_arrest_offense_code, 
+    age_of_arrestee, 
+    race_of_arrestee,
+    ethnicity_of_arrestee
+  ) %>%
+  mutate(group = "A") %>%
+  bind_rows(nibrs2022_b)
+
+# remove separate files
+rm(nibrs2022, nibrs2022_b)
+gc()
+
+# limit to under age 18
+table(nibrs2022_ab$age_of_arrestee)
+juvenile_arrests <- nibrs2022_ab %>%
+  mutate(age = as.numeric(age_of_arrestee)) %>%
+  filter(age < 18)
+# forcing NA over over 98 years old and unknown since not using
+
+skimr::skim(juvenile_arrests)
+juvenile_arrests %>% group_by(group) %>% skim()
+
+# summarize by agency
+juvenile_arrests_agency <- juvenile_arrests %>%
+  mutate(property = ifelse(ucr_arrest_offense_code %in% property, 1, 0),
+         violent = ifelse(ucr_arrest_offense_code %in% person, 1, 0)) %>%
+  filter(age >= 10) %>%
+  group_by(ori) %>%
+  summarize(arr_total = n(),
+            arr_prop = sum(property==1),
+            arr_viol = sum(violent==1),
+            age_10_14 = sum(age >= 10 & age <= 14),
+            age_15_17 = sum(age >= 15 & age <= 17),
+            race_aian = sum(race_of_arrestee == "american indian/alaskan native"),
+            race_asian = sum(race_of_arrestee == "asian"),
+            race_black = sum(race_of_arrestee == "black"),
+            race_nhpi = sum(race_of_arrestee == "native hawaiian or other pacific islander"),
+            race_unkno = sum(race_of_arrestee == "unknown"),
+            race_white = sum(race_of_arrestee == "white"),
+            ethn_hispanic = sum(ethnicity_of_arrestee == "hispanic origin"),
+            ethn_nonhisp = sum(ethnicity_of_arrestee == "not of hispanic origin"),
+            group_a = max(group=="A"),
+            group_b = max(group=="B")
+  ) %>%
+  ungroup() %>%
+  mutate(race_asian_other = race_aian + race_asian + race_nhpi)
+
+```
+
+776 agencies only have Group B arrests of juveniles
+```{r}
+juvenile_arrests_agency %>% 
+  count(group_a, group_b)
+```
+
+Make narrow version with just needed variables
+```{r}
+juvenile_arrests_agency <- juvenile_arrests_agency %>%
+  select(
+    ori, 
+    arr_total, 
+    arr_viol, 
+    arr_prop, 
+    starts_with("race"), 
+    ethn_hispanic
+  )
+
+```
+
+
+
