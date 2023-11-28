@@ -137,7 +137,7 @@ write_csv(place_puma, "data/temp/place_puma.csv")
 # (4) Prepare Microdata (non-subgroup)
 
 # open IPUMS extract (change "usa_00014.xml" to whatever your extract is called)
-microdata <- 'usa_00014.xml'
+microdata <- 'C:/Users/ARogin/Downloads/usa_00014.xml'
 ddi <- read_ipums_ddi(microdata)
 acs_2021 <- read_ipums_micro(ddi)
 # 3252599 observations

@@ -128,7 +128,7 @@ vacant <- vacant %>%
 
 rent_ratio <- acs2021clean %>% 
   select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, place) %>% 
-# Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
+  # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
   filter(PERNUM == 1,
          OWNERSHP == 2)
 # 289,291 obs
