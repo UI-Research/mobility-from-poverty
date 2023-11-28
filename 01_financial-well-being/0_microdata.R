@@ -19,6 +19,7 @@
 
 # Libraries you'll need
 library(tidyverse)
+library(tidylog)
 library(ipumsr)
 library(survey)
 library(srvyr)
@@ -34,40 +35,33 @@ library(srvyr)
 
 # (2) Prepare the Census Place to PUMA crosswalk
 # open relevant crosswalk data
-puma_place_2021 <- read_csv("geographic-crosswalks/data/geocorr2012_PUMA_Places_2020.csv")
-
+puma_place_2021 <- read_csv("geographic-crosswalks/data/geocorr2012_PUMA_Places_2020.csv") %>% 
 # rename variables for working purposes
-puma_place_2021 <- puma_place_2021 %>% 
   dplyr::rename(puma = puma12,
-                statefip = state)
-puma_place_2021 <- puma_place_2021 %>%
+                statefip = state) %>% 
   mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
          puma = sprintf("%0.5d", as.numeric(puma)),
          place = sprintf("%0.5d", as.numeric(place))
-  )
+  ) 
 
 # Limit to the Census Places we want 
 # first, bring in the places crosswalk (place-populations.csv)
-places <- read_csv("geographic-crosswalks/data/place-populations.csv")
-# keep only the relevant year (for this, 2020)
-places <- places %>%
-  filter(year > 2019)
+places <- read_csv("geographic-crosswalks/data/place-populations.csv") %>% 
+# keep only the relevant year (for this, 2022)
+  filter(year > 2021) %>% 
 # rename to prep for merge
-places <- places %>% 
   dplyr::rename("statefip" = "state")
 
 # left join to get rid of irrelevant places data (this is in an effort to make our working files smaller)
-puma_place_2021 <- left_join(places, puma_place_2021, by=c("statefip","place"))
-# 37583 obs to 1698 obs (35885 obs dropped)
-
+puma_place_2021 <- left_join(places, puma_place_2021, by=c("statefip","place")) %>% 
+# 37810 obs to 1725 obs (36085 obs dropped)
 # keep only the variables we will need
-puma_place_2021 <- puma_place_2021 %>% 
   select(statefip, puma, place, pop20, afact, afact2)
 
 # drop observations where the weight adjustment is zero
 puma_place_2021 <- puma_place_2021 %>%
   filter(afact!= 0.000)
-# no drops
+# 1,698 obs (27 dropped)
 
 # (optional) sort by statefip place (previously was statefip puma)
 #puma_place_2021 <- puma_place_2021 %>%
@@ -165,7 +159,7 @@ acs_2021 <- acs_2021 %>%
 # (left join, since microdata has more observations)
 # memory.limit(size=999999)
 acs2021clean  <- left_join(acs_2021, puma_place, by=c("statefip","puma"))
-# now have 3,252,599 observations
+# now have 3,886,784 observations
 # run anti_join to see how many cases on the left did not have a match on the right
 test  <- anti_join(acs_2021, puma_place, by=c("statefip","puma"))
 # 1,656,456 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
@@ -173,7 +167,7 @@ test  <- anti_join(acs_2021, puma_place, by=c("statefip","puma"))
 # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
 acs2021clean <- acs2021clean %>% 
   filter(!is.na(afact))
-# 3,252,599 obs to 2,230,328 obs (1,022,271 dropped)
+# 3,252,599 obs to 2,230,328 obs (1,656,456 dropped)
 acs2021clean <- acs2021clean %>% 
   filter(afact > 0)
 # no drops
@@ -199,6 +193,6 @@ acs2021clean <- acs2021clean %>%
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" 
-# write_csv(acs2021clean, "data/temp/2021microdata.csv")
+ write_csv(acs2021clean, "data/temp/2021microdata.csv")
 
 
