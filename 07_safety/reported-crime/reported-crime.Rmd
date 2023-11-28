@@ -1,0 +1,121 @@
+---
+title: "Reported Violent Crime and Property Crime"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+
+# set_urbn_defaults(style = "print")
+
+```
+
+## 1. Load Data
+
+```{r}
+# 2021 NIBRS offense segment
+# retrieved from full text file by Jacob Kaplan
+nibrs2022 <- readRDS(here::here("07_safety", "reported-crime", "nibrs_offense_segment_2022.rds"))
+
+# 2021 NIBRS full text file - original file that Jacob extracted data from
+# inc <- read_tsv("Data/2021_NIBRS_NATIONAL_MASTER_FILE_ENC.txt", n_max=10000)
+```
+
+```{r}
+# 2 Process crime data----
+# reduce data to only necessary vars
+nibrs2022 <- nibrs2022 %>%
+  select(c(ori, ucr_offense_code))
+
+gc()
+
+# indicate violent and property crimes
+# crime types
+crimes <- nibrs2022 %>% 
+  count(ucr_offense_code)
+
+# categories from 2021.1 National Incident-Based Reporting System User Manual
+property <- c(
+  "all other larceny", 
+  "arson", "bribery", 
+  "burglary/breaking and entering",
+  "counterfeiting/forgery", 
+  "credit card/atm fraud", 
+  "destruction/damage/vandalism of property", 
+  "embezzlement",
+  "extortion/blackmail", 
+  "false pretenses/swindle/confidence game",
+  "hacking/computer invasion", 
+  "identity theft", 
+  "impersonation",
+  "motor vehicle theft", 
+  "pocket-picking", 
+  "purse-snatching", 
+  "robbery",
+  "shoplifting", 
+  "stolen property offenses (receiving, selling, etc.)",
+  "theft from building", 
+  "theft from coin-operated machine or device",
+  "theft from motor vehicle", 
+  "theft of motor vehicle parts/accessories",
+  "welfare fraud", 
+  "wire fraud"
+)
+
+person <- c(
+  "aggravated assault", 
+  "fondling (incident liberties/child molest)",
+  "human trafficking - commercial sex acts", 
+  "human trafficking - involuntary servitude",
+  "incest", 
+  "intimidation", 
+  "kidnapping/abduction", 
+  "murder/nonnegligent manslaughter", 
+  "negligent manslaughter", 
+  "rape",
+  "sexual assault with an object", 
+  "simple assault", 
+  "sodomy",
+  "statutory rape"
+)
+
+# indicate property and violent crimes
+nibrs2022 <- nibrs2022 %>%
+  mutate(property = ifelse(ucr_offense_code %in% property, 1, 0),
+         violent = ifelse(ucr_offense_code %in% person, 1, 0))
+
+# aggregate by agency
+nibrs2022_agency <- nibrs2022 %>%
+  group_by(ori) %>%
+  summarize(all = n(),
+            violent = sum(violent),
+            property = sum(property)) %>%
+  ungroup()
+
+```
+
+
