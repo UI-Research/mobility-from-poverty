@@ -29,6 +29,7 @@ options(scipen = 999)
 
 # library(urbnthemes)
 library(tidyverse)
+library(tidycensus)
 library(skimr)
 library(readxl)
 library(writexl)
@@ -41,6 +42,311 @@ library(fs)
 # set_urbn_defaults(style = "print")
 
 ```
+
+## 0. Copying 01_agency_geo.R
+
+The first data set we read in is the [National Incident-Based Reporting System, 2020: Extract Files (ICPSR 38566)](https://www.icpsr.umich.edu/web/NACJD/studies/38566). These data come from the National Archive of Criminal Justice Data (NACJD) available through ICPSR. I manually downloaded them as delimited and then moved them to `C:\mobility-from-poverty\07_safety\data`.
+```{r, message=FALSE}
+bat <- read_tsv(here::here("07_safety", "data", "38566-0001-Data.tsv"))
+
+# NIBRS state numbers are in alphabetical order and do not follow FIPS codes I am manually creating a crosswalk between state FIPS codes and NIBRS codes
+
+nibrs_states <- tribble(
+  ~state_fips, ~state_abb, ~state_num_nibrs, ~state_name,
+  "01",	"AL", "1",  "Alabama",
+  "02",	"AK", "50", "Alaska",
+  "04",	"AZ", "2",  "Arizona", 
+  "05",	"AR", "3",  "Arkansas",	
+  "06",	"CA", "4",  "California",	
+  "08",	"CO", "5",  "Colorado",
+  "09",	"CT", "6",  "Connecticut",
+  "10",	"DE", "7",  "Delaware",
+  "11",	"DC", "8",  "District of Columbia",
+  "12",	"FL", "9",  "Florida",
+  "13",	"GA", "10", "Georgia",	
+  "15",	"HI", "51", "Hawaii",
+  "16",	"ID", "11", "Idaho",
+  "17",	"IL", "12", "Illinois",
+  "18",	"IN", "13", "Indiana",
+  "19",	"IA", "14", "Iowa",	
+  "20",	"KS", "15", "Kansas",	
+  "21",	"KY", "16", "Kentucky",	
+  "22",	"LA", "17", "Louisiana",
+  "23",	"ME", "18", "Maine",
+  "24",	"MD", "19", "Maryland",
+  "25",	"MA", "20", "Massachusetts",
+  "26",	"MI", "21", "Michigan",	
+  "27",	"MN", "22", "Minnesota",	
+  "28",	"MS", "23", "Mississippi",	
+  "29",	"MO", "24", "Missouri",	
+  "30",	"MT", "25", "Montana",	
+  "31",	"NE", "26", "Nebraska",	
+  "32",	"NV", "27", "Nevada",	
+  "33",	"NH", "28", "New Hampshire",	
+  "34",	"NJ", "29", "New Jersey",	
+  "35",	"NM", "30", "New Mexico",	
+  "36",	"NY", "31", "New York",	
+  "37",	"NC", "32", "North Carolina",
+  "38",	"ND", "33", "North Dakota",	
+  "39",	"OH", "34", "Ohio",	
+  "40",	"OK", "35", "Oklahoma",	
+  "41",	"OR", "36", "Oregon",	
+  "42",	"PA", "37", "Pennsylvania",	
+  "44",	"RI", "38", "Rhode Island",	
+  "45",	"SC", "39", "South Carolina",	
+  "46",	"SD", "40", "South Dakota",
+  "47",	"TN", "41", "Tennessee",
+  "48",	"TX", "42", "Texas",	
+  "49",	"UT", "43", "Utah",	
+  "50",	"VT", "44", "Vermont",	
+  "51",	"VA", "45", "Virginia",	
+  "53",	"WA", "46", "Washington",	
+  "54",	"WV", "47", "West Virginia",	
+  "55",	"WI", "48", "Wisconsin",	
+  "56",	"WY", "49", "Wyoming"
+)
+
+# todo(): check if this is the right file
+# county populations file from Urban
+pop <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+
+```
+
+We also need the [Law Enforcement Agency Identifiers Crosswalk, United States, 2012 (ICPSR 35158)](https://www.icpsr.umich.edu/web/NACJD/studies/35158). These data also come from the National Archive of Criminal Justice Data (NACJD) available through ICPSR. I manually downloaded them as delimited  and moved them to `C:\mobility-from-poverty\07_safety\data`.
+```{r}
+lecw <- read_tsv(here::here("07_safety", "data", "35158-0001-Data.tsv"))
+
+# 2 Process Urban crosswalk----
+# *filter crosswalk that Urban created to 2020 only
+pop20 <- pop %>%
+  filter(year==2020) %>%
+  mutate(county_name = str_to_title(county_name),
+         GEOID = str_c(state, county))
+
+# *filter Urban crosswalk to states so can fix state numbers in NIBRS data
+pop_st <- pop %>%
+  select(c(state, state_name)) %>%
+  distinct()
+
+```
+
+```{r}
+ba <- bat %>%
+  rename(ori = BH003, # ori is unique agency identifier used across multiple files
+         agency_type = BH012,
+         state_num_nibrs = BH002,
+         state_abb = BH008,
+         city = BH007,
+         core_city = BH013,
+         fips_county_1 = BH054,
+         fips_county_2 = BH055,
+         fips_county_3 = BH056,
+         fips_county_4 = BH057,
+         msa_1 = BH021,
+         msa_2 = BH025,
+         msa_3 = BH029,
+         msa_4 = BH033,
+         msa_5 = BH037,
+         pop_1 = BH019,
+         pop_2 = BH023,
+         pop_3 = BH027,
+         pop_4 = BH031,
+         pop_5 = BH035) %>%
+  select(c(ori, agency_type, state_abb, state_num_nibrs, city, core_city, starts_with("fips"), 
+           starts_with("msa"), starts_with("pop"))) %>%
+  mutate(year=2021,
+         state_num_nibrs = str_pad(state_num_nibrs, 2, pad = "0"),
+         county = str_pad(fips_county_1, 3, pad = "0"),
+         city = str_to_title(city),
+         pop_total = pop_1 + pop_2 + pop_3 + pop_4 + pop_5) %>%
+  left_join(nibrs_states, by = c("state_abb", "state_num_nibrs")) %>%
+  left_join(pop_st, by="state_name")
+
+# check the distribution of agency types
+ba %>% count(agency_type) %>%
+  mutate(pct = n/nrow(ba))
+#1 city, 2 county, 3 college, 5 special, 7 tribal
+
+# remove state agencies since cover multiple counties
+# 4 is state police and 6 is other state agency
+ba <- ba %>%
+  filter(agency_type != 4 & agency_type != 6)
+
+# examine NIBRS agency info
+skim(ba)
+table(ba$fips_county_1)
+# a lot of counties have value of zero, which is not valid FIPS code
+
+# subset data to examine further
+ba0 <- ba %>%
+  filter(fips_county_1==0)
+# includes DC, Baltimore
+
+# see if remaining ORIs in 2012 LEAIC crosswalks
+sum(ba0$ori %in% lecw$ORI9)
+# 232 agencies are in it
+
+# *limit to useful info from LEAIC crosswalk
+# remove agencies with invalid ORI
+lecw_nrw <- lecw %>%
+  select(ORI9, FIPS_COUNTY) %>%
+  rename(ori = ORI9,
+         county = FIPS_COUNTY) %>%
+  filter(ori != "-1")
+
+
+# merge to ORIs missing county
+ba0_cw <- ba0 %>%
+  select(-c(county)) %>%
+  left_join(lecw_nrw, by = "ori")
+
+# check remaining agencies that do not merge\
+ba00 <- ba0_cw %>%
+  filter(is.na(county))
+# 25 agencies still have no county, some in US territories
+# will be excluded from county-level analysis
+# all are tribal or special agencies
+
+# combine back to original data
+# replace fips county 1 with updated county number from LEAIC
+ba_full <- ba %>%
+  filter(fips_county_1 != 0) %>%
+  bind_rows(ba0_cw) %>%
+  filter(!is.na(county)) %>%
+  mutate(fips_county_1 = county)
+  
+```
+
+```{r}
+test <- bat %>%
+  select(BH002, BH008) %>%
+  group_by(BH002, BH008) %>%
+  distinct() %>%
+  filter(!BH002 %in% c(53, 55, 62)) %>%
+  rename()
+
+# *limit to useful info from LEAIC crosswalk
+# remove agencies with invalid ORI
+leaic_nrw <- leaic %>%
+  select(ORI9, FIPS_COUNTY) %>%
+  rename(ori = ORI9,
+         county = FIPS_COUNTY) %>%
+  filter(ori != "-1")
+
+```
+
+
+
+
+
+
+
+I guess we need this too? I don't understand
+```{r}
+
+
+
+
+
+
+```
+
+
+We need to read in the 2022 5-year ACS data to calculate overall county population and population age 10-17. We then create age 10-17 subgroups defined as white, black, “asian_other”, and hispanic. Note that race and ethnicity are separate (e.g., cannot make non-Hispanic white)
+```{r}
+# 3 County-level demographics----
+# todo(): Update this section to use 2022 5-year ACS data
+# set Census API once
+tidycensus::census_api_key("75ed382ac6c6e5650cbc1801e618f8848e24642", install=TRUE)
+
+# check variables
+v21 <- load_variables(2021, "acs5")
+
+# Pull 2021 ACS data at the Census County level
+county_demo <- get_acs(geography = "county",
+                       variables = c(total_people = "B01003_001",
+                                     age_m_1014 = "B01001_005", 
+                                     age_m_1517 = "B01001_006",
+                                     age_f_1014 = "B01001_029", 
+                                     age_f_1517 = "B01001_030",
+                                     age_m_1014_white = "B01001A_005", 
+                                     age_m_1014_black = "B01001B_005",
+                                     age_m_1014_aian = "B01001C_005", 
+                                     age_m_1014_asin = "B01001D_005",
+                                     age_m_1014_nhpi = "B01001E_005", 
+                                     age_m_1014_othr = "B01001F_005",
+                                     age_m_1014_twom = "B01001G_005",
+                                     age_m_1014_white_nh = "B01001H_005",
+                                     age_m_1014_hispanic = "B01001I_005",
+                                     age_m_1517_white = "B01001A_006", 
+                                     age_m_1517_black = "B01001B_006",
+                                     age_m_1517_aian = "B01001C_006", 
+                                     age_m_1517_asin = "B01001D_006",
+                                     age_m_1517_nhpi = "B01001E_006", 
+                                     age_m_1517_othr = "B01001F_006",
+                                     age_m_1517_twom = "B01001G_006",
+                                     age_m_1517_white_nh = "B01001H_006", 
+                                     age_m_1517_hispanic = "B01001I_006",
+                                     age_f_1014_white = "B01001A_020", 
+                                     age_f_1014_black = "B01001B_020",
+                                     age_f_1014_aian = "B01001C_020", 
+                                     age_f_1014_asin = "B01001D_020",
+                                     age_f_1014_nhpi = "B01001E_020", 
+                                     age_f_1014_othr = "B01001F_020",
+                                     age_f_1014_twom = "B01001G_020",
+                                     age_f_1014_white_nh = "B01001H_020",
+                                     age_f_1014_hispanic = "B01001I_020",
+                                     age_f_1517_white = "B01001A_021", 
+                                     age_f_1517_black = "B01001B_021",
+                                     age_f_1517_aian = "B01001C_021", 
+                                     age_f_1517_asin = "B01001D_021",
+                                     age_f_1517_nhpi = "B01001E_021",
+                                     age_f_1517_othr = "B01001F_021",
+                                     age_f_1517_twom = "B01001G_021",
+                                     age_f_1517_white_nh = "B01001H_021", 
+                                     age_f_1517_hispanic = "B01001I_021"),
+                       year = 2021,
+                       survey = "acs5",
+                       output = "wide",
+                       geometry = FALSE)
+# note, two or more race variable not appearing, may not be available at county level
+
+# get rid of E in name of variables and drop MOE
+county_demo <- county_demo %>%
+  rename_with(~ sub("E$", "", .x), everything()) %>%
+  select(-c(ends_with("M")))
+
+# Construct age and race/ethnicity groups
+county_demo <- county_demo %>%
+  mutate(
+    age_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
+    age_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
+    age_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
+    age_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
+    age_1017_asin = age_m_1014_asin + age_m_1517_asin + age_f_1014_asin + age_f_1517_asin,
+    age_1017_nhpi = age_m_1014_nhpi + age_m_1517_nhpi + age_f_1014_nhpi + age_f_1517_nhpi,
+    age_1017_othr = age_m_1014_othr + age_m_1517_othr + age_f_1014_othr + age_f_1517_othr,
+    #age_1017_twom = age_m_1014_twom + age_m_1517_twom + age_f_1014_twom + age_f_1517_twom,
+    age_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
+    age_1017_white_nh = age_m_1014_white_nh + age_m_1517_white_nh + age_f_1014_white_nh + age_f_1517_white_nh,
+  )
+
+# limit to only variables needed for analysis
+# limit to only counties in Urban county crosswalk file
+# manually create two or more race variable
+county_demos <- county_demo %>%
+  select(GEOID, total_people, starts_with("age_1017")) %>%
+  filter(GEOID %in% pop20$GEOID) %>%
+  mutate(year=2021,
+         age_1017_twom = age_1017 - age_1017_white - age_1017_black - 
+           age_1017_aian - age_1017_asin - age_1017_nhpi - age_1017_othr,
+         age_1017_asian_other = age_1017_aian + age_1017_asin + age_1017_nhpi +
+           age_1017_othr + age_1017_twom)
+# goes from 3,221 to 3,143 counties
+
+```
+
+
 
 ## 1. Load Data
 
