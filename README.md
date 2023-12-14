@@ -541,13 +541,14 @@ For users outside of the Urban Institute that would like to utilize this reposit
 
 *General repository structure*
 
-The folders in this repository is broken into three main sections: Domains, Data and Documentation/Auxiliary.
+The folders in this repository are broken into three main sections: Domains, Data and Documentation/Auxiliary.
 
 1. Domains
-  - Each domain in the UMF project has a folder (for example, 08_education). This folder holds the programs for the creation of the predictors that fall under that domain.
+  - Each domain in the UMF project has a folder (for example, 08_education). This folder holds the programs for the creation of the predictors that fall under that domain, for example, metrics for access to preschool, effective public education, school diversity, preparation for college, and digital access.
   
 2. Data
-  - The final data in raw form is also hosted in this repository under the folder titled "data". 
+  - The final data produced for each domain folder is within that domain in the "data/final" fodler. The collective final data in raw form is also hosted in this repository under the folder titled "data". 
+
 3. Documentation/Auxiliary
   - The other folders either document or provide auxiliary information/data for creating the predictors. The folder titled "documentation" holds a description of each predictor code in the repository as well as an introductory training to using Git and GitHub. 
   - Other auxiliary folder include the geographic-crosswalks folder which hosts all of the crosswalks the programs in this repository utilize. There is also a folder for constructing the database from the individual predictor files. 
@@ -557,9 +558,9 @@ For more specific use cases see below.
 ## Finding code 
 
 One benefit of hosting this work on a public repository is that external users can view and download the code used to create these indicators. If you would like to download the code used to create a certain UMF data point you can find it in one of the folder held in this repository. 
-To track down the right folder, first utilize the table under repository contents to match your predictor of interest (right-hand column) with that predictors domain. The folder containing the code for that predictor will have a title similar to the domain. Enter that folder on GitHub and locate the program file with the predictor in the title. 
+To track down the right folder, first utilize the table under repository contents to match your predictor of interest (right-hand column) with that predictor's domain. The folder containing the code for that predictor will have a title similar to the domain. Enter that folder on GitHub and locate the program file with the predictor in the title. 
 
-*Example: Environmental quality* The environmental quality predictor falls under the Neighborhoods pillar. In the GitHub repository there is a folder titled 06_neighborhoods - this is the corresponding folder. Inside that folder is another folder titled environment. It is in that folder you will find the program that creates the predictor. GitHub will give you the option to download the raw version of the file. 
+*Example: Environmental quality* The environmental quality predictor falls under the Opportunity-Rich & Inclusive Neighborhoods pillar. In the GitHub repository there is a folder titled 06_neighborhoods - this is the corresponding folder. Inside that folder is another folder titled environment. It is in that folder you will find the program that creates the predictor. GitHub will give you the option to download the raw version of the file. 
 
 ## Locating raw data
 
