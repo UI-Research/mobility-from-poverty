@@ -1,0 +1,177 @@
+---
+title: "Compare Independent Cities and Counties"
+author: "Aaron R. Williams"
+date: today
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    css: 10_construct-database/www/web_report.css
+    toc: true
+    toc_float: true
+    df-print: paged
+    grid: 
+      body-width: 1000px
+execute: 
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css}
+.quarto-content {
+  w
+
+}
+
+```
+
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+options(scipen = 999)
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+```
+
+```{r}
+fips <- tribble(
+  ~state, ~place,	~county,
+  "24", "04000", "510",
+  "29", "65000", "510",
+  "51", "01000", "510",
+  "51", "16000", "550",
+  "51", "35000", "650",
+  "51", "47672", "680",
+  "51", "56000", "700",
+  "51", "57000", "710",
+  "51", "64000", "740",
+  "51", "67000", "760",
+  "51", "68000", "770",
+  "51", "76432", "800",
+  "51", "82000", "810"
+)
+
+compare_wide <- function(counties, places, .year, .variable, .subgroup = NULL) {
+  
+  if (is.null(.subgroup)) {
+    
+    vars <- c("state", "county", "year")
+    order <- c("fips", "year")
+    
+  } else {
+    
+    vars <- c(c("state", "county", "year"), .subgroup)
+    order <- c("fips", "year", "subgroup")
+    
+  }
+  
+  left_join(
+    counties |>
+      dplyr::filter(.data$year %in% .year) |>
+      dplyr::select(all_of(vars), {{ .variable }}) |>
+      dplyr::mutate(county_temp_value = {{ .variable }}),
+    places |>
+      filter(.data$year %in% .year) |>
+      select(all_of(vars), {{ .variable }}) |>
+      dplyr::mutate(place_temp_value = {{ .variable }}),
+    by = vars,
+    suffix = c("_c", "_p")
+  ) |>
+    mutate(
+      fips = paste0(state, county),
+      error = round(county_temp_value - place_temp_value, digits = 5),
+      equal = county_temp_value == place_temp_value
+    ) |>
+    select(-county_temp_value, -place_temp_value, -state, - county) |>
+    select(all_of(order), error, equal, everything()) 
+
+}
+
+```
+
+## Longitudinal Data
+
+```{r}
+counties <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) |>
+  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
+
+places <- read_csv(here("data", "05_mobility-metrics_place_longitudinal.csv")) |>
+  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
+  inner_join(fips, by = c("state", "place")) |>
+  select(year, state, place, county, everything())
+
+```
+
+```{r}
+compare_wide(counties, places, .year = 2021, .variable = share_employed)
+compare_wide(counties, places, .year = 2021, .variable = share_in_preschool)
+compare_wide(counties, places, .year = 2021, .variable = share_hs_degree)
+compare_wide(counties, places, .year = 2021, .variable = pctl_income_20)
+compare_wide(counties, places, .year = 2021, .variable = pctl_income_50)
+compare_wide(counties, places, .year = 2021, .variable = pctl_income_80)
+compare_wide(counties, places, .year = 2021, .variable = share_affordable_80_ami)
+compare_wide(counties, places, .year = 2021, .variable = share_affordable_50_ami)
+compare_wide(counties, places, .year = 2021, .variable = share_affordable_30_ami)
+compare_wide(counties, places, .year = 2021, .variable = share_employed)
+
+```
+
+## Recent Data
+
+```{r}
+counties_recent <- read_csv(here("data", "00_mobility-metrics_recent.csv")) |>
+  filter(paste0(state, county) %in% paste0(fips$state, fips$county)) |>
+  mutate(year = "recent")
+
+places_recent <- read_csv(here("data", "05_mobility-metrics_place_recent.csv")) |>
+  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
+  inner_join(fips, by = c("state", "place")) |>
+  mutate(year = "recent") |>
+  select(year, state, place, county, everything())
+
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_employed)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_in_preschool)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_hs_degree)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = pctl_income_20)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = pctl_income_50)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = pctl_income_80)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_affordable_80_ami)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_affordable_50_ami)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_affordable_30_ami)
+compare_wide(counties_recent, places_recent, .year = "recent", .variable = share_employed)
+
+```
+
+## Race/Ethnicity
+
+```{r}
+counties_race_ethnicity <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) |>
+  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
+
+places_race_ethnicity <- read_csv(here("data", "06_mobility-metrics_place_race-ethnicity_longitudinal.csv")) |>
+  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
+  inner_join(fips, by = c("state", "place")) |>
+  select(year, state, place, county, everything())
+
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = share_employed, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = share_in_preschool, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = share_hs_degree, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_income_20, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_income_50, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_income_80, .subgroup = "subgroup")
+compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = share_employed, .subgroup = "subgroup")
+
+```
+
+todo(aaron): hard constraints
+todo(aaron): soft constraints
+
