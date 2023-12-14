@@ -1,0 +1,729 @@
+---
+title: "UMF: Income metric, subgroup, counties"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: true
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+Income metric, subgroup, counties
+
+ACS Code: Income metric, subgroups, counties. Based on processes developed by Paul Johnson and Kevin Werner in SAS
+
+Using IPUMS extract for 2021 (5-year ACS)
+
+# Table of Contents
+
+-   [Housekeeping](#housekeeping)
+-   [Pull microdata](#pull-microdata)
+-   [Merge microdata](#merge-microdata)
+-   [Create income percentiles](#create-income-percentiles)
+-   [Export](#export)
+
+## Housekeeping {#housekeeping}
+
+Read in the packages you will need. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
+
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+
+options(scipen = 999)
+
+#set_ipums_api_key("Your KEY", save = TRUE)
+```
+
+## Pull microdata {#pull-microdata}
+
+### API Pull
+
+Only run this code if you do not have the microdata in your working directory.
+
+Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info("usa"). This version of the code is currently pulling from "2021a" which is 1-year 2021 ACS data.
+
+```{r}
+usa_ext_umf <-
+  define_extract_usa(
+    description = "USA extract for UMF Income metric",
+    samples = c("us2021c"),
+    variables = list(
+      "ADJUST",
+      "STATEFIP",
+      "PUMA",
+      "GQ",
+      "OWNERSHP",
+      "OWNCOST",
+      "RENT",
+      "RENTGRS",
+      "HHINCOME",
+      "VALUEH",
+      "VACANCY",
+      "PERNUM",
+      "PERWT",
+      "EDUC",
+      "EDUCD",
+      "GRADEATT",
+      "EMPSTAT",
+      "AGE",
+      "RACE",
+      "HISPAN"
+    )
+  )
+```
+
+Submit the extract defined above.The directory is set to download to the raw data folder inside of the 01_financial-well-being folder.
+
+```{r}
+
+
+usa_ext_umf_submitted <- submit_extract(usa_ext_umf)
+
+usa_ext_complete <- wait_for_extract(usa_ext_umf_submitted)
+
+filepath <- download_extract(usa_ext_umf_submitted, download_dir = paste0(here::here(), "/01_financial-well-being/data/raw"),
+                             progress = FALSE)
+
+```
+
+### Read in data
+
+Read in the microdata extract from the working directory. IPUMSR allows you to reference the data through the file path object created above. You can also reference the files directly if you have already read them in.
+
+```{r}
+
+ddi <- read_ipums_ddi(filepath)
+micro_data <- read_ipums_micro(ddi)
+```
+
+If data has already been read in and you want to skip the re-import, fill in the code below with the path to the XML file provided by IPUMS.
+
+```{r}
+
+#ddi <- read_ipums_ddi("data/raw/{YOUR DATA EXTRACT}")
+#micro_data <- read_ipums_micro(ddi)
+```
+
+Select and rename the variables needed for merging and creating the metric.
+
+```{r}
+
+acs_2021 <- micro_data %>%
+  select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
+         VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE,
+         RACE, HISPAN)
+
+```
+
+Clean up variable names for matching purposes (these will be used to join on the crosswalk data).
+
+```{r}
+
+acs_2021 <- acs_2021 %>% 
+  rename("puma" = "PUMA",
+                "statefip" = "STATEFIP") %>% 
+  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+                puma = sprintf("%0.5d", as.numeric(puma)),
+  )
+
+```
+
+## Merge microdata {#merge-microdata}
+
+### Read in and clean 2021 crosswalk
+
+Prepare the Census Place to PUMA crosswalk. First read in the relevant crosswalk file.
+
+```{r}
+
+puma_county_2021 <- read_csv(paste0(here::here(), "/geographic-crosswalks/data/geocorr2012_PUMA_Counties_2020.csv"))
+
+```
+
+Rename variables for working purposes.
+
+```{r}
+
+puma_county_2021 <- puma_county_2021 %>% 
+  rename(puma = puma12,
+                statefip = state)
+
+puma_county_2021 <- puma_county_2021 %>%
+  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+         puma = sprintf("%0.5d", as.numeric(puma)),
+         county = sprintf("%0.5d", as.numeric(county))
+  )
+
+
+```
+
+Break out the county FIP code from the county variable which includes the state FIPs code as the first two digits.
+
+```{r}
+puma_county_2021 <- puma_county_2021 %>% 
+  mutate(county = str_sub(county, -3L, -1L))
+```
+
+Clean for changes in county definitions.
+
+County 019 in state 51 got combined with count 515 among other changes.
+
+```{r}
+
+puma_county_2021 <- puma_county_2021 %>% 
+  mutate(pop20 = ifelse(statefip == "51" & county == "019", 68676 + 6222, pop20),
+         afact = ifelse(statefip == "51" & county == "019", 0.562 + 0.051, afact),
+         county = ifelse(statefip == "02" & county == "270", "158", county),
+         county = ifelse(statefip == "46" & county == "113", "102", county),
+         flag = ifelse(statefip == "51" & county == "515", 1, 0)) %>% 
+  filter(flag != 1) %>% 
+  select(-flag)
+
+```
+
+Check on distribution of crosswalk variables.
+
+```{r}
+
+puma_county_2021 %>% 
+  ggplot(aes(x = afact)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("AFACT distribution, UMF county crosswalk") +
+  ylab("Density") 
+
+puma_county_2021 %>% 
+  ggplot(aes(x = pop20)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Population distribution in PUMAs, UMF county crosswalk") +
+  ylab("Density") 
+
+```
+
+Drop observations where the weight adjustment is zero.
+
+```{r}
+puma_county_2021 <- puma_county_2021 %>%
+  filter(afact!= 0.000)
+```
+
+Create a variable that assigns a weight to each county based on the total 2020 population. First, create a variable for the total population.
+
+```{r}
+puma_county_2021  <- puma_county_2021  %>%
+  mutate(totpop = sum(pop20))
+
+```
+
+Then, create a variable for the share of total population comprised by each county (unique state fip + county pairs)
+
+```{r}
+puma_county_2021  <- puma_county_2021 %>% 
+  group_by(statefip, county) %>% 
+  mutate(countypop = sum(pop20),
+                countywgt = countypop/totpop)
+
+```
+
+Look at distribution of place total population shares (unique). Counties in large metro areas (NYC, LA, Chicago, Houston) hold outlier shares of the total population.
+
+```{r}
+
+puma_county_2021 %>%
+  select(statefip, county, countywgt) %>%
+  unique() %>%
+  ggplot(aes(x = countywgt)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("County pop weight") +
+  ylab("Density")
+
+```
+
+### Create quality variable
+
+Prepare for Data Quality flag (at end).
+
+Create flags in the PUMA-county crosswalk for high percentage of data from outside of county. Per Greg, 75% or more from the county is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of PUMA in county and percentage of county in PUMA for each county-PUMA pairing, and summing across the county.
+
+Create new vars of interest. Products is the sum of the share of the county captured in the PUMA (afact) and the share of the PUMA captured in the county (afact2).
+
+```{r}
+
+puma_county <- puma_county_2021 %>%
+  mutate(products = afact*AFACT2)
+
+puma_county  <- puma_county  %>%
+  group_by(statefip, county) %>%
+  mutate(sum_products = sum(products),
+                county_pop = sum(pop20))
+
+
+```
+
+Sum_products mean is 0.53. 
+25th percentile of population is 18,962.
+
+```{r}
+summary(puma_county)
+
+```
+
+```{r}
+
+puma_county <- puma_county %>%
+  mutate(
+    puma_flag = 
+      case_when(
+        sum_products >= 0.75 ~ 1,
+        sum_products >= 0.35 ~ 2,
+        sum_products < 0.35 ~ 3
+      ),
+    small_county = 
+      case_when(
+        countypop >= 18962 ~ 0,
+        countypop < 18962 ~ 1
+      )
+  )
+
+```
+
+Save as "puma_county.csv" in the intermediate file.
+
+```{r}
+write_csv(puma_county, "data/intermediate/puma_county.csv")
+
+```
+
+Save a version with just the place-level values of data quality variables
+
+```{r}
+
+county_puma <- puma_county %>%
+  group_by(statefip, county) %>% 
+  summarise(puma_flag = mean(puma_flag), 
+            small_county = mean(small_county))
+
+```
+
+Save as "county_puma.csv" in the intermediate file.
+
+```{r}
+write_csv(county_puma, "data/intermediate/county_puma.csv")
+```
+
+### Prepare microdata
+
+First convert the IPUMS ACS missing values into NAs.
+
+Missing data is reported in a variety of ways - listed below:
+
+IPUMS says HHINCOME missing: 9999999 RENTGRS: No missing indicated OWNCOST: 99999 for not in universe
+
+```{r}
+acs_2021 %>% 
+  ggplot(aes(x = HHINCOME)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("HHIncome Variable Results") +
+  ylab("Density")
+
+acs_2021 %>% 
+  ggplot(aes(x = RENTGRS)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Gross Rent Variable Results") +
+  ylab("Density")
+
+acs_2021 %>% 
+  ggplot(aes(x = OWNCOST)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Homeowner cost Variable Results") +
+  ylab("Density")
+```
+
+Turn the missing/"not in universe" variable into NAs.
+
+```{r}
+
+acs2021clean <- acs_2021 %>%
+  mutate(HHINCOME = ifelse(HHINCOME == 9999999, NA_integer_,
+                          HHINCOME),
+         OWNCOST = ifelse(OWNCOST == 99999, NA_integer_, OWNCOST)
+  )
+
+
+```
+
+Look at distribution after adjustment (outliers should still exist but not comprise a signfianct share of the data)
+
+```{r}
+acs2021clean %>% 
+  ggplot(aes(x = HHINCOME)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("HHIncome Variable Results") +
+  ylab("Density")
+
+acs2021clean %>% 
+  ggplot(aes(x = RENTGRS)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Gross Rent Variable Results") +
+  ylab("Density")
+
+acs2021clean %>% 
+  ggplot(aes(x = OWNCOST)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Homeowner cost Variable Results") +
+  ylab("Density")
+```
+
+```{r}
+
+acs2021clean  <- left_join(acs2021clean, puma_county, by=c("statefip","puma"))
+
+```
+
+Now have 34,153,807 observations. Run anti_join to see how many cases on the left did not have a match on the right.
+
+```{r}
+
+test  <- anti_join(acs_2021, puma_county, by=c("statefip","puma"))
+
+```
+
+Zero. We use all counties.
+
+Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
+
+```{r}
+
+acs2021clean <- acs2021clean %>% 
+  filter(!is.na(afact))
+
+```
+
+Create a variable for the number of places per PUMA population per county (e.g., in unique statefip+county pairs).
+
+```{r}
+acs2021clean  <- acs2021clean  %>%
+  group_by(puma, statefip) %>%
+  mutate(county_per_PUMA = n_distinct(statefip, county))
+```
+
+Create a variable for the number of PUMAs per county.
+
+```{r}
+
+acs2021clean  <- acs2021clean %>%
+  group_by(county, statefip) %>%
+  mutate(PUMAs_per_place = n_distinct(statefip, puma))
+
+```
+
+Adjust weight to account for PUMA-to-county mapping (those where unique_types \> 1).Drop PUMA flag variable from PUMA_place.
+
+```{r}
+
+acs2021clean <- acs2021clean %>%
+  mutate(HHWT = HHWT*afact, 
+         HHINCOME = HHINCOME*ADJUST,
+         PERWT = PERWT*afact, 
+         RENTGRS = RENTGRS*ADJUST, 
+         OWNCOST = OWNCOST*ADJUST
+  ) %>% 
+  select(-puma_flag)
+
+```
+
+Correct for counties that have been absorbed. 
+
+```{r}
+
+acs2021clean <- acs2021clean %>% 
+  mutate(county = case_when(statefip == "51" & county == "515" ~ "019",
+                            statefip == "02" & county == "270" ~ "158",
+                            statefip == "46" & county == "113" ~ "102",
+                            TRUE ~ county)
+  )
+
+```
+
+Remove group quarters.
+
+```{r}
+
+acs2021clean <- acs2021clean %>%
+  filter(GQ < 3)
+
+```
+
+Create race/ethnicity variable.
+
+Values for RACE variable: 1 White\
+2 Black/African American/Negro\
+3 American Indian or Alaska Native 4 Chinese 5 Japanese\
+6 Other Asian or Pacific Islander 7 Other race, nec 8 Two major races 9 Three or more major races
+
+Values for HISPAN variable: 0 Not Hispanic 1 Mexican 2 Puerto Rican· 3 Cuban 4 Other 9 Not Reported
+
+```{r}
+
+acs5yr_clean <- acs2021clean %>%
+  mutate(subgroup = case_when((HISPAN == 0 & RACE == 1) ~ 4,
+                              (HISPAN == 0 & RACE == 2) ~ 1,
+                              (HISPAN == 0 & RACE %in% 3:9) ~ 3,
+                              (HISPAN %in% 1:4) ~ 2,
+  ))
+
+```
+
+Rename the values from number category to race label 4 = "White, Non-Hispanic" 1 = "Black, Non-Hispanic" 3 = "Other Races and Ethnicities" 2 = "Hispanic"
+
+```{r}
+acs5yr_clean <- acs5yr_clean %>%
+  mutate(subgroup = case_when(subgroup %in% 1 ~ 'Black, Non-Hispanic',
+                              subgroup %in% 2 ~ 'Hispanic',
+                              subgroup %in% 3 ~ 'Other Races and Ethnicities',
+                              subgroup %in% 4 ~ 'White, Non-Hispanic'
+  ))
+
+```
+
+Save as "2021_5year_microdata.csv"
+
+```{r}
+write_csv(acs5yr_clean, "data/intermediate/2021_5year_microdata_county.csv")
+
+```
+
+Save a sub-group level place file to use as check/comparison for catching NA values.
+
+```{r}
+county_subgroup <- acs5yr_clean %>% 
+  group_by(statefip, county, subgroup) %>% 
+  summarise(
+    n = n()
+  )
+```
+
+Save as "place_subgroup.csv" in gitignore
+
+```{r}
+write_csv(county_subgroup, "data/intermediate/county_subgroup.csv")
+```
+
+## Create income percentiles variable
+
+Create Income Metrics (subgroup)
+
+Objective: get pctl_20 pctl_50 and pctl_80 per unique state+place for year 2021 from 5-year data for the var HHINCOME.
+
+Aggregation should be weighted by HHWT
+
+Isolate data to count each household only once (PERNUM == 1 counts head of household only).
+
+```{r}
+acs2021income <- acs5yr_clean %>%
+  filter(PERNUM == 1)
+```
+
+Remove records where HHINCOME is missing - NA.
+
+```{r}
+acs2021income <- acs2021income %>%
+  filter(!is.na(HHINCOME))
+```
+
+No records removed, all records missing HHINCOME in the data are groupquarters not households.
+
+Calculate quantiles by grouping variable place.
+
+```{r}
+
+metrics_income <- acs2021income %>%
+  group_by(statefip, county, subgroup) %>%
+  summarise(pctl_20 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.2), 
+                   pctl_50 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.5),
+                   pctl_80 = Hmisc::wtd.quantile(HHINCOME, weights = HHWT, probs = 0.8),
+                   count = n())
+
+```
+
+### Finish the Data Quality variable
+
+For Income metric: total number of households is the sample size we are checking.
+
+```{r}
+
+metrics_income <- metrics_income %>% 
+  mutate(size_flag = case_when((count < 30) ~ 1,
+                               (count >= 30) ~ 0))
+```
+
+Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
+
+```{r}
+metrics_income <- left_join(metrics_income, county_puma, by=c("statefip","county"))
+```
+
+Generate the quality var
+
+```{r}
+
+metrics_income <- metrics_income %>% 
+  mutate(pctl_20_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
+                                     size_flag==0 & puma_flag==2 ~ 2,
+                                     size_flag==0 & puma_flag==3 ~ 3,
+                                     size_flag==1 ~ 3),
+         pctl_50_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
+                                     size_flag==0 & puma_flag==2 ~ 2,
+                                     size_flag==0 & puma_flag==3 ~ 3,
+                                     size_flag==1 ~ 3),
+         pctl_80_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
+                                     size_flag==0 & puma_flag==2 ~ 2,
+                                     size_flag==0 & puma_flag==3 ~ 3,
+                                     size_flag==1 ~ 3)
+  )
+
+```
+
+## Evaluate results
+
+Look at distributions of income percentiles by county.
+
+```{r}
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Black, Non-Hispanic") %>% 
+  select(county, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, Black") +
+  ylab("Density")
+  
+  metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Hispanic") %>% 
+  select(county, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, Hispanic") +
+  ylab("Density")
+  
+  
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Other Races and Ethnicities")  %>% 
+  select(county, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, Other") +
+  ylab("Density")
+  
+   
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "White, Non-Hispanic")  %>% 
+  select(county, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, white") +
+  ylab("Density")
+  
+```
+
+Compare with independent places.
+
+```{r}
+
+```
+
+## Export {#export}
+
+Rename state.
+
+```{r}
+metrics_income <- metrics_income %>% 
+  rename('state' = 'statefip')
+```
+
+Add a variable for the year of the data
+
+```{r}
+
+metrics_income <- metrics_income %>%
+  mutate(
+    year = 2021
+  )
+
+
+```
+
+Order the variables how we want
+
+```{r}
+
+metrics_income <- metrics_income %>% 
+  select(year, state, county, subgroup, pctl_20, pctl_20_quality, pctl_50, 
+         pctl_50_quality, pctl_80, pctl_80_quality)
+
+```
+
+### Add on all variable
+
+Read in the income percentile variable for all households in the county.
+
+```{r}
+
+income_all <- read_csv("data/final/metrics_income_county_2021.csv")
+
+income_all <- income_all %>%
+  mutate(
+    subgroup = "All"
+  )
+
+```
+
+Append the "All" version of the data
+
+```{r}
+metrics_income <- bind_rows(metrics_income, income_all)
+```
+
+Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+
+```{r}
+metrics_income <- metrics_income %>%
+  arrange(state, county)
+
+```
+
+### Export as CSV
+
+```{r}
+
+write_csv(metrics_income, "data/final/metrics_income_subgroup_county_2021.csv")
+
+```
