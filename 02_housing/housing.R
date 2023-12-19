@@ -26,7 +26,7 @@
 #       (4b) Bring in county_place crosswalk
 #       (4c) Merge FMR file with crosswalk on county
 #       (4d) Create place_level_income_limits (weight by FMR population in collapse)
-# (5) Generate households_2021: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
+# (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
 # (6) Merge Vacant with place_level_income_limits
 #       (6a) create same 30%, 50%, and 80% AMI affordability indicators
 # (7) Create the housing metric
@@ -338,6 +338,13 @@ households_2022 <- households_2022 %>%
 # save file to use for affordability measure
 write_csv(households_2022, "data/temp/households_2022.csv")
 
+# NOTE TO REVIEWER: for 30AMI/50AMI/80AMI a third of renter values are missing 
+# and 2/3 of owner values are missing - I'm not positive why 
+# potentially because that's the distribution of renters/owners in the micro data but I'm not familiar
+# enough with microdata to sniff test that guess
+skim(households_2022)
+
+
 ###################################################################
 
 # (6) Merge Vacant with place_level_income_limits (FMR_2022)
@@ -426,6 +433,8 @@ vacant_summed_2022 <- vacant_2022_new %>%
                           .names = "{.col}_vacant"),
                    vacantHHobs_count = n()) %>% 
   rename("state" = "statefip")
+
+write_csv(vacant_summed_2022, "data/temp/vacant_summed_2022.csv")
 
 # (7b) Merge them by place
 housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("state","place"))
@@ -519,3 +528,4 @@ housing_2022_subgroup_final <- housing_2022_subgroup %>%
 
 # export our file as a .csv
 write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_city.csv")  
+

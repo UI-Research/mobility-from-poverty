@@ -3,30 +3,46 @@
 # ACS Code: Affordable and available housing metric, subgroup
 # Amy Rogin (2023-2024) 
 # Using IPUMS extract for ACS 2022
-# Based on processes developed by Paul Johnson and Kevin Werner in SAS
-# and code by Tina Chelidze in R for 2022-2023
+# Based on processes developed by the Seattle Office of Planning & Community Dev
+# for the displacement risk indicators
+
+# Definitions of AFFORDABILITY and AVAILABILITY from page 20: 
+# https://www.huduser.gov/portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2021.pdf
+
+# • Affordability measures the extent to which enough rental housing units of different costs
+# can provide each renter household with a unit it can afford (based on the 30-percent-of-income standard). 
+# Affordability, which is the broadest measure of the relative supply of the housing stock, addresses whether sufficient housing
+# units would exist if allocated solely on the basis of cost. The affordable stock includes both
+# vacant and occupied units.
+
+# • Availability measures the extent to which affordable rental housing units are available
+# to renters within a particular income range. Availability is a more restrictive concept because
+# units that meet the definition must be available and affordable. Some renters choose to spend
+# less than 30 percent of their incomes on rent, occupying housing that is affordable to renters of
+# lower incomes. Those units thus are not available to lower-income renters. A unit is available at a
+# given level of income if (1) it is affordable at that level, and (2) it is occupied by a renter either at
+# that income level or at a lower level or is vacant. 
+
+
 # Process:
 # (1) Housekeeping
-# (2) Import microdata (PUMA Place combination already done)
-# (3) Create a Vacant unit dataframe (vacant units will not be accounted for when we isolate households in Steps 4 & 5)
-#     Note that to get vacant unit data, need to pull a separate extract from IPUMS; see instructions below.
-#       (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
-#       (3b) Add PMI, taxes, and insurance estimates, to get total monthly cost of vacant units for ownership
-#               This "total_monthly_cost" variable will be used to calculate affordability in Step 6
-#       (3c) Now create accurate gross rent variable for vacant units for rent: 
-#       (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
-#             vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per place).
-#       (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
-#               This "RENTGRS" variable will be used to calculate affordability in Step 6
-# (4) Import HUD county Income Levels for each FMR and population for FMR 
-#           (population will be used for weighting)
-#       (4a) Merge the 2 files
-#       (4b) Bring in county_place crosswalk
-#       (4c) Merge FMR file with crosswalk on county
-#       (4d) Create place_level_income_limits (weight by FMR population in collapse)
-# (5) Generate households_2021: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
-# (6) Merge Vacant with place_level_income_limits
-#       (6a) create same 30%, 50%, and 80% AMI affordability indicators
+# (2) Import housing affordability measures calculated in 1_housing.R
+# (3) Availability -  A unit is available at a given level of income if (1) it is affordable at that
+#     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
+#     (3a) Calculate TOTAL population at each income level: 30AMI, 50AMI, 80AMI
+#     (3b) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
+#     (3c) Calculate number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT)
+#     (3a) Number of people at 30AMI 
+#         - At rent: renter is 30% of AMI and housing unit is 30% of AMI q
+#     (3b) Number of people at 50AMI 
+#     (3c) Number of people at 80AMI 
+
+# (6) Affordability and availability metrics 
+#     (6a) Number of vacant units affordable at AMI per 100 renting households
+#     (6b) Number of occupied units affordable at AMI where the occupants are paying <30% of their income on housing costs, per 100 renting households
+#     (6c) Number of occupied units affordable at AMI where occupants are nonetheless paying >=30% of their income on housing costs, per 100 renting households
+#     (6d) Number of occupied units affordable at AMI rented by occupants at a higher AMI, per 100 renting households
+
 # (7) Create the housing metric
 #       (7a) Summarize households_2021 and vacant both by place
 #       (7b) Merge them by place
@@ -43,25 +59,193 @@
 library(tidyverse)
 library(ipumsr)
 library(readxl)
+library(skimr)
 
 ###################################################################
 
 # (2) Import housing affordability data (created in housing.R)
 
-# (2a) Import files
-
 # Either run "housing.R" OR: Import the already prepared housing affordability and vacancy files 
 
-households_2021 <- read_csv("data/temp/households_2021.csv")
+# this file is at the household level still so we can 
+# calculate the availability metric
+households_2022 <- read_csv("data/temp/households_2022.csv")
 
-vacant_2021 <- read_csv("data/temp/vacant_2021.csv")
-
-# (2b) Combine into one 
-
-housing_full <- left_join(households_2021, vacant_2021)
+# this file is at the place level for calculating the overall number
+# of affordable and available units per 100 households in step XX
+vacant_summed_2022 <- read_csv("data/temp/vacant_summed_2022.csv")
 
 ###################################################################
-# (3) Filter data to only rental units (OWNERSHP == 2) or units that are vacant-for-rent (VACANCY == 1)
+
+# (4) Calculate number of units renting for each income bracket in each year (SUPPLY) and the number of households in each income bracket (DEMAND)
+#    (4a) supply is number of housing units in each income bracket. 
+#         This is calculated in step 5 of the housing.R file (variables: Affordable80AMI_all, Affordable80AMI_renter, Affordable80AMI_owner)
+#    (4b) demand is number of households in each income bracket 
+#         This is calculated in step 5 of the housing.R file (variables: below80AMI, below50AMI, below30AMI)
+
+
+# (5) Availability -  A unit is available at a given level of income if (1) it is affordable at that
+#     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
+#     (5a) Calculate TOTAL population at each income level: 30AMI, 50AMI, 80AMI
+tot_pop30 <- households_2022 %>% group_by(statefip, place) %>%  dplyr::summarise(across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE)), 
+                                                                                 HHobs_count = n()) %>% 
+  rename("state" = "statefip")
+
+tot_pop50 <- households_2022 %>% group_by(statefip, place) %>% summarise(pop_below_50ami = sum(Below50AMI, na.rm = TRUE)) 
+tot_pop80 <- households_2022 %>% group_by(statefip, place) %>% summarise(pop_below_80ami = sum(Below80AMI, na.rm = TRUE))
+
+#     (5b) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
+
+# overall at rent measure
+available_2022 <- households_2022 %>% 
+  # unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
+  mutate(
+    # AT RENT 30% AMI
+    at_rent30_all = if_else(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, 1, 0), 
+    at_rent30_renter = if_else(OWNERSHP == 2 & Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, 1, 0),
+    at_rent30_owner = if_else(OWNERSHP == 1 & Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, 1, 0), 
+    # AT RENT 50% AMI
+    at_rent50_all = if_else(Affordable50AMI_all == 1 & Below50AMI == 1 & VACANCY == 0, 1, 0), 
+    at_rent50_renter = if_else(OWNERSHP == 2 & Affordable50AMI_all == 1 & Below50AMI == 1  & VACANCY == 0, 1, 0),
+    at_rent50_owner = if_else(OWNERSHP == 1 & Affordable50AMI_all == 1 & Below50AMI == 1  & VACANCY == 0, 1, 0),
+    # AT RENT 80% AMI
+    at_rent80_all = if_else(Affordable80AMI_all == 1 & Below80AMI == 1 & VACANCY == 0, 1, 0), 
+    at_rent80_renter = if_else(OWNERSHP == 2 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0),
+    at_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0), 
+    
+    # DOWN RENT 30% AMI 
+    down_rent30_all = if_else(Affordable30AMI_all == 1 & Below30AMI == 0 & VACANCY == 0, 1, 0), 
+    down_rent30_renter = if_else(OWNERSHP == 2 & Affordable30AMI_all == 0 & Below30AMI == 1 & VACANCY == 0, 1, 0),
+    down_rent30_owner = if_else(OWNERSHP == 1 & Affordable30AMI_all == 0 & Below30AMI == 1 & VACANCY == 0, 1, 0), 
+    # DOWN RENT 50% AMI
+    down_rent50_all = if_else(Affordable50AMI_all == 1 & Below50AMI == 0 & VACANCY == 0, 1, 0), 
+    down_rent50_renter = if_else(OWNERSHP == 2 & Affordable50AMI_all == 0 & Below50AMI == 1  & VACANCY == 0, 1, 0),
+    down_rent50_owner = if_else(OWNERSHP == 1 & Affordable50AMI_all == 0 & Below50AMI == 1  & VACANCY == 0, 1, 0),
+    # DOWN RENT 80% AMI
+    down_rent80_all = if_else(Affordable80AMI_all == 1 & Below80AMI == 0 & VACANCY == 0, 1, 0), 
+    down_rent80_renter = if_else(OWNERSHP == 2 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0),
+    down_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0), 
+    # calculate total number of households in each income threshold 
+  ) %>% 
+  group_by(statefip, place) %>% 
+  dplyr::summarise(across(matches("Below|Affordable|down_|at_"), ~sum(.x*HHWT, na.rm = TRUE)), 
+                   HHobs_count = n()) %>% 
+  rename("state" = "statefip") %>% 
+  ungroup()
+
+# test that the down rent and at rent values sum to the affordable value at each income bracket
+available_2022 %>% 
+  mutate(combine_rent = rowSums(select(.,"at_rent30_all", "down_rent30_all"), na.rm = TRUE), 
+         rent_dif = Affordable30AMI_all - combine_rent) %>% 
+  summary(rent_dif)
+
+###################################################################
+# Sum variables Affordable80AMI, Affordable50AMI, and Affordable30AMI 
+# from 'vacant_2022', grouped by statefip and place, and weighted by HHWT
+# save as df 'vacant_summed_2022'
+###################################################################
+# calculate the share of affordable and available units at each income level 
+available_2022_final <- available_2022 %>% 
+  left_join(vacant_summed_2022, by = c("state", "place")) %>% 
+  mutate(
+    # share affordable and available at 30 AMI 
+    share_affordable_available_30ami_all = (at_rent30_all+Affordable30AMI_all_vacant/Below30AMI)*100, 
+    share_affordable_available_30ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant/Below30AMI)*100, 
+    share_affordable_available_30ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant/Below30AMI)*100, 
+    
+    # share affordable and available at 50 AMI 
+    share_affordable_available_50ami_all = (at_rent50_all+Affordable50AMI_all_vacant/Below50AMI)*100, 
+    share_affordable_available_50ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant/Below50AMI)*100, 
+    share_affordable_available_50ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant/Below50AMI)*100, 
+    
+    # share affordable and available at 80 AMI 
+    share_affordable_available_80ami_all = (at_rent80_all+Affordable80AMI_all_vacant/Below80AMI)*100, 
+    share_affordable_available_80ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant/Below80AMI)*100, 
+    share_affordable_available_80ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant/Below80AMI)*100,
+    
+    # share affordable and UNavailable at 30 AMI 
+    share_affordable_unavailable_30ami_all = (down_rent30_all/Below30AMI)*100, 
+    share_affordable_unavailable_30ami_renter = (down_rent30_renter/Below30AMI)*100, 
+    share_affordable_unavailable_30ami_owner = (down_rent30_owner/Below30AMI)*100, 
+    
+    # share affordable and UNavailable at 50 AMI 
+    share_affordable_unavailable_50ami_all = (down_rent50_all/Below50AMI)*100, 
+    share_affordable_unavailable_50ami_renter = (down_rent50_renter/Below50AMI)*100, 
+    share_affordable_unavailable_50ami_owner = (down_rent50_owner/Below50AMI)*100, 
+    
+    # share affordable and UNavailable at 80 AMI 
+    share_affordable_unavailable_80ami_all = (down_rent80_all/Below80AMI)*100, 
+    share_affordable_unavailable_80ami_renter = (down_rent80_renter/Below80AMI)*100, 
+    share_affordable_unavailable_80ami_owner = (down_rent80_owner/Below80AMI)*100
+    )
+
+temp <- households_2022 %>% 
+  select(matches("at_rent|down_rent")) %>% 
+  # seperate share_afforadable by AMI and the subgroup
+  pivot_longer(cols = c(contains("at_rent")), 
+               names_to = c("available", "subgroup"),
+               names_pattern = "(.*rent)(\\d{2})", # this creates two columns - "share_affordable_XXAMI" and "_owner/_renter/_all"
+               values_to = "value")  
+# pivot_wider again so that each share_affordable by AMI is it's own column with subgroups as rows
+pivot_wider(
+  names_from = available, 
+  values_from = value
+) 
+# clean subgroup names and add subgroup type column 
+# remove leading underscore and capitalize words
+mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
+       subgroup_type = "renter-owner" )
+ggplot() %>% 
+  geom_histogram(aes(at_r))
+
+
+# renter at rent measure
+at_rent30_renter <- households_2022 %>% 
+  # filter to just renters
+  filter(OWNERSHP == 2)
+# unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
+summarise(sum(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, na.rm = TRUE)) %>%
+  pull()
+
+# Owner at rent measure
+at_rent30_owner <- households_2022 %>% 
+  # filter to just owners
+  filter(OWNERSHP == 1)
+# unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
+summarise(sum(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, na.rm = TRUE)) %>%
+  pull()
+
+POP30 <- sum(renters1$HHWT[renters1$AMI30 == 1])
+ATRENT30 <- sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$AMI30 == 1 & renters1$VACANCY == 0])
+DOWNRENT30 <- sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$AMI30 == 0 & renters1$VACANCY == 0])
+AA$VALUE[AA$INCOME == "0 - 30%" & AA$CATEGORIES == "Vacant" & AA$YEAR == year] <- 100*(sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$VACANCY == 1])/POP30)
+AA$VALUE[AA$INCOME == "0 - 30%" & AA$CATEGORIES == "Affordable/Available (Not Rent Burdened)" & AA$YEAR == year] <- 100*(sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$AMI30 == 1 & renters1$BURDEN30 == 0 & renters1$VACANCY == 0])/POP30)
+AA$VALUE[AA$INCOME == "0 - 30%" & AA$CATEGORIES == "Affordable/Available (Rent Burdened)" & AA$YEAR == year] <- 100*(sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$AMI30 == 1 & renters1$BURDEN30 == 1 & renters1$VACANCY == 0])/POP30)
+AA$VALUE[AA$INCOME == "0 - 30%" & AA$CATEGORIES == "Affordable/Unavailable" & AA$YEAR == year] <- 100*(DOWNRENT30/POP30)
+
+
+#     (5b) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
+#     (5c) Calculate number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT)
+#     (5a) Number of people at 30AMI 
+#         - At rent: renter is 30% of AMI and housing unit is 30% of AMI q
+#     (5b) Number of people at 50AMI 
+#     (5c) Number of people at 80AMI 
+
+# (6) Affordability and availability metrics 
+#     (6a) Number of vacant units affordable at AMI per 100 renting households
+#     (6b) Number of occupied units affordable at AMI where the occupants are paying <30% of their income on housing costs, per 100 renting households
+#     (6c) Number of occupied units affordable at AMI where occupants are nonetheless paying >=30% of their income on housing costs, per 100 renting households
+#     (6d) Number of occupied units affordable at AMI rented by occupants at a higher AMI, per 100 renting households
+
+
+
+###  For given income bracket (in this case, 0-30% AMI), calculates the TOTAL population at that AMI (POP), the number with that AMI renting at an affordable level (ATRENT),
+### and the number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT).
+### From there, calculates the following:
+### Number of vacant units affordable at AMI per 100 renting households
+### Number of occupied units affordable at AMI where the occupants are paying <30% of their income on housing costs, per 100 renting households
+### Number of occupied units affordable at AMI where occupants are nonetheless paying >=30% of their income on housing costs, per 100 renting households
+### Number of occupied units affordable at AMI rented by occupants at a higher AMI, per 100 renting households
 
 
 ############################### FOR INDICATOR #9 ############################### 
@@ -118,18 +302,6 @@ for (year in years){
 ### Calculates proportion of TOTAL housing market falling into each income bracket
 market$SUPPLY_PERCENT <- market$SUPPLY/market$SUPPLY_TOTAL
 market$DEMAND_PERCENT <- market$DEMAND/market$DEMAND_TOTAL
-
-### Calculates position values for graph labels
-market$SUPPLY_CUMULATIVE <- ifelse(market$INCOME == "0 - 30%", market$SUPPLY, NA)
-market$SUPPLY_CUMULATIVE <- ifelse(market$INCOME == "30 - 50%", market$SUPPLY + lag(market$SUPPLY, 1), market$SUPPLY_CUMULATIVE)
-market$SUPPLY_CUMULATIVE <- ifelse(market$INCOME == "50 - 80%", market$SUPPLY + lag(market$SUPPLY, 1) + lag(market$SUPPLY, 2), market$SUPPLY_CUMULATIVE)
-market$SUPPLY_CUMULATIVE <- ifelse(market$INCOME == "80 - 120%", market$SUPPLY + lag(market$SUPPLY, 1) + lag(market$SUPPLY, 2) + lag(market$SUPPLY, 3), market$SUPPLY_CUMULATIVE)
-market$SUPPLY_CUMULATIVE <- ifelse(market$INCOME == "Above 120%", market$SUPPLY + lag(market$SUPPLY, 1) + lag(market$SUPPLY, 2) + lag(market$SUPPLY, 3) + lag(market$SUPPLY, 4), market$SUPPLY_CUMULATIVE)
-market$DEMAND_CUMULATIVE <- ifelse(market$INCOME == "0 - 30%", market$DEMAND, NA)
-market$DEMAND_CUMULATIVE <- ifelse(market$INCOME == "30 - 50%", market$DEMAND + lag(market$DEMAND, 1), market$DEMAND_CUMULATIVE)
-market$DEMAND_CUMULATIVE <- ifelse(market$INCOME == "50 - 80%", market$DEMAND + lag(market$DEMAND, 1) + lag(market$DEMAND, 2), market$DEMAND_CUMULATIVE)
-market$DEMAND_CUMULATIVE <- ifelse(market$INCOME == "80 - 120%", market$DEMAND + lag(market$DEMAND, 1) + lag(market$DEMAND, 2) + lag(market$DEMAND, 3), market$DEMAND_CUMULATIVE)
-market$DEMAND_CUMULATIVE <- ifelse(market$INCOME == "Above 120%", market$DEMAND + lag(market$DEMAND, 1) + lag(market$DEMAND, 2) + lag(market$DEMAND, 3) + lag(market$DEMAND, 4), market$DEMAND_CUMULATIVE)
 
 ### Exports full table as CSV
 write.csv(market, "Market.csv", row.names = FALSE)
