@@ -464,11 +464,10 @@ place_digital_access_by_race <- left_join(places_file, digital_access_city, by=c
 # reshape each of these from wide to long (so that there are 5 obs per place -- all, white, black, asian, other)
 
 # COUNTY first
-county_digital_access_race <- county_digital_access_by_race %>% 
+county_digital_access_race <- 
+  county_digital_access_by_race %>% 
   select(year, state, county, digital_access_total, digital_access_asian_other, 
-         digital_access_black, digital_access_hispanic, digital_access_white)
-# rename subgroup vars for the merge
-county_digital_access_race <- county_digital_access_race %>% 
+         digital_access_black, digital_access_hispanic, digital_access_white) %>% 
   rename(
     "All" = "digital_access_total",
     "Other Races and Ethnicities" = "digital_access_asian_other", 
@@ -476,37 +475,35 @@ county_digital_access_race <- county_digital_access_race %>%
     "Hispanic" = "digital_access_hispanic",
     "White" = "digital_access_white",
   )
-county_digital_access <- gather(county_digital_access_race, 
-                                key="subgroup", 
-                                value="digital_access", 
-                                4:8)
-county_digital_access <- county_digital_access %>%
+
+county_digital_access <- 
+  county_digital_access_race %>% 
+  pivot_longer(cols = 4:8,
+               names_to = "subgroup", 
+               values_to =  "share_digital_access") %>% 
   arrange(state, county)
 # 3143 obs (counties) * 5 race groups = 15,715 obs -- accurate
 
 
 # do the same for the quality variable so you can merge it back in (I could not get this to reshape two column pairs at once)
-county_digital_access_qual <- county_digital_access_by_race %>% 
+county_digital_access_qual <- 
+  county_digital_access_by_race %>% 
   select(year, state, county, digital_access_total_quality, digital_access_asian_other_quality, 
          digital_access_black_quality, digital_access_hispanic_quality, 
-         digital_access_white_quality)
-
-# rename subgroup vars for the merge
-county_digital_access_qual <- county_digital_access_qual %>% 
+         digital_access_white_quality) %>% 
+  # rename subgroup vars for the merge
   rename(
     "All" = "digital_access_total_quality",
     "Other Races and Ethnicities" = "digital_access_asian_other_quality", 
     "Black" = "digital_access_black_quality",
     "Hispanic" = "digital_access_hispanic_quality",
     "White" = "digital_access_white_quality",
-  )
-county_digital_access_qual <- gather(county_digital_access_qual, 
-                                key="subgroup", 
-                                value="digital_access_quality", 
-                                4:8)
-county_digital_access_qual <- county_digital_access_qual %>%
+  ) %>% 
+  # reshape to long
+  pivot_longer(4:8, 
+               names_to = "subgroup", 
+               values_to = "share_digital_access_quality") %>% 
   arrange(state, county)
-
 
 # merge them back together so we have the data and quality in one df
 county_digital_access <- left_join(county_digital_access, county_digital_access_qual, by=c("state", "county", "subgroup"))
@@ -514,11 +511,11 @@ county_digital_access <- left_join(county_digital_access, county_digital_access_
 
 
 # now PLACE
-place_digital_access_race <- place_digital_access_by_race %>% 
+place_digital_access_race <- 
+  place_digital_access_by_race %>% 
   select(year, state, place, digital_access_total, digital_access_asian_other, 
-         digital_access_black, digital_access_hispanic, digital_access_white)
-# rename subgroup vars for the merge
-place_digital_access_race <- place_digital_access_race %>% 
+         digital_access_black, digital_access_hispanic, digital_access_white) %>% 
+  # rename subgroup vars for the merge
   rename(
     "All" = "digital_access_total",
     "Other Races and Ethnicities" = "digital_access_asian_other", 
@@ -526,37 +523,33 @@ place_digital_access_race <- place_digital_access_race %>%
     "Hispanic" = "digital_access_hispanic",
     "White" = "digital_access_white",
   )
-place_digital_access <- gather(place_digital_access_race, 
-                                key="subgroup", 
-                                value="digital_access", 
-                                4:8)
-place_digital_access <- place_digital_access %>%
+place_digital_access <- 
+  place_digital_access_race %>% 
+  pivot_longer(4:8, 
+               names_to = "subgroup",
+               values_to = "share_digital_access") %>% 
   arrange(state, place)
 # 486 obs (places) * 5 race groups = 2,430 obs -- accurate
 
 
 # do the same for the quality variable so you can merge it back in (I could not get this to reshape two column pairs at once)
-place_digital_access_qual <- place_digital_access_by_race %>% 
+place_digital_access_qual <- 
+  place_digital_access_by_race %>% 
   select(year, state, place, digital_access_total_quality, digital_access_asian_other_quality, 
          digital_access_black_quality, digital_access_hispanic_quality, 
-         digital_access_white_quality)
-
-# rename subgroup vars for the merge
-place_digital_access_qual <- place_digital_access_qual %>% 
+         digital_access_white_quality) %>% 
+  # rename subgroup vars for the merge
   rename(
     "All" = "digital_access_total_quality",
     "Other Races and Ethnicities" = "digital_access_asian_other_quality", 
     "Black" = "digital_access_black_quality",
     "Hispanic" = "digital_access_hispanic_quality",
     "White" = "digital_access_white_quality",
-  )
-place_digital_access_qual <- gather(place_digital_access_qual, 
-                                     key="subgroup", 
-                                     value="digital_access_quality", 
-                                     4:8)
-place_digital_access_qual <- place_digital_access_qual %>%
+  ) %>% 
+  pivot_longer(4:8, 
+               names_to = "subgroup",
+               values_to = "share_digital_access_quality") %>% 
   arrange(state, place)
-
 
 # merge them back together so we have the data and quality in one df
 place_digital_access <- left_join(place_digital_access, place_digital_access_qual, by=c("state", "place", "subgroup"))
@@ -596,23 +589,23 @@ place_digital_access <- place_digital_access %>%
 county_digital_access <- county_digital_access %>% 
   select(year, state, county, 
          subgroup_type, subgroup,
-         digital_access, digital_access_quality)
+         share_digital_access, share_digital_access_quality)
 
 place_digital_access <- place_digital_access %>% 
   select(year, state, place, 
          subgroup_type, subgroup,
-         digital_access, digital_access_quality)
+         share_digital_access, share_digital_access_quality)
 
 # suppress values with horrible CVs
 
 county_digital_access <- county_digital_access %>%
   mutate(
-    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+    share_digital_access = if_else(is.na(share_digital_access_quality), NA_real_, share_digital_access)
   )
 
 place_digital_access <- place_digital_access %>%
   mutate(
-    digital_access = if_else(is.na(digital_access_quality), NA_real_, digital_access)
+    share_digital_access = if_else(is.na(share_digital_access_quality), NA_real_, share_digital_access)
   )
 
 # Export each of the files as CSVs
