@@ -1,0 +1,533 @@
+---
+title: "Ratio of the share of a community’s housing wealth held by a racial or ethnic group to the share of households of the same group"
+author: "Jung Hyun Choi and Manu Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+    css: ../../06_neighborhoods/www/web_report.css
+    code-fold: true
+    code-tools: true
+    code-link: true
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r}
+#| label: setup
+
+options(scipen = 999)
+
+librarian::shelf(tidyverse, ipumsr, here, glue, labelled, skimr, urbnthemes)
+set_urbn_defaults(style = "print")
+```
+
+#TODO: Paraphrase
+The metric compares a racial or ethnic group’s share of primary-residence housing wealth in a community to its share of the population. For example, if Black homeowners have 15 percent of the primary-residence housing
+wealth but make up 45 percent of the population, then the metric is a ratio of 15%:45%. The greater
+the gap between these percentages, the more inequity in housing wealth in the community.
+
+## Housekeeping
+
+### Download IPUMS microdata
+
+We extract the 1 year ACS files from the IPUMS API using `ipumsr`. You will need to have an API key in order to do so. If you don't have one, you can register to the [IPUMS USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu) data collection and create an API key.
+
+By default, `ipumsr` API functions assume that your key is stored in the **IPUMS_API_KEY** environment variable. You can also provide your key directly to these functions, but storing it in an environment variable saves you some typing and helps prevent you from inadvertently sharing your key with others (for instance, on GitHub).
+
+You can save your API key to the IPUMS_API_KEY environment variable with `set_ipums_api_key(api_key = "paste-your-key-here", save = TRUE)`. This will add your API key to your .Renviron file in your user home directory.
+
+
+```{r}
+#| label: import-acs-one-year
+#| cache: true
+#| include: false
+## 2.1. ACS: keep households living not living in gq
+
+# Run this the first time you run this code to avoid requesting the same data multiple times
+
+acs_vars <- c("YEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", "CLUSTER", "STATEFIP", "COUNTYFIP", "MET2013", "CITY", "PUMA", "STRATA", "GQ", "OWNERSHP", "OWNERSHPD", "VALUEH", "PERNUM", "PERWT", "RACE", "RACED", "HISPAN", "HISPAND", "AGE")
+
+years <- 2014:2022
+usa_ext_def <- define_extract_usa(
+  description = "ACS 1 Year 2014-2022",
+  samples = paste0("us", years, "a"),
+  variables = acs_vars
+)
+
+usa_ext_submitted <- submit_extract(usa_ext_def)
+usa_ext_complete <- wait_for_extract(usa_ext_submitted)
+
+# download_extract() will return a character vector including the file paths to all downloaded files.
+
+filepath <- download_extract(usa_ext_complete,
+  download_dir = here("01_financial-well-being/home-values/data")
+)
+```
+
+### Filter sample
+
+We load the 2014-2022 1 Year ACS estimates we downloaded from IPUMS above. IPUMS loads the data as a person-level data set with some household variables. For example `hhincome` shows total household income with repeated values for each person in the same household. Therefore, we can analyze the data at the household level by only keeping the first person sampled in the household (i.e., `pernum == 1` where `pernum` is the "Person number in sample unit").
+
+
+```{r}
+#| label: read-1-year-labelled-acs
+#| cache: true
+#| include: false
+
+# Set microdata to whatever the file you downloaded in the previous chunk is called
+
+microdata <- "usa_00002.xml"
+acs1yr_labelled <-
+  read_ipums_micro(here(glue("01_financial-well-being/home-values/data/{microdata}"))) %>%
+  janitor::clean_names() %>%
+  filter(
+    year != 2020,
+    pernum == 1
+  ) %>%
+  mutate(
+    valueh = lbl_na_if(valueh, ~ .lbl %in% c("Missing", "N/A")),
+    across(ends_with("fip"), zap_labels)
+  )
+```
+
+
+Next, we exclude households living in group quarters. That is, we exclude people living in places other than housing units (e.g., correctional facilities, nursing homes, mental hospitals, dorms, barracks, group homes, missions). 
+
+
+FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits. We can ensure this is the case with `stringr::str_pad()`.
+```{r}
+#| label: define-analysis-unit-and-clean-fips-codes
+
+acs1yr <-
+  acs1yr_labelled %>%
+  unlabelled() %>%
+  filter(!(gq %in% c("Group quarters--Institutions", "Other group quarters"))) %>%
+  mutate(
+    statefip = str_pad(statefip, width = 2, pad = "0", side = "left"),
+    countyfip = str_pad(countyfip, width = 3, pad = "0", side = "left"),
+    city = str_pad(city, width = 5, pad = "0", side = "left")
+  )
+```
+
+### Crosswalk
+
+We merge our 1-year ACS data with PUMA-County and PUMA-Place geocodes to get County and City boundaries. Counties with missing county codes in the ACS (i.e., those for which `county code == 0`) were updated using the PUMA-County crosswalk. 
+
+::: {.panel-tabset}
+
+#### County
+
+Only the counties where ACS did not provide county codes (i.e., `county code == 0`) were updated using the PUMA-County crosswalk.
+ 
+```{r}
+#| label: puma-to-county-crosswalk
+
+puma_county <- read_csv(here("01_financial-well-being/home-values/data/puma_to_county_geocorr2014.csv")) %>%
+  mutate(
+    state = str_pad(state, width = 2, pad = "0", side = "left"),
+    county = str_pad(county, width = 3, pad = "0", side = "left")
+  )
+
+
+county_hh <-
+  acs1yr %>%
+  # mutate(countyfip = na_if(countyfip, "000")) %>%
+  left_join(puma_county,
+    by = c("statefip" = "state", "puma" = "puma12"),
+    relationship = "many-to-many"
+  )
+```
+
+#### City
+
+For cities, only places with more than 50,000 population in 2020 were selected. 
+
+```{r}
+#| label: puma-to-place-crosswalk
+
+puma_place <-
+  read_csv(here("01_financial-well-being/home-values/data/puma_to_place_geocorr2012.csv")) %>%
+  # two digit state code
+  mutate(state = str_pad(state, width = 2, pad = "0", side = "left")) %>%
+  mutate(place = str_pad(place, width = 5, pad = "0", side = "left"))
+
+place_hh <-
+  acs1yr %>%
+  # mutate(countyfip = na_if(countyfip, "000")) %>%
+  left_join(puma_place,
+    by = c("statefip" = "state", "puma" = "puma12"),
+    relationship = "many-to-many"
+  )
+```
+
+:::
+
+## Data cleaning
+
+Next, we adjust the household weights to account for the allocation from PUMAs to counties using the puma to county allocation factor variable (`afact`). In other words, `afact` indicates the portion of the PUMA geocodes contained within the county geocode. Conversely, `afact2` is the county to puma allocation factor. We use `afact` and `afact2` to create a `sum_afact` variable, which is defined as the sum of `afact * afact2`.
+
+```{r}
+#| label: data-cleaning-function
+
+adjust_hh_weights <- function(data, geo_var) {
+  data %>%
+    mutate(
+      county = ifelse({{ geo_var }} != "000", {{ geo_var }}, county),
+      weight = ifelse({{ geo_var }} != "000", hhwt, hhwt * afact),
+      sum_afact = ifelse({{ geo_var }} != "000", 1, afact_sum)
+    )
+}
+
+add_race_ethnicity_labels <- function(data) {
+  data %>%
+    mutate(
+      race_ethnicity = case_when(
+        race == "White" & hispan == "Not Hispanic" ~ "white_nh",
+        race == "Black/African American" & hispan == "Not Hispanic" ~ "black_nh",
+        !(str_detect(race, "White|Black")) & hispan == "Not Hispanic" ~ "other_nh",
+        hispan != "Not Hispanic" ~ "hispanic"
+      ),
+      race_ethnicity = factor(race_ethnicity,
+        levels = c(
+          "white_nh",
+          "black_nh",
+          "hispanic",
+          "other_nh"
+        )
+      )
+    )
+}
+```
+::: {.panel-tabset}
+
+### County
+```{r}
+#| label: add-race-ethnicity-county
+county_hh <-
+  acs_hh %>%
+  rename(ownership = ownershp) %>%
+  adjust_hh_weights(countyfip) %>%
+  add_race_ethnicity_labels()
+```
+
+### City
+
+```{r}
+#| label: add-race-ethnicity-city
+
+place_hh <-
+  acs_hh %>%
+  rename(ownership = ownershp) %>%
+  adjust_hh_weights(place) %>%
+  add_race_ethnicity_labels()
+```
+# Step 4. Create Output Data: Household Share by Race and Ethnicity
+
+We will now compute the share of households by race and ethnicity (i.e., total number of households for each race and ethnic group divided by the total number of households)
+
+::: {.panel-tabset}
+
+### County
+```{r}
+#| label: share-of-households-by-race-and-ethnicity-county
+
+county_hh_by_race_ethnicity <-
+  county_hh %>%
+  select(year, statefip, county, weight, race_ethnicity) %>%
+  # add_count(year, statefip, county, wt = weight, name = "total") %>%
+  summarise(
+    hh = sum(weight),
+    .by = c(year, statefip, county, race_ethnicity)
+  ) %>%
+  mutate(
+    total = sum(hh),
+    .by = c(year, statefip, county)
+  ) %>%
+  mutate(share_hh = hh / total) %>%
+  select(year, statefip, county, race_ethnicity, share_hh)
+```
+
+**Check:** Is `share_hh` between 0 and 1?
+
+```{r}
+#| label: share_hh_county_check
+stopifnot(min(county_hh_by_race_ethnicity$share_hh) >= 0)
+stopifnot(max(county_hh_by_race_ethnicity$share_hh) <= 1)
+```
+
+We visualize the distribution of the share of households by race and ethnicity
+```{r} 
+#| label: share-of-hh-county-distribution
+
+county_hh_by_race_ethnicity %>%
+  ggplot(aes(x = race_ethnicity, y = share_hh)) +
+  geom_boxplot() +
+  facet_wrap(year ~ .)
+
+skimr::skim(county_hh_by_race_ethnicity)
+```
+
+### City
+
+```{r}
+#| label: share-of-hh-city-distribution
+
+place_hh_by_race_ethnicity <-
+  place_hh %>%
+  select(year, statefip, place, weight, race_ethnicity) %>%
+  summarise(
+    hh = sum(weight),
+    .by = c(year, statefip, place, race_ethnicity)
+  ) %>%
+  mutate(
+    total = sum(hh),
+    .by = c(year, statefip, place)
+  ) %>%
+  mutate(share_hh = hh / total) %>%
+  select(year, statefip, place, race_ethnicity, share_hh)
+```
+
+**Check:** Is `share_hh` between 0 and 1?
+
+```{r}
+#| label: share_hh_place_check
+stopifnot(min(place_hh_by_race_ethnicity$share_hh) >= 0)
+stopifnot(max(place_hh_by_race_ethnicity$share_hh) <= 1)
+```
+```{r} 
+#| label: share-of-households-county-distribution
+## 4.3 Check Outliers
+options(scipen = 100)
+options(digits = 2)
+
+county_hh_by_race_ethnicity %>%
+  ggplot(aes(x = race_ethnicity, y = share_hh)) +
+  geom_boxplot() +
+  facet_wrap(year ~ .)
+
+skimr::skim(county_hh_by_race_ethnicity)
+```
+
+
+:::
+
+# Step 5. Create Output Data: Housing Wealth Share by Race/Ethnicity (Homeowners Only)
+
+We keep observations for homeowners only in order to calculate total aggregated housing wealth for homeowners for each race and ethnic group divided by the total aggregated housing wealth
+
+```{r}
+#| label: hv-function
+
+house_value_by_race_ethnicity <- function(data, geo_var) {
+  hv <- data %>%
+    filter(ownership == "Owned or being bought (loan)") %>%
+    # mutate(owner = ownership == "Owned or being bought (loan)") %>%
+    summarise(
+      hv = sum(valueh * weight),
+      ho = n(),
+      .by = c(year, statefip, {{ geo_var }}, race_ethnicity)
+    ) %>%
+    complete(race_ethnicity, year, statefip, {{ geo_var }}, fill = list(ho = 0))
+
+  return(hv)
+}
+```
+
+::: {.panel-tabset}
+
+## County
+```{r}
+#| label: house-value-by-race-ethnicity-county
+
+county_hv <- house_value_by_race_ethnicity(county_hh, county)
+```
+
+
+## City
+```{r}
+#| label: house-value-by-race-ethnicity-city
+place_hv <- house_value_by_race_ethnicity(place_hh, place)
+```
+
+:::
+
+The metrics for the ACS indices are based on:
+- (1) sample size of each race and ethnic household at the county/place and  
+- (2) the number of observations that comes from the specific county/place calculated from the PUMA-county/place crosswalk. 
+
+Therefore, the data quality is poor for counties/places with a extremely small number of households (N). To assess the data quality of counties/places with larger N, we need to consider what percent of data for the county/place actually came from the county/place itself. 
+
+For this metric we say that:
+- Data quality is good (`1`) if N is greater than 30 and more than 75% of observations are from the county/place.
+- Data quality is marginal (`2`) N is greater than 30 but only 35% to 75% of observations are from the county/place. 
+- Data quality is poor (`3`) if N is less than 30 **or** if less than 35% of observations are from the county/place
+
+```{r}
+#| label: quality-check-flag-functions
+
+construct_quality_flag <- function(x, y) {
+  case_when(
+    x < 30 ~ 3,
+    x >= 30 & y < 0.35 ~ 3,
+    x >= 30 & y >= 0.35 & y < 0.75 ~ 2,
+    x >= 30 & y >= 0.75 ~ 1
+  )
+}
+
+sum_afact <- function(data, geo_var) {
+  data %>%
+    filter(row_number() == 1, .by = c(statefip, {{ geo_var }})) %>%
+    select(statefip, {{ geo_var }}, sum_afact)
+}
+```
+
+::: {.panel-tabset}
+
+### County
+
+```{r}
+#| label: add-quality-check-flags-county
+
+county_sum_afact <- sum_afact(county_hh, county)
+
+county_hv <-
+  county_hv %>%
+  left_join(county_sum_afact, by = c("statefip", "county")) %>%
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(ho, sum_afact),
+    .by = c(race_ethnicity)
+  )
+```
+
+### City
+
+```{r}
+#| label: add-quality-check-flags-place
+
+
+place_sum_afact <- sum_afact(place_hh, place)
+
+place_hv <-
+  place_hv %>%
+  left_join(place_sum_afact, by = c("statefip", "place")) %>%
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(ho, sum_afact),
+    .by = c(race_ethnicity)
+  )
+```
+
+## Calculate Housing Wealth Ratio by Race and Ethnicity
+
+```{r}
+#| label: housing-wealth-ratio-function
+
+housing_wealth_by_race_ethnicity <- function(data, geo_var) {
+  data %>%
+    mutate(total_hv = sum(hv), .by = c(year, statefip, {{ geo_var }})) %>%
+    mutate(share_hv = hv / total_hv) %>%
+    select(year, statefip, {{ geo_var }}, race_ethnicity, hv, total_hv, share_hv, ratio_house_value_households_quality)
+}
+```
+```{r}
+#| label: housing-wealth-by-race-ethnicity
+
+county_hv_by_race_ethnicity <- housing_wealth_by_race_ethnicity(county_hv, county)
+
+place_hv_by_race_ethnicity <- housing_wealth_by_race_ethnicity(place_hv, place)
+```
+
+## Create Final Output Data: Merge Household & Housing Wealth Share
+```{r}
+#| label: merge-household-and-housing-wealth-share-functions
+
+construct_ratio <- function(hvshare, hhshare) {
+  paste0(
+    format(round(100 * hvshare, 1), nsmall = 1),
+    "%",
+    ":",
+    format(round(100 * hhshare, 1), nsmall = 1),
+    "%"
+  ) %>%
+    str_remove_all(pattern = " ")
+}
+
+hh_hw_by_race_ethnicity <- function(hh_data, hv_data, geo_var) {
+  hh_data %>%
+    left_join(hv_data, by = c(year, statefip, {{ geo_var }}, race_ethnicity)) %>%
+    mutate(
+      ratio_house_value_households = share_hv / share_hh,
+      # construct_ratio(share_hv, share_hh),
+      .by = race_ethnicity
+    ) %>%
+    rename(state = statefip) %>%
+    pivot_wider(
+      id_cols = c(year, state, {{ geo_var }}),
+      names_from = race_ethnicity,
+      values_from = c(ratio_house_value_households, ratio_house_value_households_quality),
+      names_glue = "{race_ethnicity}_{.value}"
+    ) %>%
+    rename_with(~ str_remove(.x, "ratio_") %>% paste0("ratio_", .), contains("ratio")) %>%
+    # order variables according to request
+    select(
+      year, state, {{ geo_var }},
+      ratio_black_nh_house_value_households, ratio_black_nh_house_value_households_quality,
+      ratio_hispanic_house_value_households, ratio_hispanic_house_value_households_quality,
+      ratio_other_nh_house_value_households, ratio_other_nh_house_value_households_quality,
+      ratio_white_nh_house_value_households, ratio_white_nh_house_value_households_quality
+    ) %>%
+    arrange(year, state, {{ geo_var }})
+}
+```
+```{r}
+#| label: calculate-metric
+
+county_hh_hw_raceeth <- hh_hw_by_race_ethnicity(
+  county_hh_by_race_ethnicity,
+  county_hv_by_race_ethnicity, county
+)
+
+place_hh_hw_raceeth <-
+  place_hh_by_race_ethnicity %>%
+  filter(place != "NA") %>%
+  hh_hw_by_race_ethnicity(
+    ,
+    place_hv_by_race_ethnicity, place
+  )
+```
+
+
+## Export Final Data
+
+```{r}
+#| label: export-data
+
+export_metric <- function(data, file_type) {
+  geography <- ifelse("place" %in% colnames(data), "city", "county")
+
+  if (file_type == "recent") {
+    data <- filter(data, year == max(year))
+    file_type <- 2022
+  }
+
+  output_path <- here(glue("01_financial-well-being/home-values/data/hh_hw_raceeth_{file_type}_{geography}.csv"))
+
+  write_csv(data, file = output_path)
+}
+
+export_metric(county_hh_hw_raceeth, file_type = "recent")
+export_metric(county_hh_hw_raceeth, file_type = "all")
+
+export_metric(place_hh_hw_raceeth, file_type = "recent")
+export_metric(place_hh_hw_raceeth, file_type = "all")
+```
