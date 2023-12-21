@@ -44,6 +44,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
     -   [Sorting](#sorting)
     -   [Crosswalks](#crosswalks)
     -   [Standard Errors and Confidence Intervals](#standard-errors-and-confidence-intervals)
+    -   [Validation](#validation)
     -   [Quality Flags](#quality-flags)
     -   [Data Dictionary](#data-dictionary)
     -   [Subgroups File Structure](#subgroups-file-structure)
@@ -193,7 +194,7 @@ These issues will be organized and tracked using [GitHub projects](https://githu
 
     -   `git push origin <"issue branch name">` will push committed changes up to the GitHub for review.
 7.  To contribute to the `main` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does.
-8. All code will go through a code review process with an assigned reviewer. After a succesful review, the changes will be pulled into the `version2024` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
+8. All code will go through a code review process with an assigned reviewer. After a successful review, the changes will be pulled into the `version2024` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
 
 ## Working with issues
 
@@ -257,7 +258,7 @@ All names start with the following:
 -   shares prefixed with `share_`: For example, the variable showing the share with debt in collections is titled `share_debt_col`
 -   percentiles prefixed with `pctl_`: For example, the variable showing the 20th percentile of income is titled `pctl_income_20`
 -   rates prefixed with `rate_`: For example, the variable showing the reported violent crimes per 100,000 people is titled `rate_violent_crime`
--   counts prefixed with `count_`: For example, the variable showing the number of public-schol children who are ever homeless during the school year is titled `count_homeless`
+-   counts prefixed with `count_`: For example, the variable showing the number of public-school children who are ever homeless during the school year is titled `count_homeless`
 -   index prefixed with `index_` : For example, the variable showing the air quality index is titled `index_air_quality`
 
 Moving forward, please use these standardized variable names in the program for each of your assigned metrics. Variable names should only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
@@ -301,7 +302,7 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 | Score | Description                                                                                                                                                                                                                                                       |
 |-----------|------------------------------------------------------------|
 | 1     | The calculated metric for the observation is high-quality and there are no substantial concerns with measurement error, missingness, sample size, or precision.                                                                                                   |
-| 2     | There are issues with the calculated metric for the observation but the issues are limited. It is ok for a community partner to look at the metric.                                                                                                               |
+| 2     | There are issues with the calculated metric for the observation but the issues are limited. It is OK for a community partner to look at the metric.                                                                                                               |
 | 3     | There are serious issues with the calculated metric for the observation. It is possible to calculate the metric but there are critical issues with measurement error, missingness, sample size, and/or precision. A community should not act on this information. |
 |       | It was not possible to calculate a metric for the county or city.                                                                                                                                                                                                 |
 
@@ -312,6 +313,11 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 -   If possible, construct 95 percent confidence intervals for metrics.
 -   Add confidence bounds as columns in the `.csv` files. The variables should have the suffixes `_lb` for lower bound and `_ub` for upper bound.
 -   Do not include the `_lb` and `_ub` if a 95 percent confidence interval calculation isn't possible.
+
+### Validation
+
+- Include data visualizations and six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics. Ensure that values make sense (e.g. median income should be $8 million).
+- If possible, compare calculated values against external data sources. This is useful for intermediate steps (e.g. does the number of votes in a state match published totals?) and final metrics (e.g. does median household income in California align with Census Bureau estimates?)
 
 ### File Names
 
@@ -331,7 +337,7 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 -   All final files should be in the `.csv` format. The files should be delimited with a comma.
 -   Do not open and save any `.csv` files in Microsoft Excel. Excel defaults lead to analytic errors.
--   Final metric files should have a row for all geographies that are included in the all files combined data set 
+-   Final metric files should have a row for all geographies that are included in the all files combined dataset 
        -   For county files with 2020 data and onward this will be 3,143 observations.
        -   For place files this will be 486 observations.
 
@@ -365,7 +371,7 @@ Include comments for all assumptions.
 
 #### Naming & Dates
 
-Use descriptive names for all variables, data sets, functions, and macros.
+Use descriptive names for all variables, datasets, functions, and macros.
 *Avoid abbreviations.* Use ISO 8601 dates (YYYY-MM-DD).
 
 #### Assertions and Tests
@@ -402,7 +408,7 @@ For questions about code, please contact [upwardmobility\@urban.org](mailto:upwa
 
 Metric leads will need to decide whether to create new scripts/programs for extending the database (additional years or subgroup analysis) or to extend existing scripts.
 The optimal approach may differ based on the situation.
-For example, some metric leads will need to change data sets entirely (e.g. 1-year vs. 5-year ACS data) and new scripts may be most efficient and clean, while other metric leads may need to make minimal changes to an existing script.
+For example, some metric leads will need to change datasets entirely (e.g. 1-year vs. 5-year ACS data) and new scripts may be most efficient and clean, while other metric leads may need to make minimal changes to an existing script.
 
 1.  Do not worry about editing existing scripts provided they recreate the original dataset. There is no need to use version control in file names (i.e. script.R to script2.R). Git will handle this. If you have not added your data as a .csv to version control, then please reach out to Aaron (this is a change from earlier policy).
 2.  When possible, use functions and macros to avoid repeating the same code multiple times. For example, if you are pulling the 1-year ACS, try to write functions that take year as an argument and then call the function multiple times instead of copying-and-pasting code.
@@ -411,9 +417,10 @@ For example, some metric leads will need to change data sets entirely (e.g. 1-ye
 
 ## Scope of the review
 
-Code and documentation will be reviewed by Aaron R. Williams and possibly additional reviewers.
-Aaron's code and documentation will be reviewed by someone else.
-Code reviews will be handled through GitHub.
+All code and documentation will go through a review process. Code reviews will be handled through GitHub. 
+
+It is possible that changes will be requested before the completion of a code review. For example, a reviewer may send the code back to the analyst if the code isn't reproducible (i.e. doesn't run) or if the documentation is insufficient for th reviewer to follow the logic. 
+
 The scope of the review will involve the following three levels:
 
 1.  Reproduction of results.
@@ -426,7 +433,8 @@ The scope of the review will involve the following three levels:
     -   Does the researcher subset the data at all? Is it done permanently or temporarily?
     -   How are missing values coded?
     -   Look at merges/joins and appends - do the data appear to be matched appropriately? Are there identical non-ID variables in both datasets? How are non-matching data handled or dropped?
-    -   Are weights used consistently?
+    - I sthe correct geographic crosswalk used?
+    -   Are weights used consistently and correctly?
 3.  Code Architecture/Readability.
     -   Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function or macro.
     -   Is there a place where a variable is rebuilt or changed later on?
@@ -504,7 +512,7 @@ You should be able to add overall comments, approve the Pull Request, or Request
 If you request changes, you will need to `git pull issexample2` after the analyst pushes the updated code to GitHub.
 
 When you are done, you can switch back to your branch with `git checkout branch-name` where `branch-name` is the name of the branch you wish to switch to.
-If you have un-commited changes, you will need to get rid of them with `git stash`.
+If you have un-committed changes, you will need to get rid of them with `git stash`.
 You shouldn't make substantive changes on some else's branch.
 
 *After all metrics have updated on `version2024`, reviewed and approved will the changes be merged with the `main` repository.*
@@ -547,7 +555,7 @@ The folders in this repository are broken into three main sections: Domains, Dat
   - Each domain in the UMF project has a folder (for example, 08_education). This folder holds the programs for the creation of the predictors that fall under that domain, for example, metrics for access to preschool, effective public education, school diversity, preparation for college, and digital access.
   
 2. Data
-  - The final data produced for each domain folder is within that domain in the "data/final" fodler. The collective final data in raw form is also hosted in this repository under the folder titled "data". 
+  - The final data produced for each domain folder is within that domain in the "data/final" folder. The collective final data in raw form is also hosted in this repository under the folder titled "data". 
 
 3. Documentation/Auxiliary
   - The other folders either document or provide auxiliary information/data for creating the predictors. The folder titled "documentation" holds a description of each predictor code in the repository as well as an introductory training to using Git and GitHub. 
@@ -566,7 +574,7 @@ To track down the right folder, first utilize the table under repository content
 
 The origins of the raw data used to create each of these indicators should be readily available in the code associated with each predictor. There are likely two primary ways you can trace the data: 
 
-1) For predictors where the raw data is not avilable for direct downlaod through an API, the source of the raw data will be noted in text at the top of the code. Follow the link or description to download this data.
+1) For predictors where the raw data is not available for direct download through an API, the source of the raw data will be noted in text at the top of the code. Follow the link or description to download this data.
 
 2) For predictors where the data is available through an API, the code will utilize that API to pull the data directly. You can read the section of the code that interacts with the API to see what variables and specifications are used. 
 
