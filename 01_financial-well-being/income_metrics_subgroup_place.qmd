@@ -1,5 +1,5 @@
 ---
-title: "Opportunity for Income Predictor, place, non-subgroup"
+title: "Opportunity for Income Predictor, place, subgroups"
 author: "JP Walsh"
 date: today
 format:
@@ -14,11 +14,11 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Program for the creation of the Opportunity for Income Predictor, non-subgroup, place level*
+*Program for the creation of the Opportunity for Income Predictor, subgroups, place level*
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
-Primary data derived from an IPUMS extract for 2021 ACS data (1-year).
+Primary data derived from an IPUMS extract for 2021 ACS data (5-year).
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
@@ -214,27 +214,29 @@ write_csv(place_puma, here::here("01_financial-well-being", "data", "intermediat
 
 ### API Pull
 
-Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info("usa"). This version of the code is currently pulling from "2021a" which is 1-year 2021 ACS data.
+Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info("usa"). This version of the code is currently pulling from "2021c" which is 5-year 2021 ACS data.
 
 Submit the extract. The directory is set to download into the "raw" data folder inside of the 01_financial-well-being folder. If the data already exists this step will be skipped.
 
 ```{r}
 
-if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_1year.dat.gz"))){
+if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"))){
   
     usa_ext_umf <-
       define_extract_usa(
-        description = "1-year ACS microdata pull for the Opportunity for Income Predictor at the place level, non-subgroup",
-        samples = c("us2021a"),
-        variables = c(
-          "ADJUST",
-          "STATEFIP",
-          "PUMA",
-          "GQ",
-          "HHINCOME",
-          "VACANCY",
-          "PERNUM"
-        )
+        description = "5-year ACS microdata pull for the Opportunity for Income Predictor at the place level, subgroups",
+        samples = c("us2021c"),
+         variables = list(
+      "ADJUST",
+      "STATEFIP",
+      "PUMA",
+      "GQ",
+      "HHINCOME",
+      "VACANCY",
+      "PERNUM",
+      "RACE",
+      "HISPAN"
+    )
       )
     
     usa_ext_umf_submitted <- submit_extract(usa_ext_umf)
@@ -252,11 +254,11 @@ if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_1ye
 
 ```
 
-Rename the IPUMS raw files. Filter for .GZ and .XML files in the raw data folder and change the names to income_1year. Note that we filter out files that have income in the name before renaming, this is to prevent changing downloads from the income subgroup code. 
+Rename the IPUMS raw files. Filter for .GZ and .XML files in the raw data folder and change the names to income_5year. Note that we filter out files that have income in the name before renaming, this is to prevent changing downloads from the income non-subgroup code. 
 
 ```{r}
 
-if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_1year.dat.gz"))){
+if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"))){
   
     ipums_files <-
       list.files(paste0(here::here("01_financial-well-being", "data", "raw")), full.names = TRUE) %>%
@@ -265,8 +267,8 @@ if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_1ye
       pull()
     
     file.rename(ipums_files, c(
-      here::here("01_financial-well-being", "data", "raw", "income_1year.dat.gz"),
-      here::here("01_financial-well-being", "data", "raw", "income_1year.xml")
+      here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"),
+      here::here("01_financial-well-being", "data", "raw", "income_5year.xml")
     ))
   }
 ```
@@ -278,12 +280,12 @@ Read in the micro data extract from the raw data folder.
 ```{r}
 
 ddi <-
-  read_ipums_ddi(here::here("01_financial-well-being", "data", "raw", "income_1year.xml"))
+  read_ipums_ddi(here::here("01_financial-well-being", "data", "raw", "income_5year.xml"))
 
 micro_data <-
   read_ipums_micro(
     ddi,
-    data_file = here::here("01_financial-well-being", "data", "raw", "income_1year.dat.gz")
+    data_file = here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz")
   )
 
 
@@ -319,7 +321,6 @@ HHINCOME is missing it is reported as "9999999".
 Vacancy is reported as "0". 
 
 There is a large share of records missing HHINCMOE. Hownever, note there are no vacancy results by default of the structure of census data read in.
-
 ```{r}
 acs_2021 %>% 
   ggplot(aes(x = hhincome)) +
@@ -387,13 +388,91 @@ acs2021clean %>%
 
 ```
 
+Check the race and hispan variables.
+
+Values for RACE variable: 1 White
+2 Black/African American/Negro
+3 American Indian or Alaska Native 4 Chinese 5 Japanese
+6 Other Asian or Pacific Islander 7 Other race 8 Two major races 9 Three or more major races
+
+Values for HISPAN variable: 0 Not Hispanic 1 Mexican 2 Puerto Rican· 3 Cuban 4 Other 9 Not Reported. 
+
+The data show no cases of non-reporting for Hispan (no values of 9).
+
+```{r}
+
+acs2021clean %>% 
+  count(race) %>% 
+  ggplot(mapping = aes(x = factor(race), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race",
+       y = NULL)
+
+acs2021clean %>% 
+  count(hispan) %>% 
+  ggplot(mapping = aes(x = factor(hispan), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Hispan, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Hispan",
+       y = NULL)
+
+```
+
+Create race/ethnicity variable.
+
+```{r}
+
+acs2021clean <- acs2021clean %>%
+  mutate(subgroup = case_when((hispan == 0 & race == 1) ~ 4,
+                              (hispan == 0 & race == 2) ~ 1,
+                              (hispan == 0 & race %in% 3:9) ~ 3,
+                              (hispan %in% 1:4) ~ 2
+  ))
+
+```
+
+Rename the values from number category to race label 4 = "White, Non-Hispanic" 1 = "Black, Non-Hispanic" 3 = "Other Races and Ethnicities" 2 = "Hispanic"
+
+```{r}
+acs2021clean <- acs2021clean %>%
+  mutate(subgroup = case_when(subgroup %in% 1 ~ 'Black, Non-Hispanic',
+                              subgroup %in% 2 ~ 'Hispanic',
+                              subgroup %in% 3 ~ 'Other Races and Ethnicities',
+                              subgroup %in% 4 ~ 'White, Non-Hispanic'
+  ))
+
+```
+
+Look at subgroup distribution.
+
+```{r}
+
+acs2021clean %>% 
+  count(subgroup) %>% 
+  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Subgroup",
+       y = NULL)
+```
+
 ## Merge microdata 
 
 Join the cleaned ACS data onto the crosswalk.
 
 ```{r}
 
-acs2021clean  <- left_join(acs2021clean, puma_place, by=c("statefip","puma"))
+acs2021clean  <- left_join(acs2021clean, puma_place, by=c("statefip","puma"), relationship = "many-to-many")
 
 ```
 
@@ -431,22 +510,22 @@ Apply the Adjust variable to household income. Adjust converts the dollar amount
 
 acs2021clean <- acs2021clean %>%
   mutate(hhwt = hhwt*afact, 
-         hhincome = hhincome*adjust
+         hhincome = hhincome*adjust,
   ) %>% 
   select(-puma_flag)
 
 ```
 
-Save as "microdata.csv"
+Save as "microdata_subgroup.csv"
 
 ```{r}
-write_csv(acs2021clean, here::here("01_financial-well-being", "data", "intermediate", "2021microdata.csv"))
+write_csv(acs2021clean, here::here("01_financial-well-being", "data", "intermediate", "2021microdata_subgroup.csv"))
 
 ```
 
 ## Create income metric
 
-Create the income metric (non-subgroup).
+Create the income metric (subgroup).
 
 Objective: Calculate the 20th, 50th and 80th percentile of household income for all  unique state+place combinations in year 2021.
 
@@ -486,7 +565,7 @@ Calculate quantiles by grouping variable place.
 ```{r}
 
 metrics_income <- acs2021income %>%
-  group_by(statefip, place) %>%
+  group_by(statefip, place, subgroup) %>%
   summarise(pctl_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2), 
                    pctl_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5),
                    pctl_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8),
@@ -528,7 +607,8 @@ metrics_income <- metrics_income %>%
          pctl_80_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
                                      size_flag==0 & puma_flag==2 ~ 2,
                                      size_flag==0 & puma_flag==3 ~ 3,
-                                     size_flag==1 ~ 3)
+                                     size_flag==1 ~ 3),
+         subgroup_type = "race-ethnicity"
   )
 
 ```
@@ -538,7 +618,7 @@ Keep only relevant variables
 ```{r}
 
 metrics_income <- metrics_income %>% 
-  select(statefip, place, pctl_20, pctl_20_quality, 
+  select(statefip, place, subgroup_type, subgroup, pctl_20, pctl_20_quality, 
          pctl_50, pctl_50_quality, pctl_80, 
          pctl_80_quality, size_flag, 
          puma_flag)
@@ -547,19 +627,54 @@ metrics_income <- metrics_income %>%
 
 ### Evaluate results
 
-Look at distributions of income percentiles by place.
+Look at distributions of income percentiles by place for each subgroup category.
 
 ```{r}
 
 metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Black, Non-Hispanic") %>% 
   select(place, pctl_20, pctl_50, pctl_80) %>% 
   pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles") +
+  ggtitle("Income percentiles, Black") +
   ylab("Density")
   
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Hispanic") %>% 
+  select(place, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, Hispanic") +
+  ylab("Density")
+  
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "Other Races and Ethnicities")  %>% 
+  select(place, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, Other") +
+  ylab("Density")
+  
+   
+metrics_income %>% 
+  ungroup() %>% 
+  filter(subgroup == "White, Non-Hispanic")  %>% 
+  select(place, pctl_20, pctl_50, pctl_80) %>% 
+  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles, white") +
+  ylab("Density")
 ```
 
 Look at the counts of the quality flag.
@@ -597,13 +712,44 @@ metrics_income <- metrics_income %>%
 
 ```
 
+
 Order the variables how we want
 
 ```{r}
 
 metrics_income <- metrics_income %>% 
-  select(year, state, place, pctl_20, pctl_20_quality, pctl_50, 
+  select(year, state, place, subgroup_type, subgroup, pctl_20, pctl_20_quality, pctl_50, 
          pctl_50_quality, pctl_80, pctl_80_quality)
+
+```
+
+### Add on all variable
+
+Read in the income percentile variable for all households in the place.
+
+```{r}
+
+income_all <- read_csv(here::here("01_financial-well-being", "data", "final", "metrics_income_city_2021.csv"))
+
+income_all <- income_all %>%
+  mutate(
+    subgroup_type = "all",
+    subgroup = "All"
+  )
+
+```
+
+Append the "All" version of the data
+
+```{r}
+metrics_income <- bind_rows(metrics_income, income_all)
+```
+
+Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other)
+
+```{r}
+metrics_income <- metrics_income %>%
+  arrange(state, place)
 
 ```
 
@@ -611,7 +757,7 @@ Export as CSV
 
 ```{r}
 
-write_csv(metrics_income, here::here("01_financial-well-being", "data", "final", "metrics_income_city_2021.csv"))
+write_csv(metrics_income, here::here("01_financial-well-being", "data", "final", "metrics_income_city_subgroup_2021.csv"))
 
 ```
 

@@ -1,5 +1,5 @@
 ---
-title: "Opportunity for Income Predictor, county, subgroups"
+title: "Employment Opportunities Predictor, county, subgroups"
 author: "JP Walsh"
 date: today
 format:
@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Program for the creation of the Opportunity for Income Predictor, subgroups, county level*
+*Program for the creation of the Opportunity for Employment Opportunities Predictor, subgroups, county level*
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
@@ -26,7 +26,7 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 -   [Create Crosswalk](#create-crosswalk)
 -   [Pull microdata](#pull-microdata)
 -   [Merge microdata](#merge-microdata)
--   [Create income metric](#create-income-metric)
+-   [Create employment metric](#create-employment-metric)
 -   [Export](#export)
 
 ## Housekeeping
@@ -189,7 +189,7 @@ puma_county <- puma_county %>%
 Save as "puma_county.csv" in the intermediate file.
 
 ```{r}
-write_csv(puma_county, here::here("01_financial-well-being", "data", "intermediate", "puma_county.csv"))
+write_csv(puma_county, here::here("09_employment", "data", "intermediate", "puma_county.csv"))
 
 ```
 
@@ -208,7 +208,7 @@ county_puma <- puma_county %>%
 Save as "county_puma.csv" in the intermediate file.
 
 ```{r}
-write_csv(county_puma, here::here("01_financial-well-being", "data", "intermediate", "county_puma.csv"))
+write_csv(county_puma, here::here("09_employment", "data", "intermediate", "county_puma.csv"))
 ```
 
 ## Pull microdata
@@ -217,22 +217,23 @@ write_csv(county_puma, here::here("01_financial-well-being", "data", "intermedia
 
 Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info("usa"). This version of the code is currently pulling from "2021c" which is 5-year 2021 ACS data.
 
-Submit the extract. The directory is set to download into the "raw" data folder inside of the 01_financial-well-being folder. If the data already exists this step will be skipped.
+Submit the extract. The directory is set to download into the "raw" data folder inside of the 09_employment folder. If the data already exists this step will be skipped.
 
 ```{r}
 
-if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"))){
+if(!file.exists(here::here("09_employment", "data", "raw", "employment_opp_5year.dat.gz"))){
   
     usa_ext_umf <-
       define_extract_usa(
-        description = "5-year ACS microdata pull for the Opportunity for Income Predictor at the county level, subgroups",
+        description = "5-year ACS microdata pull for the Employment Opportunities Predictor at the county level, subgroups",
         samples = c("us2021c"),
          variables = list(
       "ADJUST",
       "STATEFIP",
       "PUMA",
       "GQ",
-      "HHINCOME",
+      "AGE",
+      "EMPSTAT",
       "VACANCY",
       "PERNUM",
       "RACE",
@@ -247,7 +248,7 @@ if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5ye
     filepath <-
       download_extract(
         usa_ext_umf_submitted,
-        download_dir = here::here("01_financial-well-being", "data", "raw"),
+        download_dir = here::here("09_employment", "data", "raw"),
         progress = FALSE
       )
   }
@@ -255,21 +256,21 @@ if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5ye
 
 ```
 
-Rename the IPUMS raw files. Filter for .GZ and .XML files in the raw data folder and change the names to income_5year. Note that we filter out files that have income in the name before renaming, this is to prevent changing downloads from the income non-subgroup code. 
+Rename the IPUMS raw files. Filter for .GZ and .XML files in the raw data folder and change the names to employment_opp_5year. Note that we filter out files that have employment in the name before renaming, this is to prevent changing downloads from the employment non-subgroup code. 
 
 ```{r}
 
-if(!file.exists(here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"))){
+if(!file.exists(here::here("09_employment", "data", "raw", "employment_opp_5year.dat.gz"))){
   
     ipums_files <-
-      list.files(paste0(here::here("01_financial-well-being", "data", "raw")), full.names = TRUE) %>%
+      list.files(paste0(here::here("09_employment", "data", "raw")), full.names = TRUE) %>%
       as_tibble() %>%
-      filter(str_detect(value, "dat.gz|xml"), !str_detect(value, "income")) %>%
+      filter(str_detect(value, "dat.gz|xml"), !str_detect(value, "employment_opp")) %>%
       pull()
     
     file.rename(ipums_files, c(
-      here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz"),
-      here::here("01_financial-well-being", "data", "raw", "income_5year.xml")
+      here::here("09_employment", "data", "raw", "employment_opp_5year.dat.gz"),
+      here::here("09_employment", "data", "raw", "employment_opp_5year.xml")
     ))
   }
 ```
@@ -281,12 +282,12 @@ Read in the micro data extract from the raw data folder.
 ```{r}
 
 ddi <-
-  read_ipums_ddi(here::here("01_financial-well-being", "data", "raw", "income_5year.xml"))
+  read_ipums_ddi(here::here("09_employment", "data", "raw", "employment_opp_5year.xml"))
 
 micro_data <-
   read_ipums_micro(
     ddi,
-    data_file = here::here("01_financial-well-being", "data", "raw", "income_5year.dat.gz")
+    data_file = here::here("09_employment", "data", "raw", "employment_opp_5year.dat.gz")
   )
 
 
@@ -301,7 +302,7 @@ acs_2021 <- micro_data %>%
 
 ```
 
-Drop labels using zap_labels and define variable formats. Household income takes an unknown format upon reading in the raw data, we redefine it as numeric.
+Drop labels using zap_labels and define variable formats.
 Provide leading zeros to statefip and PUMA so they match the crosswalk. 
 
 ```{r}
@@ -309,7 +310,6 @@ Provide leading zeros to statefip and PUMA so they match the crosswalk.
 acs_2021 <- acs_2021 %>%
   mutate(
     across(where(is.labelled), ~ zap_labels(.x)),
-    hhincome = as.numeric(hhincome),
     statefip = sprintf("%0.2d", as.numeric(statefip)),
     puma = sprintf("%0.5d", as.numeric(puma))
   )
@@ -318,16 +318,30 @@ acs_2021 <- acs_2021 %>%
 
 Missing data is reported in a variety of ways by IPUMS - listed below:
 
-HHINCOME is missing it is reported as "9999999".
+Age: No missing values reported in variable description.
+Empstat: N/As reported as "0".
 Vacancy is reported as "0". 
 
-There is a large share of records missing HHINCMOE. Hownever, note there are no vacancy results by default of the structure of census data read in.
+There is a large share of records missing for empstat.The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
+
 ```{r}
+
 acs_2021 %>% 
-  ggplot(aes(x = hhincome)) +
+  count(empstat) %>% 
+  ggplot(mapping = aes(x = factor(empstat), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Empstat, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Employment Status",
+       y = NULL)
+
+acs_2021 %>% 
+  ggplot(aes(x = age)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   theme_minimal() +
-  ggtitle("Household Income Variable Results") +
+  ggtitle("Age Variable Results") +
   ylab("Density")
 
 acs_2021 %>% 
@@ -343,22 +357,26 @@ Turn the missing/"not in universe" variable into NAs.
 ```{r}
 
 acs2021clean <- acs_2021 %>%
-  mutate(hhincome = ifelse(hhincome == 9999999, NA_integer_,
-                          hhincome)
+  mutate(empstat = ifelse(empstat == 0, NA_integer_,
+                          empstat)
   )
 
 ```
 
-Look at distribution of HHINCOME after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
+Look at distribution of empstat after adjustment. There should be no more records with the value "0".
 
 ```{r}
 
 acs2021clean %>% 
-  ggplot(aes(x = hhincome)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  count(empstat) %>% 
+  ggplot(mapping = aes(x = factor(empstat), y = n)) +
+  geom_col() +
   theme_minimal() +
-  ggtitle("Household Income Variable Results") +
-  ylab("Density")
+  ggtitle("Empstat, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Employment Status",
+       y = NULL)
 
 ```
 
@@ -499,15 +517,12 @@ acs2021clean <- acs2021clean %>%
   filter(afact > 0)
 ```
 
-Adjust weight to account for PUMA-to-county mapping (those where unique_types do not equal 1).Drop PUMA flag variable from PUMA_county.
-
-Apply the Adjust variable to household income. Adjust converts the dollar amounts to the amount that they would have been had they been earned entirely during the calendar year. This is to deal with households being surveyed at different times during the year.
+Adjust weight to account for PUMA-to-county mapping (those where unique_types do not equal 1). Drop PUMA flag variable from PUMA_county.
 
 ```{r}
 
 acs2021clean <- acs2021clean %>%
-  mutate(hhwt = hhwt*afact, 
-         hhincome = hhincome*adjust
+  mutate(hhwt = hhwt*afact
   ) %>% 
   select(-puma_flag)
 
@@ -528,31 +543,37 @@ acs2021clean <- acs2021clean %>%
 Save as "microdata_county_subgroup.csv"
 
 ```{r}
-write_csv(acs2021clean, here::here("01_financial-well-being", "data", "intermediate", "2021microdata_county_subgroup.csv"))
+write_csv(acs2021clean, here::here("09_employment", "data", "intermediate", "2021microdata_county_subgroup.csv"))
 
 ```
 
-## Create income metric
+## Create employment metric
 
-Create the income metric (subgroup).
+Create the employment metric (subgroup).
 
-Objective: Calculate the 20th, 50th and 80th percentile of household income for all unique state and county combinations in year 2021.
+Objective: get the percent of individuals between the ages 25 and 54 that are employed from the EMPSTAT variable for all unique statefip and county pairs.
 
-Aggregation should be weighted by HHWT (this is a household level statistic).
+Aggregation should be weighted by PERWT (this is a person level statistic).
 
-Isolate data to include each household only once (PERNUM == 1 counts head of household only).
+First, isolate the data set to 25-54 year-olds.
 
 ```{r}
-acs2021income <- acs2021clean %>%
+acs2021clean <- acs2021clean %>%
   filter(pernum == 1)
 ```
 
-Confirm there are no missing values remaining in the data set for the household income variable. 
+
+```{r}
+microdata_emp_age <- acs2021clean %>% 
+  filter(age >= 25 & age <= 54) 
+```
+
+Check how many records, if any, have NA reported for empstat after filtering.
 
 ```{r}
 
-acs2021income %>%
-  filter(is.na(hhincome)) %>% 
+microdata_emp_age %>%
+  filter(is.na(empstat)) %>% 
   group_by(pernum) %>% 
   count()
 
@@ -562,34 +583,44 @@ Confirm there are no vacant properties included in the data.
 
 ```{r}
 
-acs2021income %>%
+microdata_emp_age %>%
   filter(is.na(vacancy)) %>% 
   group_by(pernum) %>% 
   count()
 
 ```
 
-Calculate quantiles by grouping variable county.
+Collapse # of 25-54 year olds by county
+Also create a collapse var for people that age who are employed (empstat == 1).
+
+Group by subgroup category.
+
+```{r}
+metrics_employment <- microdata_emp_age %>%
+  group_by(statefip, county, subgroup) %>%
+  summarise(
+    num_in_emp_age = sum(perwt),
+    num_employed = sum((empstat == 1) * perwt),
+    count = n()
+  )
+```
+
+Compute the ratio (share employed).
 
 ```{r}
 
-metrics_income <- acs2021income %>%
-  group_by(statefip, county, subgroup) %>%
-  summarise(pctl_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2), 
-                   pctl_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5),
-                   pctl_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8),
-                   count = n()) %>% 
-  ungroup()
+metrics_employment <- metrics_employment %>%
+  mutate(share_employed = num_employed/num_in_emp_age)
 
 ```
 
 ### Finish the Data Quality variable
 
-For Income metric: total number of households is the sample size we are checking.
+For employment metric: total number of households is the sample size we are checking.
 
 ```{r}
 
-metrics_income <- metrics_income %>% 
+metrics_employment <- metrics_employment %>% 
   mutate(size_flag = case_when((count < 30) ~ 1,
                                (count >= 30) ~ 0))
 ```
@@ -597,23 +628,15 @@ metrics_income <- metrics_income %>%
 Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
 
 ```{r}
-metrics_income <- left_join(metrics_income, county_puma, by=c("statefip","county"))
+metrics_employment <- left_join(metrics_employment, county_puma, by=c("statefip","county"))
 ```
 
-Generate the quality variable.
+Generate the quality var
 
 ```{r}
 
-metrics_income <- metrics_income %>% 
-  mutate(pctl_20_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
-                                     size_flag==0 & puma_flag==2 ~ 2,
-                                     size_flag==0 & puma_flag==3 ~ 3,
-                                     size_flag==1 ~ 3),
-         pctl_50_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
-                                     size_flag==0 & puma_flag==2 ~ 2,
-                                     size_flag==0 & puma_flag==3 ~ 3,
-                                     size_flag==1 ~ 3),
-         pctl_80_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
+metrics_employment <- metrics_employment %>% 
+  mutate(share_employed_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
                                      size_flag==0 & puma_flag==2 ~ 2,
                                      size_flag==0 & puma_flag==3 ~ 3,
                                      size_flag==1 ~ 3),
@@ -622,76 +645,77 @@ metrics_income <- metrics_income %>%
 
 ```
 
-Keep only relevant variables
+Keep only relevant variables.
 
 ```{r}
 
-metrics_income <- metrics_income %>% 
-  select(statefip, county, subgroup_type, subgroup, pctl_20, pctl_20_quality, 
-         pctl_50, pctl_50_quality, pctl_80, 
-         pctl_80_quality, size_flag, 
+metrics_employment <- metrics_employment %>%
+  select(statefip,
+         county,
+         subgroup_type,
+         subgroup,
+         share_employed,
+         share_employed_quality,
+         size_flag,
          puma_flag)
 
 ```
 
 ### Evaluate results
 
-Look at distributions of income percentiles by county for each subgroup category.
+Look at distributions of employment share by county for each subgroup category.
 
 ```{r}
-metrics_income %>% 
+
+metrics_employment %>% 
   ungroup() %>% 
   filter(subgroup == "Black, Non-Hispanic") %>% 
-  select(county, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
-  ggplot(aes(x = percentile, color = income, fill = income)) +
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles, Black") +
+  ggtitle("Employment Share, Black") +
   ylab("Density")
-  
-metrics_income %>% 
+
+metrics_employment %>% 
   ungroup() %>% 
   filter(subgroup == "Hispanic") %>% 
-  select(county, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
-  ggplot(aes(x = percentile, color = income, fill = income)) +
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles, Hispanic") +
+  ggtitle("Employment Share, Hispanic") +
   ylab("Density")
-  
-metrics_income %>% 
+
+metrics_employment %>% 
   ungroup() %>% 
-  filter(subgroup == "Other Races and Ethnicities")  %>% 
-  select(county, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
-  ggplot(aes(x = percentile, color = income, fill = income)) +
+  filter(subgroup == "Other Races and Ethnicities") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles, Other") +
+  ggtitle("Employment Share, Other Races and Ethnicities") +
   ylab("Density")
-  
-   
-metrics_income %>% 
+
+metrics_employment %>% 
   ungroup() %>% 
-  filter(subgroup == "White, Non-Hispanic")  %>% 
-  select(county, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
-  ggplot(aes(x = percentile, color = income, fill = income)) +
+  filter(subgroup == "White, Non-Hispanic") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles, white") +
+  ggtitle("Employment Share, White, Non-Hispanic") +
   ylab("Density")
+
 ```
 
 Look at the counts of the quality flag.
 
 ```{r}
 
-metrics_income %>% 
-  select(county, pctl_20_quality) %>% 
-  ggplot(aes(x = pctl_20_quality)) +
+metrics_employment %>% 
+  select(county, share_employed_quality) %>% 
+  ggplot(aes(x = share_employed_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
   ggtitle("Quality Flag") +
@@ -704,7 +728,7 @@ metrics_income %>%
 Rename state.
 
 ```{r}
-metrics_income <- metrics_income %>% 
+metrics_employment <- metrics_employment %>% 
   rename("state" = "statefip")
 ```
 
@@ -712,7 +736,7 @@ Add a variable for the year of the data
 
 ```{r}
 
-metrics_income <- metrics_income %>%
+metrics_employment <- metrics_employment %>%
   mutate(
     year = 2021
   )
@@ -724,21 +748,20 @@ Order the variables how we want
 
 ```{r}
 
-metrics_income <- metrics_income %>% 
-  select(year, state, county, subgroup_type, subgroup, pctl_20, pctl_20_quality, pctl_50, 
-         pctl_50_quality, pctl_80, pctl_80_quality)
+metrics_employment <- metrics_employment %>% 
+  select(year, state, county, subgroup_type, subgroup, share_employed, share_employed_quality)
 
 ```
 
 ### Add on all variable
 
-Read in the income percentile variable for all households in the county.*Note that the file income_metrics_all_county.qmd must be ran prior to this file to create the metrics_income_county_2021.csv file.*
+Read in the employment share variable for all households in the county.
 
 ```{r}
 
-income_all <- read_csv(here::here("01_financial-well-being", "data", "final", "metrics_income_county_2021.csv"))
+employment_all <- read_csv(here::here("09_employment", "data", "final", "metrics_employment_county_2021.csv"))
 
-income_all <- income_all %>%
+employment_all <- employment_all %>%
   mutate(
     subgroup_type = "all",
     subgroup = "All"
@@ -746,24 +769,29 @@ income_all <- income_all %>%
 
 ```
 
-Append the "All" version of the data.
+Append the "All" version of the data
 
 ```{r}
-metrics_income <- bind_rows(metrics_income, income_all)
+metrics_employment <- bind_rows(metrics_employment, employment_all)
 ```
 
-Sort by county again to double check we have 5 observations per county (All, Black, White, Hispanic, Other).
+Sort by county again to double check we have 5 observations per county (All, Black, White, Hispanic, Other)
 
 ```{r}
-metrics_income <- metrics_income %>%
+metrics_employment <- metrics_employment %>%
   arrange(state, county)
 
 ```
 
-Export as CSV.
+Export as CSV
 
 ```{r}
 
-write_csv(metrics_income, here::here("01_financial-well-being", "data", "final", "metrics_income_county_subgroup_2021.csv"))
+write_csv(metrics_employment, here::here("09_employment", "data", "final", "metrics_employment_county_subgroup_2021.csv"))
 
 ```
+
+
+
+
+
