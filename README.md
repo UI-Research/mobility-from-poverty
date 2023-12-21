@@ -316,7 +316,7 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
 ### Validation
 
-- Include data visualizations and six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics. Ensure that values make sense (e.g. median income should be $8 million).
+- Include data visualizations (e.g. histograms or scatterplots) and six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics. Ensure that values make sense (e.g. median income should not be $8 million).
 - If possible, compare calculated values against external data sources. This is useful for intermediate steps (e.g. does the number of votes in a state match published totals?) and final metrics (e.g. does median household income in California align with Census Bureau estimates?)
 
 ### File Names
