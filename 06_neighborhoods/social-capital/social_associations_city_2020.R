@@ -1,18 +1,18 @@
 ###############################################################################
 
-# Description: Code to create city-level Social Associations metric (one of two Social Capital Gates Mobility Metrics)  
+# Description: Code to create city-level Social Associations metric (one of two Social Capital Gates Mobility Metrics)
 # Data:  [gitfolder]/06_neighborhoods/social-capital/data/zbp20detail.csv (won't be on Github main)
 # Data downloaded from: Census County Business Patterns 2020
-# Author: Tina Chelidze											   
+# Author: Tina Chelidze
 # Date: December 23, 2022
 
-# (1)  download social organization data from https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html (this is the numerator)										
-# (2)  import and clean the data file	(collapse to unique ZIPs)			   
+# (1)  download social organization data from https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html (this is the numerator)
+# (2)  import and clean the data file	(collapse to unique ZIPs)
 # (3)  merge with the 2010 ZCTA -> 2021 Census Place crosswalk
 # (4)  collapse estimates to unique Places
 # (5)  check against official Census Place file & limit to population cutoff Places
 # (6)  use crosswalk population data to construct the ratio (Numerator/Denominator)
-# (7)  add data quality tag, final file cleaning and export to .csv file	
+# (7)  add data quality tag, final file cleaning and export to .csv file
 
 ###############################################################################
 
@@ -27,36 +27,31 @@ library(readr)
 library(tigris)
 library(censusapi)
 
-# Establish Census API key
-# You can get a Census API key here: https://api.census.gov/data/key_signup.html
-# Add key to .Renviron
-# Reload .Renviron
-# readRenviron("~/.Renviron")
-# Check to see that the expected key is output in your R console
-# Sys.getenv("CENSUS_KEY")
-# Reload .Renviron
-# readRenviron("~/.Renviron")
-# Check to see that the expected key is output in your R console
-# Sys.getenv("CENSUS_KEY")
 
+# We pull our data from `library(censusapi)`.
+#  **Note:** This will require a 
+#  [Census API key](https://api.census.gov/data/key_signup.html). 
+#  Add the key to `census_api_key-template.R` and then delete "template". 
 
-# (1)  download social organization data from https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html (this is the numerator)										
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+
+# (1)  download social organization data from https://www.census.gov/data/datasets/2020/econ/cbp/2020-cbp.html (this is the numerator)
 # Instead of using the file, going to go for the API this time (due to many more observations)
 
 cbp_zip <- getCensus(
   name = "cbp",
   vintage = 2020,
   vars = c("EMP", "ESTAB", "NAICS2017"),
-  region = "zipcode:*",
-  key = key)
+  region = "zipcode:*"
+)
 head(cbp_zip)
 
 
-# (2) import and clean the CBP data file 
+# (2) import and clean the CBP data file
 
-# This means a) fill in fips missing zeroes, 
-# b) isolate to only the following NAICS, 
-# c) collapse & keep only relevant variables, and 
+# This means a) fill in fips missing zeroes,
+# b) isolate to only the following NAICS,
+# c) collapse & keep only relevant variables, and
 # d) add the year of these data.
 
 # Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920
@@ -69,34 +64,36 @@ head(cbp_zip)
 #           Not needed, already good
 #           write_csv(cbp_zip, "06_neighborhoods/social-capital/final_data/CBP_ZIP_2022.csv")
 cbp_zip <- cbp_zip %>%
-  mutate(naics = as.numeric(NAICS2017),
-         zip = as.numeric(zip_code))
+  mutate(
+    naics = as.numeric(NAICS2017),
+    zip = as.numeric(zip_code)
+  )
 
 
 # (b) keep the NAICS organization codes we want
-keep = c(813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, 813920)
+keep <- c(813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, 813920)
 cbp_zip <- filter(cbp_zip, naics %in% keep)
 # 2,886,438 to 28,698 obs
 
 
-# (c) collapse (aggregate org #s so there is only 1 value per ZIP) & keep only relevant variables 
+# (c) collapse (aggregate org #s so there is only 1 value per ZIP) & keep only relevant variables
 
 # keep only relevant data
 cbp_zip <- cbp_zip %>%
   select(zip_code, zip, ESTAB)
 
 # remove observations with missing data for our orgs variable
-cbp_zip <- cbp_zip %>% 
+cbp_zip <- cbp_zip %>%
   drop_na(ESTAB)
-    # no missings (observations still at 28,698)
+# no missings (observations still at 28,698)
 
 # aggregate the total # of orgs per ZIP
-cbp_zip <- cbp_zip %>% 
+cbp_zip <- cbp_zip %>%
   group_by(zip) %>%
   summarize(est_total = sum(ESTAB))
-    # 28,698 observations to 16,594 observations
+# 28,698 observations to 16,594 observations
 
-#add lost leading zeroes
+# add lost leading zeroes
 cbp_zip <- cbp_zip %>%
   mutate(zipcode = sprintf("%0.5d", as.numeric(zip)))
 
@@ -115,57 +112,65 @@ ZCTA_Place <- read.csv("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_
 
 # clean up the crosswalk file to prepare for the merge:
 # rename the ZCTA and state FIPS variables to avoid confusion
-ZCTA_Place <- ZCTA_Place %>% 
-  rename(zip = ZCTA5CE10,
-         statefips = STATEFP,
-         place = PLACEFP,
-         place_name = NAMELSAD)
+ZCTA_Place <- ZCTA_Place %>%
+  rename(
+    zip = ZCTA5CE10,
+    statefips = STATEFP,
+    place = PLACEFP,
+    place_name = NAMELSAD
+  )
 
 # adjust the leading zeroes now
 ZCTA_Place <- ZCTA_Place %>%
-  mutate(zipcode = sprintf("%0.5d", as.numeric(zip)),
-         statefips = sprintf("%0.2d", as.numeric(statefips)),
-         place = sprintf("%0.5d", as.numeric(place)))
+  mutate(
+    zipcode = sprintf("%0.5d", as.numeric(zip)),
+    statefips = sprintf("%0.2d", as.numeric(statefips)),
+    place = sprintf("%0.5d", as.numeric(place))
+  )
 
 # make an indicator for ZIPs that fall wholly into a Place vs. partially (ZCTAinPlace < 1)
 ZCTA_Place <- ZCTA_Place %>%
-  mutate(portionin = case_when(ZCTAinPlace == 1 ~ 1,
-                               ZCTAinPlace < 1 ~ 0))
+  mutate(portionin = case_when(
+    ZCTAinPlace == 1 ~ 1,
+    ZCTAinPlace < 1 ~ 0
+  ))
 # check how many of these...
-sum(with(ZCTA_Place, portionin==1))
+sum(with(ZCTA_Place, portionin == 1))
 # 2079 of these ZCTAs fall fully into a Census Place
 
 # keep only the variables we will need
-ZCTA_Place <- ZCTA_Place %>% 
+ZCTA_Place <- ZCTA_Place %>%
   select(zipcode, zip, statefips, place, place_name, IntersectArea, ZCTAinPlace, portionin)
 
 # merge the ZIP/Places crosswalk into the CBP ZIP-level data file (left join, since we want to keep all the cbp data)
-merged_sa_zip_city <- left_join(cbp_zip, ZCTA_Place, by=c("zipcode"))
-    # note: 49,326 obs
+merged_sa_zip_city <- left_join(cbp_zip, ZCTA_Place, by = c("zipcode"))
+# note: 49,326 obs
 
 # check if there are missings after the merge
-merged_sa_zip_city <- merged_sa_zip_city %>% 
+merged_sa_zip_city <- merged_sa_zip_city %>%
   drop_na(est_total)
-    # no missings
+# no missings
 
 
-# (4)  Collapse estimates to unique Places 
+# (4)  Collapse estimates to unique Places
 
 # First, for data quality marker:
 # create a new variable that tracks the number of ZCTAs falling in each Place (duplicates)
-merged_sa_zip_city <- merged_sa_zip_city %>% 
+merged_sa_zip_city <- merged_sa_zip_city %>%
   group_by(place, place_name) %>%
   mutate(num_ZCTAs_in_place = n())
 
-# create the merged file where the SA numerator (number of orgs) is averaged per Place, 
+# create the merged file where the SA numerator (number of orgs) is averaged per Place,
 # weighted by the % area of the ZCTA in that Place (new_est_zip)
-# and also include total ZCTAs in Place (zip_total) & 
+# and also include total ZCTAs in Place (zip_total) &
 # how many of those partially fall outside the Place (zipsin)
-test2 <- merged_sa_zip_city %>% 
-  group_by(statefips, place) %>% 
-  summarize(zip_total = mean(num_ZCTAs_in_place), 
-            zipsin = sum(portionin), 
-            new_est_zip = weighted.mean(est_total, ZCTAinPlace))
+test2 <- merged_sa_zip_city %>%
+  group_by(statefips, place) %>%
+  summarize(
+    zip_total = mean(num_ZCTAs_in_place),
+    zipsin = sum(portionin),
+    new_est_zip = weighted.mean(est_total, ZCTAinPlace)
+  )
 
 # drop missing values
 test2 <- test2 %>% drop_na(new_est_zip)
@@ -178,10 +183,12 @@ test2 <- test2 %>% drop_na(new_est_zip)
 # bring in the updated population-cutoff Places file
 places_pop <- read_csv("geographic-crosswalks/data/place-populations.csv")
 
-# adapt variables to prepare for merge 
+# adapt variables to prepare for merge
 places_pop <- places_pop %>%
-  mutate(statefips = sprintf("%0.2d", as.numeric(state)),
-         place = sprintf("%0.5d", as.numeric(place)))
+  mutate(
+    statefips = sprintf("%0.2d", as.numeric(state)),
+    place = sprintf("%0.5d", as.numeric(place))
+  )
 
 # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
 keep <- c(2020)
@@ -191,67 +198,60 @@ test2 <- test2 %>%
   mutate(place = sprintf("%0.5d", as.numeric(place)))
 
 # merge places_pop with data file in order to get final SA (numerator) city data
-sa_city_data <- left_join(places_pop, test2, by=c("place", "statefips"))
+sa_city_data <- left_join(places_pop, test2, by = c("place", "statefips"))
 
 
 # (6)  use crosswalk population data to construct the ratio (Numerator/Denominator)
 
-# create the Social Associations ratio metric (socassn)
-# The original calls for "Number of membership associations per 10,000 population"
+# create the Number of membership associations per 10,000 people metric
 # so we first divide the population by 10,000
 # and then calculate the final ratio
 sa_city_data <- sa_city_data %>%
-  mutate(popratio = population/10000,
-         socassn = new_est_zip/popratio)
+  mutate(
+    popratio = population / 10000,
+    count_membership_associations_per_10k = new_est_zip / popratio
+  ) %>%
+  # round the ratio metric to one decimal point (as they do in County Health Rankings)
+  mutate(count_membership_associations_per_10k = round(count_membership_associations_per_10k,
+    digits = 1
+  ))
 
-# round the ratio metric to one decimal point (as they do in County Health Rankings)
-sa_city_data$socassn <- round(sa_city_data$socassn, digits = 1) 
+# (7)  add data quality tag, final file cleaning and export to .csv file
 
-
-
-# (7)  add data quality tag, final file cleaning and export to .csv file	
-
-# create a ratio value to see how many of the ZIPs we aggregated fell fully into a Census Place boundary 
+# create a ratio value to see how many of the ZIPs we aggregated fell fully into a Census Place boundary
 sa_city_data <- sa_city_data %>%
-  mutate(zipratio = zipsin/zip_total)
-# check the range on this variable 
+  mutate(zipratio = zipsin / zip_total)
+# check the range on this variable
 summary(sa_city_data)
 # zipratio: mean = 0.09, Q1 = 0, Q3 = 0.13
 
-# Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place 
+# Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place
 # Data Quality 2 = less than 10% of the ZIPs fall mostly in the census place
 sa_city_data <- sa_city_data %>%
-  mutate(socassn_quality = case_when(zipratio >= 0.1 ~ 1,
-                                  zipratio < 0.1 ~ 2))
-
-# create appropriate place code
-sa_city_data$GEOID <- paste(sa_city_data$statefips,sa_city_data$place, sep = "")
-
-# keep what we need
-sa_city_data <- sa_city_data %>% 
-  select(year, GEOID, socassn, socassn_quality)
+  mutate(count_membership_associations_per_10k_quality = case_when(
+    zipratio >= 0.1 ~ 1,
+    zipratio < 0.1 ~ 2
+  )) %>%
+  # create appropriate place code
+  mutate(GEOID = paste(statefips, place, sep = "")) %>%
+  # keep what we need
+  select(year, GEOID, count_membership_associations_per_10k, count_membership_associations_per_10k_quality)
 
 # rename vars as needed
-sa_city_data <- sa_city_data %>% 
-  rename(place = GEOID,
-         
- #G. Morrison addition April 2023 to make variable name more human-readible
- social_connection = socassn,
- social_connection_quality = socassn_quality
+sa_city_data <- sa_city_data %>%
+  rename(place = GEOID) %>%
+  mutate(
+    state = str_sub(place, 1, 2),
+    place = str_sub(place, 3, 7)
   ) %>%
-  mutate(state = str_sub(place, 1, 2), 
-         place = str_sub(place, 3, 7)
-         ) %>%
-  arrange(year, state, place, social_connection, social_connection_quality)
+  arrange(
+    year, state, place,
+    count_membership_associations_per_10k,
+    count_membership_associations_per_10k_quality
+  )
 
 # check how many missing
-sum(is.na(sa_city_data$social_connection))
+sum(is.na(sa_city_data$count_membership_associations_per_10k))
 
 # export our file as a .csv
-write_csv(sa_city_data, "06_neighborhoods/social-capital/data/social_associations_city_2022.csv")
-
-
-
-
-
-
+write_csv(sa_city_data, "06_neighborhoods/social-capital/data/social_associations_city_2020.csv")

@@ -1,0 +1,155 @@
+---
+title: "Number of membership associations per 10,000 people — County"
+author: "Manuel Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+    css: ../../06_neighborhoods/www/web_report.css
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+
+- (1) import and clean the data file
+
+- (2) download population data from ACS (this is the denominator)
+
+- (3) merge the data file(s) & construct the ratio (Numerator/Denominator)
+
+- (4) final file cleaning and export to .csv file
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(here)
+library(sf)
+library(censusapi)
+library(tigris)
+options(tigris_use_cache = TRUE)
+```
+
+## Import and clean the CBP data file
+
+This means: 
+a) fill in fips missing zeroes,\
+b) isolate to only the following NAICS,\
+c) collapse & keep only relevant variables, and\
+d) add the year of these data.
+
+*Note*: This will require a Census API key. To use the Census APIs, sign up for an [API key](https://api.census.gov/data/key_signup.html), which will be sent to your provided email address. Lastly, you need to save the key to your ".Renviron" file. You can do this by calling `usethis::edit_r_environ()` and adding "CENSUS_API_KEY=key". Once you've saved your key,
+
+We pull our data from `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below 
+
+```{r}
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+```
+
+```{r}
+#| label: Import and clean social associations data
+
+cbp_county <- getCensus(
+  name = "cbp",
+  vintage = 2021,
+  vars = c("EMP", "ESTAB", "NAICS2017"),
+  region = "county:*"
+) %>%
+  as_tibble()
+
+head(cbp_county)
+```
+
+
+Below are the codes/associations included in the County Health Rankings metric. See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) for more
+
+Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920
+
+```{r}
+#| label: import-and-clean
+naics_codes_to_keep <- c("813410", "713950", "713910", "713940", "711211", "813110", "813940", "813930", "813910", "813920")
+
+cbp_county <-
+  cbp_county %>%
+  filter(NAICS2017 %in% naics_codes_to_keep) %>%
+  select(state, county, orgs = ESTAB) %>%
+  drop_na(orgs) %>%
+  summarise(count_orgs = sum(orgs), .by = c("state", "county")) %>%
+  mutate(year = 2021)
+```
+
+
+## Download population data from ACS (denominator)
+
+```{r}
+pop_20 <- read_csv(here("geographic-crosswalks/data/county-populations.csv")) %>%
+  filter(year == 2020) %>%
+  select(year, state, county, population)
+```
+
+## Merge the data file(s) & construct the ratio (Numerator/Denominator)
+
+```{r}
+merged_sa <-
+  left_join(pop_20, cbp_county, by = c("state", "county")) %>%
+  select(year = year.y, state, county, count_orgs, population)
+```
+
+## Create the social associations per 10,000 people metric
+
+```{r}
+#| label: create-metric
+merged_sa <-
+  merged_sa %>%
+  mutate(
+    pop_ratio = population / 1e4,
+    count_membership_associations_per_10k = round(count_orgs / pop_ratio, digits = 1)
+  )
+```
+
+
+## Final file cleaning and export to .csv file
+
+Data quality flag (we have no issues with this metric except overall missings) This is so that the missing values transfer as missing values
+
+```{r}
+merged_sa <-
+  merged_sa %>%
+  mutate(
+    count_membership_associations_per_10k_quality =
+      if_else(is.na(count_membership_associations_per_10k),
+        as.numeric(NA),
+        1
+      )
+  ) %>%
+  # keep what we need
+  select(
+    year, state, county,
+    count_membership_associations_per_10k,
+    count_membership_associations_per_10k_quality
+  ) %>%
+  arrange(
+    year, state, county,
+    count_membership_associations_per_10k,
+    count_membership_associations_per_10k_quality
+  )
+```
+
+**Check:** Are there exactly 154 missing values?
+
+```{r}
+stopifnot(
+  sum(is.na(merged_sa$count_membership_associations_per_10k)) == 154
+)
+```
+
+## Save the final file
+
+```{r}
+write_csv(merged_sa, here("06_neighborhoods/social-capital/data/social_associations_county_2021.csv"))
+```

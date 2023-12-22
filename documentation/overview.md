@@ -1018,9 +1018,10 @@ This metric shows the ratio of households with the presence of a computer and a 
 This metric is calculated using `digital_access.R' in the 04_education folder.
   
 ## Social Capital
-  
-* **Year(s):** 2020
-* **Final data name(s):** `social_associations_geography_2022.csv`
+
+* **Analyst & Programmer:** Tina Chelidze, Manu Alcalá Kovalski
+* **Year(s):** 2020, 2021
+* **Final data name(s):** `social_associations_geography_2021.csv`
 * **Data Source(s):** Census County Business Patterns (CBP) Survey 
 * **Notes:**
 * **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
