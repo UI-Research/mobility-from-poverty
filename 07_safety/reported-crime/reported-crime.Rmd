@@ -34,31 +34,35 @@ library(tidyverse)
 
 ```
 
-## 1. Load Data
+## 1. Load and clean offense data
 
+The data for this metric come from the FBI's [National Incident-Based Reporting System (NIBRS)](https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs). This is the national standard for law enforcement crime data reporting in the United States. Processing the raw NIBRS data would take a lot of work.
+
+Instead, we use criminologist Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022. These data are available for download via [openICPSR](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+
+We want the offense segment for this metric, so we download `nibrs_1991_2022_offense_segment_rds.zip` and agree to the `Terms of Use`, unzip the file, select `nibrs_offense_segment_2022.rds`, and move it to the appropriate directory and folder. Now, we read in the data.
 ```{r}
-# 2021 NIBRS offense segment
-# retrieved from full text file by Jacob Kaplan
-nibrs2022 <- readRDS(here::here("07_safety", "reported-crime", "nibrs_offense_segment_2022.rds"))
+# Load 2022 NIBRS offense segment
+offense_data <- readRDS(here::here("07_safety", "reported-crime", "nibrs_offense_segment_2022.rds"))
+#todo(): delete following line
+# full_data <- offense_data
 
-# 2021 NIBRS full text file - original file that Jacob extracted data from
-# inc <- read_tsv("Data/2021_NIBRS_NATIONAL_MASTER_FILE_ENC.txt", n_max=10000)
 ```
 
+Limit the data to our variables of interest.
 ```{r}
-# 2 Process crime data----
-# reduce data to only necessary vars
-nibrs2022 <- nibrs2022 %>%
-  select(c(ori, ucr_offense_code))
+offense_data <- offense_data %>%
+  select(agency = ori, # An ORI (Originating Agency Identifier) is a unique nine-character identifier the National Crime Information Center (NCIC) has assigned to each law enforcement agency (LEA) in coordination with the CJIS Systems Officer (CSO)
+         ucr_offense_code)
+```
 
-gc()
-
-# indicate violent and property crimes
-# crime types
-crimes <- nibrs2022 %>% 
+There are 61 unique crimes/offense codes in our data. We group these offense codes into property crimes and violent crimes using the categories outlines in the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf) and aggregate counts up to the reporting agency level.
+```{r}
+# Count number of observations in each offense code 
+crimes <- offense_data %>%
   count(ucr_offense_code)
 
-# categories from 2021.1 National Incident-Based Reporting System User Manual
+# Create a vector for property crimes
 property <- c(
   "all other larceny", 
   "arson", "bribery", 
@@ -86,7 +90,8 @@ property <- c(
   "wire fraud"
 )
 
-person <- c(
+# Create a vector for violent crimes
+violent <- c(
   "aggravated assault", 
   "fondling (incident liberties/child molest)",
   "human trafficking - commercial sex acts", 
@@ -103,18 +108,22 @@ person <- c(
   "statutory rape"
 )
 
-# indicate property and violent crimes
-nibrs2022 <- nibrs2022 %>%
+# Create indicator variables for property and violent crimes
+offense_data <- offense_data %>%
   mutate(property = ifelse(ucr_offense_code %in% property, 1, 0),
-         violent = ifelse(ucr_offense_code %in% person, 1, 0))
+         violent = ifelse(ucr_offense_code %in% violent, 1, 0)
+  )
 
-# aggregate by agency
-nibrs2022_agency <- nibrs2022 %>%
-  group_by(ori) %>%
+# Aggregate property and violent crimes by agency
+offense_data_agency <- offense_data %>%
+  group_by(agency) %>%
   summarize(all = n(),
             violent = sum(violent),
             property = sum(property)) %>%
   ungroup()
+
+# Remove obsolete objects
+rm(property, violent)
 
 ```
 
