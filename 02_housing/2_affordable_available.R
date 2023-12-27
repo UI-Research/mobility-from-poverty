@@ -27,15 +27,15 @@
 # Process:
 # (1) Housekeeping
 # (2) Import housing affordability measures calculated in 1_housing.R
-# (3) Availability -  A unit is available at a given level of income if (1) it is affordable at that
+# (3) AT rent and down rent -  A unit is available at a given level of income if (1) it is affordable at that
 #     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
 #     (3a) Calculate TOTAL population at each income level: 30AMI, 50AMI, 80AMI
-#     (3b) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
-#     (3c) Calculate number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT)
-#     (3a) Number of people at 30AMI 
-#         - At rent: renter is 30% of AMI and housing unit is 30% of AMI q
-#     (3b) Number of people at 50AMI 
-#     (3c) Number of people at 80AMI 
+#     (3a) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
+#     (3b) Calculate number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT)
+#     (3c) Summarize ATRENT, DOWNRENT, and number of households/units in each income threshold by place
+# (4) calculate the number of affordable and available units at each income level per 100 households
+# (5) Create the Data Quality variable
+
 
 # (6) Affordability and availability metrics 
 #     (6a) Number of vacant units affordable at AMI per 100 renting households
@@ -77,28 +77,20 @@ vacant_summed_2022 <- read_csv("data/temp/vacant_summed_2022.csv")
 
 ###################################################################
 
-# (4) Calculate number of units renting for each income bracket in each year (SUPPLY) and the number of households in each income bracket (DEMAND)
-#    (4a) supply is number of housing units in each income bracket. 
+# (3) Availability -  A unit is available at a given level of income if (1) it is affordable at that
+#     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
+#     
+#    -  supply is number of housing units in each income bracket. 
 #         This is calculated in step 5 of the housing.R file (variables: Affordable80AMI_all, Affordable80AMI_renter, Affordable80AMI_owner)
-#    (4b) demand is number of households in each income bracket 
+#    -  demand is number of households in each income bracket 
 #         This is calculated in step 5 of the housing.R file (variables: below80AMI, below50AMI, below30AMI)
 
+#    (3a) Calculate the "at rent" number of units occupied at the appropriate income level or a lower level
+#         Do this for all units, and for renter and owner subgroups 
+#         e.g., unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied (include vacancy in step 4)
 
-# (5) Availability -  A unit is available at a given level of income if (1) it is affordable at that
-#     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
-#     (5a) Calculate TOTAL population at each income level: 30AMI, 50AMI, 80AMI
-tot_pop30 <- households_2022 %>% group_by(statefip, place) %>%  dplyr::summarise(across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE)), 
-                                                                                 HHobs_count = n()) %>% 
-  rename("state" = "statefip")
 
-tot_pop50 <- households_2022 %>% group_by(statefip, place) %>% summarise(pop_below_50ami = sum(Below50AMI, na.rm = TRUE)) 
-tot_pop80 <- households_2022 %>% group_by(statefip, place) %>% summarise(pop_below_80ami = sum(Below80AMI, na.rm = TRUE))
-
-#     (5b) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
-
-# overall at rent measure
 available_2022 <- households_2022 %>% 
-  # unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
   mutate(
     # AT RENT 30% AMI
     at_rent30_all = if_else(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, 1, 0), 
@@ -124,9 +116,12 @@ available_2022 <- households_2022 %>%
     # DOWN RENT 80% AMI
     down_rent80_all = if_else(Affordable80AMI_all == 1 & Below80AMI == 0 & VACANCY == 0, 1, 0), 
     down_rent80_renter = if_else(OWNERSHP == 2 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0),
-    down_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0), 
-    # calculate total number of households in each income threshold 
-  ) %>% 
+    down_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0)) 
+
+
+# (3b) Summarize at_rent for each subgroup and number of units/households at each
+#       income threshold by place
+available_2022 <- available_2022 %>% 
   group_by(statefip, place) %>% 
   dplyr::summarise(across(matches("Below|Affordable|down_|at_"), ~sum(.x*HHWT, na.rm = TRUE)), 
                    HHobs_count = n()) %>% 
@@ -140,44 +135,133 @@ available_2022 %>%
   summary(rent_dif)
 
 ###################################################################
-# Sum variables Affordable80AMI, Affordable50AMI, and Affordable30AMI 
-# from 'vacant_2022', grouped by statefip and place, and weighted by HHWT
-# save as df 'vacant_summed_2022'
-###################################################################
-# calculate the share of affordable and available units at each income level 
+# (4) calculate the number of affordable and available units at each income level per 100 households
+# this is the number of units that are rented to people at or below each income threshold
+# plus the number of vacant units at that income threshold over the total number
+# of households in each income bracket
 available_2022_final <- available_2022 %>% 
+  # join in vacancy data
   left_join(vacant_summed_2022, by = c("state", "place")) %>% 
   mutate(
-    # share affordable and available at 30 AMI 
-    share_affordable_available_30ami_all = (at_rent30_all+Affordable30AMI_all_vacant/Below30AMI)*100, 
-    share_affordable_available_30ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant/Below30AMI)*100, 
-    share_affordable_available_30ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant/Below30AMI)*100, 
+    # number of affordable and available at 30 AMI per 100 households
+    share_affordable_available_30ami_all = (at_rent30_all+Affordable30AMI_all_vacant)/Below30AMI*100, 
+    share_affordable_available_30ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI*100, 
+    share_affordable_available_30ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI*100, 
     
-    # share affordable and available at 50 AMI 
-    share_affordable_available_50ami_all = (at_rent50_all+Affordable50AMI_all_vacant/Below50AMI)*100, 
-    share_affordable_available_50ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant/Below50AMI)*100, 
-    share_affordable_available_50ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant/Below50AMI)*100, 
+    # number of affordable and available at 50 AMI per 100 households
+    share_affordable_available_50ami_all = (at_rent50_all+Affordable50AMI_all_vacant)/Below50AMI*100, 
+    share_affordable_available_50ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI*100, 
+    share_affordable_available_50ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI*100, 
     
-    # share affordable and available at 80 AMI 
-    share_affordable_available_80ami_all = (at_rent80_all+Affordable80AMI_all_vacant/Below80AMI)*100, 
-    share_affordable_available_80ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant/Below80AMI)*100, 
-    share_affordable_available_80ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant/Below80AMI)*100,
-    
-    # share affordable and UNavailable at 30 AMI 
-    share_affordable_unavailable_30ami_all = (down_rent30_all/Below30AMI)*100, 
-    share_affordable_unavailable_30ami_renter = (down_rent30_renter/Below30AMI)*100, 
-    share_affordable_unavailable_30ami_owner = (down_rent30_owner/Below30AMI)*100, 
-    
-    # share affordable and UNavailable at 50 AMI 
-    share_affordable_unavailable_50ami_all = (down_rent50_all/Below50AMI)*100, 
-    share_affordable_unavailable_50ami_renter = (down_rent50_renter/Below50AMI)*100, 
-    share_affordable_unavailable_50ami_owner = (down_rent50_owner/Below50AMI)*100, 
-    
-    # share affordable and UNavailable at 80 AMI 
-    share_affordable_unavailable_80ami_all = (down_rent80_all/Below80AMI)*100, 
-    share_affordable_unavailable_80ami_renter = (down_rent80_renter/Below80AMI)*100, 
-    share_affordable_unavailable_80ami_owner = (down_rent80_owner/Below80AMI)*100
+    # number affordable and available at 80 AMI per 100 households
+    share_affordable_available_80ami_all = (at_rent80_all+Affordable80AMI_all_vacant)/Below80AMI*100, 
+    share_affordable_available_80ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI*100, 
+    share_affordable_available_80ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI*100
     )
+
+###################################################################
+
+# (5) Create the Data Quality variable
+
+# For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
+# Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
+available_2022_final <- available_2022_final %>% 
+  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
+         size_flag = case_when((affordableHH_sum < 30) ~ 1,
+                               (affordableHH_sum >= 30) ~ 0))
+
+# bring in the PUMA flag file if you have not run "0_microdata.R" before this
+place_puma <- read_csv("data/temp/place_puma.csv")
+
+place_puma <- place_puma %>% 
+  rename("state" = "statefip")
+
+# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
+available_2022_final <- left_join(available_2022_final, place_puma, by=c("state","place"))
+
+# Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
+available_2022_final <- available_2022_final %>% 
+  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1, # 239 obs
+                                     size_flag==0 & puma_flag==2 ~ 2, # 239 obs
+                                     size_flag==0 & puma_flag==3 ~ 3, # 7 obs
+                                     size_flag==1 ~ 3))
+
+###################################################################
+
+# (6) Clean and export
+
+# (6a) subgroup file
+# turn long for subgroup output
+available_2022_subgroup <- available_2022_final %>%
+  select(state, place, starts_with("share_affordable_"), housing_quality) %>% 
+  # create year variable
+  mutate(year = 2022) %>% 
+  # seperate share_afforadable by AMI and the subgroup
+  pivot_longer(cols = c(contains("share_affordable")), 
+               names_to = c("available", "subgroup"),
+               names_pattern = "(.+?(?=_[^_]+$))(_[^_]+$)", # this creates two columns - "share_affordable_XXAMI" and "_owner/_renter/_all"
+               values_to = "value") %>% 
+  # pivot_wider again so that each share_affordable by AMI is it's own column with subgroups as rows
+  pivot_wider(
+    names_from = available, 
+    values_from = value
+  ) %>% 
+  # clean subgroup names and add subgroup type column 
+  # remove leading underscore and capitalize words
+  mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
+         subgroup_type = "renter-owner" )
+
+# (6b) overall file
+# keep what we need
+available_2022_overall <- available_2022_subgroup %>% 
+  filter(subgroup == "All") %>% 
+  select(year, state, place, share_affordable_available_80ami, share_affordable_available_50ami, share_affordable_available_30ami, housing_quality) %>% 
+  arrange(year, state, place)
+
+###################################################################
+
+# (7) Quality check tests - see if state trends match 
+#   National Low Income Housing Coalition Report - https://nlihc.org/gap
+
+# this is a really rough comparison since there isn't really local level data for this measure
+# so I'm using the 2021 report state level numbers to snif test our results
+# the NLIHC report has state level numbers for the number of units that are
+# affordable and available for 30AMI households and the range is 17 to 58
+# our range is 21 to 59 
+
+state_av <- available_2022_subgroup %>% 
+  filter(subgroup == "All") %>% 
+  group_by(state) %>% 
+  summarise(across(starts_with("share_affordable"), 
+                   ~ mean(.x, na.rm = TRUE))) 
+
+
+range(state_av$share_affordable_available_30ami)
+
+
+# For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
+# Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
+housing_2022 <- housing_2022 %>% 
+  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
+         size_flag = case_when((affordableHH_sum < 30) ~ 1,
+                               (affordableHH_sum >= 30) ~ 0))
+
+# bring in the PUMA flag file if you have not run "0_microdata.R" before this
+place_puma <- read_csv("data/temp/place_puma.csv")
+
+place_puma <- place_puma %>% 
+  rename("state" = "statefip")
+
+# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
+housing_2022 <- left_join(housing_2022, place_puma, by=c("state","place"))
+
+# Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
+housing_2022 <- housing_2022 %>% 
+  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1, # 220 obs
+                                     size_flag==0 & puma_flag==2 ~ 2, # 247 obs
+                                     size_flag==0 & puma_flag==3 ~ 3, # 19 obs
+                                     size_flag==1 ~ 3))
+
 
 temp <- households_2022 %>% 
   select(matches("at_rent|down_rent")) %>% 
@@ -198,22 +282,6 @@ mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
 ggplot() %>% 
   geom_histogram(aes(at_r))
 
-
-# renter at rent measure
-at_rent30_renter <- households_2022 %>% 
-  # filter to just renters
-  filter(OWNERSHP == 2)
-# unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
-summarise(sum(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, na.rm = TRUE)) %>%
-  pull()
-
-# Owner at rent measure
-at_rent30_owner <- households_2022 %>% 
-  # filter to just owners
-  filter(OWNERSHP == 1)
-# unit is affordable at 30 AMI and household is below 30 AMI and the unit is occupied
-summarise(sum(Affordable30AMI_all == 1 & Below30AMI == 1 & VACANCY == 0, na.rm = TRUE)) %>%
-  pull()
 
 POP30 <- sum(renters1$HHWT[renters1$AMI30 == 1])
 ATRENT30 <- sum(renters1$HHWT[renters1$RHUD30 == 1 & renters1$AMI30 == 1 & renters1$VACANCY == 0])
