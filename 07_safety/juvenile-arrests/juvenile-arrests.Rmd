@@ -1,5 +1,5 @@
 ---
-title: "Juvenile Arrests"
+title: "Juvenile Arrests - County"
 author: "Vincent Pancini"
 date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
 output:
@@ -29,440 +29,190 @@ options(scipen = 999)
 
 # library(urbnthemes)
 library(tidyverse)
-library(tidycensus)
 library(skimr)
-library(readxl)
-library(writexl)
-
-library(rvest)
-library(glue)
-library(fs)
-# library(reactable)
+library(tidylog)
 
 # set_urbn_defaults(style = "print")
 
 ```
 
-## 0. Copying 01_agency_geo.R
 
-The first data set we read in is the [National Incident-Based Reporting System, 2020: Extract Files (ICPSR 38566)](https://www.icpsr.umich.edu/web/NACJD/studies/38566). These data come from the National Archive of Criminal Justice Data (NACJD) available through ICPSR. I manually downloaded them as delimited and then moved them to `C:\mobility-from-poverty\07_safety\data`.
-```{r, message=FALSE}
-bat <- read_tsv(here::here("07_safety", "data", "38566-0001-Data.tsv"))
+## 1. Load and clean arrest data
 
-# NIBRS state numbers are in alphabetical order and do not follow FIPS codes I am manually creating a crosswalk between state FIPS codes and NIBRS codes
+The data for this metric come from the FBI's [National Incident-Based Reporting System (NIBRS)](https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs). This is the national standard for law enforcement crime data reporting in the United States. Processing the raw NIBRS data would take a lot of work.
 
-nibrs_states <- tribble(
-  ~state_fips, ~state_abb, ~state_num_nibrs, ~state_name,
-  "01",	"AL", "1",  "Alabama",
-  "02",	"AK", "50", "Alaska",
-  "04",	"AZ", "2",  "Arizona", 
-  "05",	"AR", "3",  "Arkansas",	
-  "06",	"CA", "4",  "California",	
-  "08",	"CO", "5",  "Colorado",
-  "09",	"CT", "6",  "Connecticut",
-  "10",	"DE", "7",  "Delaware",
-  "11",	"DC", "8",  "District of Columbia",
-  "12",	"FL", "9",  "Florida",
-  "13",	"GA", "10", "Georgia",	
-  "15",	"HI", "51", "Hawaii",
-  "16",	"ID", "11", "Idaho",
-  "17",	"IL", "12", "Illinois",
-  "18",	"IN", "13", "Indiana",
-  "19",	"IA", "14", "Iowa",	
-  "20",	"KS", "15", "Kansas",	
-  "21",	"KY", "16", "Kentucky",	
-  "22",	"LA", "17", "Louisiana",
-  "23",	"ME", "18", "Maine",
-  "24",	"MD", "19", "Maryland",
-  "25",	"MA", "20", "Massachusetts",
-  "26",	"MI", "21", "Michigan",	
-  "27",	"MN", "22", "Minnesota",	
-  "28",	"MS", "23", "Mississippi",	
-  "29",	"MO", "24", "Missouri",	
-  "30",	"MT", "25", "Montana",	
-  "31",	"NE", "26", "Nebraska",	
-  "32",	"NV", "27", "Nevada",	
-  "33",	"NH", "28", "New Hampshire",	
-  "34",	"NJ", "29", "New Jersey",	
-  "35",	"NM", "30", "New Mexico",	
-  "36",	"NY", "31", "New York",	
-  "37",	"NC", "32", "North Carolina",
-  "38",	"ND", "33", "North Dakota",	
-  "39",	"OH", "34", "Ohio",	
-  "40",	"OK", "35", "Oklahoma",	
-  "41",	"OR", "36", "Oregon",	
-  "42",	"PA", "37", "Pennsylvania",	
-  "44",	"RI", "38", "Rhode Island",	
-  "45",	"SC", "39", "South Carolina",	
-  "46",	"SD", "40", "South Dakota",
-  "47",	"TN", "41", "Tennessee",
-  "48",	"TX", "42", "Texas",	
-  "49",	"UT", "43", "Utah",	
-  "50",	"VT", "44", "Vermont",	
-  "51",	"VA", "45", "Virginia",	
-  "53",	"WA", "46", "Washington",	
-  "54",	"WV", "47", "West Virginia",	
-  "55",	"WI", "48", "Wisconsin",	
-  "56",	"WY", "49", "Wyoming"
-)
+Instead, we use criminologist Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022. We use Version 9. These data are available for download via [openICPSR](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
 
-# todo(): check if this is the right file
-# county populations file from Urban
-pop <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+We want both the `arrestee` segment and the `group_b_arrest_report` segment for this metric, so we download the following two files:
+    1. `nibrs_1991_2022_arrestee_segment_rds.zip`
+    2. `nibrs_1991_2022_group_b_arrest_report_segment_rds.zip`
+
+After agreeing to the `Terms of Use` for each download unzip the file, select `nibrs_arrestee_segment_2022.rds` or `nibrs_group_b_arrest_report_segment_2022.rds`, and move it to the appropriate directory and folder. Now, we read in the data.
+```{r}
+# Load 2022 NIBRS group A arrestee segment
+arrests_data <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "nibrs_arrestee_segment_2022.rds"))
+
+# Load 2022 NIBRS group B arrest segment
+arrests_data_b <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "nibrs_group_b_arrest_report_segment_2022.rds"))
 
 ```
 
-We also need the [Law Enforcement Agency Identifiers Crosswalk, United States, 2012 (ICPSR 35158)](https://www.icpsr.umich.edu/web/NACJD/studies/35158). These data also come from the National Archive of Criminal Justice Data (NACJD) available through ICPSR. I manually downloaded them as delimited  and moved them to `C:\mobility-from-poverty\07_safety\data`.
+We want to combine the group A and group B files. First we limit each file to the relevant variables.
 ```{r}
-lecw <- read_tsv(here::here("07_safety", "data", "35158-0001-Data.tsv"))
+# Select only necessary variables from group A
+arrests_data <- arrests_data %>%
+  select(year, ori, incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee,
+         ethnicity_of_arrestee) %>%
+  mutate(group = "A")
 
-# 2 Process Urban crosswalk----
-# *filter crosswalk that Urban created to 2020 only
-pop20 <- pop %>%
-  filter(year==2020) %>%
-  mutate(county_name = str_to_title(county_name),
-         GEOID = str_c(state, county))
-
-# *filter Urban crosswalk to states so can fix state numbers in NIBRS data
-pop_st <- pop %>%
-  select(c(state, state_name)) %>%
-  distinct()
+# Select only necessary variables from group B
+arrests_data_b <- arrests_data_b %>%
+  rename(incident_number = arrest_transaction_incident_num) %>%
+  select(year, ori, incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee,
+         ethnicity_of_arrestee) %>%
+  mutate(group = "B")
 
 ```
 
+The group B codes for race and ethnicity are different from group A. We edit the group B codes to be consistent with group A. 
+    todo(): I'm not totally certain that the recodes for the abbreviations in group B are accurate, but I can't find a codebook anywhere so I made my best guess
 ```{r}
-ba <- bat %>%
-  rename(ori = BH003, # ori is unique agency identifier used across multiple files
-         agency_type = BH012,
-         state_num_nibrs = BH002,
-         state_abb = BH008,
-         city = BH007,
-         core_city = BH013,
-         fips_county_1 = BH054,
-         fips_county_2 = BH055,
-         fips_county_3 = BH056,
-         fips_county_4 = BH057,
-         msa_1 = BH021,
-         msa_2 = BH025,
-         msa_3 = BH029,
-         msa_4 = BH033,
-         msa_5 = BH037,
-         pop_1 = BH019,
-         pop_2 = BH023,
-         pop_3 = BH027,
-         pop_4 = BH031,
-         pop_5 = BH035) %>%
-  select(c(ori, agency_type, state_abb, state_num_nibrs, city, core_city, starts_with("fips"), 
-           starts_with("msa"), starts_with("pop"))) %>%
-  mutate(year=2021,
-         state_num_nibrs = str_pad(state_num_nibrs, 2, pad = "0"),
-         county = str_pad(fips_county_1, 3, pad = "0"),
-         city = str_to_title(city),
-         pop_total = pop_1 + pop_2 + pop_3 + pop_4 + pop_5) %>%
-  left_join(nibrs_states, by = c("state_abb", "state_num_nibrs")) %>%
-  left_join(pop_st, by="state_name")
+# Look at race codes in each data frame
+arrests_data %>% group_by(race_of_arrestee) %>% count()
+arrests_data_b %>% group_by(race_of_arrestee) %>% count()
 
-# check the distribution of agency types
-ba %>% count(agency_type) %>%
-  mutate(pct = n/nrow(ba))
-#1 city, 2 county, 3 college, 5 special, 7 tribal
+# Edit group B race codes to match those of group A
+arrests_data_b <- arrests_data_b %>%
+  mutate(race_of_arrestee = if_else(race_of_arrestee=="w", "white", race_of_arrestee),
+         race_of_arrestee = if_else(race_of_arrestee=="b", "black", race_of_arrestee),
+         race_of_arrestee = if_else(race_of_arrestee=="i", "american indian/alaskan native", race_of_arrestee),
+         race_of_arrestee = if_else(race_of_arrestee=="a", "asian", race_of_arrestee),
+         race_of_arrestee = if_else(race_of_arrestee=="p", "native hawaiian or other pacific islander", race_of_arrestee),
+         race_of_arrestee = if_else(race_of_arrestee=="u", "unknown", race_of_arrestee))
 
-# remove state agencies since cover multiple counties
-# 4 is state police and 6 is other state agency
-ba <- ba %>%
-  filter(agency_type != 4 & agency_type != 6)
+# Look at ethnicity codes in each data frame
+arrests_data %>% group_by(ethnicity_of_arrestee) %>% count()
+arrests_data_b %>% group_by(ethnicity_of_arrestee) %>% count()
 
-# examine NIBRS agency info
-skim(ba)
-table(ba$fips_county_1)
-# a lot of counties have value of zero, which is not valid FIPS code
+# Edit group B ethnicity codes to match those of group A
+arrests_data_b <- arrests_data_b %>%
+  mutate(ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="h", "hispanic origin", ethnicity_of_arrestee),
+         ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="n", "not of hispanic origin", ethnicity_of_arrestee),
+         ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="u", "unknown", ethnicity_of_arrestee))
 
-# subset data to examine further
-ba0 <- ba %>%
-  filter(fips_county_1==0)
-# includes DC, Baltimore
-
-# see if remaining ORIs in 2012 LEAIC crosswalks
-sum(ba0$ori %in% lecw$ORI9)
-# 232 agencies are in it
-
-# *limit to useful info from LEAIC crosswalk
-# remove agencies with invalid ORI
-lecw_nrw <- lecw %>%
-  select(ORI9, FIPS_COUNTY) %>%
-  rename(ori = ORI9,
-         county = FIPS_COUNTY) %>%
-  filter(ori != "-1")
+```
 
 
-# merge to ORIs missing county
-ba0_cw <- ba0 %>%
-  select(-c(county)) %>%
-  left_join(lecw_nrw, by = "ori")
+```{r}
+# Append group B file with group A file
+arrests_ab <- arrests_data %>%
+  bind_rows(arrests_data_b)
 
-# check remaining agencies that do not merge\
-ba00 <- ba0_cw %>%
-  filter(is.na(county))
-# 25 agencies still have no county, some in US territories
-# will be excluded from county-level analysis
-# all are tribal or special agencies
-
-# combine back to original data
-# replace fips county 1 with updated county number from LEAIC
-ba_full <- ba %>%
-  filter(fips_county_1 != 0) %>%
-  bind_rows(ba0_cw) %>%
-  filter(!is.na(county)) %>%
-  mutate(fips_county_1 = county)
+# Remove obsolete files
+rm(arrests_data, arrests_data_b)
+gc()
   
 ```
 
+Limit sample to under age 18. 117 observations are reported as "over 98 years old" and 2,095 observations are reported as "unknown". We assign these observations a new age value of `NA` and exclude them from our sample.
+    todo(): I don't understand how some children so young are arrested. Is that maybe an administartive error?
 ```{r}
-test <- bat %>%
-  select(BH002, BH008) %>%
-  group_by(BH002, BH008) %>%
-  distinct() %>%
-  filter(!BH002 %in% c(53, 55, 62)) %>%
-  rename()
+table(arrests_ab$age_of_arrestee)
 
-# *limit to useful info from LEAIC crosswalk
-# remove agencies with invalid ORI
-leaic_nrw <- leaic %>%
-  select(ORI9, FIPS_COUNTY) %>%
-  rename(ori = ORI9,
-         county = FIPS_COUNTY) %>%
-  filter(ori != "-1")
+arrests_juvenile <- arrests_ab %>%
+  mutate(age = as.numeric(age_of_arrestee)) %>%
+  filter(age < 18)
+
+arrests_juvenile %>% 
+  group_by(age) %>% 
+  count()
 
 ```
 
-
-
-
-
-
-
-I guess we need this too? I don't understand
+There are 61 unique arrest offense codes in our data. We group these offense codes into property crimes and violent crimes using the categories outlines in Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf) and aggregate counts up to the reporting agency level.
+    todo(): There are 24 offense codes reported in NBIRS data but missing from our classifications. I'm not sure if these were intentionally left out (maybe they're neither property nor violent crimes?) or if they just weren't present last year. The 24 codes are: all other offenses, animal cruelty, curfew/loitering/vagrancy violations, disorderly conduct, driving under the influence, drug/narcotic offenses - drug equipment violations, drug/narcotic offenses - drug/narcotic violations, failure to appear, family offenses, nonviolent, fugitive offenses - flight to avoid persecution, gambling offenses - betting/wagering, gambling offenses - gambling equipment violations, gambling offenses - operating/promoting/assisting gambling, gambling offenses - sports tampering, liquor law violations, pornography/obscene material, prostitution offenses - assisting or promoting prostitution, prostitution offenses - prostitution, prostitution offenses - purchasing prostitution, runaway, trespass of real property, weapon law violations - explosives, weapon law violations - weapon law violations. Additionally, there was 1 code in last year's classifications that was not present this year: welfare fraud.
+        todo(): The codes that we don't classify are crimes against society (rather than person or property), or Group B offenses which don't get a classification.
 ```{r}
-
-
-
-
-
-
+# Count number of observations in each offense code
+arrests_juvenile %>%
+  count(ucr_arrest_offense_code)
 ```
 
-
-We need to read in the 2022 5-year ACS data to calculate overall county population and population age 10-17. We then create age 10-17 subgroups defined as white, black, “asian_other”, and hispanic. Note that race and ethnicity are separate (e.g., cannot make non-Hispanic white)
 ```{r}
-# 3 County-level demographics----
-# todo(): Update this section to use 2022 5-year ACS data
-# set Census API once
-tidycensus::census_api_key("75ed382ac6c6e5650cbc1801e618f8848e24642", install=TRUE)
-
-# check variables
-v21 <- load_variables(2021, "acs5")
-
-# Pull 2021 ACS data at the Census County level
-county_demo <- get_acs(geography = "county",
-                       variables = c(total_people = "B01003_001",
-                                     age_m_1014 = "B01001_005", 
-                                     age_m_1517 = "B01001_006",
-                                     age_f_1014 = "B01001_029", 
-                                     age_f_1517 = "B01001_030",
-                                     age_m_1014_white = "B01001A_005", 
-                                     age_m_1014_black = "B01001B_005",
-                                     age_m_1014_aian = "B01001C_005", 
-                                     age_m_1014_asin = "B01001D_005",
-                                     age_m_1014_nhpi = "B01001E_005", 
-                                     age_m_1014_othr = "B01001F_005",
-                                     age_m_1014_twom = "B01001G_005",
-                                     age_m_1014_white_nh = "B01001H_005",
-                                     age_m_1014_hispanic = "B01001I_005",
-                                     age_m_1517_white = "B01001A_006", 
-                                     age_m_1517_black = "B01001B_006",
-                                     age_m_1517_aian = "B01001C_006", 
-                                     age_m_1517_asin = "B01001D_006",
-                                     age_m_1517_nhpi = "B01001E_006", 
-                                     age_m_1517_othr = "B01001F_006",
-                                     age_m_1517_twom = "B01001G_006",
-                                     age_m_1517_white_nh = "B01001H_006", 
-                                     age_m_1517_hispanic = "B01001I_006",
-                                     age_f_1014_white = "B01001A_020", 
-                                     age_f_1014_black = "B01001B_020",
-                                     age_f_1014_aian = "B01001C_020", 
-                                     age_f_1014_asin = "B01001D_020",
-                                     age_f_1014_nhpi = "B01001E_020", 
-                                     age_f_1014_othr = "B01001F_020",
-                                     age_f_1014_twom = "B01001G_020",
-                                     age_f_1014_white_nh = "B01001H_020",
-                                     age_f_1014_hispanic = "B01001I_020",
-                                     age_f_1517_white = "B01001A_021", 
-                                     age_f_1517_black = "B01001B_021",
-                                     age_f_1517_aian = "B01001C_021", 
-                                     age_f_1517_asin = "B01001D_021",
-                                     age_f_1517_nhpi = "B01001E_021",
-                                     age_f_1517_othr = "B01001F_021",
-                                     age_f_1517_twom = "B01001G_021",
-                                     age_f_1517_white_nh = "B01001H_021", 
-                                     age_f_1517_hispanic = "B01001I_021"),
-                       year = 2021,
-                       survey = "acs5",
-                       output = "wide",
-                       geometry = FALSE)
-# note, two or more race variable not appearing, may not be available at county level
-
-# get rid of E in name of variables and drop MOE
-county_demo <- county_demo %>%
-  rename_with(~ sub("E$", "", .x), everything()) %>%
-  select(-c(ends_with("M")))
-
-# Construct age and race/ethnicity groups
-county_demo <- county_demo %>%
-  mutate(
-    age_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
-    age_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
-    age_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
-    age_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
-    age_1017_asin = age_m_1014_asin + age_m_1517_asin + age_f_1014_asin + age_f_1517_asin,
-    age_1017_nhpi = age_m_1014_nhpi + age_m_1517_nhpi + age_f_1014_nhpi + age_f_1517_nhpi,
-    age_1017_othr = age_m_1014_othr + age_m_1517_othr + age_f_1014_othr + age_f_1517_othr,
-    #age_1017_twom = age_m_1014_twom + age_m_1517_twom + age_f_1014_twom + age_f_1517_twom,
-    age_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
-    age_1017_white_nh = age_m_1014_white_nh + age_m_1517_white_nh + age_f_1014_white_nh + age_f_1517_white_nh,
-  )
-
-# limit to only variables needed for analysis
-# limit to only counties in Urban county crosswalk file
-# manually create two or more race variable
-county_demos <- county_demo %>%
-  select(GEOID, total_people, starts_with("age_1017")) %>%
-  filter(GEOID %in% pop20$GEOID) %>%
-  mutate(year=2021,
-         age_1017_twom = age_1017 - age_1017_white - age_1017_black - 
-           age_1017_aian - age_1017_asin - age_1017_nhpi - age_1017_othr,
-         age_1017_asian_other = age_1017_aian + age_1017_asin + age_1017_nhpi +
-           age_1017_othr + age_1017_twom)
-# goes from 3,221 to 3,143 counties
-
-```
-
-
-
-## 1. Load Data
-
-These data come from [Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view) via Open ICPSR. We use Version 9 of these data. We download the following two files:
-1. [nibrs_1991_2022_arrestee_segment_rds.zip](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view?path=/openicpsr/118281/fcr:versions/V9/nibrs_1991_2022_arrestee_segment_rds.zip&type=file)
-2. [nibrs_1991_2022_group_b_arrest_report_segment_rds.zip](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view?path=/openicpsr/118281/fcr:versions/V9/nibrs_1991_2022_group_b_arrest_report_segment_rds.zip&type=file)
-
-Download both zip files. Each folder will contain files for 1991-2022, but we only need the 2022 files. I move them to `C:\mobility-from-poverty\07_safety\juvenile-arrests` and delete the remaining files
-
-```{r}
-# 2022 NIBRS group A arrestee segment from Jacob Kaplan
-nibrs2022 <- readRDS(here::here(
-  "07_safety", "juvenile-arrests", "nibrs_arrestee_segment_2022.rds"))
-
-# 2022 NIBRS group B arrest segment from Jacob Kaplan
-nibrs2022_b <- readRDS(here::here(
-  "07_safety", "juvenile-arrests", "nibrs_group_b_arrest_report_segment_2022.rds"))
-```
-
-Create crime categories according to the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf).
-```{r}
+# Create a vector for property crimes
 property <- c(
-  "all other larceny",
   "arson",
   "bribery",
   "burglary/breaking and entering",
   "counterfeiting/forgery",
-  "credit card/atm fraud", 
   "destruction/damage/vandalism of property",
   "embezzlement",
   "extortion/blackmail",
-  "false pretenses/swindle/confidence game",
-  "hacking/computer invasion",
-  "identity theft",
-  "impersonation",
+  "fraud offenses - credit card/atm fraud",
+  "fraud offenses - false pretenses/swindle/confidence game",
+  "fraud offenses - hacking/computer invasion",
+  "fraud offenses - identity theft",
+  "fraud offenses - impersonation",
+  "fraud offenses - wire fraud",
+  "larceny/theft offenses - all other larceny",	
+  "larceny/theft offenses - pocket-picking",	
+  "larceny/theft offenses - purse-snatching",	
+  "larceny/theft offenses - shoplifting",	
+  "larceny/theft offenses - theft from building",	
+  "larceny/theft offenses - theft from coin-operated machine or device",	
+  "larceny/theft offenses - theft from motor vehicle",
+  "larceny/theft offenses - theft of motor vehicle parts/accessories",
   "motor vehicle theft",
-  "pocket-picking",
-  "purse-snatching",
   "robbery",
-  "shoplifting",
-  "stolen property offenses (receiving, selling, etc.)",
-  "theft from building",
-  "theft from coin-operated machine or device",
-  "theft from motor vehicle",
-  "theft of motor vehicle parts/accessories",
-  "welfare fraud",
-  "wire fraud"
+  "stolen property offenses (receiving, selling, etc.)"
+  # "welfare fraud"
 )
 
-person <- c(
-  "aggravated assault",
-  "fondling (incident liberties/child molest)",
+# Create a vector for violent crimes
+violent <- c(
+  "assault offenses - aggravated assault",
+  "assault offenses - intimidation",
+  "assailt offenses - simple assault",
   "human trafficking - commercial sex acts",
   "human trafficking - involuntary servitude",
-  "incest",
-  "intimidation",
   "kidnapping/abduction", 
   "murder/nonnegligent manslaughter",
   "negligent manslaughter",
-  "rape",
-  "sexual assault with an object",
-  "simple assault",
-  "sodomy",
-  "statutory rape"
+  "sex offenses - fondling (incident liberties/child molest)",
+  "sex offenses - incest",
+  "sex offenses - rape",
+  "sex offenses - sexual assault with an object",
+  "sex offenses - sodomy",
+  "sex offenses - statutory rape"
 )
+
+# Create indicator variables for property and violent crimes
+arrests_juvenile <- arrests_juvenile %>%
+  mutate(property = ifelse(ucr_arrest_offense_code %in% property, 1, 0),
+         violent = ifelse(ucr_arrest_offense_code %in% violent, 1, 0)
+  )
 ```
 
-## 2. Process Data
-
-Combine group A and group B files
+todo(): 253,665 observations (68%) are not in either category of arrests
 ```{r}
-# rename variable and select only necessary variables from group B
-nibrs2022_b <- nibrs2022_b %>%
-  select(
-    year,
-    ori, 
-    incident_number = arrest_transaction_incident_num,
-    ucr_arrest_offense_code,
-    age_of_arrestee,
-    race_of_arrestee,
-    ethnicity_of_arrestee
-  ) %>%
-  mutate(group = "B")
+arrests_juvenile %>%
+  group_by(property, violent) %>%
+  count()
 
-# bind group b file with group a file
-nibrs2022_ab <- nibrs2022 %>%
-  select(
-    year, 
-    ori, 
-    incident_number, 
-    ucr_arrest_offense_code, 
-    age_of_arrestee, 
-    race_of_arrestee,
-    ethnicity_of_arrestee
-  ) %>%
-  mutate(group = "A") %>%
-  bind_rows(nibrs2022_b)
+```
 
-# remove separate files
-rm(nibrs2022, nibrs2022_b)
-gc()
 
-# limit to under age 18
-table(nibrs2022_ab$age_of_arrestee)
-juvenile_arrests <- nibrs2022_ab %>%
-  mutate(age = as.numeric(age_of_arrestee)) %>%
-  filter(age < 18)
-# forcing NA over over 98 years old and unknown since not using
+```{r}
+# 41,813 (11%) observations are missing ethnicity
+skim(arrests_juvenile)
+arrests_juvenile %>% 
+  group_by(group) %>% 
+  skim()
 
-skimr::skim(juvenile_arrests)
-juvenile_arrests %>% group_by(group) %>% skim()
-
-# summarize by agency
-juvenile_arrests_agency <- juvenile_arrests %>%
-  mutate(property = ifelse(ucr_arrest_offense_code %in% property, 1, 0),
-         violent = ifelse(ucr_arrest_offense_code %in% person, 1, 0)) %>%
+# Aggregate arrests by agency and finish race construction
+arrests_juvenile_agency <- arrests_juvenile %>%
   filter(age >= 10) %>%
   group_by(ori) %>%
   summarize(arr_total = n(),
@@ -488,13 +238,14 @@ juvenile_arrests_agency <- juvenile_arrests %>%
 
 776 agencies only have Group B arrests of juveniles
 ```{r}
-juvenile_arrests_agency %>% 
+arrests_juvenile_agency %>% 
   count(group_a, group_b)
+
 ```
 
 Make narrow version with just needed variables
 ```{r}
-juvenile_arrests_agency <- juvenile_arrests_agency %>%
+arrests_juvenile_agency <- arrests_juvenile_agency %>%
   select(
     ori, 
     arr_total, 
@@ -505,6 +256,283 @@ juvenile_arrests_agency <- juvenile_arrests_agency %>%
   )
 
 ```
+
+
+## 2. Merge geographies
+
+First load the universe of agencies linked to counties with weight for each county. This file was created in `01_agency_geo_county.Rmd`.
+```{r}
+agency_weights <- read_csv(here::here("07_safety", "modified data", "2022_agency_county.csv")) 
+
+```
+
+Now we can start with the full universe of agencies and merge on juvenile arrests
+```{r}
+arrests_juvenile_agency_geo <- agency_weights %>%
+  left_join(arrests_juvenile_agency, by = "ori") %>%
+  # Multiply stats by agency-county weight
+  mutate(across(arr_total:ethn_hispanic, ~.x * weight))
+
+```
+
+
+## 3. Summarize by county
+
+Aggregating agencies to counties results in 3,128 counties.
+    todo(): this means we are missing 16 counties
+```{r}
+# Count number of arrests from reporting agencies in each county
+arrests_juvenile_county <- arrests_juvenile_agency_geo %>%
+  group_by(state, county) %>%
+  summarize(across(arr_total:ethn_hispanic, ~sum(.x, na.rm=TRUE))) %>%
+  mutate(GEOID = str_c(state, county)) %>%
+  ungroup()
+
+```
+
+
+## 4. Calculate reporting rate for any arrest
+
+```{r}
+# Agencies may actually have zero juvenile arrests, so starting from full file
+arrests_any <- arrests_ab %>%
+  group_by(ori) %>%
+  summarize(arr_total_any = n()) %>%
+  ungroup()
+
+```
+Merge total number of arrests for each agency onto the county/agency weight file
+```{r}
+# Merge geography
+arrests_any_agency_geo <- agency_weights %>%
+  left_join(arrests_any, by = "ori")
+
+arrests_any_agency_geo <- arrests_any_agency_geo %>%
+  mutate(
+    # Weight total arrest by county weight
+    arr_total_any_wt = arr_total_any * weight,
+    # Indicate reporting by county-agency
+    reporting = ifelse(is.na(arr_total_any), 0, 1)
+  )
+
+```
+
+Aggregate variables to the county level.
+    todo(): Only 3,128 counties
+```{r}
+# Summarize by county. We want both an unweighted and weighted count of agencies reporting, as well as percentage reporting
+arrests_any_county <- arrests_any_agency_geo %>%
+  group_by(state, county) %>%
+  summarize(n = n(), 
+            n_wt = sum(weight), # check how weighted agencies compares to total agencies
+            n_reporting = sum(reporting),
+            n_reporting_wt = sum(reporting * weight),
+            n_core_city = sum(core_city),
+            n_core_city_rpt = sum(core_city==1 & reporting==1),
+            across(arr_total_any, ~sum(.x, na.rm=TRUE))) %>%
+  mutate(agencies_reporting = n_reporting / n,
+         agencies_reporting_wt = n_reporting_wt / n_wt,
+         core_reporting = n_core_city_rpt / n_core_city,
+         core_reporting = ifelse(is.nan(core_reporting), NA, core_reporting),
+         GEOID = str_c(state, county)) %>%
+  ungroup()
+
+```
+
+todo(): original 2021 file - "rate of reporting better when calculate based on all arrests and include A & B" - not sure what this is referring to
+```{r}
+skim(arrests_any_county)
+
+```
+
+Merge total arrests (for ages 10-17) back to juvenile arrest file
+```{r}
+# All 3,128 observations match
+arrests_juvenile_county <- arrests_juvenile_county %>%
+  left_join(arrests_any_county, by = c("GEOID", "state", "county")) 
+
+skim(arrests_juvenile_county)
+
+```
+
+
+## 5. Calculate rates
+
+First load the demographic information for each county. This file was created using 2018-2022 5 year ACS data in `01_agency_geo_county.Rmd`.
+```{r}
+county_demo <- read_csv(here::here("07_safety", "modified data", "2022_county_demo.csv"))
+
+```
+
+
+Merge juvenile arrests onto county demographic file. 16 observations are missing from the juvenile arrests data. 6 of these observations are counties from Alaska, 9 are counties from Connecticut, and 1 is a county from Hawaii.
+```{r}
+ar_juv_county_demo <- county_demo %>%
+  left_join(arrests_juvenile_county, by = "GEOID")
+
+county_demo %>%
+  anti_join(arrests_juvenile_county, by = "GEOID") %>% select(GEOID)
+
+skim(ar_juv_county_demo)
+
+```
+
+```{r}
+# Calculate arrest rates (per 100,000 people)
+juv_arrest_by_county <- ar_juv_county_demo %>%
+  mutate(
+    juv_arrest_rate = arr_total / age_1017 * 100000,
+    juv_arrest_rate_violent = arr_viol / age_1017 * 100000,
+    juv_arrest_rate_property = arr_prop / age_1017 * 100000,
+    juv_arrest_rate_white = race_white / age_1017_white * 100000,
+    juv_arrest_rate_black = race_black / age_1017_black * 100000,
+    #juv_arrest_rate_aian  = race_aian / age_1017_aian * 100000,
+    juv_arrest_rate_asian_other = race_asian_other / age_1017_asian_other * 100000,
+    #juv_arrest_rate_nhpi  = race_nhpi / age_1017_nhpi * 100000,
+    juv_arrest_rate_hispanic  = ethn_hispanic / age_1017_hispanic * 100000
+  )
+
+```
+
+Some rates have a value of `Infinity` if the denominator when calculating the rate is equal to 0. E.g., if a county has 0 Black people between the ages of 10 and 17 reported in the ACS, but a nonzero number of arrests, the Black juvenile arrest rate is infinity. However, we replace the rates of observations with a population less than 30 with `missing` which solves this issue.
+    todo(): Why would the ACS report 0 population but NIBRS report a nonzero number of arrests for that group? Maybe if ACS is county of residence and NBIRS is county of arrest/offense?
+```{r}
+# Suppress data using populations < 30 people
+juv_arrest_by_county <- juv_arrest_by_county %>%
+  mutate(
+    juv_arrest_rate = ifelse(age_1017 < 30, NA, juv_arrest_rate),
+    juv_arrest_rate_violent = ifelse(age_1017 < 30, NA, juv_arrest_rate_violent),
+    juv_arrest_rate_property = ifelse(age_1017 < 30, NA, juv_arrest_rate_property),
+    juv_arrest_rate_white = ifelse(age_1017_white < 30, NA, juv_arrest_rate_white),
+    juv_arrest_rate_black = ifelse(age_1017_black < 30, NA, juv_arrest_rate_black),
+    #juv_arrest_rate_aian = ifelse(age_1017_aian < 30, NA, juv_arrest_rate_aian),
+    juv_arrest_rate_asian_other = ifelse(age_1017_asian_other < 30, NA, juv_arrest_rate_asian_other),
+    #juv_arrest_rate_nhpi = ifelse(age_1017_nhpi < 30, NA, juv_arrest_rate_nhpi),
+    juv_arrest_rate_hispanic = ifelse(age_1017_hispanic < 30, NA, juv_arrest_rate_hispanic)
+  )
+```
+
+todo(): The rates are per 100,000 people so, theoretically, none of the rates should exceed 100,000. However, there are some rates that do exceed 100,000. This occurs when there are more arrests for a group than reported population. I think this must be some kind of error then? Unless the arrests are recorded for county of arrest/offense rather than for arrestee's county of residence. Not sure how to treat these.
+```{r}
+# Check rates
+juv_arrest_by_county %>%
+  select(starts_with("juv_arrest_rate")) %>%
+  skim()
+
+test <- juv_arrest_by_county %>%
+  select(GEOID, total_people, age_1017_black, race_black, juv_arrest_rate_black)
+
+```
+
+
+## 6. Make quality indicators
+
+```{r}
+# Compare all reporting plus core reporting
+juv_arrest_by_county <- juv_arrest_by_county %>%
+  mutate(all_juv_arrest_rate_quality = case_when(
+    agencies_reporting == 1 ~ 1,
+    agencies_reporting >= 0.8 ~ 2,
+    agencies_reporting > 0 ~ 3,
+    agencies_reporting == 0 ~ NA_real_),
+    juv_arrest_rate_quality = case_when(
+      agencies_reporting == 1 ~ 1,
+      agencies_reporting >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting > 0 ~ 3,
+      agencies_reporting == 0 ~ NA_real_),
+    all_juv_arrest_rate_quality = ifelse(age_1017 < 30, NA, all_juv_arrest_rate_quality),
+    juv_arrest_rate_quality = ifelse(age_1017 < 30, NA, juv_arrest_rate_quality)
+  )
+```
+
+
+```{r}
+# check distribution based on definition
+juv_arrest_by_county %>%
+  count(all_juv_arrest_rate_quality, juv_arrest_rate_quality)
+# with core reporting, 228 counties move from 3 to 2
+
+```
+
+
+## 8. Save data
+```{r}
+juv_arrest_by_county_2022 <- juv_arrest_by_county %>%
+  mutate(year=2022,
+         across(starts_with("juv_arrest"), 
+                ~ifelse(is.na(juv_arrest_rate_quality), NA, .x)),
+         state_fips = ifelse(is.na(state_fips), str_sub(GEOID, 1, 2), state_fips),
+         county = ifelse(is.na(county), str_sub(GEOID, 3, 5), county)) %>%
+  select(c(year, state_fips, county, starts_with("juv_arrest"), starts_with("age_1017")))
+
+skim(juv_arrest_by_county_2022)
+
+```
+
+
+```{r}
+# file with only total juvenile arrest rates
+juv_arrest_county_2022 <- juv_arrest_by_county_2022 %>%
+  select(year, state_fips, county, juv_arrest_rate, juv_arrest_rate_violent,
+         juv_arrest_rate_property, juv_arrest_rate_quality)
+
+skim(juv_arrest_county_2022)
+# todo(): from original 2021 file - "note 7 counties have 0 agencies, so NA for all metrics"
+# write_csv(juv_arrest_county_2022, file = "07_safety/modified data/2022_juv_arrest_rate_county.csv")
+
+```
+
+
+```{r}
+# long form file with juvenile arrest rates by subgroup
+# pivot longer subgroup populations
+# create all row with overall juvenile population and arrest rate
+juv_pop_2022_subgroup <- juv_arrest_by_county_2022 %>%
+  mutate(age_1017_all = age_1017) %>%
+  select(year, state_fips, county, age_1017_all, age_1017_white, age_1017_black, age_1017_asian_other,
+         age_1017_hispanic,
+         juv_arrest_rate_quality) %>%
+  pivot_longer(cols = contains("age_1017"),
+               names_to = "subgroup",
+               values_to = "age_1017",
+               values_drop_na = TRUE,
+               names_pattern = "age_1017_(.*)")
+
+# pivot longer subgroup arrest rates
+juv_arrest_2022_subgroup <- juv_arrest_by_county_2022 %>%
+  mutate(juv_arrest_rate_all = juv_arrest_rate) %>%
+  select(year, state_fips, county, juv_arrest_rate_all, juv_arrest_rate_white, juv_arrest_rate_black,
+         juv_arrest_rate_asian_other, juv_arrest_rate_hispanic) %>%
+  pivot_longer(cols = contains("juv_arrest_rate_"), 
+               names_to = "subgroup",
+               values_to = "juv_arrest_rate",
+               values_drop_na = TRUE,
+               names_pattern = "juv_arrest_rate_(.*)")
+
+# combine into one file
+# replace quality indicators with missing if subgroup population < 30
+juv_arrest_county_2022_subgroup <- juv_pop_2022_subgroup %>%
+  left_join(juv_arrest_2022_subgroup, by = c("year", "state_fips", "county", "subgroup")) %>%
+  mutate(subgroup_type = "race-ethnicity",
+         juv_arrest_rate_quality = ifelse(age_1017 < 30, NA, juv_arrest_rate_quality)) %>%
+  select(-age_1017)
+
+skim(juv_arrest_county_2022_subgroup)
+juv_arrest_county_2022_subgroup %>% 
+  count(juv_arrest_rate_quality, is.na(juv_arrest_rate))
+
+
+# write_csv(juv_arrest_county_2022_subgroup, file = "07_safety/modified data/2022_juv_arrest_rate_county_subgroup.csv")
+```
+
+
+
+
+
+
+
+
+
 
 
 

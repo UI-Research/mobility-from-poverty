@@ -1,0 +1,635 @@
+---
+title: "Agencies - Place"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+# library(urbnthemes)
+library(tidyverse)
+library(tidycensus)
+library(skimr)
+library(tidylog)
+
+# set_urbn_defaults(style = "print")
+
+```
+
+todo(): delete this and include instructions for getting a key
+```{r}
+# set Census API once
+# tidycensus::census_api_key("db0bd75bd829570bc973bd4b4fd66ed6f50b8371", install=TRUE, overwrite = TRUE)
+
+```
+
+Load county population data and filter to year of interest
+
+    todo(): The project's `place-populations.csv` file was updated on the `main` branch after I already created this branch. I couldn't figure out how to get the updated file onto my branch, so in the meantime I manually downloaded it, moved it to the `07_safety\data` folder, and read it in from there.
+    todo(): The file has 3,144 counties because Connecticut changed from 8 to 9 counties sometime between 2020-2022. Not sure what to do about that.
+```{r, message=FALSE}
+# todo(): check if this is the right file
+# place populations file from Urban
+pop <- read_csv(file = here::here("07_safety", "data", "place-populations.csv")) %>%
+  filter(year==2022) %>%
+  mutate(
+    county_name = str_to_title(place_name),
+    GEOID = str_c(state, place)
+  )
+
+```
+
+# 1 Load and clean crime reporting agency data
+
+## National Incident-based Reporting System (NIBRS)
+The National Incident-based Reporting System (NIBRS) is a part of the Uniform Crime Reporting Program (UCR), administered by the Federal Bureau of Investigation (FBI). NIBRS is an annual data collection that compiles information on criminal incidents and arrests reported by participating law enforcement agencies. NIBRS data as formatted by the FBI are stored as a series of single files organized by various segment levels (record types). There are six main segment levels: administrative, offense, property, victim, offender, and arrestee.
+
+The extract files version of the NIBRS files was created by ICPSR to simplify working with NIBRS data. These files are available for downnload from the National Archive of Criminal Justice Data (NACJD) available through ICPSR [here](https://www.icpsr.umich.edu/web/NACJD/studies/38566). 
+
+Select `Download` and then select `Delimited` from the drop down menu. This will download a zip file titled `ICPSR_38566-V2`. Unzip the file, navigate to `ICPSR_38566\DS0001\38566-0001-Data.tsv`, and move it to the appropriate directory/folder. This is the `Batch Header File`.
+
+```{r, message=FALSE}
+# Read in the Batch Header File
+batch_header_file <- read_tsv(here::here("07_safety", "data", "38566-0001-Data.tsv"))
+
+```
+
+Limit file to necessary variables and rename. We use the codebook (`ICPSR_38566\DS0001\38566-0001-Codebook`) to determine what each variable represents.
+```{r}
+batch_header_file <- batch_header_file %>%
+  select(
+    ori = BH003, # ori is unique agency identifier used across multiple files
+    agency_type = BH012,
+    state_num_nibrs = BH002,
+    state_abb = BH008,
+    city = BH007,
+    core_city = BH013,
+    fips_county_1 = BH054,
+    fips_county_2 = BH055,
+    fips_county_3 = BH056,
+    fips_county_4 = BH057,
+    msa_1 = BH021,
+    msa_2 = BH025,
+    msa_3 = BH029,
+    msa_4 = BH033,
+    msa_5 = BH037,
+    pop_1 = BH019,
+    pop_2 = BH023,
+    pop_3 = BH027,
+    pop_4 = BH031,
+    pop_5 = BH035
+  ) %>%
+  mutate(year = 2022,
+         pop_total = pop_1 + pop_2 + pop_3 + pop_4 + pop_5,
+         city = str_to_title(city),
+         # Edit NIBRS state and county variables to have two digits and three digits respectively
+         state_num_nibrs = str_pad(state_num_nibrs, 2, pad = "0"),
+         county = str_pad(fips_county_1, 3, pad = "0")
+  ) %>%
+  # Drop US territories - todo(): might want to read in list of counties and specifically filter using the list of states from that file
+  filter(!state_abb %in% c("GM", "PR", "VI"))
+
+```
+
+
+The state identifiers that NIBRS has are state abbreviation and a state code. NIBRS state codes are in alphabetical order and do not follow FIPS codes. We manually create a crosswalk between state FIPS codes and NIBRS codes by looking at the codebook (`ICPSR_38566\DS0001\38566-0001-Codebook`) and then join state FIPS codes onto the Batch Header File.
+```{r, message=FALSE}
+# todo(): the original file originally merges a file called `nibrs_states.csv` onto the NIBRS data by `state_abb` and `state_num_nibrs`. My assumption is that the only variable this adds is `state_name`, because the original file then joins on a file called `pop_st` (created below) by `state_name` and the only extra variable is a state FIPS code. Since I don't have that original `nibrs_states.csv` file, I manually create a tribble that has both `state_name` and a state FIPS code that we can merge directly onto the NIBRS data. This also means that we don't need to create the `pop_st` file.
+# Ideally we wouldn't have to manually create this "crosswalk" because manually entering everything introduces more room for error, but it makes more sense to me than the roundabout way from the original file. I have checked it carefully.
+# # Filter Urban file to states so we can fix the state numbers in NIBRS data
+# pop_st <- pop %>%
+#   select(c(state, state_name)) %>%
+#   distinct()
+
+# Create "crosswalk" for NIBRS state codes to state FIPS codes.
+nibrs_states <- tribble(
+  ~state, ~state_abb, ~state_num_nibrs, ~state_name,
+  "01",	"AL", "01", "Alabama",
+  "02",	"AK", "50", "Alaska",
+  "04",	"AZ", "02", "Arizona", 
+  "05",	"AR", "03", "Arkansas",	
+  "06",	"CA", "04", "California",	
+  "08",	"CO", "05", "Colorado",
+  "09",	"CT", "06", "Connecticut",
+  "10",	"DE", "07", "Delaware",
+  "11",	"DC", "08", "District of Columbia",
+  "12",	"FL", "09", "Florida",
+  "13",	"GA", "10", "Georgia",	
+  "15",	"HI", "51", "Hawaii",
+  "16",	"ID", "11", "Idaho",
+  "17",	"IL", "12", "Illinois",
+  "18",	"IN", "13", "Indiana",
+  "19",	"IA", "14", "Iowa",	
+  "20",	"KS", "15", "Kansas",	
+  "21",	"KY", "16", "Kentucky",	
+  "22",	"LA", "17", "Louisiana",
+  "23",	"ME", "18", "Maine",
+  "24",	"MD", "19", "Maryland",
+  "25",	"MA", "20", "Massachusetts",
+  "26",	"MI", "21", "Michigan",	
+  "27",	"MN", "22", "Minnesota",	
+  "28",	"MS", "23", "Mississippi",	
+  "29",	"MO", "24", "Missouri",	
+  "30",	"MT", "25", "Montana",	
+  "31",	"NE", "26", "Nebraska",	
+  "32",	"NV", "27", "Nevada",	
+  "33",	"NH", "28", "New Hampshire",	
+  "34",	"NJ", "29", "New Jersey",	
+  "35",	"NM", "30", "New Mexico",	
+  "36",	"NY", "31", "New York",	
+  "37",	"NC", "32", "North Carolina",
+  "38",	"ND", "33", "North Dakota",	
+  "39",	"OH", "34", "Ohio",	
+  "40",	"OK", "35", "Oklahoma",	
+  "41",	"OR", "36", "Oregon",	
+  "42",	"PA", "37", "Pennsylvania",	
+  "44",	"RI", "38", "Rhode Island",	
+  "45",	"SC", "39", "South Carolina",	
+  "46",	"SD", "40", "South Dakota",
+  "47",	"TN", "41", "Tennessee",
+  "48",	"TX", "42", "Texas",	
+  "49",	"UT", "43", "Utah",	
+  "50",	"VT", "44", "Vermont",	
+  "51",	"VA", "45", "Virginia",	
+  "53",	"WA", "46", "Washington",	
+  "54",	"WV", "47", "West Virginia",	
+  "55",	"WI", "48", "Wisconsin",	
+  "56",	"WY", "49", "Wyoming"
+)
+
+# The NIBRS data abbreviates Nebraska as "NB" instead of its correct abbreviation "NE"
+batch_header_file <- batch_header_file %>%
+  mutate(state_abb = if_else(state_abb=="NB", "NE", state_abb))
+
+# Join state FIPS codes and full state name onto the NIBRS data
+batch_header_file <- batch_header_file %>% 
+  left_join(
+    y = nibrs_states, by = c("state_abb", "state_num_nibrs")
+  )
+
+```
+
+There are 51 unique combinations of `state`/`state_name`/`state_abb`/`state_num_nibrs`, so the manual crosswalk does not seem to have any errors
+```{r, message=FALSE}
+batch_header_file %>%
+  group_by(state, state_name, state_abb, state_num_nibrs) %>%
+  summarize()
+
+```
+
+
+Check distribution of agency types. The agency types are as follows:
+
+| Value | Label                     |
+|:-----:|:--------------------------|
+|   0   | Covered by another agency |
+|   1   | City                      |
+|   2   | County                    |
+|   3   | University or college     |
+|   4   | State Police              |
+|   5   | Special Agency            |
+|   6   | Other state agencies      |
+|   7   | Tribal agencies           |
+|   8   | Federal agencies          |
+
+```{r}
+batch_header_file %>%
+  count(agency_type) %>%
+  mutate(percent = n/nrow(batch_header_file))
+
+```
+
+State agencies cover multiple counties, so we remove these agencies for simplicity
+```{r}
+ba <- batch_header_file %>%
+  filter(!agency_type %in% c(4, 6))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Law Enforcement Agency Identifiers Crosswalk (LEAIC)
+The agency data available to us through NIBRS are at the county-level, but we want them at the place-level for this analysis. To crosswalk the agencies from county to place We can use the Law Enforcement Agency Identifiers Crosswalk (LEAIC), which facilitates linking reported crime data with socio-economic data, and lists agencies with both their county and place. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR [here](https://www.icpsr.umich.edu/web/NACJD/studies/35158).  
+
+Select `Download` and then select `Delimited` from the drop down menu. This will download a zip file titled `ICPSR_35158-V2`. Unzip the file, navigate to `ICPSR_35158\DS0001\35158-0001-Data.tsv`, and move it to the appropriate directory/folder. 
+
+```{r}
+# Read in the Law Enforcement Agency Identifiers Crosswalk
+leaic <- read_tsv(here::here("07_safety", "data", "35158-0001-Data.tsv"))
+
+```
+
+
+
+
+
+
+
+Limit file to necessary variables and rename. We use the codebook (`ICPSR_35158\DS0001\35158-0001-Codebook`) to determine what each variable represents.
+```{r}
+leaic <- leaic %>%
+  mutate(place = str_pad(FPLACE, 5, pad = "0"),
+         GEOID = str_c(FIPS_ST, place)) %>%
+  select(
+    ori = ORI9, 
+    FIPS_COUNTY,
+    place,
+    GEOID,
+    FIPS_ST,
+    UANAME, # Census name for the Urbanized Area or Urban Cluster. Included for incorporated places and census-designated places only.
+    LG_NAME # Local government name associated with the record. The source of these codes is the Census Bureau's Census of Governments
+  ) %>%
+  # Remove agencies with invalid ORI
+  filter(ori != "-1") # Not in UCR/NCIC
+
+```
+
+
+Join LEAIC to NIBRS agency data. There are 477 NIBRS agencies that are not in the LEAIC - the crosswalk is from 2012, so these could be newer agencies. 
+```{r}
+ba_cw <- ba %>%
+  left_join(leaic, by = "ori")
+
+bhf_missing_place <- ba_cw %>%
+  filter(is.na(place))
+
+```
+
+Most of the agencies not in LEAIC are from counties with small populations (90% have less than 25,000 people)
+```{r}
+bhf_missing_place %>%
+  summarize(pop_total = quantile(pop_total, c(0.25, 0.5, 0.75, 0.80, 0.90, 1)))
+
+```
+
+The agencies missing in LEAIC represent a variety of agency types
+```{r}
+bhf_missing_place %>%
+  count(agency_type)
+
+```
+
+We can attempt to join places onto these agencies by using our universe of places file from Urban and merging on City name. This won't account for all the unmatched observations, so the next step is to bring in a county to place crosswalk. We try to merge on city name first instead of using the crosswalk immediately because some counties correspond to multiple places.
+```{r}
+# Remove the " city" string from the census place names
+pop <- pop %>%
+  mutate(city = str_remove(place_name, " city"))
+# There are three cities that I know are unmatched at this step because they were flagged in the 2021 program. I manually edit them at this step so that they can match by name
+pop <- pop %>%
+  mutate(city = case_when(
+    state == "13" & city == "Augusta-Richmond County consolidated government (balance)" ~ "Augusta",
+    state == "18" & city == "Indianapolis (balance)" ~ "Indianapolis",
+    state == "37" & city == "Winston-Salem" ~ "Winston Salem",
+    TRUE ~ city
+  )
+  )
+
+# 140 observations match by name, but 337 agencies still do not have a place code
+ba_cw_mis <- ba_cw %>%
+  filter(is.na(place)) %>%
+  # Limit agency data to identifying variables
+  select(ori, state_abb, state, city, county) %>%
+  # Use Urban universe of places to merge place FIPS onto agencies by city name
+  left_join(pop, by = c("state", "city"))
+
+# There are 337 agencies without a place code/didn't merge, but only 166 unique state/city pairs. 
+    # todo(): Original file highlights "Augusta GA, Winston Salem, Indianapolis" but I don't know why. Were those the only cities that didn't match at this step in 2021? Are those the only cities relevant to our universe of places
+      # I think those are just the cities relevant to our universe. Addressed above.
+cit <- ba_cw_mis %>%
+  filter(is.na(place)) %>%
+  count(state_abb, city)
+
+```
+
+
+For the remaining agencies with no place, we merge a place code on using a county-place crosswalk.
+
+
+## County-place crosswalk from Missouri Census Data Center Geocorr
+
+We have 377 agencies from the NIBRS data for which we still do not have a corresponding place after (1) using the LEAIC crosswalk and (2) merging onto our universe of places by name. We construct and use a county-place crosswalk from [geocorr](https://mcdc.missouri.edu/applications/geocorr2022.html) to get place information for these agencies. 
+
+    todo(): The 2021 version used a file called `geocorr2022_county_place.csv` which I could not find but recreated.
+    todo(): Why not just use this crosswalk from the beginning instead of LEAIC?
+        The NIBRS agency data has a county and city name for each observation. We want to merge on a single place code. In the `county_place_xw`, there are some counties with multiple places. For instance: Wayne County, MI has 4 observations in the crosswalk for 4 places (Detroit, Dearborn, Livonia, and Westland cities). If we try to merge these places onto NIBRS by county, it isn't a 1 to 1 match and we won't know which of the 4 places to merge onto that 1 county. However, if there are counties in the crosswalk with only 1 place, that is a 1 to 1 match and we can merge by county onto NIBRS.
+        However, the NIBRS agency data and `county_place_xw` both have a city name variable. We can try to merge on that variable and then maybe we won't have to use the city names from our universe of places as we did above.
+
+```{r}
+county_place_xw <- read_csv(here::here("07_safety", "data", "geocorr2022_county_place.csv"))
+
+county_place_xw <- county_place_xw %>%
+  mutate(
+    state = str_pad(state, 2, pad = "0"),
+    place = str_pad(place, 5, pad = "0"),
+    GEOID = str_c(state, place)
+  )
+
+# Clean city names to match
+county_place_xw <- county_place_xw %>%
+  separate(PlaceName, into = c("city", "extra"), sep = ",")
+
+county_place_xw <- county_place_xw %>%
+  select(-extra) %>%
+  mutate(city = str_remove(city, " city"),
+         city = str_remove(city, " CDP"),
+         city = str_remove(city, " town"),
+         city = str_remove(city, " village")
+         )
+
+# # todo(): 103/337 matched when include county as a joining variable, 114/343 matched when county not included
+ba_cw_mis2 <- ba_cw_mis %>%
+  filter(is.na(place)) %>%
+  # Limit agency data to identifying variables
+  select(ori, state_abb, state, city, county) %>%
+  # Use city names in county-place crosswalk to merge place FIPS onto agencies by city name
+  left_join(county_place_xw, by = c("state", "county", "city"))
+
+```
+
+234 agencies still don't have a place. If any of these places are only associated with 1 county in the crosswalk, we can merge by county
+```{r}
+# Limit crosswalk to our universe of places
+county_place_xw <- county_place_xw %>%
+  filter(GEOID %in% pop$GEOID)
+
+# Some counties correspond to multiple places. We filter to only counties that correspond with one place
+county_place_xw <- county_place_xw %>%
+  group_by(state, county) %>%
+  mutate(n = n()) %>%
+  ungroup() %>%
+  filter(n == 1)
+
+# When we merge place information onto NBIRS agency data that still don't have one using `county`, we get 34 more matched observations leaving 200 agencies without a place code
+ba_cw_mis3 <- ba_cw_mis2 %>%
+  filter(is.na(place)) %>%
+  select(ori, state_abb, city, state, county) %>%
+  left_join(county_place_xw %>% select(-city), by = c("state", "county"))
+
+```
+
+
+Combine all agency-place data frames back together
+```{r}
+# The idea here is that we have created four separate data frames from the original agency file observations and merged place codes onto those observations four separate ways. We now combine those frame back together
+ba_cw_all <- ba_cw %>%
+  filter(!is.na(place)) %>%
+  bind_rows(ba_cw_mis) %>%
+  filter(!is.na(place)) %>%
+  bind_rows(ba_cw_mis2) %>%
+  filter(!is.na(place)) %>%
+  bind_rows(ba_cw_mis3)
+ 
+  
+# 14 observations had a place value of 99999 indicating that the agency was not in a place
+ba_cw_all <- ba_cw_all %>%
+  select(ori, place) %>%
+  mutate(place = ifelse(place=="99999", NA, place))
+
+
+```
+
+Limiting our agency data to our universe of places reduces the number of observations from 19,034 to 1,083
+    todo(): original 2021 file - "reduces from 19038 agencies to 1097"
+```{r}
+ba_cw_pl <- ba %>%
+  left_join(ba_cw_all, by = "ori") %>%
+  mutate(GEOID = str_c(state, place)) %>%
+  filter(GEOID %in% pop$GEOID)
+
+```
+
+
+# Load county-level demographic
+
+Check 2022 ACS variables
+```{r}
+variables2022 <- tidycensus::load_variables(2022, "acs5")
+
+```
+
+Pull 2022 ACS data at the Census place level. Note that the `two or more race` variable is not appearing and may not be available at the place level
+```{r}
+place_demo <- tidycensus::get_acs(
+  geography = "place",
+  variables = c(
+    total_people = "B01003_001",
+    age_m_1014 = "B01001_005", 
+    age_m_1517 = "B01001_006",
+    age_f_1014 = "B01001_029", 
+    age_f_1517 = "B01001_030",
+    age_m_1014_white = "B01001A_005", 
+    age_m_1014_black = "B01001B_005",
+    age_m_1014_aian = "B01001C_005", 
+    age_m_1014_asin = "B01001D_005",
+    age_m_1014_nhpi = "B01001E_005", 
+    age_m_1014_othr = "B01001F_005",
+    age_m_1014_twom = "B01001G_005",
+    age_m_1014_white_nh = "B01001H_005",
+    age_m_1014_hispanic = "B01001I_005",
+    age_m_1517_white = "B01001A_006", 
+    age_m_1517_black = "B01001B_006",
+    age_m_1517_aian = "B01001C_006", 
+    age_m_1517_asin = "B01001D_006",
+    age_m_1517_nhpi = "B01001E_006", 
+    age_m_1517_othr = "B01001F_006",
+    age_m_1517_twom = "B01001G_006",
+    age_m_1517_white_nh = "B01001H_006", 
+    age_m_1517_hispanic = "B01001I_006",
+    age_f_1014_white = "B01001A_020", 
+    age_f_1014_black = "B01001B_020",
+    age_f_1014_aian = "B01001C_020", 
+    age_f_1014_asin = "B01001D_020",
+    age_f_1014_nhpi = "B01001E_020", 
+    age_f_1014_othr = "B01001F_020",
+    age_f_1014_twom = "B01001G_020",
+    age_f_1014_white_nh = "B01001H_020",
+    age_f_1014_hispanic = "B01001I_020",
+    age_f_1517_white = "B01001A_021", 
+    age_f_1517_black = "B01001B_021",
+    age_f_1517_aian = "B01001C_021", 
+    age_f_1517_asin = "B01001D_021",
+    age_f_1517_nhpi = "B01001E_021",
+    age_f_1517_othr = "B01001F_021",
+    age_f_1517_twom = "B01001G_021",
+    age_f_1517_white_nh = "B01001H_021", 
+    age_f_1517_hispanic = "B01001I_021"
+  ),
+  year = 2022,
+  survey = "acs5",
+  output = "wide",
+  geometry = FALSE
+)
+
+# Remove obsolete files
+rm(variables2022)
+
+```
+
+Clean variable names and drop MOEs
+```{r}
+place_demo <- place_demo %>%
+  rename_with(~ sub("E$", "", .x), everything()) %>%
+  select(-c(ends_with("M")))
+
+```
+
+Construct age and race/ethnicity groups
+    todo(): age_1017_twom wasn't commented out in the 2021 place file (but was in the 2021 county file)
+```{r}
+place_demo <- place_demo %>%
+  mutate(
+    age_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
+    age_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
+    age_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
+    age_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
+    age_1017_asin = age_m_1014_asin + age_m_1517_asin + age_f_1014_asin + age_f_1517_asin,
+    age_1017_nhpi = age_m_1014_nhpi + age_m_1517_nhpi + age_f_1014_nhpi + age_f_1517_nhpi,
+    age_1017_othr = age_m_1014_othr + age_m_1517_othr + age_f_1014_othr + age_f_1517_othr,
+    # age_1017_twom = age_m_1014_twom + age_m_1517_twom + age_f_1014_twom + age_f_1517_twom,
+    age_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
+    age_1017_white_nh = age_m_1014_white_nh + age_m_1517_white_nh + age_f_1014_white_nh + age_f_1517_white_nh,
+  )
+
+```
+
+
+Some additional cleaning restricts observations to 486 places
+```{r}
+# Limit to relevant variables
+place_demo <- place_demo %>%
+  select(GEOID, total_people, starts_with("age_1017"))
+
+# Limit places to those in the Urban file
+place_demo <- place_demo %>%
+  filter(GEOID %in% pop$GEOID)
+
+# Edit race variables
+# Edit race variables  
+place_demo <- place_demo %>%  
+  mutate(
+    year=2022,
+    # Manually create "two or more" race variable
+    age_1017_twom = age_1017 - age_1017_white - age_1017_black - 
+      age_1017_aian - age_1017_asin - age_1017_nhpi - age_1017_othr,
+    # Combine all asian races, other races. and two or more races
+    age_1017_asian_other = age_1017_aian + age_1017_asin + age_1017_nhpi +
+      age_1017_othr + age_1017_twom
+  )
+
+```
+
+
+# Make place-level file
+Note that we do not know if agencies cover multiple places. We are just relying on the agency's primary place.
+
+Make final agency-place file with only places in urban CW
+```{r}
+# Select only necessary variables
+my_data <- ba_cw_pl %>%
+  select(c(ori, state, place, core_city, agency_type, GEOID)) %>%
+  # todo(): this filter() command was in the original 2021 file, but no observations are removed here.
+  filter(!is.na(place)) %>%
+  ungroup()
+
+
+```
+
+Count how many agencies there are per place
+```{r}
+# 470 places have any agency which means 16 do not have any agency
+place_agency <- my_data %>%
+  filter(!is.na(place)) %>%
+  group_by(state, place) %>%
+  summarize(n_agencies = n_distinct(ori),
+            n_core_city = sum(core_city==1),
+            core_city = max(core_city),
+            n_agen_city = sum(agency_type==1),
+            n_agen_cnty = sum(agency_type==2),
+            n_agen_univ = sum(agency_type==3),
+            n_agen_spcl = sum(agency_type==5),
+            n_agen_trbl = sum(agency_type==7)) %>%
+  ungroup() %>%
+  mutate(GEOID = str_c(state, place))
+
+# The maximum number of agencies in a single place is 35. The maximum number of core agencies in a place is 2.
+skim(place_agency)
+
+```
+
+
+# Combine place-level agency and demographic information
+
+16 observations are in the ACS data but not in the NIBRS data
+```{r}
+joined_data <- place_demo %>%
+  left_join(place_agency, by = "GEOID")
+
+```
+
+Make sure the data are limited to only counties in the Urban file
+```{r}
+joined_data <- joined_data %>%
+  filter(GEOID %in% pop$GEOID)
+  
+```
+
+16 places have no agencies (or, at least, they're not present in the NIBRS data). These include 11 California places, 2 Florida places, 1 Georgia place, 1 Hawaii place, and 1 Michigan place. The Hawaii place has the highest population of these (348,547)
+```{r}
+joined_data %>%
+  filter(is.na(n_agencies)) %>%
+  select(GEOID, total_people, n_agencies, state, place)
+
+```
+
+
+# Write out files
+
+Write out place demographics only
+```{r}
+write_csv(place_demo, file = "modified data/2022_place_demo.csv")
+
+```
+
+Write out place demographics plus agency info
+```{r}
+write_csv(joined_data, file = "modified data/2022_place_demo_agency.csv")
+
+```
+
+Write out agency-place level file filtered to only Urban universe places
+```{r}
+write_csv(place_agency, file = "modified data/2022_agency_place.csv")
+
+```
+
