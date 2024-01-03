@@ -427,19 +427,22 @@ The scope of the review will involve the following three levels:
     -   Code should not error out. Warnings and notes are also cause for concern.
     -   The code should exactly recreate the final result.
 2.  A line-by-line review of code logic.
+    -   Code script should include top-level description of process and what the code accomplishes.
+    -   Does the author's process and analytical choices make sense given the metric they are trying to calculate? Is the process implemented correctly?
     -   Variable construction: What is the unit of analysis? Is it consistent throughout the dataset?
     -   Are new variables what they say they are (check codebooks)?
     -   Check whether simple operations like addition/subtraction/division exclude observations with missing data.
     -   Does the researcher subset the data at all? Is it done permanently or temporarily?
     -   How are missing values coded?
     -   Look at merges/joins and appends - do the data appear to be matched appropriately? Are there identical non-ID variables in both datasets? How are non-matching data handled or dropped?
-    - I sthe correct geographic crosswalk used?
+    -   Is the correct geographic crosswalk used?
     -   Are weights used consistently and correctly?
 3.  Code Architecture/Readability.
     -   Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function or macro.
     -   Is there a place where a variable is rebuilt or changed later on?
     -   Are values transcribed by hand?
-4.  Public Release *Is the code clearly commented for public release (e.g., no use of abbreviations or acronyms that are Urban Institute specific)* Is the code free from any licenses, PII, or proprietary information.
+    -   "Messy but error-free" is not an acceptable status for finalized code. Code should be easy to follow, efficient, reproduceable, and should reflect well on the organization and project team.
+4.  Public Release *Is the code clearly commented for public release (e.g., no use of abbreviations or acronyms that are Urban Institute specific)* Is the code free from any licenses, PII, or proprietary information?
 
 ## How to Prepare for a Code Review
 
