@@ -41,21 +41,22 @@
 # Libraries you'll need
 library(tidyverse)
 library(ipumsr)
+library(janitor)
 library(readxl)
 
 ###################################################################
 
-# (2) Import microdata (PUMA Place combination already done)
+# (2) Import microdata (PUMA County combination already done)
 
 # Either run "0_housing_microdata.R" OR: Import the already prepared microdata file 
-# this one should already match the PUMAs to places
-acs2022 <- read_csv("data/temp/2022microdata.csv") 
+# this one should already match the PUMAs to counties
+acs2022 <- read_csv("data/temp/2022microdata_county.csv") 
 
 # For HH side: isolate original microdata to only GQ under 3 (only want households)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 acs2022clean <- acs2022 %>%
   filter(GQ < 3) 
-# 1,945,852 obs to 1,847,434 obs (60,558 obs dropped)
+# removed 421,838 rows (6%), 6,914,926 rows remaining
 
 
 ###################################################################
@@ -127,25 +128,26 @@ rent_ratio <- rent_ratio %>%
 
 # in order to be able to merge in rent_ratio, need to have counties in the vacant data file
 # bring in county to PUMA crosswalk if you don't have it already
-puma_county <- read_csv("data/temp/geocorr2022_puma_to_county.csv")
-# merge in counties
-vacant_counties  <- left_join(vacant, puma_county, by=c("statefip","county"))
+puma_county <- read_csv("data/temp/geocorr2022_puma_to_county.csv") %>% 
+  # drop first row that has coulmn labels
+  slice(-1) %>% 
+  clean_names() %>% 
+  # rename variables for working purposes
+  dplyr::rename(puma = puma22,
+                statefip = state) %>% 
+  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+         puma = sprintf("%0.5d", as.numeric(puma)),
+         county = sprintf("%0.3d", as.numeric(county))) %>% 
+  # make county just 3 digit county code (drop state)
+  mutate(county = str_extract(county, "\\d{3}$"), 
+         across(c(pop20, afact, afact2), ~as.numeric(.x))) %>% 
+  # remove puerto rico counties
+  filter(stab != "PR") %>% 
+  # keep only the variables we will need
+  select(statefip, puma, county, pop20, afact, afact2)
 
-# Limit to the Counties we want 
-# first, bring in the counties population crosswalk (county-populations.csv)
-counties <- read_csv("geographic-crosswalks/data/county-populations.csv")
-# keep only the relevant year (for this, 2020)
-counties <- counties %>%
-  filter(year > 2019)
-# rename to prep for merge
-counties <- counties %>% 
-  dplyr::rename("statefip" = "state")
-# create a concatenated GEOID for each county
-counties$GEOID <- paste(counties$statefip,counties$county, sep = "")
-vacant_counties$GEOID <- paste(vacant_counties$statefip,vacant_counties$county, sep = "")
-# limit only to counties of interest using the vetted county crosswalk file
-vacant_counties <- vacant_counties %>%
-  filter(GEOID %in% counties$GEOID)
+# merge in counties
+vacant_counties  <- left_join(vacant, puma_county, by=c("statefip","puma"))
 
 
 # Merge rent ratio into vacant unit microdata
@@ -173,7 +175,9 @@ destfile <- "data/FMR_Income_Levels_2022.xlsx"
 download.file(url, destfile, mode="wb")
 
 # Import the data file as a dataframe
-FMR_Income_Levels_2022 <- read_excel("data/FMR_Income_Levels_2022.xlsx")
+FMR_Income_Levels_2022 <- read_excel("data/FMR_Income_Levels_2022.xlsx") %>% 
+  # edit for join
+  mutate(metro = as.character(metro))
 
 # Import data file (FY&year_4050_FMRs_rev.csv) FY2022_4050_FMRs_rev
 # Access via https://www.huduser.gov/portal/datasets/fmr.html#data_2022
@@ -194,12 +198,12 @@ FMR_pop_2022 <- read_excel("data/FMR_pop_2022.xlsx")
 # (4a) Merge the 2 files
 
 # Add the population variable onto the income level file
-FMR_Income_Levels_2022 <- left_join(FMR_Income_Levels_2022, FMR_pop_2022, by=c("fips2010"))
+FMR_Income_Levels_2022 <- left_join(FMR_Income_Levels_2022, FMR_pop_2022, by = "fips2010")
 
 
 FMR_Income_Levels_2022 <- FMR_Income_Levels_2022 %>%
-  mutate(county = sprintf("%0.3d", as.numeric(County)),
-         state = sprintf("%0.2d", as.numeric(State)))
+  mutate(county = sprintf("%0.3d", as.numeric(county)),
+         state = sprintf("%0.2d", as.numeric(state.x)))
 
 
 # (4b) Create county_level_income_limits (weight by FMR population in collapse)
@@ -210,47 +214,48 @@ FMR_Income_Levels_2022 <- FMR_Income_Levels_2022 %>%
 
 county_income_limits_2022 <- FMR_Income_Levels_2022 %>%
   dplyr::group_by(state, county) %>%
-  dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop20),
-                   l50_2 = weighted.mean(l50_2, na.rm = T, w = pop20),
-                   l50_3 = weighted.mean(l50_3, na.rm = T, w = pop20),
-                   l50_4 = weighted.mean(l50_4, na.rm = T, w = pop20),
-                   l50_5 = weighted.mean(l50_5, na.rm = T, w = pop20),
-                   l50_6 = weighted.mean(l50_6, na.rm = T, w = pop20),
-                   l50_7 = weighted.mean(l50_7, na.rm = T, w = pop20),
-                   l50_8 = weighted.mean(l50_8, na.rm = T, w = pop20),
-                   ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop20),
-                   ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop20),
-                   ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop20),
-                   ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop20),
-                   ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop20),
-                   ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop20),
-                   ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop20),
-                   ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop20),
-                   l80_1 = weighted.mean(l80_1, na.rm = T, w = pop20),
-                   l80_2 = weighted.mean(l80_2, na.rm = T, w = pop20),
-                   l80_3 = weighted.mean(l80_3, na.rm = T, w = pop20),
-                   l80_4 = weighted.mean(l80_4, na.rm = T, w = pop20),
-                   l80_5 = weighted.mean(l80_5, na.rm = T, w = pop20),
-                   l80_6 = weighted.mean(l80_6, na.rm = T, w = pop20),
-                   l80_7 = weighted.mean(l80_7, na.rm = T, w = pop20),
-                   l80_8 = weighted.mean(l80_8, na.rm = T, w = pop20),
+  dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop2017),
+                   l50_2 = weighted.mean(l50_2, na.rm = T, w = pop2017),
+                   l50_3 = weighted.mean(l50_3, na.rm = T, w = pop2017),
+                   l50_4 = weighted.mean(l50_4, na.rm = T, w = pop2017),
+                   l50_5 = weighted.mean(l50_5, na.rm = T, w = pop2017),
+                   l50_6 = weighted.mean(l50_6, na.rm = T, w = pop2017),
+                   l50_7 = weighted.mean(l50_7, na.rm = T, w = pop2017),
+                   l50_8 = weighted.mean(l50_8, na.rm = T, w = pop2017),
+                   ELI_1 = weighted.mean(ELI_1, na.rm = T, w = pop2017),
+                   ELI_2 = weighted.mean(ELI_2, na.rm = T, w = pop2017),
+                   ELI_3 = weighted.mean(ELI_3, na.rm = T, w = pop2017),
+                   ELI_4 = weighted.mean(ELI_4, na.rm = T, w = pop2017),
+                   ELI_5 = weighted.mean(ELI_5, na.rm = T, w = pop2017),
+                   ELI_6 = weighted.mean(ELI_6, na.rm = T, w = pop2017),
+                   ELI_7 = weighted.mean(ELI_7, na.rm = T, w = pop2017),
+                   ELI_8 = weighted.mean(ELI_8, na.rm = T, w = pop2017),
+                   l80_1 = weighted.mean(l80_1, na.rm = T, w = pop2017),
+                   l80_2 = weighted.mean(l80_2, na.rm = T, w = pop2017),
+                   l80_3 = weighted.mean(l80_3, na.rm = T, w = pop2017),
+                   l80_4 = weighted.mean(l80_4, na.rm = T, w = pop2017),
+                   l80_5 = weighted.mean(l80_5, na.rm = T, w = pop2017),
+                   l80_6 = weighted.mean(l80_6, na.rm = T, w = pop2017),
+                   l80_7 = weighted.mean(l80_7, na.rm = T, w = pop2017),
+                   l80_8 = weighted.mean(l80_8, na.rm = T, w = pop2017),
                    n = n()
   )
-county_income_limits_2021 <- county_income_limits_2021 %>% 
-  dplyr::rename("statefip" = "state")
-county_income_limits_2021 <- county_income_limits_2021 %>%
+
+county_income_limits_2022 <- county_income_limits_2022 %>% 
+  dplyr::rename("statefip" = "state") %>% 
   dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
                 county = sprintf("%0.3d", as.numeric(county)),
   )
-county_income_limits_2021$GEOID <- paste(county_income_limits_2021$statefip,county_income_limits_2021$county, sep = "")
+county_income_limits_2022$GEOID <- paste(county_income_limits_2022$statefip,county_income_limits_2022$county, sep = "")
 
 # limit only to counties of interest
-county_income_limits_2021 <- county_income_limits_2021 %>%
-  filter(GEOID %in% counties$GEOID)
+county_income_limits_2022 <- county_income_limits_2022 %>%
+  # remove territories
+  filter(!statefip %in% c(60, 66, 69, 72, 78))
 
 ###################################################################
 
-# (5) Generate households_2021: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
+# (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
 
 # Merge on the 80% and 50% AMI income levels and determine:
 #  1) which households are <= 80% and <= 50% of AMI for a family of 4 
@@ -261,13 +266,13 @@ county_income_limits_2021 <- county_income_limits_2021 %>%
 #    use the gross rent.
 
 # Filter microdata to where PERNUM == 1, so only one HH per observation
-microdata_housing <- acs2021clean %>%
+microdata_housing <- acs2022clean %>%
   filter(PERNUM == 1)
 
 
-# create new dataset called "households_year" to merge microdata & county income limits (county_income_limits_2021) by state and county
+# create new dataset called "households_year" to merge microdata & county income limits (county_income_limits_2022) by state and county
 
-households_2021 <- left_join(microdata_housing, county_income_limits_2021, by=c("statefip","county"))
+households_2022 <- left_join(microdata_housing, county_income_limits_2022, by=c("statefip","county"))
 
 
 
@@ -280,7 +285,7 @@ households_2021 <- left_join(microdata_housing, county_income_limits_2021, by=c(
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
 
-households_2021 <- households_2021 %>%
+households_2022 <- households_2022 %>%
   mutate(Affordable80AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
                                      OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
@@ -291,7 +296,7 @@ households_2021 <- households_2021 %>%
 
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
 # NOTE that we will need to create a Below50AMI_HH (the count of HH) for the Data Quality flag in step 8
-households_2021 <- households_2021 %>%
+households_2022<- households_2022 %>%
   mutate(Affordable50AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
                                      OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
@@ -302,7 +307,7 @@ households_2021 <- households_2021 %>%
   )
 
 # create new variable 'Affordable30AMI' and 'Below80AMI' for HH below 30% of area median income (ELI_4 and OWNERSHP)
-households_2021 <- households_2021 %>%
+households_2022 <- households_2022 %>%
   mutate(Affordable30AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
                                      OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0,
                                      OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
@@ -314,20 +319,20 @@ households_2021 <- households_2021 %>%
 
 ###################################################################
 
-# (6) Merge Vacant with county_level_income_limits (FMR_2021)
+# (6) Merge Vacant with county_level_income_limits (FMR_2022)
 
 # Merge on the % AMI income levels and determine which vacant units are also affordable for a 
 # family of 4 at %s of AMI (regardless of actual unit size). If there is a non-zero value for
 # gross rent (RENTGRS), use that for the cost. Otherwise, if there is a valid house value, use the 
 # housing cost that was calculated and prepared above in the "vacant" df.
 
-vacant_2021 <- left_join(vacant_final, county_income_limits_2021, by=c("statefip","county"))
+vacant_2022 <- left_join(vacant_final, county_income_limits_2022, by=c("statefip","county"))
 
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
-vacant_2021_new <- vacant_2021 %>%
+vacant_2022_new <- vacant_2022 %>%
   mutate(
     Affordable80AMI = case_when(
       is.na(l80_4) ~ NA, 
@@ -345,9 +350,9 @@ vacant_2021_new <- vacant_2021 %>%
       VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
       VALUEH == 9999999 ~ NA))
 
-vacant_2021_new$Affordable80AMI <- as.integer(vacant_2021_new$Affordable80AMI)
-vacant_2021_new$Affordable50AMI <- as.integer(vacant_2021_new$Affordable50AMI)
-vacant_2021_new$Affordable30AMI <- as.integer(vacant_2021_new$Affordable30AMI)
+vacant_2022_new$Affordable80AMI <- as.integer(vacant_2022_new$Affordable80AMI)
+vacant_2022_new$Affordable50AMI <- as.integer(vacant_2022_new$Affordable50AMI)
+vacant_2022_new$Affordable30AMI <- as.integer(vacant_2022_new$Affordable30AMI)
 
 
 
@@ -356,7 +361,7 @@ vacant_2021_new$Affordable30AMI <- as.integer(vacant_2021_new$Affordable30AMI)
 # (7) Create the housing metric
 
 # (7a) Summarize households_2021 and vacant both by county
-households_summed_2021 <- households_2021 %>% 
+households_summed_2022 <- households_2022 %>% 
   dplyr::group_by(statefip, county) %>%
   dplyr::summarize(Below80AMI = sum(Below80AMI*HHWT, na.rm = TRUE),
                    Affordable80AMI = sum(Affordable80AMI*HHWT, na.rm = TRUE),
@@ -366,32 +371,32 @@ households_summed_2021 <- households_2021 %>%
                    Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
                    HHobs_count = n())
 
-households_summed_2021 <- households_summed_2021 %>% 
+households_summed_2022 <- households_summed_2022 %>% 
   rename("state" = "statefip")
 
 # Sum variables Affordable80AMI, Affordable50AMI, and Affordable30AMI 
-# from 'vacant_2021', grouped by statefip and county, and weighted by HHWT
-# save as df 'vacant_summed_2021'
+# from 'vacant_2022', grouped by statefip and county, and weighted by HHWT
+# save as df 'vacant_summed_2022'
 
-vacant_summed_2021 <- vacant_2021_new %>% 
+vacant_summed_2022 <- vacant_2022_new %>% 
   dplyr::group_by(statefip, county) %>%
   dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT.x, na.rm = TRUE),
                    Affordable50AMI_vacant = sum(Affordable50AMI*HHWT.x, na.rm = TRUE),
                    Affordable30AMI_vacant = sum(Affordable30AMI*HHWT.x, na.rm = TRUE),
                    vacantHHobs_count = n())
 
-vacant_summed_2021 <- vacant_summed_2021 %>% 
+vacant_summed_2022 <- vacant_summed_2022 %>% 
   rename("state" = "statefip")
 
 # (7b) Merge them by county
-housing_2021 <- left_join(households_summed_2021, vacant_summed_2021, by=c("state","county"))
+housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("state","county"))
 
 
 # (7c) Calculate share_affordable metric for each level
-housing_2021 <- housing_2021 %>%
-  mutate(share_affordable_80AMI = (Affordable80AMI+Affordable80AMI_vacant)/Below80AMI,
-         share_affordable_50AMI = (Affordable50AMI+Affordable50AMI_vacant)/Below50AMI,
-         share_affordable_30AMI = (Affordable30AMI+Affordable30AMI_vacant)/Below30AMI
+housing_2022 <- housing_2022 %>%
+  mutate(share_affordable_80_ami = (Affordable80AMI+Affordable80AMI_vacant)/Below80AMI,
+         share_affordable_50_ami = (Affordable50AMI+Affordable50AMI_vacant)/Below50AMI,
+         share_affordable_30_ami = (Affordable30AMI+Affordable30AMI_vacant)/Below30AMI
   )
 
 

@@ -35,6 +35,11 @@
 #       (7c) Calculate share_affordable_30/50/80AMI
 # (8) Create Data Quality marker
 # (9) Clean and export
+# (10) Quality Checks and Visualizations
+#       (10a) Histograms
+#       (10b) Summaries
+#       (10c) Check against last years values
+
 
 ###################################################################
 
@@ -446,17 +451,17 @@ housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("stat
 housing_2022 <- housing_2022 %>%
   mutate(
     # all values
-    share_affordable_80AMI_all = (Affordable80AMI_all+Affordable80AMI_all_vacant)/Below80AMI,
-    share_affordable_50AMI_all = (Affordable50AMI_all+Affordable50AMI_all_vacant)/Below50AMI,
-    share_affordable_30AMI_all = (Affordable30AMI_all+Affordable30AMI_all_vacant)/Below30AMI,
+    share_affordable_80_ami_all = (Affordable80AMI_all+Affordable80AMI_all_vacant)/Below80AMI,
+    share_affordable_50_ami_all = (Affordable50AMI_all+Affordable50AMI_all_vacant)/Below50AMI,
+    share_affordable_30_ami_all = (Affordable30AMI_all+Affordable30AMI_all_vacant)/Below30AMI,
     # renter subgroup
-    share_affordable_80AMI_renter = (Affordable80AMI_renter+Affordable80AMI_renter_vacant)/Below80AMI,
-    share_affordable_50AMI_renter = (Affordable50AMI_renter+Affordable50AMI_renter_vacant)/Below50AMI,
-    share_affordable_30AMI_renter = (Affordable30AMI_renter+Affordable30AMI_renter_vacant)/Below30AMI,
+    share_affordable_80_ami_renter = (Affordable80AMI_renter+Affordable80AMI_renter_vacant)/Below80AMI,
+    share_affordable_50_ami_renter = (Affordable50AMI_renter+Affordable50AMI_renter_vacant)/Below50AMI,
+    share_affordable_30_ami_renter = (Affordable30AMI_renter+Affordable30AMI_renter_vacant)/Below30AMI,
     # owner subgroup
-    share_affordable_80AMI_owner = (Affordable80AMI_owner+Affordable80AMI_owner_vacant)/Below80AMI,
-    share_affordable_50AMI_owner = (Affordable50AMI_owner+Affordable50AMI_owner_vacant)/Below50AMI,
-    share_affordable_30AMI_owner = (Affordable30AMI_owner+Affordable30AMI_owner_vacant)/Below30AMI
+    share_affordable_80_ami_owner = (Affordable80AMI_owner+Affordable80AMI_owner_vacant)/Below80AMI,
+    share_affordable_50_ami_owner = (Affordable50AMI_owner+Affordable50AMI_owner_vacant)/Below50AMI,
+    share_affordable_30_ami_owner = (Affordable30AMI_owner+Affordable30AMI_owner_vacant)/Below30AMI
   )
 
 
@@ -514,7 +519,7 @@ housing_2022_subgroup <- housing_2022 %>%
 # keep what we need
 housing_2022_overall <- housing_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, place, share_affordable_80AMI, share_affordable_50AMI, share_affordable_30AMI, housing_quality) %>% 
+  select(year, state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
   arrange(year, state, place)
 
 # export our file as a .csv
@@ -523,9 +528,61 @@ write_csv(housing_2022_overall, "02_housing/data/housing_2022_city.csv")
 # (9b) subgroup file
 # keep what we need
 housing_2022_subgroup_final <- housing_2022_subgroup %>% 
-  select(year, state, place,subgroup_type, subgroup, share_affordable_80AMI, share_affordable_50AMI, share_affordable_30AMI, housing_quality) %>% 
+  select(year, state, place,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
   arrange(year, state, place, subgroup_type, subgroup)
 
 # export our file as a .csv
 write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_city.csv")  
 
+###################################################################
+
+# (10) Quality Checks and Visualizations
+
+# (10a) Histograms 
+
+# share affordable at 30 AMI histogram
+housing_2022_overall %>% 
+  ggplot(aes(share_affordable_30AMI))+
+  geom_histogram()
+
+# share affordable at 50 AMI histogram
+housing_2022_overall %>% 
+  ggplot(aes(share_affordable_50AMI))+
+  geom_histogram()
+
+# share affordable at 80 AMI histogram
+housing_2022_overall %>% 
+  ggplot(aes(share_affordable_80AMI))+
+  geom_histogram()
+
+# (10b) Summaries
+
+# six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) 
+# to explore the distribution of calculated metrics 
+summary(housing_2022_overall)
+
+# share_affordable_80AMI share_affordable_50AMI share_affordable_30AMI 
+# Min.   :0.8361         Min.   :0.5428         Min.   :0.3337         
+# 1st Qu.:1.2800         1st Qu.:1.0335         1st Qu.:0.7922         
+# Median :1.4344         Median :1.2228         Median :1.0197        
+# Mean   :1.4526         Mean   :1.2688         Mean   :1.0776         
+# 3rd Qu.:1.5971         3rd Qu.:1.4820         3rd Qu.:1.2559          
+# Max.   :2.4180         Max.   :2.4532         Max.   :3.6769         
+# NA's   :1              NA's   :1              NA's   :1              
+
+# (10c) Check against last years metrics
+
+# download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10
+metrics_2021 <- read_csv("C:/Users/ARogin/Downloads/mobility_metrics_place.csv") %>% 
+  filter(year == 2021) %>% 
+  select(share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
+
+summary(metrics_2021)
+
+# share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami
+# Min.   :0.8749          Min.   :0.6476          Min.   :0.3875         
+# 1st Qu.:1.3378          1st Qu.:1.0364          1st Qu.:0.8235         
+# Median :1.4754          Median :1.2509          Median :1.0533         
+# Mean   :1.5016          Mean   :1.2978          Mean   :1.1260         
+# 3rd Qu.:1.6485          3rd Qu.:1.5241          3rd Qu.:1.3435         
+# Max.   :2.6981          Max.   :2.8454          Max.   :3.4335         

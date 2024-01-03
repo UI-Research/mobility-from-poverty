@@ -107,40 +107,19 @@ puma_county_2022 <- read_csv("data/temp/geocorr2022_puma_to_county.csv") %>%
          county = sprintf("%0.3d", as.numeric(county))) %>% 
   # make county just 3 digit county code (drop state)
   mutate(county = str_extract(county, "\\d{3}$"), 
-         across(c(pop20, afact, afact2), ~as.numeric(.x))) 
-
-# Limit to the Census Counties we want 
-# first, bring in the county crosswalk (county-populations.csv)
-counties <- read_csv("geographic-crosswalks/data/county-populations.csv") %>% 
-  # keep only the relevant year (for this, 2022)
-  filter(year > 2021) %>% 
-  # rename to prep for merge
-  dplyr::rename("statefip" = "state")
-
-# left join to get rid of irrelevant county data (this is in an effort to make our working files smaller)
-puma_county_2022 <- left_join(counties, puma_county_2022, by=c("statefip","county")) %>% 
-  # 37123 obs to 4593 obs (115 obs dropped)
+         across(c(pop20, afact, afact2), ~as.numeric(.x))) %>% 
+  # remove puerto rico counties
+  filter(stab != "PR") %>% 
   # keep only the variables we will need
   select(statefip, puma, county, pop20, afact, afact2)
 
-# check number fo unique places in data
-puma_county_2022 %>% distinct(statefip, county) %>% nrow() # 3,144
+# check number fo unique countues in data
+puma_county_2022 %>% distinct(statefip, county) %>% nrow() # 3,143
 
 # drop observations where the weight adjustment is zero
 puma_county_2022 <- puma_county_2022 %>%
-  filter(afact!= 0.000)
-# 4584 obs (9 dropped)
-
-# Create a variable that assigns a weight to each place based on total 2020 population
-# first, create a variable for the total population
-puma_county_2022 <- puma_county_2022 %>%
-  mutate(totpop = sum(pop20))
-
-# then, create a variable for the population of each place (unique statefip+county pairs)
-puma_county_2022 <- puma_county_2022 %>% 
-  dplyr::group_by(statefip, county) %>% 
-  dplyr::mutate(countypop = sum(pop20*afact),
-                countywgt = countypop/totpop)
+  tidylog::filter(afact!= 0.000)
+# no rows dropped
 
 
 ###################################################################
@@ -161,15 +140,15 @@ puma_county <- puma_county %>%
                 county_pop = sum(pop20*afact))
 
 summary(puma_county)
-# Q1 of countypop is 2,039
-# sum_products mean is 0.23
+# Q1 of countypop is 2,070
+# sum_products mean is 0.54
 puma_county <- puma_county %>%
   dplyr::mutate(
     puma_flag = 
       case_when(
-        sum_products >= 0.75 ~ 1,
-        sum_products >= 0.35 ~ 2,
-        sum_products < 0.35 ~ 3
+        sum_products >= 0.75 ~ 1, # 2022
+        sum_products >= 0.35 ~ 2, # 480
+        sum_products < 0.35 ~ 3 # 2118
       ),
     small_county = 
       case_when(
@@ -179,24 +158,25 @@ puma_county <- puma_county %>%
     county_code = str_c(statefip, county)
   )
 
-# save as "puma_place.csv" in gitignore
-write_csv(puma_place, "data/temp/puma_place.csv")
+# NOTE TO REVIEWER: 
+# save as "puma_county.csv" in gitignore
+write_csv(puma_county, "data/temp/puma_county.csv")
 
-# save a version with just the place-level values of data quality variables
-place_puma <- puma_place %>%
-  dplyr::group_by(statefip, place) %>%
+# save a version with just the county-level values of data quality variables
+county_puma <- puma_county %>%
+  dplyr::group_by(statefip, county) %>%
   dplyr::summarize(puma_flag = mean(puma_flag), 
-                   small_place = mean(small_place))
+                   small_county = mean(small_county))
 
 # save as "place_puma.csv" in gitignore
-write_csv(place_puma, "data/temp/place_puma.csv")
+write_csv(county_puma, "data/temp/county_puma.csv")
 
 ###################################################################
 
 # (4) Prepare Microdata (non-subgroup)
 
 # keep only vars we need
-acs_2022 <- housing_ext_def %>%
+acs_2022_county <- housing_ext_def %>%
   select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
          VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
   # clean up for matching purposes
@@ -208,25 +188,25 @@ acs_2022 <- housing_ext_def %>%
 
 ###################################################################
 
-# (5) Merge the microdata PUMAs to places
+# (5) Merge the microdata PUMAs to counties
 
 # (left join, since microdata has more observations)
 # memory.limit(size=999999)
-acs2022clean  <- left_join(acs_2022, puma_place, by=c( "statefip", "puma")) %>% 
-  mutate(place_code = str_c(statefip, place))
+acs2022clean_county  <- left_join(acs_2022_county, puma_county, by=c( "statefip", "puma")) %>% 
+  mutate(county_code = str_c(statefip, county))
 # now have 3,787,952 observations
 
-# check distinct number of places - 536
-acs2022clean %>% distinct(statefip, place) %>% nrow()
+# check distinct number of counties - 3143
+acs2022clean_county %>% distinct(statefip, county) %>% nrow()
 
 # run anti_join to see how many cases on the left did not have a match on the right
-test  <- anti_join(acs_2022, puma_place, by=c("statefip","puma"))
-# 1,842,100 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
+test  <- anti_join(acs_2022_county, puma_county, by=c("statefip","puma"))
+# all matched
 
-# Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
-acs2022clean <- acs2022clean %>% 
+# Drop any observations with NA or 0 for afact (i.e. there is no counties of interest overlapping this PUMA)
+acs2022clean <- acs2022clean_county %>% 
   filter(!is.na(afact))
-# 3,787,952 obs to 1,945,852 obs (1,842,100 dropped)
+
 acs2022clean <- acs2022clean %>% 
   filter(afact > 0)
 # no drops
@@ -242,6 +222,6 @@ acs2022clean <- acs2022clean %>%
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" 
-write_csv(acs2022clean, "data/temp/2022microdata.csv")
+write_csv(acs2022clean, "data/temp/2022microdata_county.csv")
 
 
