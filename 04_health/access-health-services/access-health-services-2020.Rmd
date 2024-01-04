@@ -24,15 +24,284 @@ options(scipen = 999)
 
 ```
 
-For the 2022 Mobility Metrics, we used data from [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2022). 
+This metric represents the number of individuals served by one primary care physician in a county, if the population was equally distributed across physicians. Primary care physicians include practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics. It does not include nurse practitioners, physician assistants, or other practitioners available for primary care services. It also does not include hospital residents.
 
-For the 2023 Mobility Metrics, we want to use the underlying source data used by CHR, which is the [Area Health Resource File, 2021-2022 County Level Data](https://data.hrsa.gov/data/download?data=AHRF#AHRF). The Area Health Resource File is a collection of data from more than 50 sources, including the American Medical Association, which maintains the Physician Masterfile. The Physician Masterfile contains information on nearly all the Doctors of Medicine and Doctors of Osteopathic Medicine in the nation.
+For 2022, we used data from [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2022) for this metric, which used data from 2019. 
 
-The right side of the ratio is the number of primary care physicians in a county. Primary care physicians include practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics. It does not include nurse practitioners, physician assistants, or other practitioners available for primary care services.
+For 2023, we want to use the underlying source data used by CHR, which is the [Area Health Resource File, 2022-2023 County Level Data](https://data.hrsa.gov/data/download?data=AHRF#AHRF). The Area Health Resource File is a collection of data from more than 50 sources, including the American Medical Association, which maintains the Physician Masterfile. The Physician Masterfile contains information on nearly all the Doctors of Medicine and Doctors of Osteopathic Medicine in the nation.
+    Note that when starting this round of updates we were using the 2021-2022 file, but the newer version has since been released, so I pivoted to using the most recent version. This version included several updates form previous versions, including separating the main file into separate sub-files and applying different naming conventions to variables.
+
+Also note that we initially thought we would be able to disaggregate this metric by sex of provider and look at the ratio of population to primary care physicians by sex. The County Health Rankings website also implies that this is possible in their [methods section](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2023). However, this does not seem possible upon further inspection of the AHRF data. 
+
+The main variable for primary care physicians has the following restrictions:
+    - INCLUDES practicing non-federal physicians (both M.D.s and D.O.s)
+        - under age 75
+        - specializing in general practice medicine, family medicine, internal medicine, and pediatrics
+    - EXCLUDES nurse practitioners, physician assistants, or other practitioners available for primary care services
+    - EXCLUDES hospital residents
+    
+This variable is not available by sex. We also cannot construct this variable by sex based on other variables. For instance, AHRF does have separate variables for Total MDs, Inactive MDs, Total DOs, and Inactive DOs (all non-federal) by sex. However, taking the sum of these variables by sex would still include physicians over the age of 75, and all specialties. There are also variables for MDs by specialty and age, but not by sex. 
+
+Lastly, these data are unavailable at teh Census place-level. County is the smallest geography available.
+
 
 
 ## 1. Download data
-The data for this metric come from the [Area Health Resource File 2021-2022 County-Level Data](https://data.hrsa.gov/data/download). 
+The data for this metric come from the [Area Health Resource File 2022-2023 County-Level Data](https://data.hrsa.gov/data/download). 
+
+Our latest version of this metric used 2019 data, so we are pulling both 2020 and 2021 (most recent).
+```{r}
+# Read in the AHRF health professions file
+ahrf2023_hp <- read.csv(here::here("04_health", "access-health-services", "data", "AHRF_CSV_2022-2023", "DATA", "CSV Files by Categories", "ahrf2023HP.csv"))
+
+# Read in the AHRF population file
+ahrf2023_pop <- read.csv(here::here("04_health", "access-health-services", "data", "AHRF_CSV_2022-2023", "DATA", "CSV Files by Categories", "ahrf2023POP.csv"))
+
+# Join the population file to the health professions file
+ahrf2023 <- ahrf2023_hp %>%
+  left_join(y = ahrf2023_pop, by = c("fips_st_cnty", "cnty_name_st_abbrev"))
+
+# Clean geography variables
+ahrf2023 <- ahrf2023 %>%
+  rename(GEOID = fips_st_cnty,
+         county_name = cnty_name_st_abbrev) %>%
+  mutate(
+    GEOID = as.character(GEOID),
+    GEOID = str_pad(GEOID, 5, pad = "0"),
+    state = str_sub(GEOID, 1, 2),
+    county = str_sub(GEOID, 3, 5)
+  ) %>%
+  separate(
+    col = county_name,
+    into = c("county_name", "state_abb"),
+    sep = ", ",
+    remove = TRUE
+  )
+
+# Remove US territories
+ahrf2023 <- ahrf2023 %>%
+  filter(
+    !state %in% c('66', '72', '78')
+  )
+
+```
+
+
+Subset data to the variables necessary for this metric
+```{r}
+# We only need the number of PCPs and total population for 2020 and 2021
+my_data <- ahrf2023 %>%
+  select(
+    GEOID, state, county, county_name, state_abb,
+    pc_physicians_21 = phys_nf_prim_care_pc_exc_rsdt_21,
+    pc_physicians_20 = phys_nf_prim_care_pc_exc_rsdt_20,
+    pop21 = popn_est_21,
+    pop20 = cens_popn_20,
+  )
+
+```
+
+
+## 2. Create ratios
+
+We create the ratio of population to primary care physicians by dividing the total population by the number of primary care physicians in each year. The variable is just the antecedent of the ratio, which represents the number of people for 1 primary care physician. If there are 0 primary care physicians in a county, we assign a value of 0. 
+
+We also create a flag for counties with less than 2,000 people to indicate low population.
+    todo(): CHR reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. It is kind of unclear to me why they do that... maybe because they think the "0 PCPs" could be a reporting error for counties with a decent-sized population?
+```{r}
+# Create the ratio and a flag for counties with low population
+my_data <- my_data %>%
+  mutate(
+    # 2021
+    pc_phys_ratio_21 = case_when(
+      pc_physicians_21 > 0 ~ round(pop21/pc_physicians_21),
+      pc_physicians_21 == 0 ~ 0
+      ),
+    low_pop_flag_21 = case_when(
+      pop21 < 2000 ~ "1",
+      pop21 >= 2000 ~ "0"
+    ),
+    # 2020
+    pc_phys_ratio_20 = case_when(
+      pc_physicians_20 > 0 ~ round(pop20/pc_physicians_20),
+      pc_physicians_20 == 0 ~ 0
+      ),
+    low_pop_flag_20 = case_when(
+      pop20 < 2000 ~ "1",
+      pop20 >= 2000 ~ "0"
+    )
+  )
+
+```
+
+
+## 3. Check against County Health Rankings Data
+
+We can use the County Health Rankings data as a reference point to verify our findings. The 2023 County Health Rankings used data from 2020 for this measure, so we will use our 2020 ratio.
+
+I am checking our numbers against the County Health Rankings [data](https://www.countyhealthrankings.org/explore-health-rankings/rankings-data-documentation). These data define primary care physicians as practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics [source](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2023).
+```{r}
+# Read in CHR data and filter to variables for this metric
+chr2023 <- readxl::read_excel(
+  path = here::here("04_health", "access-health-services", "data", "2023 County Health Rankings Data - v2.xlsx"),
+  sheet = "Ranked Measure Data",
+  # range = "Ranked Measure Data!A1:DN3195",
+  skip = 1,
+  col_names = TRUE
+) %>%
+  select(
+    GEOID = "FIPS",
+    state_name = State,
+    county_name = County,
+    # Number of primary care physicians (PCP) in patient care
+    pc_physicians_chr = "# Primary Care Physicians",
+    # Primary Care Physicians per 100,000 population
+    pc_physicians_rate_chr = "Primary Care Physicians Rate", 
+    # Population to Primary Care Physicians ratio
+    pc_physicians_ratio_chr = "Primary Care Physicians Ratio",
+  ) %>%
+  filter(!is.na(county_name))
+
+# The CHR metric is reported as an actual ratio, so we split the ratio into its parts
+chr2023 <- chr2023 %>%
+  separate(col = pc_physicians_ratio_chr,
+           into = c('antecedent', 'consequent'),
+           remove = FALSE)
+
+# The CHR data does not include population. However, we can try to "impute" population by multiplying the antecedent portion of the ratio by the number of PCPs
+chr2023 <- chr2023 %>%
+  mutate(
+    antecedent = as.numeric(antecedent),
+    consequent = as.numeric(consequent),
+    pop20_imp = if_else(consequent==1, antecedent*pc_physicians_chr, antecedent)
+    )
+
+# Now we can compare the CHR data to our findings from AHRF
+joined_data <- my_data %>%
+  select(GEOID, pc_physicians_20, pop20, pc_phys_ratio_20, low_pop_flag_20) %>%
+  left_join(y = chr2023 %>% select(-c(state_name, county_name)), by = "GEOID") %>%
+  mutate(
+    pop_diff = pc_phys_ratio_20 - antecedent,
+    total_pop_diff = pop20 - pop20_imp,
+    pc_diff = pc_physicians_20 - pc_physicians_chr
+  )
+
+# Our number of PCPs from AHRF match CHR, but population is different. The differences in population look too big to be rounding errors
+joined_data %>%
+  select(pop_diff, total_pop_diff, pc_diff) %>%
+  skim()
+
+```
+
+
+It is unclear what population data CHR used to calculate this metric, but the 2020 population data in AHRF comes from the 2020 census redistricting data file.  
+```{r}
+# Explore variable names in 2020 decennial Census to find population variable name
+decennial_2020_vars <- load_variables(
+                              year = 2020, 
+                              "pl", 
+                              cache = TRUE
+                             )
+
+# The variable name is `P2_001N`
+pop20_decennial <- tidycensus::get_decennial("county", year = 2020, variables = "P2_001N")
+
+# Remove PR observations
+pop20_decennial <- pop20_decennial %>%
+  # Drop PR observations
+  filter(!str_detect(GEOID, '^72')) %>%
+  select(GEOID,
+         population = value)
+
+# Join this pop data onto the AHRF pop data to check
+check_pop <- my_data %>%
+  select(GEOID, pop20) %>%
+  left_join(y = pop20_decennial, by = "GEOID") %>%
+  mutate(pop_diff = abs(pop20 - population))
+
+# The AHRF 2020 population data is consistent with the 2020 Census population data.
+max(check_pop$pop_diff, na.rm = TRUE)
+
+# CHR may have used 2020 data from the Population Estimates Program, which is released before the 2020 Census
+pop20_pep <- tidycensus::get_estimates("county", year = 2020, variables = "POPESTIMATE") %>%
+  select(GEOID,
+         population = value)
+
+# Join PEP population data onto CHR
+check_pop <- chr2023 %>%
+  left_join(y = pop20_pep, by = "GEOID")
+
+# todo(): show work for checking that CHR doesn't use the PEP data either. I visually inspected and know that this isn't the case.
+
+```
+
+
+```{r}
+# mutate(pc_physicians_ratio_chr = case_when(consequent == "1" ~ pc_physicians_ratio_chr,
+  #                                            consequent == "0" ~ "0",
+  #                                            is.na(pc_physicians_ratio_chr) ~ "0"),
+  #        antecedent = as.numeric(antecedent)
+  # )
+
+joined_data <- ahrf2023 %>%
+  select(-c(pc_physicians_21, pop21, pc_phys_ratio_21, low_pop_flag_21)) %>%
+  full_join(
+    y = chr2023 %>% select(-county_name), by = "GEOID"
+  ) %>%
+  mutate(pop_diff = pc_phys_ratio_20 - antecedent,
+         pop_diff_lapi = pc_phys_ratio_20_lapi - antecedent,
+         pc_diff = pc_physicians_20 - pc_physicians_chr)
+
+sum(joined_data$pop_diff)
+
+ahrf_pop2023 <- ahrf_pop2023 %>%
+
+    pop20_lapi = popn_20
+  )
+
+,
+    # 2020 using LAPI pop
+    pc_phys_ratio_20_lapi = case_when(
+      pc_physicians_20 > 0 ~ round(pop20_lapi/pc_physicians_20),
+      pc_physicians_20 == 0 ~ 0
+      )
+
+```
+
+
+First we need to get population estimates from the US Census Bureau Population Estimation Program. # Replace YOUR-KEY-HERE below with your unique Census API key. Request a key at https://api.census.gov/data/key_signup.html if you don't have one.
+```{r}
+# census_api_key("YOUR-KEY-HERE")
+
+test <- tidycensus::load_variables(2020, "acs5", cache = TRUE)
+
+popv2 <- tidycensus::get_acs("county", year = 2020, variables = "B01001_001")
+
+decennial_2020_vars <- load_variables(
+                              year = 2020, 
+                              "pl", 
+                              cache = TRUE
+                             )
+
+
+
+pop <- pop %>%
+  # Drop PR observations
+  filter(!str_detect(fips, '^72')) %>%
+  select(fips,
+         population = value)
+
+test <- left_join(
+  x = joined_data, y = popv2, by = "GEOID"
+)
+
+test <- test %>%
+  mutate(test = estimate/pc_physicians_chr)
+
+```
+
+
+
 ```{r}
 # TODO: figure out how to download the data directly from the website in R
 ahrf2022 <- haven::read_sas(here::here("04_health", "access-health-services", "ahrf2022.sas7bdat"))
@@ -108,7 +377,7 @@ ahrf2022 <- ahrf2022 %>%
 I am checking our numbers against the County Health Rankings [data](https://www.countyhealthrankings.org/explore-health-rankings/rankings-data-documentation). These data define primary care physicians as practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics [source](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2023).
 ```{r}
 chr2023_counties <- readxl::read_excel(
-  path = here::here("04_health", "access-health-services", "2023 County Health Rankings Data - v2.xlsx"),
+  path = here::here("04_health", "access-health-services", "data", "2023 County Health Rankings Data - v2.xlsx"),
   range = "Ranked Measure Data!A2:C3195"
 ) %>%
   mutate(
@@ -116,7 +385,7 @@ chr2023_counties <- readxl::read_excel(
   )
 
 chr2023_data <- readxl::read_excel(
-  path = here::here("04_health", "access-health-services", "2023 County Health Rankings Data - v2.xlsx"),
+  path = here::here("04_health", "access-health-services", "data", "2023 County Health Rankings Data - v2.xlsx"),
   range = "Ranked Measure Data!DK2:DN3195"
 ) %>%
   mutate(
@@ -128,7 +397,7 @@ chr2023 <- left_join(
 ) %>%
   filter(!is.na(County)) %>%
   select(
-    county_fips = "FIPS",
+    GEOID = "FIPS",
     pc_physicians_chr = "# Primary Care Physicians",
     pc_physicians_rate_chr = "Primary Care Physicians Rate",
     pc_physicians_ratio_chr = "Primary Care Physicians Ratio",
@@ -149,7 +418,7 @@ chr2023 <- chr2023 %>%
 
 joined_data <- joined_data %>%
   full_join(
-    x = ahrf2022, y = chr2023, by = "county_fips"
+    x = ahrf2023, y = chr2023, by = "GEOID"
   ) %>%
   mutate(diff = pc_phys_ratio-antecedent)
 
