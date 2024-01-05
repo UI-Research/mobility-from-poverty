@@ -27,28 +27,17 @@
 # Process:
 # (1) Housekeeping
 # (2) Import housing affordability measures calculated in 1_housing.R
-# (3) AT rent and down rent -  A unit is available at a given level of income if (1) it is affordable at that
+# (3) At rent and down rent -  A unit is available at a given level of income if (1) it is affordable at that
 #     level, and (2) it is occupied by a renter either at that income level or at a lower level or is vacant. 
-#     (3a) Calculate TOTAL population at each income level: 30AMI, 50AMI, 80AMI
-#     (3a) Calculate the population at each AMI renting or owning at an affordable level (ATRENT)
-#     (3b) Calculate number of units affordable at AMI being rented by people with a higher AMI (DOWNRENT)
-#     (3c) Summarize ATRENT, DOWNRENT, and number of households/units in each income threshold by place
+#     (3a) Calculate the "at rent" number of units occupied at the appropriate income level or a lower level
+#         Do this for all units, and for renter and owner subgroups 
+#     (3b) Summarize at_rent for each subgroup and number of units/households at each
+#       income threshold by place
 # (4) calculate the number of affordable and available units at each income level per 100 households
 # (5) Create the Data Quality variable
-
-
-# (6) Affordability and availability metrics 
-#     (6a) Number of vacant units affordable at AMI per 100 renting households
-#     (6b) Number of occupied units affordable at AMI where the occupants are paying <30% of their income on housing costs, per 100 renting households
-#     (6c) Number of occupied units affordable at AMI where occupants are nonetheless paying >=30% of their income on housing costs, per 100 renting households
-#     (6d) Number of occupied units affordable at AMI rented by occupants at a higher AMI, per 100 renting households
-
-# (7) Create the housing metric
-#       (7a) Summarize households_2021 and vacant both by place
-#       (7b) Merge them by place
-#       (7c) Calculate share_affordable_30/50/80AMI
-# (8) Create Data Quality marker
-# (9) Clean and export
+# (6) Clean and export
+#     (6a) subgroup file
+#     (6b) overall file
 
 ###################################################################
 
@@ -57,6 +46,7 @@
 
 # Libraries you'll need
 library(tidyverse)
+library(tidylog)
 library(ipumsr)
 library(readxl)
 library(skimr)

@@ -268,7 +268,7 @@ county_income_limits_2022 <- county_income_limits_2022 %>%
 # Filter microdata to where PERNUM == 1, so only one HH per observation
 microdata_housing <- acs2022clean %>%
   filter(PERNUM == 1)
-
+#removed 3,993,555 rows (58%), 2,921,371 rows remaining
 
 # create new dataset called "households_year" to merge microdata & county income limits (county_income_limits_2022) by state and county
 
@@ -282,14 +282,20 @@ households_2022 <- left_join(microdata_housing, county_income_limits_2022, by=c(
 # ELI is 30% of median rent: Extremely low-income
 # l80 is 80% of median rent: Low-income
 
+# For owners, use the housing cost, and for renters, use the gross rent.
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
 
 households_2022 <- households_2022 %>%
-  mutate(Affordable80AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
-                                     OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
-                                     OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
-                                     OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
+  mutate(Affordable80AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
+                                         OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
+                                         OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
+                                         OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
+         # create subgroups for renter and owners specifically
+         Affordable80AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
+                                            OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0), 
+         Affordable80AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
+                                           OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
          Below80AMI = case_when((HHINCOME<l80_4) ~ 1,
                                 (HHINCOME>l80_4) ~ 0)
   )
@@ -297,10 +303,15 @@ households_2022 <- households_2022 %>%
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
 # NOTE that we will need to create a Below50AMI_HH (the count of HH) for the Data Quality flag in step 8
 households_2022<- households_2022 %>%
-  mutate(Affordable50AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
-                                     OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
-                                     OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
-                                     OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
+  mutate(Affordable50AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
+                                         OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
+                                         OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
+                                         OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
+         # create subgroup categories for renters and owners
+         Affordable50AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
+                                            OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0),
+         Affordable50AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
+                                           OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
          Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
                                 (HHINCOME>l50_4) ~ 0),
          Below50AMI_HH = HHWT*Below50AMI
@@ -308,14 +319,24 @@ households_2022<- households_2022 %>%
 
 # create new variable 'Affordable30AMI' and 'Below80AMI' for HH below 30% of area median income (ELI_4 and OWNERSHP)
 households_2022 <- households_2022 %>%
-  mutate(Affordable30AMI = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
-                                     OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0,
-                                     OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
-                                     OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
+  mutate(Affordable30AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
+                                         OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0,
+                                         OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
+                                         OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
+         # create subgroup categories for renters and owners
+         Affordable30AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
+                                            OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0), 
+         Affordable30AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
+                                           OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
          Below30AMI = case_when((HHINCOME<ELI_4) ~ 1,
                                 (HHINCOME>ELI_4) ~ 0)
   )
 
+# NOTE TO REVIEWER: for 30AMI/50AMI/80AMI a quarter of owner values are missing 
+# and 3/4 of renter values are missing - I'm not positive why 
+# potentially because that's the distribution of renters/owners in the micro data but I'm not familiar
+# enough with microdata to sniff test that guess
+skim(households_2022)
 
 ###################################################################
 
@@ -331,29 +352,49 @@ vacant_2022 <- left_join(vacant_final, county_income_limits_2022, by=c("statefip
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
 
-# (6a) create same 30%, 50%, and 80% AMI affordability indicators
 vacant_2022_new <- vacant_2022 %>%
   mutate(
-    Affordable80AMI = case_when(
+    # 80% AMI all, renter, and owner
+    Affordable80AMI_all = case_when(
       is.na(l80_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30), 
       VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l80_4*0.30), 
       VALUEH == 9999999 ~ NA),
-    Affordable50AMI = case_when(
+    Affordable80AMI_renter = case_when(
+      is.na(l80_4) ~ NA, 
+      RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30)),
+    Affordable80AMI_owner = case_when(
+      is.na(l80_4) ~ NA, 
+      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l80_4*0.30), 
+      VALUEH == 9999999 ~ NA),
+    # 50% AMI all, renter, and owner
+    Affordable50AMI_all = case_when(
       is.na(l50_4) ~ NA,
       RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30), 
       VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l50_4*0.30), 
       VALUEH == 9999999 ~ NA), 
-    Affordable30AMI = case_when(
+    Affordable50AMI_renter = case_when(
+      is.na(l50_4) ~ NA,
+      RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30)),
+    Affordable50AMI_owner = case_when(
+      is.na(l50_4) ~ NA,
+      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l50_4*0.30), 
+      VALUEH == 9999999 ~ NA), 
+    # 30% AMI all, renter, and owner
+    Affordable30AMI_all = case_when(
       is.na(ELI_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30), 
       VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
-      VALUEH == 9999999 ~ NA))
-
-vacant_2022_new$Affordable80AMI <- as.integer(vacant_2022_new$Affordable80AMI)
-vacant_2022_new$Affordable50AMI <- as.integer(vacant_2022_new$Affordable50AMI)
-vacant_2022_new$Affordable30AMI <- as.integer(vacant_2022_new$Affordable30AMI)
-
+      VALUEH == 9999999 ~ NA),
+    Affordable30AMI_renter = case_when(
+      is.na(ELI_4) ~ NA, 
+      RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30)),
+    Affordable30AMI_owner = case_when(
+      is.na(ELI_4) ~ NA, 
+      VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
+      VALUEH == 9999999 ~ NA)) %>% 
+  # turn TRUE/FALSE booleans into binary 1/0 flags
+  mutate(across(matches("Affordable"), ~as.integer(.x)))
 
 
 ###################################################################
@@ -363,15 +404,10 @@ vacant_2022_new$Affordable30AMI <- as.integer(vacant_2022_new$Affordable30AMI)
 # (7a) Summarize households_2021 and vacant both by county
 households_summed_2022 <- households_2022 %>% 
   dplyr::group_by(statefip, county) %>%
-  dplyr::summarize(Below80AMI = sum(Below80AMI*HHWT, na.rm = TRUE),
-                   Affordable80AMI = sum(Affordable80AMI*HHWT, na.rm = TRUE),
-                   Below50AMI = sum(Below50AMI*HHWT, na.rm = TRUE),
-                   Affordable50AMI = sum(Affordable50AMI*HHWT, na.rm = TRUE),
-                   Below30AMI = sum(Below30AMI*HHWT, na.rm = TRUE),
-                   Affordable30AMI = sum(Affordable30AMI*HHWT, na.rm = TRUE),
-                   HHobs_count = n())
-
-households_summed_2022 <- households_summed_2022 %>% 
+  # summarize all Below80AMI, Below50AMI, Below30AMI, and 
+  # Affordable80AMI, Affordable50AMI, Affordable30AMI (all, renter, owner) variables
+  dplyr::summarise(across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE)), 
+                   HHobs_count = n()) %>% 
   rename("state" = "statefip")
 
 # Sum variables Affordable80AMI, Affordable50AMI, and Affordable30AMI 
@@ -380,23 +416,31 @@ households_summed_2022 <- households_summed_2022 %>%
 
 vacant_summed_2022 <- vacant_2022_new %>% 
   dplyr::group_by(statefip, county) %>%
-  dplyr::summarize(Affordable80AMI_vacant = sum(Affordable80AMI*HHWT.x, na.rm = TRUE),
-                   Affordable50AMI_vacant = sum(Affordable50AMI*HHWT.x, na.rm = TRUE),
-                   Affordable30AMI_vacant = sum(Affordable30AMI*HHWT.x, na.rm = TRUE),
-                   vacantHHobs_count = n())
-
-vacant_summed_2022 <- vacant_summed_2022 %>% 
+  dplyr::summarize(across(matches("Affordable"), ~ sum(.x*HHWT.x, na.rm = TRUE), 
+                          # create naming onvention to add _vacant after columns name
+                          .names = "{.col}_vacant"),
+                   vacantHHobs_count = n()) %>% 
   rename("state" = "statefip")
 
 # (7b) Merge them by county
 housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("state","county"))
-
+# 3,143 obs
 
 # (7c) Calculate share_affordable metric for each level
 housing_2022 <- housing_2022 %>%
-  mutate(share_affordable_80_ami = (Affordable80AMI+Affordable80AMI_vacant)/Below80AMI,
-         share_affordable_50_ami = (Affordable50AMI+Affordable50AMI_vacant)/Below50AMI,
-         share_affordable_30_ami = (Affordable30AMI+Affordable30AMI_vacant)/Below30AMI
+  mutate(
+    # all values
+    share_affordable_80_ami_all = (Affordable80AMI_all+Affordable80AMI_all_vacant)/Below80AMI,
+    share_affordable_50_ami_all = (Affordable50AMI_all+Affordable50AMI_all_vacant)/Below50AMI,
+    share_affordable_30_ami_all = (Affordable30AMI_all+Affordable30AMI_all_vacant)/Below30AMI,
+    # renter subgroup
+    share_affordable_80_ami_renter = (Affordable80AMI_renter+Affordable80AMI_renter_vacant)/Below80AMI,
+    share_affordable_50_ami_renter = (Affordable50AMI_renter+Affordable50AMI_renter_vacant)/Below50AMI,
+    share_affordable_30_ami_renter = (Affordable30AMI_renter+Affordable30AMI_renter_vacant)/Below30AMI,
+    # owner subgroup
+    share_affordable_80_ami_owner = (Affordable80AMI_owner+Affordable80AMI_owner_vacant)/Below80AMI,
+    share_affordable_50_ami_owner = (Affordable50AMI_owner+Affordable50AMI_owner_vacant)/Below50AMI,
+    share_affordable_30_ami_owner = (Affordable30AMI_owner+Affordable30AMI_owner_vacant)/Below30AMI
   )
 
 
@@ -522,14 +566,41 @@ housing_2021 <- housing_2021 %>%
 
 # (9) Clean and export
 
-# create the year variable
-housing_2021 <- housing_2021 %>%
-  mutate(year = 2021) 
+# turn long for subgroup output
+housing_2022_subgroup <- housing_2022 %>%
+  # create year variable
+  mutate(year = 2022) %>% 
+  # seperate share_afforadable by AMI and the subgroup
+  pivot_longer(cols = c(contains("share_affordable")), 
+               names_to = c("affordable", "subgroup"),
+               names_pattern = "(.+?(?=_[^_]+$))(_[^_]+$)", # this creates two columns - "share_affordable_XXAMI" and "_owner/_renter/_all"
+               values_to = "value") %>% 
+  # pivot_wider again so that each share_affordable by AMI is it's own column with subgroups as rows
+  pivot_wider(
+    names_from = affordable, 
+    values_from = value
+  ) %>% 
+  # clean subgroup names and add subgroup type column 
+  # remove leading underscore and capitalize words
+  mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
+         subgroup_type = "renter-owner" )
 
+# (9a) overall file
 # keep what we need
-housing_2021 <- housing_2021 %>% 
-  select(year, state, county, share_affordable_80AMI, share_affordable_50AMI, share_affordable_30AMI, housing_quality)
+housing_2022_overall <- housing_2022_subgroup %>% 
+  filter(subgroup == "All") %>% 
+  select(year, state, county, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  arrange(year, state, county)
 
 # export our file as a .csv
-write_csv(housing_2021, "02_housing/data/housing_county_2021.csv")  
+write_csv(housing_2022_overall, "02_housing/data/housing_2022_county.csv")  
+
+# (9b) subgroup file
+# keep what we need
+housing_2022_subgroup_final <- housing_2022_subgroup %>% 
+  select(year, state, county,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  arrange(year, state, county, subgroup_type, subgroup)
+
+# export our file as a .csv
+write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_county.csv")  
 
