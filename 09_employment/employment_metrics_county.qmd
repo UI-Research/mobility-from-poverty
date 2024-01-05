@@ -1,0 +1,566 @@
+---
+title: "Employment Opportunities Predictor, county-level"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*Program for the creation of the Employment Opportunities Predictor at the county-level*
+
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+
+Primary data derived from the IPUMS API.
+
+Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+
+-   [Housekeeping](#housekeeping)
+-   [Read Data](#read-data)
+-   [Clean Data](#clean-data)
+-   [Merge Crosswalk](#merge-crosswalk)
+-   [Create Income Metric](#create-income-metric)
+-   [Evaluate Results](#evaluate-results)
+-   [Export](#export)
+
+
+## Housekeeping
+
+Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
+
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+
+options(scipen = 999)
+
+#set_ipums_api_key("Your KEY", save = TRUE)
+source(here::here("functions", "API", "extract_ipums.R"))
+```
+
+## Read Data
+
+Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years on 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+```{r}
+acs <- extract_ipums(extract_name = "income_18_22", 
+                     extract_description = "1-year ACS data. Years 2018, 2019 and 2022. Microdata pull for the Opportunity for Income Predictor",
+                     survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")) 
+```
+
+Look at the distribution of samples in the data.
+```{r}
+acs %>% 
+  count(sample) %>% 
+  ggplot(mapping = aes(x = factor(sample), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Samples, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Samples",
+       y = NULL)
+```
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+```{r}
+puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+```
+
+Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
+```{r}
+county_puma <- puma_county_crosswalk %>%
+  group_by(crosswalk_period, statefip, county) %>% 
+  summarise(geographic_allocation_quality = mean(geographic_allocation_quality), 
+            size_flag = mean(size_flag)) %>% 
+  ungroup()
+```
+
+## Clean Data
+
+Missing data is reported in a variety of ways by IPUMS - listed below:
+
+Age: No missing values reported in variable description.
+Empstat: N/As reported as "0".
+Vacancy is reported as "0". 
+
+There is a large share of records missing for empstat.The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
+
+```{r}
+
+acs %>% 
+  count(empstat) %>% 
+  ggplot(mapping = aes(x = factor(empstat), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Empstat, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Employment Status",
+       y = NULL)
+
+acs %>% 
+  ggplot(aes(x = age)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Age Variable Results") +
+  ylab("Density")
+
+acs %>% 
+  ggplot(aes(x = vacancy)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Vacancy Variable Results") +
+  ylab("Density")
+```
+
+Turn the missing/"not in universe" variable into NAs.
+
+```{r}
+
+acs_clean <- acs %>%
+  mutate(empstat = ifelse(empstat == 0, NA_integer_,
+                          empstat)
+  )
+
+```
+
+Look at distribution of empstat after adjustment. There should be no more records with the value "0".
+
+```{r}
+
+acs_clean %>% 
+  count(empstat) %>% 
+  ggplot(mapping = aes(x = factor(empstat), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Empstat, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Employment Status",
+       y = NULL)
+
+```
+
+Remove group quarters, we want to keep only households (GQ 1, 2 and 5).
+
+```{r}
+
+acs_clean <- acs_clean %>%
+  filter(gq %in% c(1, 2, 5))
+
+```
+
+Check that group quarters fall only in 1, 2 and 5.
+
+```{r}
+
+acs_clean %>% 
+  count(gq) %>% 
+  ggplot(mapping = aes(x = factor(gq), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("GQ, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "GQ",
+       y = NULL)
+
+
+```
+
+### Create race variable
+
+Check the race and hispan variables.
+
+Values for RACE variable: 1 White
+2 Black/African American/Negro
+3 American Indian or Alaska Native 4 Chinese 5 Japanese
+6 Other Asian or Pacific Islander 7 Other race 8 Two major races 9 Three or more major races
+
+Values for HISPAN variable: 0 Not Hispanic 1 Mexican 2 Puerto Rican· 3 Cuban 4 Other 9 Not Reported. 
+
+The data show no cases of non-reporting for Hispan (no values of 9).
+
+```{r}
+
+acs_clean %>% 
+  count(race) %>% 
+  ggplot(mapping = aes(x = factor(race), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race",
+       y = NULL)
+
+acs_clean %>% 
+  count(hispan) %>% 
+  ggplot(mapping = aes(x = factor(hispan), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Hispan, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Hispan",
+       y = NULL)
+
+```
+
+Create race/ethnicity variable.
+
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(subgroup = case_when((hispan == 0 & race == 1) ~ 4,
+                              (hispan == 0 & race == 2) ~ 1,
+                              (hispan == 0 & race %in% 3:9) ~ 3,
+                              (hispan %in% 1:4) ~ 2
+  ))
+
+```
+
+Rename the values from number category to race label 4 = "White, Non-Hispanic" 1 = "Black, Non-Hispanic" 3 = "Other Races and Ethnicities" 2 = "Hispanic"
+
+```{r}
+acs_clean <- acs_clean %>%
+  mutate(subgroup = case_when(subgroup %in% 1 ~ 'Black, Non-Hispanic',
+                              subgroup %in% 2 ~ 'Hispanic',
+                              subgroup %in% 3 ~ 'Other Races and Ethnicities',
+                              subgroup %in% 4 ~ 'White, Non-Hispanic'
+  ))
+
+```
+
+Look at subgroup distribution.
+
+```{r}
+
+acs_clean %>% 
+  count(subgroup) %>% 
+  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Subgroup",
+       y = NULL)
+```
+
+## Merge Crosswalk 
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
+```
+
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
+
+```{r}
+acs_clean %>% 
+  group_by(crosswalk_period, year) %>% 
+  count()
+```
+
+Join the cleaned ACS data onto the crosswalk.
+
+```{r}
+
+acs_clean <- left_join(acs_clean, puma_county_crosswalk, by=c("crosswalk_period", "statefip","puma"))
+
+```
+
+Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
+
+```{r}
+
+acs_clean <- acs_clean %>% 
+  filter(!is.na(afact))
+
+```
+
+Also filter out cases where AFACT is equal to zero.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  filter(afact > 0)
+```
+
+Adjust the person weight to account for PUMA-to-county mapping (those where unique_types do not equal 1).
+
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(perwt = perwt*afact
+  ) 
+
+```
+
+## Create employment metric
+
+Create the employment metric. 
+
+Objective: get the percent of individuals between the ages 25 and 54 that are employed from the EMPSTAT variable.
+
+Aggregation should be weighted by PERWT (this is a person level statistic).
+
+First, isolate the dataset to 25-54 year-olds.
+
+```{r}
+microdata_emp_age <- acs_clean %>% 
+  filter(age >= 25 & age <= 54) 
+```
+
+Check how many records, if any, have NA reported for empstat after filtering.
+
+```{r}
+
+microdata_emp_age %>%
+  filter(is.na(empstat)) %>% 
+  group_by(pernum) %>% 
+  count()
+
+```
+
+Confirm there are no vacant properties included in the data.
+
+```{r}
+
+microdata_emp_age %>%
+  filter(is.na(vacancy)) %>% 
+  group_by(pernum) %>% 
+  count()
+
+```
+
+Create a variable to distinguish between 1 and 5 year ACS datasets. 5-year samples end in "03" and 1-year samples end in "01".
+
+```{r}
+microdata_emp_age <- microdata_emp_age %>%
+  mutate(sample_structure = ifelse(str_sub(sample, start = 5, end = 6) == "03", "5year", "1year")) 
+```
+
+Check national employment ratio.
+
+```{r}
+metrics_employment <- microdata_emp_age %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year) %>%
+  summarise(
+    num_in_emp_age = sum(perwt),
+    num_employed = sum((empstat == 1) * perwt),
+    count = n()
+  ) %>% 
+  ungroup()
+```
+
+Compute the ratio (share employed) for 2018, 2021 and 2022 nationally.
+
+```{r}
+
+metrics_employment %>%
+  mutate(share_employed = num_employed/num_in_emp_age) %>% 
+  reactable()
+
+```
+
+
+### All
+
+Create share employed for all individuals at the county-level.
+```{r}
+metrics_employment_all <- microdata_emp_age %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(
+    num_in_emp_age = sum(perwt),
+    num_employed = sum((empstat == 1) * perwt),
+    count = n()
+  ) %>% 
+  ungroup()
+```
+
+Compute the ratio (share employed).
+
+```{r}
+
+metrics_employment_all <- metrics_employment_all %>%
+  mutate(share_employed = num_employed/num_in_emp_age) %>% 
+  mutate(subgroup_type = "all",
+         subgroup = "All")
+
+```
+
+### Subgroup
+
+Create share employed by race/ethnicity at the county-level.
+
+```{r}
+metrics_employment_subgroup <- microdata_emp_age %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
+  summarise(
+    num_in_emp_age = sum(perwt),
+    num_employed = sum((empstat == 1) * perwt),
+    count = n()
+  )%>% 
+  ungroup() %>% 
+  mutate(subgroup_type = "race-ethnicity")
+```
+
+Compute the ratio (share employed).
+
+```{r}
+
+metrics_employment_subgroup <- metrics_employment_subgroup %>%
+  mutate(share_employed = num_employed/num_in_emp_age)
+
+```
+
+Append the "All" version of the data.
+
+```{r}
+metrics_employment <- bind_rows(metrics_employment_subgroup, metrics_employment_all)
+```
+
+Sort by county again to double check we have 5 observations per county (All, Black, White, Hispanic, Other).
+```{r}
+metrics_employment <- metrics_employment %>%
+  arrange(year, statefip, county)
+```
+
+Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
+```{r}
+metrics_employment <- left_join(metrics_employment, county_puma, by=c("crosswalk_period", "statefip","county"))
+```
+
+Generate the quality variable for each county.
+```{r}
+metrics_employment <- metrics_employment %>% 
+  mutate(share_employed_quality = case_when(size_flag==0 & geographic_allocation_quality==1 ~ 1,
+                                     size_flag==0 & geographic_allocation_quality==2 ~ 2,
+                                     size_flag==0 & geographic_allocation_quality==3 ~ 3,
+                                     size_flag==1 ~ 3)
+  )
+```
+
+Keep only relevant variables.
+```{r}
+
+metrics_employment <- metrics_employment %>%
+  select(year,
+         statefip,
+         county,
+         subgroup_type, 
+         subgroup,
+         share_employed,
+         share_employed_quality)
+
+```
+
+### Evaluate results
+
+Look at distribution of employment share by county.
+
+```{r}
+
+metrics_employment %>% 
+  filter(year == 2022, subgroup == "All") %>% 
+  select(share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share employed, by county 2022") +
+  ylab("Density")
+  
+```
+
+Look at distribution of employment share by county by race.
+```{r}
+
+metrics_employment %>% 
+  filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Employment Share, Black") +
+  ylab("Density")
+
+metrics_employment %>% 
+  filter(year == 2021, subgroup == "Hispanic") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Employment Share, Hispanic") +
+  ylab("Density")
+
+metrics_employment %>% 
+  filter(year == 2021, subgroup == "Other Races and Ethnicities") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Employment Share, Other Races and Ethnicities") +
+  ylab("Density")
+
+metrics_employment %>% 
+  filter(year == 2021, subgroup == "White, Non-Hispanic") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Employment Share, White, Non-Hispanic") +
+  ylab("Density")
+
+```
+
+Look at the counts of the quality flag.
+```{r}
+metrics_employment %>% 
+  select(share_employed_quality) %>% 
+  ggplot(aes(x = share_employed_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag") +
+  ylab("Count")
+```
+
+## Export 
+
+Rename state.
+```{r}
+metrics_employment <- metrics_employment %>% 
+  rename("state" = "statefip")
+```
+
+Order the variables how we want.
+```{r}
+metrics_employment <- metrics_employment %>% 
+  select(year, state, county, subgroup_type, subgroup, share_employed, share_employed_quality)
+```
+
+Export as CSV
+
+```{r}
+write_csv(metrics_employment, here::here("09_employment", "data", "final", "metrics_employment_county.csv"))
+```
+
+
+
+
+
