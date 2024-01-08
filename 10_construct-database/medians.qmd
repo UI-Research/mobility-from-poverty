@@ -4,6 +4,7 @@ author: "Aaron R. Williams"
 date: today
 format:
   html:
+    df-print: kable
     toc: true
     toc_float: true
     embed-resources: true
@@ -46,6 +47,7 @@ options(scipen = 999)
 library(tidyverse)
 library(here)
 library(tidycensus)
+library(kableExtra)
 
 ```
 
@@ -109,7 +111,7 @@ weighted_median <- metrics |>
   pivot_longer(cols = everything(), values_to = "weighted_median")
 
 # This function allows for finding grouped weighted median even when some groups have only NA values without throwing an error.
-safe_wtd_quantile <- safely(Hmisc::wtd.quantile$result, otherwise = NA_real_)
+safe_wtd_quantile <- safely(Hmisc::wtd.quantile, otherwise = NA_real_)
 
 weighted_median_by_qual <- metrics |>
   select(where(is.numeric)) |>
@@ -155,7 +157,9 @@ weighted_median_by_qual |>
   filter(name != "population" & !is.na(quality)) |>
   pivot_wider(names_from = quality, names_glue = 'weighted_med_qual{quality}', values_from = weighted_med_by_qual) |> 
   select(name, starts_with('weighted'), starts_with('missing')) |> 
-  print(n = Inf)
+  mutate(across(where(is.numeric), ~round(.,digits=3))) |> 
+  kbl() |> 
+  kable_styling(font_size = 8, fixed_thead = TRUE)
 
 
 ```
@@ -169,7 +173,7 @@ This section of the code calculates variable medians at the place level.
 ```{r}
 #| label: load-data-place
 metrics <- read_csv(here("data", "05_mobility-metrics_place_recent.csv")) |>
-  select(-ends_with("_quality"), -ends_with("_lb"), -ends_with("_ub"))
+  select(-ends_with("_lb"), -ends_with("_ub"))
 
 ```
 
@@ -199,41 +203,64 @@ We calculate weighted medians for each numeric variable. This means our estimate
 
 ```{r}
 weighted_median <- metrics |>
-  select(where(is.numeric)) |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
   summarize(
     across(
-      .cols = everything(), 
+      .cols = -population, 
       .fns = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE)
     )
   ) |>
   pivot_longer(cols = everything(), values_to = "weighted_median")
 
-missing_population <- metrics |>
+weighted_median_by_qual <- metrics |>
   select(where(is.numeric)) |>
+  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'quality_var', values_to = 'quality') |> 
+  filter(quality %in% 1:3) |> 
   summarize(
     across(
-      .cols = everything(), 
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)$result
+    ),
+   .by = c('quality_var', 'quality')
+  ) |> 
+  pivot_longer(cols = where(is.numeric) & -quality, names_to = 'name', values_to = 'weighted_med_by_qual') |>
+  # Merge on crosswalk so that we can limit quality_var to just the relevant one
+  left_join(metric_qual_crosswalk, by = 'name') |> 
+  filter(quality_var == qual_varname & quality %in% 1:3) |> 
+  select(name, quality, weighted_med_by_qual) |> 
+  arrange(name, quality)
+
+
+missing_population <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
+  summarize(
+    across(
+      .cols = -population, 
       .fns = ~missing_share(.x, weight = population)
     )
   ) |>
   pivot_longer(cols = everything(), values_to = "missing_population")
 
 missing_place <- metrics |>
-  select(where(is.numeric)) |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
   summarize(
     across(
-      .cols = everything(), 
+      .cols = -population, 
       .fns = ~sum(is.na(.x)) / n()
     )
   ) |>
   pivot_longer(cols = everything(), values_to = "missing_place")
 
-weighted_median |>
+weighted_median_by_qual |>
+  full_join(weighted_median, by="name") |> 
   full_join(missing_population, by = "name") |>
-  full_join(missing_place, by = "name") |>
-  filter(name != "population") |>
-  print(n = Inf)
-
+  full_join(missing_place, by = c("name")) |>
+  filter(name != "population" & !is.na(quality)) |>
+  pivot_wider(names_from = quality, names_glue = 'weighted_med_qual{quality}', values_from = weighted_med_by_qual) |> 
+  select(name, starts_with('weighted'), starts_with('missing')) |> 
+  mutate(across(where(is.numeric), ~round(.,digits=3))) |> 
+  kbl() |> 
+  kable_styling(font_size = 8, fixed_thead = TRUE)
 ```
 
 There is a high share of debt in collections missing at place level in the final data set - this is not an issue with the join.
