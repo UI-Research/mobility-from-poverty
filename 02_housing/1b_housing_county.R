@@ -40,6 +40,7 @@
 
 # Libraries you'll need
 library(tidyverse)
+library(tidylog)
 library(ipumsr)
 library(janitor)
 library(readxl)
@@ -72,7 +73,7 @@ acs2022clean <- acs2022 %>%
 
 vacant_microdata22 <- read_csv("data/temp/vacancy_microdata2022.csv") %>% 
   tidylog::filter(VACANCY==1 | VACANCY==2 | VACANCY==3)
-# 26,866 obs from 106,542 obs (79,676 dropped)
+# removed 79,676 rows (75%), 26,866 rows remaining
 
 
 # (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
@@ -106,7 +107,7 @@ rent_ratio <- acs2022clean %>%
 rent_ratio <- rent_ratio %>%
   filter(PERNUM == 1,
          OWNERSHP == 2)
-
+# removed 6,217,253 rows (90%), 697,673 rows remaining
 
 # (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
 #      vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per county)
@@ -271,9 +272,9 @@ microdata_housing <- acs2022clean %>%
 #removed 3,993,555 rows (58%), 2,921,371 rows remaining
 
 # create new dataset called "households_year" to merge microdata & county income limits (county_income_limits_2022) by state and county
-
-households_2022 <- left_join(microdata_housing, county_income_limits_2022, by=c("statefip","county"))
-
+# county FIPS 2261 (Valdez–Cordova Census Area, Alaska) split into 2063 (Chugach Census Area) and 2066 (Copper River Census Area) 
+# the county limit file has fips 2261 and the microdata has it split into 2063 and 2066
+households_2022 <- left_join( microdata_housing, county_income_limits_2022, by=c("statefip","county"))
 
 
 # Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
@@ -331,6 +332,9 @@ households_2022 <- households_2022 %>%
          Below30AMI = case_when((HHINCOME<ELI_4) ~ 1,
                                 (HHINCOME>ELI_4) ~ 0)
   )
+
+# save file to use for affordability measure
+write_csv(households_2022, "data/temp/households_2022_county.csv")
 
 # NOTE TO REVIEWER: for 30AMI/50AMI/80AMI a quarter of owner values are missing 
 # and 3/4 of renter values are missing - I'm not positive why 
@@ -422,6 +426,10 @@ vacant_summed_2022 <- vacant_2022_new %>%
                    vacantHHobs_count = n()) %>% 
   rename("state" = "statefip")
 
+# save csv for avaiablity calculation in 2b_affordable_available_county.R
+write_csv(vacant_summed_2022, "data/temp/vacant_summed_2022_county.csv")
+
+
 # (7b) Merge them by county
 housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("state","county"))
 # 3,143 obs
@@ -449,83 +457,10 @@ housing_2022 <- housing_2022 %>%
 # (8) Create the Data Quality variable
 
 # (8a) Prepare the Census Counties to PUMA crosswalk
-# open relevant crosswalk data
-puma_county_2022 <- read_csv("data/temp/geocorr2022_puma_to_county.csv") %>% 
-  # drop first row that has coulmn labels
-  slice(-1) 
 
-# rename variables for working purposes
-puma_county_2022 <- puma_county_2022 %>% 
-  dplyr::rename(puma = puma22,
-                statefip = state)
-puma_county_2022 <- puma_county_2022 %>%
-  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
-         puma = sprintf("%0.5d", as.numeric(puma)),
-         county = substr(county, nchar(county)-2, nchar(county)),
-         across(c(pop20, afact, afact2), ~as.numeric(.x)) 
-  )
-
-# Limit to the Counties we want 
-# first, bring in the counties crosswalk (county-populations.csv)
-counties <- read_csv("geographic-crosswalks/data/county-populations.csv")
-# keep only the relevant year (for this, 2020)
-counties <- counties %>%
-  filter(year == 2020)
-# rename to prep for merge
-counties <- counties %>% 
-  dplyr::rename("statefip" = "state")
-
-puma_county_2022 <- left_join(counties, puma_county_2022, by=c("statefip","county"))
-
-
-# keep only the variables we will need
-puma_county_2022 <- puma_county_2022 %>% 
-  select(statefip, puma, county, pop20, afact, afact2)
-
-# drop observations where the weight adjustment is zero
-puma_county_2022 <- puma_county_2022 %>%
-  filter(afact!= 0.000)
-
-# Create a variable that assigns a weight to each county based on total population
-# first, create a variable for the total population
-puma_county_2022 <- puma_county_2022 %>%
-  mutate(totpop = sum(pop20))
-
-
-# (8b) Prepare for Data Quality Flag for counties
-# Create flags in the PUMA-county crosswalk for high percentage of data from outside of county 
-# Per Greg (for counties), 75% or more from the county is good, below 35% is bad, in between is marginal.
-# This is calculated by taking the product of percentage of PUMA in county and
-# percentage of county in PUMA for each county-PUMA pairing, and summing across the county.
-# Create new vars of interest
-puma_county <- puma_county_2022 %>%
-  mutate(products = afact*afact2)
-
-puma_county <- puma_county %>%
-  dplyr::group_by(statefip, county) %>%
-  dplyr::mutate(sum_products = sum(products),
-                county_pop = sum(pop20*afact))
-
-summary(puma_county)
-# Q1 of countypop is 2,070 
-# sum_products mean is 0.5429
-puma_county <- puma_county %>%
-  dplyr::mutate(
-    puma_flag = 
-      case_when(
-        sum_products >= 0.75 ~ 1, # 579
-        sum_products >= 0.35 ~ 2, # 454
-        sum_products < 0.35 ~ 3 #2110 
-      ),
-    small_county = 
-      case_when(
-        county_pop >= 16754  ~ 0,
-        county_pop < 16754  ~ 1
-      )
-  )
-
-# save as "puma_county.csv" in gitignore
-
+# run 0_microdata_county.R or load in file
+puma_county_2022 <- read_csv("data/temp/puma_county.csv") 
+  
 # save a version with just the county-level values of data quality variables
 county_puma <- puma_county %>%
   dplyr::group_by(statefip, county) %>%
@@ -537,12 +472,10 @@ county_puma <- puma_county %>%
 # https://mcdc.missouri.edu/applications/geocorr2022.html
 # all states were selected with PUMA as the source geography and county and the target weighted by populaiton 
 
-# save as "county_puma" in gitignore
 
-
-# (8c) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
+# (8v) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
 # Create a "Size Flag" for any county-level observations made off of less than 30 observed HH, vacant or otherwise
-housing_2021 <- housing_2021 %>% 
+housing_2022 <- housing_2022 %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
          size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
@@ -553,14 +486,15 @@ county_puma <- county_puma %>%
   rename("state" = "statefip")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-housing_2021 <- left_join(housing_2021, county_puma, by=c("state","county"))
+housing_2022 <- left_join(housing_2022, county_puma, by=c("state","county"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
-housing_2021 <- housing_2021 %>% 
-  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,
-                                     size_flag==0 & puma_flag==2 ~ 2,
-                                     size_flag==0 & puma_flag==3 ~ 3,
+housing_2022 <- housing_2022 %>% 
+  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,# 579
+                                     size_flag==0 & puma_flag==2 ~ 2,# 454
+                                     size_flag==0 & puma_flag==3 ~ 3,# 2110
                                      size_flag==1 ~ 3))
+
 
 ###################################################################
 
@@ -604,3 +538,46 @@ housing_2022_subgroup_final <- housing_2022_subgroup %>%
 # export our file as a .csv
 write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_county.csv")  
 
+
+###################################################################
+
+# (10) Quality Checks and Visualizations
+
+# (10a) Histograms 
+
+# share affordable at 30 AMI histogram
+housing_2022_subgroup %>% 
+  ggplot(aes(share_affordable_30_ami))+
+  geom_histogram()+
+  scale_x_continuous(limits = c(0, 3))+
+  facet_wrap(~subgroup)
+
+# share affordable at 50 AMI histogram
+housing_2022_subgroup %>% 
+  ggplot(aes(share_affordable_50_ami))+
+  geom_histogram()+
+  scale_x_continuous(limits = c(0, 3))+
+  facet_wrap(~subgroup)
+
+# share affordable at 80 AMI histogram
+housing_2022_subgroup %>% 
+  ggplot(aes(share_affordable_80_ami))+
+  scale_x_continuous(limits = c(0, 3))+
+  geom_histogram() +
+  facet_wrap(~subgroup)
+
+# (10b) Summaries
+
+# six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) 
+# to explore the distribution of calculated metrics 
+summary(housing_2022_overall)
+
+
+# year         state              county          share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami housing_quality
+# Min.   :2022   Length:3143        Length:3143        Min.   :  1.075         Min.   :  0.8355        Min.   :  0.5171        Min.   :1.000  
+# 1st Qu.:2022   Class :character   Class :character   1st Qu.:  1.650         1st Qu.:  1.6919        1st Qu.:  1.5934        1st Qu.:2.000  
+# Median :2022   Mode  :character   Mode  :character   Median :  1.844         Median :  1.9903        Median :  1.9610        Median :3.000  
+# Mean   :2022                                         Mean   :  2.306         Mean   :  2.3997        Mean   :  2.2557        Mean   :2.487  
+# 3rd Qu.:2022                                         3rd Qu.:  2.177         3rd Qu.:  2.3880        3rd Qu.:  2.3679        3rd Qu.:3.000  
+# Max.   :2022                                         Max.   :139.485         Max.   :104.8880        Max.   :147.8675        Max.   :3.000  
+                

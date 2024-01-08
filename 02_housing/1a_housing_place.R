@@ -439,6 +439,7 @@ vacant_summed_2022 <- vacant_2022_new %>%
                    vacantHHobs_count = n()) %>% 
   rename("state" = "statefip")
 
+# save csv for avaiablity calculation in 2a_affordable_available_place.R
 write_csv(vacant_summed_2022, "data/temp/vacant_summed_2022.csv")
 
 # (7b) Merge them by place
@@ -543,17 +544,20 @@ write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_c
 # share affordable at 30 AMI histogram
 housing_2022_overall %>% 
   ggplot(aes(share_affordable_30AMI))+
-  geom_histogram()
+  geom_histogram()+
+  facet_wrap(~subgroup)
 
 # share affordable at 50 AMI histogram
 housing_2022_overall %>% 
   ggplot(aes(share_affordable_50AMI))+
-  geom_histogram()
+  geom_histogram()+
+  facet_wrap(~subgroup)
 
 # share affordable at 80 AMI histogram
 housing_2022_overall %>% 
   ggplot(aes(share_affordable_80AMI))+
-  geom_histogram()
+  geom_histogram() +
+  facet_wrap(~subgroup)
 
 # (10b) Summaries
 
