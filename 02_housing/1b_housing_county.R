@@ -32,6 +32,10 @@
 #       (7c) Calculate share_affordable_30/50/80AMI
 # (8) Create Data Quality marker
 # (9) Clean and export
+# (10) Quality Checks and Visualizations
+#       (10a) Histograms
+#       (10b) Summaries
+#       (10c) Check against last years values
 
 ###################################################################
 
@@ -573,11 +577,29 @@ housing_2022_subgroup %>%
 summary(housing_2022_overall)
 
 
-# year         state              county          share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami housing_quality
-# Min.   :2022   Length:3143        Length:3143        Min.   :  1.075         Min.   :  0.8355        Min.   :  0.5171        Min.   :1.000  
-# 1st Qu.:2022   Class :character   Class :character   1st Qu.:  1.650         1st Qu.:  1.6919        1st Qu.:  1.5934        1st Qu.:2.000  
-# Median :2022   Mode  :character   Mode  :character   Median :  1.844         Median :  1.9903        Median :  1.9610        Median :3.000  
-# Mean   :2022                                         Mean   :  2.306         Mean   :  2.3997        Mean   :  2.2557        Mean   :2.487  
-# 3rd Qu.:2022                                         3rd Qu.:  2.177         3rd Qu.:  2.3880        3rd Qu.:  2.3679        3rd Qu.:3.000  
-# Max.   :2022                                         Max.   :139.485         Max.   :104.8880        Max.   :147.8675        Max.   :3.000  
+# share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami housing_quality
+# Min.   :  1.075         Min.   :  0.8355        Min.   :  0.5171        Min.   :1.000  
+# 1st Qu.:  1.650         1st Qu.:  1.6919        1st Qu.:  1.5934        1st Qu.:2.000  
+# Median :  1.844         Median :  1.9903        Median :  1.9610        Median :3.000  
+# Mean   :  2.306         Mean   :  2.3997        Mean   :  2.2557        Mean   :2.487  
+# 3rd Qu.:  2.177         3rd Qu.:  2.3880        3rd Qu.:  2.3679        3rd Qu.:3.000  
+# Max.   :139.485         Max.   :104.8880        Max.   :147.8675        Max.   :3.000  
                 
+# (10c) Check against 2021 values
+
+# read in 2021 data
+# download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10
+metrics_2021 <- read_csv("C:/Users/ARogin/Downloads/mobility_metrics_county.csv") %>% 
+  filter(year == 2021) %>% 
+  select(share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
+
+summary(metrics_2021)
+
+
+# share_affordable_80_ami share_affordable_50_ami share_affordable_30_ami
+# Min.   :1.018           Min.   :0.7835          Min.   :0.432          
+# 1st Qu.:1.580           1st Qu.:1.6170          1st Qu.:1.562          
+# Median :1.696           Median :1.8479          Median :1.827          
+# Mean   :1.692           Mean   :1.8304          Mean   :1.788          
+# 3rd Qu.:1.800           3rd Qu.:2.0571          3rd Qu.:2.054          
+# Max.   :2.380           Max.   :3.0197          Max.   :3.521
