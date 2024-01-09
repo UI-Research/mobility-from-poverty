@@ -110,26 +110,22 @@ weighted_median <- metrics |>
   ) |>
   pivot_longer(cols = everything(), values_to = "weighted_median")
 
-# This function allows for finding grouped weighted median even when some groups have only NA values without throwing an error.
-safe_wtd_quantile <- safely(Hmisc::wtd.quantile, otherwise = NA_real_)
-
-weighted_median_by_qual <- metrics |>
+state_count <- metrics |> 
+  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  filter(quality %in% 1:2) |> 
+  count(state_name, qual_varname) |> 
+  count(qual_varname, name = 'n_states')
+  
+proportion_by_qual <- metrics |>
   select(where(is.numeric)) |>
-  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'quality_var', values_to = 'quality') |> 
-  filter(quality %in% 1:3) |> 
-  summarize(
-    across(
-      .cols = -population, 
-      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)$result
-    ),
-   .by = c('quality_var', 'quality')
+  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  summarize(population = sum(population),
+   .by = c('qual_varname', 'quality')
   ) |> 
-  pivot_longer(cols = where(is.numeric) & -quality, names_to = 'name', values_to = 'weighted_med_by_qual') |>
-  # Merge on crosswalk so that we can limit quality_var to just the relevant one
-  left_join(metric_qual_crosswalk, by = 'name') |> 
-  filter(quality_var == qual_varname & quality %in% 1:3) |> 
-  select(name, quality, weighted_med_by_qual) |> 
-  arrange(name, quality)
+  mutate(pop_share = population / sum(population), .by = 'qual_varname') |> 
+  filter(quality %in% 2:3) |> 
+  select(-population) |> 
+  arrange(qual_varname, quality)
 
 
 missing_population <- metrics |>
@@ -150,16 +146,20 @@ missing_county <- metrics |>
     )) |> 
   pivot_longer(cols = everything(), values_to = "missing_county")
   
-weighted_median_by_qual |>
-  full_join(weighted_median, by="name") |> 
+weighted_median |> 
   full_join(missing_population, by = "name") |>
-  full_join(missing_county, by = c("name")) |>
-  filter(name != "population" & !is.na(quality)) |>
-  pivot_wider(names_from = quality, names_glue = 'weighted_med_qual{quality}', values_from = weighted_med_by_qual) |> 
-  select(name, starts_with('weighted'), starts_with('missing')) |> 
-  mutate(across(where(is.numeric), ~round(.,digits=3))) |> 
+  full_join(missing_county, by = "name") |>
+  left_join(metric_qual_crosswalk, by = "name") |> 
+  left_join(proportion_by_qual, by = "qual_varname") |>  #M:M Merge is expected behavior here
+  left_join(state_count, by = "qual_varname") |> 
+  pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |>
+  select(-qual_varname, -qualityNA_popshare) |> 
+  mutate(across(where(is.numeric), ~round(.,digits=2))) |> 
+  rowwise() |> 
+  # Share of pop that is either missing or quality = 3 for that metric
+  mutate(share_lq3 = sum(missing_population, quality3_popshare, na.rm = TRUE)) |> 
   kbl() |> 
-  kable_styling(font_size = 8, fixed_thead = TRUE)
+  kable_styling(font_size = 10, fixed_thead = TRUE)
 
 
 ```
@@ -212,24 +212,23 @@ weighted_median <- metrics |>
   ) |>
   pivot_longer(cols = everything(), values_to = "weighted_median")
 
-weighted_median_by_qual <- metrics |>
+proportion_by_qual <- metrics |>
   select(where(is.numeric)) |>
-  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'quality_var', values_to = 'quality') |> 
-  filter(quality %in% 1:3) |> 
-  summarize(
-    across(
-      .cols = -population, 
-      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)$result
-    ),
-   .by = c('quality_var', 'quality')
+  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  summarize(population = sum(population),
+   .by = c('qual_varname', 'quality')
   ) |> 
-  pivot_longer(cols = where(is.numeric) & -quality, names_to = 'name', values_to = 'weighted_med_by_qual') |>
-  # Merge on crosswalk so that we can limit quality_var to just the relevant one
-  left_join(metric_qual_crosswalk, by = 'name') |> 
-  filter(quality_var == qual_varname & quality %in% 1:3) |> 
-  select(name, quality, weighted_med_by_qual) |> 
-  arrange(name, quality)
+  mutate(pop_share = population / sum(population), .by = 'qual_varname') |> 
+  filter(quality %in% 2:3) |> 
+  select(-population) |> 
+  arrange(qual_varname, quality)
 
+
+state_count <- metrics |> 
+  pivot_longer(cols = ends_with('_quality') & -index_air_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  filter(quality %in% 1:2) |> 
+  count(state_name, qual_varname) |> 
+  count(qual_varname, name = 'n_states')
 
 missing_population <- metrics |>
   select(where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
@@ -251,16 +250,21 @@ missing_place <- metrics |>
   ) |>
   pivot_longer(cols = everything(), values_to = "missing_place")
 
-weighted_median_by_qual |>
-  full_join(weighted_median, by="name") |> 
+weighted_median |> 
   full_join(missing_population, by = "name") |>
-  full_join(missing_place, by = c("name")) |>
-  filter(name != "population" & !is.na(quality)) |>
-  pivot_wider(names_from = quality, names_glue = 'weighted_med_qual{quality}', values_from = weighted_med_by_qual) |> 
-  select(name, starts_with('weighted'), starts_with('missing')) |> 
-  mutate(across(where(is.numeric), ~round(.,digits=3))) |> 
+  full_join(missing_place, by = "name") |>
+  left_join(metric_qual_crosswalk, by = "name") |> 
+  left_join(state_count, by = "qual_varname") |> 
+  left_join(proportion_by_qual, by = "qual_varname") |>  #M:M Merge is expected behavior here
+  pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |>
+  select(-qual_varname, -qualityNA_popshare) |> 
+  mutate(across(where(is.numeric), ~round(.,digits=2))) |> 
+  rowwise() |> 
+  # Share of pop that is either missing or quality = 3 for that metric
+  mutate(share_lq3 = sum(missing_population, quality3_popshare, na.rm = TRUE)) |> 
   kbl() |> 
-  kable_styling(font_size = 8, fixed_thead = TRUE)
+  kable_styling(font_size = 10, fixed_thead = TRUE)
+
 ```
 
 There is a high share of debt in collections missing at place level in the final data set - this is not an issue with the join.
