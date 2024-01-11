@@ -2,16 +2,16 @@
 ###################################################################
 
 # ACS Code: Preparing the microdata, non-subgroup
-# Tina Chelidze 2022-2023
+# Amy Rogin (2023-2024)
+# Adapted from Tina Chelidze 2022-2023
 # Using IPUMS extract for ACS 2021
 # Based on processes developed by Paul Johnson and Kevin Werner in SAS
 # Process:
 # (0) Housekeeping
 # (1) Download microdata from IPUMS API
 # (2) Prepare the Census Place to PUMA crosswalk
-# (3) Prepare for Data Quality flag
-# (4) Prepare Microdata (non-subgroup)
-# (5) Merge the microdata PUMAs to counties
+# (3) Prepare Microdata (non-subgroup)
+# (4) Merge the microdata PUMAs to counties
 
 ###################################################################
 
@@ -95,23 +95,9 @@ write_csv(vacant_microdata22, "data/temp/vacancy_microdata2022.csv")
 
 # (2) Prepare the Census County to PUMA crosswalk
 # open relevant crosswalk data
-puma_county_2022 <- read_csv("data/temp/geocorr2022_puma_to_county.csv") %>%
-  # drop first row that has coulmn labels
-  slice(-1) %>% 
-  clean_names() %>% 
-  # rename variables for working purposes
-  dplyr::rename(puma = puma22,
-                statefip = state) %>% 
-  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
-         puma = sprintf("%0.5d", as.numeric(puma)),
-         county = sprintf("%0.3d", as.numeric(county))) %>% 
-  # make county just 3 digit county code (drop state)
-  mutate(county = str_extract(county, "\\d{3}$"), 
-         across(c(pop20, afact, afact2), ~as.numeric(.x))) %>% 
-  # remove puerto rico counties
-  filter(stab != "PR") %>% 
-  # keep only the variables we will need
-  select(statefip, puma, county, pop20, afact, afact2)
+puma_county_2022 <-  read_csv("geographic-crosswalks/data/crosswalk_puma_to_county.csv") %>% 
+  filter(crosswalk_period == 2022) %>% 
+  filter(statefip != 72)
 
 # check number fo unique countues in data
 puma_county_2022 %>% distinct(statefip, county) %>% nrow() # 3,143
@@ -121,59 +107,18 @@ puma_county_2022 <- puma_county_2022 %>%
   tidylog::filter(afact!= 0.000)
 # no rows dropped
 
-
-###################################################################
-
-# (3) Prepare for Data Quality flag (at end)
-# Create flags in the PUMA-place crosswalk for high percentage of data from outside of place. 
-# Per Greg (for counties), 75% or more from the county - in this case, place - is good, below 35% is bad, in between is marginal.
-# This is calculated by taking the product of percentage of PUMA in place and
-# percentage of place in PUMA for each place-PUMA pairing, and summing across the place.
-
-# Create new vars of interest
-puma_county <- puma_county_2022 %>%
-  mutate(products = afact*afact2)
-
-puma_county <- puma_county %>%
-  dplyr::group_by(statefip, county) %>%
-  dplyr::mutate(sum_products = sum(products),
-                county_pop = sum(pop20*afact))
-
-summary(puma_county)
-# Q1 of countypop is 2,070
-# sum_products mean is 0.54
-puma_county <- puma_county %>%
-  dplyr::mutate(
-    puma_flag = 
-      case_when(
-        sum_products >= 0.75 ~ 1, # 2022
-        sum_products >= 0.35 ~ 2, # 480
-        sum_products < 0.35 ~ 3 # 2118
-      ),
-    small_county = 
-      case_when(
-        county_pop >= 2039 ~ 0,
-        county_pop < 2039 ~ 1
-      ), 
-    county_code = str_c(statefip, county)
-  )
-
-# NOTE TO REVIEWER: 
-# save as "puma_county.csv" in gitignore
-write_csv(puma_county, "data/temp/puma_county.csv")
-
 # save a version with just the county-level values of data quality variables
-county_puma <- puma_county %>%
+county_puma <- puma_county_2022 %>%
   dplyr::group_by(statefip, county) %>%
   dplyr::summarize(puma_flag = mean(puma_flag), 
-                   small_county = mean(small_county))
+                   size_county = mean(size_flag))
 
 # save as "place_puma.csv" in gitignore
 write_csv(county_puma, "data/temp/county_puma.csv")
 
 ###################################################################
 
-# (4) Prepare Microdata (non-subgroup)
+# (3) Prepare Microdata (non-subgroup)
 
 # keep only vars we need
 acs_2022_county <- housing_ext_def %>%
@@ -188,13 +133,14 @@ acs_2022_county <- housing_ext_def %>%
 
 ###################################################################
 
-# (5) Merge the microdata PUMAs to counties
+# (4) Merge the microdata PUMAs to counties
 
 # (left join, since microdata has more observations)
 # memory.limit(size=999999)
-acs2022clean_county  <- left_join(acs_2022_county, puma_county, by=c( "statefip", "puma")) %>% 
-  mutate(county_code = str_c(statefip, county))
-# now have 3,787,952 observations
+acs2022clean_county  <- left_join(acs_2022_county, puma_county_2022, by=c( "statefip", "puma")) %>% 
+  mutate(county_code = str_c(statefip, county)) %>% 
+  distinct()
+# 7,336,764 rows remaining
 
 # check distinct number of counties - 3143
 acs2022clean_county %>% distinct(statefip, county) %>% nrow()

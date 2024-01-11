@@ -53,14 +53,14 @@ library(readxl)
 
 # (2) Import microdata (PUMA County combination already done)
 
-# Either run "0_housing_microdata.R" OR: Import the already prepared microdata file 
+# Either run "0_housing_microdata_county.R" OR: Import the already prepared microdata file 
 # this one should already match the PUMAs to counties
 acs2022 <- read_csv("data/temp/2022microdata_county.csv") 
 
 # For HH side: isolate original microdata to only GQ under 3 (only want households)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 acs2022clean <- acs2022 %>%
-  filter(GQ < 3) 
+  tidylog::filter(GQ < 3) 
 # removed 421,838 rows (6%), 6,914,926 rows remaining
 
 
@@ -109,7 +109,7 @@ rent_ratio <- acs2022clean %>%
   select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, county)
 # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
 rent_ratio <- rent_ratio %>%
-  filter(PERNUM == 1,
+  tidylog::filter(PERNUM == 1,
          OWNERSHP == 2)
 # removed 6,217,253 rows (90%), 697,673 rows remaining
 
@@ -133,27 +133,13 @@ rent_ratio <- rent_ratio %>%
 
 # in order to be able to merge in rent_ratio, need to have counties in the vacant data file
 # bring in county to PUMA crosswalk if you don't have it already
-puma_county <- read_csv("data/temp/geocorr2022_puma_to_county.csv") %>% 
-  # drop first row that has coulmn labels
-  slice(-1) %>% 
-  clean_names() %>% 
-  # rename variables for working purposes
-  dplyr::rename(puma = puma22,
-                statefip = state) %>% 
-  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
-         puma = sprintf("%0.5d", as.numeric(puma)),
-         county = sprintf("%0.3d", as.numeric(county))) %>% 
-  # make county just 3 digit county code (drop state)
-  mutate(county = str_extract(county, "\\d{3}$"), 
-         across(c(pop20, afact, afact2), ~as.numeric(.x))) %>% 
-  # remove puerto rico counties
-  filter(stab != "PR") %>% 
-  # keep only the variables we will need
-  select(statefip, puma, county, pop20, afact, afact2)
+puma_county <-  read_csv("geographic-crosswalks/data/crosswalk_puma_to_county.csv") %>% 
+  filter(crosswalk_period == 2022) %>% 
+  filter(statefip != 72)
 
 # merge in counties
 vacant_counties  <- left_join(vacant, puma_county, by=c("statefip","puma"))
-
+# 59,580 rows
 
 # Merge rent ratio into vacant unit microdata
 vacant_final<- left_join(vacant_counties, rent_ratio, by = c("statefip", "county"))
@@ -204,7 +190,7 @@ FMR_pop_2022 <- read_excel("data/FMR_pop_2022.xlsx")
 
 # Add the population variable onto the income level file
 FMR_Income_Levels_2022 <- left_join(FMR_Income_Levels_2022, FMR_pop_2022, by = "fips2010")
-
+# 4,765 rows
 
 FMR_Income_Levels_2022 <- FMR_Income_Levels_2022 %>%
   mutate(county = sprintf("%0.3d", as.numeric(county)),
@@ -272,7 +258,7 @@ county_income_limits_2022 <- county_income_limits_2022 %>%
 
 # Filter microdata to where PERNUM == 1, so only one HH per observation
 microdata_housing <- acs2022clean %>%
-  filter(PERNUM == 1)
+  tidylog::filter(PERNUM == 1)
 #removed 3,993,555 rows (58%), 2,921,371 rows remaining
 
 # create new dataset called "households_year" to merge microdata & county income limits (county_income_limits_2022) by state and county
@@ -337,7 +323,7 @@ households_2022 <- households_2022 %>%
                                 (HHINCOME>ELI_4) ~ 0)
   )
 
-# save file to use for affordability measure
+# save file to use for affordability measure in 2b_afordable_available_county.R
 write_csv(households_2022, "data/temp/households_2022_county.csv")
 
 # NOTE TO REVIEWER: for 30AMI/50AMI/80AMI a quarter of owner values are missing 
@@ -354,7 +340,8 @@ skim(households_2022)
 # family of 4 at %s of AMI (regardless of actual unit size). If there is a non-zero value for
 # gross rent (RENTGRS), use that for the cost. Otherwise, if there is a valid house value, use the 
 # housing cost that was calculated and prepared above in the "vacant" df.
-
+# Note: I believe that the split county in alaska is what it not merged in this join but would be 
+# good for the reviewer to double check throughout
 vacant_2022 <- left_join(vacant_final, county_income_limits_2022, by=c("statefip","county"))
 
 
@@ -460,44 +447,26 @@ housing_2022 <- housing_2022 %>%
 
 # (8) Create the Data Quality variable
 
-# (8a) Prepare the Census Counties to PUMA crosswalk
-
-# run 0_microdata_county.R or load in file
-puma_county_2022 <- read_csv("data/temp/puma_county.csv") 
-
-# save a version with just the county-level values of data quality variables
-county_puma <- puma_county %>%
-  dplyr::group_by(statefip, county) %>%
-  dplyr::summarize(puma_flag = mean(puma_flag), 
-                   small_county = mean(small_county))
-
-# NOTE TO REVIEWER: The majority of counties have a 3 flag, but last year only 3 did. I haven't been able to figure out 
-# whats causing such a huge difference yet though. The puma_county crosswalk was downloaded from the geocorr 2022
-# https://mcdc.missouri.edu/applications/geocorr2022.html
-# all states were selected with PUMA as the source geography and county and the target weighted by populaiton 
-
-
-# (8v) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
+# (8a) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
 # Create a "Size Flag" for any county-level observations made off of less than 30 observed HH, vacant or otherwise
 housing_2022 <- housing_2022 %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         size_flag = case_when((affordableHH_sum < 30) ~ 1,
+         county_size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
 
-# bring in the PUMA flag file if you have not run "0_microdata.R" before this
-# county_puma <- read_csv("data/temp/county_puma.csv")
-county_puma <- county_puma %>% 
-  rename("state" = "statefip")
+# bring in the PUMA flag file if you have not run "0_microdata_county.R" before this
+county_puma <- read_csv("data/temp/county_puma.csv")
+
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-housing_2022 <- left_join(housing_2022, county_puma, by=c("state","county"))
+housing_2022 <- left_join(housing_2022, county_puma, by=c("state" = "statefip","county"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing_2022 <- housing_2022 %>% 
-  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1,# 579
-                                     size_flag==0 & puma_flag==2 ~ 2,# 454
-                                     size_flag==0 & puma_flag==3 ~ 3,# 2110
-                                     size_flag==1 ~ 3))
+  mutate(housing_quality = case_when(county_size_flag==0 & puma_flag==1 ~ 1,# 579
+                                     county_size_flag==0 & puma_flag==2 ~ 2,# 454
+                                     county_size_flag==0 & puma_flag==3 ~ 3,# 2110
+                                     county_size_flag==1 ~ 3))
 
 
 ###################################################################
@@ -603,3 +572,22 @@ summary(metrics_2021)
 # Mean   :1.692           Mean   :1.8304          Mean   :1.788          
 # 3rd Qu.:1.800           3rd Qu.:2.0571          3rd Qu.:2.054          
 # Max.   :2.380           Max.   :3.0197          Max.   :3.521
+
+#  2021 metric histograms
+# share affordable at 30 AMI histogram
+metrics_2021 %>% 
+  ggplot(aes(share_affordable_30_ami))+
+  geom_histogram()+
+  scale_x_continuous(limits = c(0, 3))
+
+# share affordable at 50 AMI histogram
+metrics_2021 %>% 
+  ggplot(aes(share_affordable_50_ami))+
+  geom_histogram()+
+  scale_x_continuous(limits = c(0, 3))
+
+# share affordable at 80 AMI histogram
+metrics_2021 %>% 
+  ggplot(aes(share_affordable_80_ami))+
+  scale_x_continuous(limits = c(0, 3))+
+  geom_histogram() 

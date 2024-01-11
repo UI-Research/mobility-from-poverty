@@ -56,15 +56,15 @@ library(tidylog)
 
 # (2) Import microdata (PUMA Place combination already done)
 
-# Either run "0_housing_microdata.R" OR: Import the already prepared microdata file 
+# Either run "0_housing_microdata_place.R" OR: Import the already prepared microdata file 
 # this one should already match the PUMAs to places
 acs2022 <- read_csv("data/temp/2022microdata.csv") 
 
 # For HH side: isolate original microdata to only GQ under 3 (only want households)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 acs2022clean <- acs2022 %>%
-  filter(GQ < 3) 
-# 1,945,852 obs to 1,847,434 obs (60,558 obs dropped)
+  tidylog::filter(GQ < 3) 
+# removed 94,963 rows (5%), 1,847,434 rows remaining
 
 
 ###################################################################
@@ -111,9 +111,9 @@ vacant <- vacant %>%
 rent_ratio <- acs2022clean %>% 
   select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, place) %>% 
   # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
-  filter(PERNUM == 1,
+  tidylog::filter(PERNUM == 1,
          OWNERSHP == 2)
-# 250,985 obs (289,291 obs in 2021)
+# emoved 1,596,449 rows (86%), 250,985 rows remaining
 
 
 # (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
@@ -134,7 +134,8 @@ rent_ratio <- rent_ratio %>%
 # (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
 #      This "RENTGRS" variable will be used to calculate affordability in Step 6
 
-puma_place <- read_csv("data/temp/puma_place.csv")
+puma_place <- read_csv("geographic-crosswalks/data/crosswalk_puma_to_place.csv") %>% 
+  filter(crosswalk_period == 2022)
 
 # in order to be able to merge in rent_ratio, need to have places in the vacant data file
 # merge in places
@@ -274,14 +275,14 @@ place_income_limits_2022 <- place_income_limits_2022 %>%
 
 # Filter microdata to where PERNUM == 1, so only one HH per observation
 microdata_housing <- acs2022clean %>%
-  filter(PERNUM == 1)
-# 745,674 obs
+  tidylog::filter(PERNUM == 1)
+# removed 1,101,760 rows (60%), 745,674 rows remaining
 
 
 # create new dataset called "households_year" to merge microdata & place income limits (place_income_limits_2022) by state and place
 
 households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("statefip","place"))
-# 745,674 obs
+# 745,674
 
 
 # Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
@@ -340,7 +341,7 @@ households_2022 <- households_2022 %>%
                                 (HHINCOME>ELI_4) ~ 0)
   )
 
-# save file to use for affordability measure
+# save file to use for affordability measure in 2a_affordable_available_place.R
 write_csv(households_2022, "data/temp/households_2022.csv")
 
 # NOTE TO REVIEWER: for 30AMI/50AMI/80AMI a third of renter values are missing 
@@ -360,7 +361,7 @@ skim(households_2022)
 # housing cost that was calculated and prepared above in the "vacant" df.
 
 vacant_2022 <- left_join(vacant_final, place_income_limits_2022, by=c("statefip","place"))
-# 17,265 (20419 obs 2021)
+# 17,265 
 # 1 row doesn't merge - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3
 
 # (6a) create same 30%, 50%, and 80% AMI affordability indicators
@@ -411,7 +412,7 @@ vacant_2022_new <- vacant_2022 %>%
   # turn TRUE/FALSE booleans into binary 1/0 flags
   mutate(across(matches("Affordable"), ~as.integer(.x)))
 
-# save file to use for affordability measure
+# save file to use for affordability measure in 2a_affordable_available_place.R
 write_csv(vacant_2022_new, "data/temp/vacant_2022.csv")
 
 ###################################################################
@@ -474,13 +475,11 @@ housing_2022 <- housing_2022 %>%
 # Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
 housing_2022 <- housing_2022 %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         size_flag = case_when((affordableHH_sum < 30) ~ 1,
+         place_size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
-place_puma <- read_csv("data/temp/place_puma.csv")
-
-place_puma <- place_puma %>% 
+place_puma <- read_csv("data/temp/place_puma.csv") %>% 
   rename("state" = "statefip")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
@@ -488,10 +487,10 @@ housing_2022 <- left_join(housing_2022, place_puma, by=c("state","place"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing_2022 <- housing_2022 %>% 
-  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1, # 220 obs
-                                     size_flag==0 & puma_flag==2 ~ 2, # 247 obs
-                                     size_flag==0 & puma_flag==3 ~ 3, # 19 obs
-                                     size_flag==1 ~ 3))
+  mutate(housing_quality = case_when(place_size_flag==0 & puma_flag==1 ~ 1, # 239 obs
+                                     place_size_flag==0 & puma_flag==2 ~ 2, # 239 obs
+                                     place_size_flag==0 & puma_flag==3 ~ 3, # 7 obs
+                                     place_size_flag==1 ~ 3))
 
 ###################################################################
 
@@ -542,20 +541,20 @@ write_csv(housing_2022_subgroup_final, "02_housing/data/housing_2022_subgroups_c
 # (10a) Histograms 
 
 # share affordable at 30 AMI histogram
-housing_2022_overall %>% 
-  ggplot(aes(share_affordable_30AMI))+
+housing_2022_subgroup_final %>% 
+  ggplot(aes(share_affordable_30_ami))+
   geom_histogram()+
   facet_wrap(~subgroup)
 
 # share affordable at 50 AMI histogram
-housing_2022_overall %>% 
-  ggplot(aes(share_affordable_50AMI))+
+housing_2022_subgroup_final %>% 
+  ggplot(aes(share_affordable_50_ami))+
   geom_histogram()+
   facet_wrap(~subgroup)
 
 # share affordable at 80 AMI histogram
-housing_2022_overall %>% 
-  ggplot(aes(share_affordable_80AMI))+
+housing_2022_subgroup_final %>% 
+  ggplot(aes(share_affordable_80_ami))+
   geom_histogram() +
   facet_wrap(~subgroup)
 
@@ -574,12 +573,16 @@ summary(housing_2022_overall)
 # Max.   :2.4180         Max.   :2.4532         Max.   :3.6769         
 # NA's   :1              NA's   :1              NA's   :1              
 
+
+# Note: 
+
+
 # (10c) Check against last years metrics
 
 # download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10
 metrics_2021 <- read_csv("C:/Users/ARogin/Downloads/mobility_metrics_place.csv") %>% 
   filter(year == 2021) %>% 
-  select(share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
+  select(state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
 
 summary(metrics_2021)
 
@@ -589,4 +592,14 @@ summary(metrics_2021)
 # Median :1.4754          Median :1.2509          Median :1.0533         
 # Mean   :1.5016          Mean   :1.2978          Mean   :1.1260         
 # 3rd Qu.:1.6485          3rd Qu.:1.5241          3rd Qu.:1.3435         
-# Max.   :2.6981          Max.   :2.8454          Max.   :3.4335         
+# Max.   :2.6981          Max.   :2.8454          Max.   :3.4335    
+
+
+# subgroup summaries
+temp <- housing_2022_subgroup %>% 
+  group_by(subgroup) %>% 
+  reframe(across(c("share_affordable_30_ami",
+                     "share_affordable_50_ami", 
+                     "share_affordable_80_ami"),
+                   list("mean" = mean,"min"= min,"max"= max),na.rm = T))
+            

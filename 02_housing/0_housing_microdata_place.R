@@ -9,9 +9,8 @@
 # (0) Housekeeping
 # (1) Download microdata from IPUMS API
 # (2) Prepare the Census Place to PUMA crosswalk
-# (3) Prepare for Data Quality flag
-# (4) Prepare Microdata (non-subgroup)
-# (5) Merge the microdata PUMAs to counties
+# (3) Prepare Microdata (non-subgroup)
+# (4) Merge the microdata PUMAs to counties
 
 ###################################################################
 
@@ -95,104 +94,25 @@ write_csv(vacant_microdata22, "data/temp/vacancy_microdata2022.csv")
 
 # (2) Prepare the Census Place to PUMA crosswalk
 # open relevant crosswalk data
-puma_place_2022 <- read_csv("data/temp/geocorr2022_puma_to_place.csv") %>% 
-  clean_names()%>% 
-  # rename variables for working purposes
-  dplyr::rename(puma = puma22,
-                statefip = state) %>% 
-  mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
-         puma = sprintf("%0.5d", as.numeric(puma)),
-         place = sprintf("%0.5d", as.numeric(place))) 
-
-# Limit to the Census Places we want 
-# first, bring in the places crosswalk (place-populations.csv)
-places <- read_csv("geographic-crosswalks/data/place-populations.csv") %>% 
-  # keep only the relevant year (for this, 2022)
-  filter(year > 2021) %>% 
-  # rename to prep for merge
-  dplyr::rename("statefip" = "state")
-
-# left join to get rid of irrelevant places data (this is in an effort to make our working files smaller)
-puma_place_2022 <- left_join(places, puma_place_2022, by=c("statefip","place")) %>% 
-  # 37123 obs to 1578 obs (35,545 obs dropped)
-  # keep only the variables we will need
-  select(statefip, puma, place, pop20, afact, afact2)
+puma_place_2022 <- read_csv("geographic-crosswalks/data/crosswalk_puma_to_place.csv") %>% 
+  filter(crosswalk_period == 2022)
 
 # check number fo unique places in data
 puma_place_2022 %>% distinct(statefip, place) %>% nrow() # 486
 
-# drop observations where the weight adjustment is zero
-puma_place_2022 <- puma_place_2022 %>%
-  filter(afact!= 0.000)
-# 1,550 obs (28 dropped)
-
-# (optional) sort by statefip place (previously was statefip puma)
-#puma_place_2021 <- puma_place_2021 %>%
-#  arrange(statefip, place)
-
-# Create a variable that assigns a weight to each place based on total 2020 population
-# first, create a variable for the total population
-puma_place_2022 <- puma_place_2022 %>%
-  mutate(totpop = sum(pop20))
-
-# then, create a variable for the population of each place (unique statefip+county pairs)
-puma_place_2022 <- puma_place_2022 %>% 
-  dplyr::group_by(statefip, place) %>% 
-  dplyr::mutate(placepop = sum(pop20*afact),
-                placewgt = placepop/totpop)
-
-
-###################################################################
-
-# (3) Prepare for Data Quality flag (at end)
-# Create flags in the PUMA-place crosswalk for high percentage of data from outside of place. 
-# Per Greg (for counties), 75% or more from the county - in this case, place - is good, below 35% is bad, in between is marginal.
-# This is calculated by taking the product of percentage of PUMA in place and
-# percentage of place in PUMA for each place-PUMA pairing, and summing across the place.
-
-# Create new vars of interest
-puma_place <- puma_place_2022 %>%
-  mutate(products = afact*afact2)
-
-puma_place <- puma_place %>%
+# save a version with just the place-level values of data quality variables 
+# NOTE: data quality variables calculated in geographic-crosswalks/generate_puma_place_crosswalks.qmd
+place_puma <- puma_place_2022 %>%
   dplyr::group_by(statefip, place) %>%
-  dplyr::mutate(sum_products = sum(products),
-                place_pop = sum(pop20*afact))
-
-summary(puma_place)
-# Q1 of placepop is 75,069
-# sum_products mean is 0.77
-puma_place <- puma_place %>%
-  dplyr::mutate(
-    puma_flag = 
-      case_when(
-        sum_products >= 0.75 ~ 1,
-        sum_products >= 0.35 ~ 2,
-        sum_products < 0.35 ~ 3
-      ),
-    small_place = 
-      case_when(
-        placepop >= 75069 ~ 0,
-        placepop < 75069 ~ 1
-      ), 
-    place_code = str_c(statefip, place)
-  )
-
-# save as "puma_place.csv" in gitignore
-write_csv(puma_place, "data/temp/puma_place.csv")
-
-# save a version with just the place-level values of data quality variables
-place_puma <- puma_place %>%
-  dplyr::group_by(statefip, place) %>%
-  dplyr::summarize(puma_flag = mean(puma_flag), 
-                   small_place = mean(small_place))
+  dplyr::summarize(puma_flag = mean(geographic_allocation_quality), 
+                   size_flag = mean(size_flag))
 
 # save as "place_puma.csv" in gitignore
 write_csv(place_puma, "data/temp/place_puma.csv")
 
 ###################################################################
 
-# (4) Prepare Microdata (non-subgroup)
+# (3) Prepare Microdata (non-subgroup)
 
 # keep only vars we need
 acs_2022 <- housing_ext_def %>%
@@ -207,25 +127,26 @@ acs_2022 <- housing_ext_def %>%
 
 ###################################################################
 
-# (5) Merge the microdata PUMAs to places
+# (4) Merge the microdata PUMAs to places
 
 # (left join, since microdata has more observations)
 # memory.limit(size=999999)
-acs2022clean  <- left_join(acs_2022, puma_place, by=c( "statefip", "puma")) %>% 
-  mutate(place_code = str_c(statefip, place))
-# now have 3,787,952 observations
+acs2022clean  <- left_join(acs_2022, puma_place_2022, by=c( "statefip", "puma")) %>% 
+  mutate(place_code = str_c(statefip, place)) %>% 
+  distinct()
+# now have 3,781,759 rows
 
 # check distinct number of places - 536
 acs2022clean %>% distinct(statefip, place) %>% nrow()
 
 # run anti_join to see how many cases on the left did not have a match on the right
-test  <- anti_join(acs_2022, puma_place, by=c("statefip","puma"))
+test  <- anti_join(acs_2022, puma_place_2022, by=c("statefip","puma"))
 # 1,842,100 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
 
 # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
 acs2022clean <- acs2022clean %>% 
-  filter(!is.na(afact))
-# 3,787,952 obs to 1,945,852 obs (1,842,100 dropped)
+  tidylog::filter(!is.na(afact))
+# removed 1,839,362 rows (49%), 1,942,397 rows remaining
 acs2022clean <- acs2022clean %>% 
   filter(afact > 0)
 # no drops

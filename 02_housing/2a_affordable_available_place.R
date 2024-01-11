@@ -133,23 +133,23 @@ available_2022 %>%
 # plus the number of vacant units at that income threshold over the total number
 # of households in each income bracket
 available_2022_final <- available_2022 %>% 
-  # join in vacancy data
+  # join in vacancy data - note: same as in the affordable script, one place has no units that are identified as vacant
   left_join(vacant_summed_2022, by = c("state", "place")) %>% 
   mutate(
     # number of affordable and available at 30 AMI per 100 households
-    share_affordable_available_30ami_all = (at_rent30_all+Affordable30AMI_all_vacant)/Below30AMI*100, 
-    share_affordable_available_30ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI*100, 
-    share_affordable_available_30ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI*100, 
+    rate_affordable_available_30_ami_all = (at_rent30_all+Affordable30AMI_all_vacant)/Below30AMI*100, 
+    rate_affordable_available_30_ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI*100, 
+    rate_affordable_available_30_ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI*100, 
     
     # number of affordable and available at 50 AMI per 100 households
-    share_affordable_available_50ami_all = (at_rent50_all+Affordable50AMI_all_vacant)/Below50AMI*100, 
-    share_affordable_available_50ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI*100, 
-    share_affordable_available_50ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI*100, 
+    rate_affordable_available_50_ami_all = (at_rent50_all+Affordable50AMI_all_vacant)/Below50AMI*100, 
+    rate_affordable_available_50_ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI*100, 
+    rate_affordable_available_50_ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI*100, 
     
     # number affordable and available at 80 AMI per 100 households
-    share_affordable_available_80ami_all = (at_rent80_all+Affordable80AMI_all_vacant)/Below80AMI*100, 
-    share_affordable_available_80ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI*100, 
-    share_affordable_available_80ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI*100
+    rate_affordable_available_80_ami_all = (at_rent80_all+Affordable80AMI_all_vacant)/Below80AMI*100, 
+    rate_affordable_available_80_ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI*100, 
+    rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI*100
   )
 
 ###################################################################
@@ -160,22 +160,23 @@ available_2022_final <- available_2022 %>%
 # Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
 available_2022_final <- available_2022_final %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         size_flag = case_when((affordableHH_sum < 30) ~ 1,
+         place_size_flag = case_when((affordableHH_sum < 30) ~ 1,
                                (affordableHH_sum >= 30) ~ 0))
 
-# bring in the PUMA flag file if you have not run "0_microdata.R" before this
+# bring in the PUMA flag file if you have not run "0_microdata_place.R" before this
 place_puma <- read_csv("data/temp/place_puma.csv") %>% 
   rename("state" = "statefip")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
 available_2022_final <- left_join(available_2022_final, place_puma, by=c("state","place"))
+# 486 rows
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 available_2022_final <- available_2022_final %>% 
-  mutate(housing_quality = case_when(size_flag==0 & puma_flag==1 ~ 1, # 239 obs
-                                     size_flag==0 & puma_flag==2 ~ 2, # 239 obs
-                                     size_flag==0 & puma_flag==3 ~ 3, # 7 obs
-                                     size_flag==1 ~ 3))
+  mutate(housing_quality = case_when(place_size_flag==0 & puma_flag==1 ~ 1, # 239 obs
+                                     place_size_flag==0 & puma_flag==2 ~ 2, # 239 obs
+                                     place_size_flag==0 & puma_flag==3 ~ 3, # 7 obs
+                                     place_size_flag==1 ~ 3))
 
 ###################################################################
 
@@ -184,11 +185,11 @@ available_2022_final <- available_2022_final %>%
 # (6a) subgroup file
 # turn long for subgroup output
 available_2022_subgroup <- available_2022_final %>%
-  select(state, place, starts_with("share_affordable_"), housing_quality) %>% 
+  select(state, place, starts_with("rate_affordable_"), housing_quality) %>% 
   # create year variable
   mutate(year = 2022) %>% 
   # seperate share_afforadable by AMI and the subgroup
-  pivot_longer(cols = c(contains("share_affordable")), 
+  pivot_longer(cols = c(contains("rate_affordable")), 
                names_to = c("available", "subgroup"),
                names_pattern = "(.+?(?=_[^_]+$))(_[^_]+$)", # this creates two columns - "share_affordable_XXAMI" and "_owner/_renter/_all"
                values_to = "value") %>% 
@@ -210,7 +211,7 @@ write_csv(available_2022_subgroup, "02_housing/data/available_2022_subgroups_cit
 # keep what we need
 available_2022_overall <- available_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, place, share_affordable_available_80ami, share_affordable_available_50ami, share_affordable_available_30ami, housing_quality) %>% 
+  select(year, state, place, rate_affordable_available_80_ami, rate_affordable_available_50_ami, rate_affordable_available_30_ami, housing_quality) %>% 
   arrange(year, state, place)
 
 # export our file as a .csv
@@ -233,46 +234,30 @@ write_csv(available_2022_overall, "02_housing/data/available_2022_subgroups_city
 state_av <- available_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
   group_by(state) %>% 
-  summarise(across(starts_with("share_affordable"), 
+  summarise(across(starts_with("rate_affordable"), 
                    ~ mean(.x, na.rm = TRUE))) 
 
 
-range(state_av$share_affordable_available_30ami)
+range(state_av$rate_affordable_available_30_ami)
 
-
-# For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
-# Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
-housing_2022 <- housing_2022 %>% 
-  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         size_flag = case_when((affordableHH_sum < 30) ~ 1,
-                               (affordableHH_sum >= 30) ~ 0))
-
-# bring in the PUMA flag file if you have not run "0_microdata.R" before this
-place_puma <- read_csv("data/temp/place_puma.csv")
-
-place_puma <- place_puma %>% 
-  rename("state" = "statefip")
-
-# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-housing_2022 <- left_join(housing_2022, place_puma, by=c("state","place"))
 
 #  (7b) Histograms
 
 # share affordable and available at 30 AMI histogram
 available_2022_subgroup %>% 
-  ggplot(aes(share_affordable_available_30ami))+
+  ggplot(aes(rate_affordable_available_30_ami))+
   geom_histogram()+
   facet_wrap(~subgroup)
 
 # share affordable and available at 50 AMI histogram
 available_2022_subgroup %>% 
-  ggplot(aes(share_affordable_available_30ami))+
+  ggplot(aes(rate_affordable_available_30_ami))+
   geom_histogram()+
   facet_wrap(~subgroup)
 
 # share affordable and available at 80 AMI histogram
 available_2022_subgroup %>% 
-  ggplot(aes(share_affordable_available_30ami))+
+  ggplot(aes(rate_affordable_available_30_ami))+
   geom_histogram()+
   facet_wrap(~subgroup)
 
