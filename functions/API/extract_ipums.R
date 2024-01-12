@@ -70,12 +70,13 @@ extract_ipums <- function(extract_name, extract_description, survey){
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
-    select(-serial, -cbserial, -cluster, -strata)
+    select(-serial, -cbserial, -cluster, -strata, -raced, -hispand, -empstatd)
   
   #Zap labels and reformat State and PUMA variable
   acs_imported <- acs_imported %>%
-    mutate(
-      across(where(is.labelled), ~ zap_labels(.x)),
+    mutate(  
+      across(c(sample, gq, race, hispan), ~ as_factor(.x)),
+      across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
       statefip = sprintf("%0.2d", as.numeric(statefip)),
       puma = sprintf("%0.5d", as.numeric(puma))
     )

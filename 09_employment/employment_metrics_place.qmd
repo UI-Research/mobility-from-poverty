@@ -51,16 +51,18 @@ source(here::here("functions", "API", "extract_ipums.R"))
 
 Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
 ```{r}
-acs <- extract_ipums(extract_name = "income_18_22", 
-                     extract_description = "1-year ACS data. Years 2018, 2019 and 2022. Microdata pull for the Opportunity for Income Predictor",
-                     survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")) 
+acs <- extract_ipums(
+  extract_name = "umf_data_18_22",
+  extract_description = "Microdata pull for Mobility Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+) 
 ```
 
 Look at the distribution of samples in the data.
 ```{r}
 acs %>% 
   count(sample) %>% 
-  ggplot(mapping = aes(x = factor(sample), y = n)) +
+  ggplot(mapping = aes(x = sample, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Samples, All Records") +
@@ -79,8 +81,7 @@ Crate a version of the crosswalk with just the place-level values of data qualit
 ```{r}
 place_puma <- puma_place_crosswalk %>%
   group_by(crosswalk_period, statefip, place) %>% 
-  summarise(geographic_allocation_quality = mean(geographic_allocation_quality), 
-            size_flag = mean(size_flag)) %>% 
+  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
   ungroup()
 ```
 
@@ -95,7 +96,6 @@ Vacancy is reported as "0".
 There is a large share of records missing for empstat. The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
 
 ```{r}
-
 acs %>% 
   count(empstat) %>% 
   ggplot(mapping = aes(x = factor(empstat), y = n)) +
@@ -122,10 +122,8 @@ acs %>%
   ylab("Density")
 ```
 
-Turn the missing/"not in universe" variable into NAs.
-
+Turn the missing/"not in universe" value from the empstat variable into NAs.
 ```{r}
-
 acs_clean <- acs %>%
   mutate(empstat = ifelse(empstat == 0, NA_integer_,
                           empstat)
@@ -134,9 +132,7 @@ acs_clean <- acs %>%
 ```
 
 Look at distribution of empstat after adjustment. There should be no more records with the value "0".
-
 ```{r}
-
 acs_clean %>% 
   count(empstat) %>% 
   ggplot(mapping = aes(x = factor(empstat), y = n)) +
@@ -147,25 +143,28 @@ acs_clean %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Employment Status",
        y = NULL)
-
 ```
 
-Remove group quarters, we want to keep only households (GQ 1, 2 and 5).
+Select our group quarters, we want to keep only households including additional households under updated definitions.
 
 ```{r}
+acs_clean %>% 
+  group_by(gq) %>% 
+  count()
+```
 
+```{r}
 acs_clean <- acs_clean %>%
-  filter(gq %in% c(1, 2, 5))
-
+  filter(gq %in% c("Households under 1970 definition", 
+                   "Additional households under 1990 definition",
+                   "Additional households under 2000 definition"))
 ```
 
-Check that group quarters fall only in 1, 2 and 5.
-
+Check that group quarters fall only into household categories.
 ```{r}
-
 acs_clean %>% 
   count(gq) %>% 
-  ggplot(mapping = aes(x = factor(gq), y = n)) +
+  ggplot(mapping = aes(x = gq, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("GQ, All Records") +
@@ -173,28 +172,37 @@ acs_clean %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "GQ",
        y = NULL)
-
-
 ```
 
 ### Create race variable
 
-Check the race and hispan variables.
+Evaluate the values in the RACE and HISPAN variables.
 
-Values for RACE variable: 1 White
-2 Black/African American/Negro
-3 American Indian or Alaska Native 4 Chinese 5 Japanese
-6 Other Asian or Pacific Islander 7 Other race 8 Two major races 9 Three or more major races
+* IPUMS documented values for RACE: 
+  + 1 White
+  + 2 Black/African American/Negro
+  + 3 American Indian or Alaska Native 
+  + 4 Chinese 
+  + 5 Japanese
+  + 6 Other Asian or Pacific Islander 
+  + 7 Other race 
+  + 8 Two major races 
+  + 9 Three or more major races
 
-Values for HISPAN variable: 0 Not Hispanic 1 Mexican 2 Puerto Rican· 3 Cuban 4 Other 9 Not Reported. 
+* IPUMS documented values for HISPAN: 
+  + 0 Not Hispanic 
+  + 1 Mexican 
+  + 2 Puerto Rican 
+  + 3 Cuban 
+  + 4 Other 
+  + 9 Not Reported 
 
-The data show no cases of non-reporting for Hispan (no values of 9).
-
+Check that group quarters fall only into household categories.
 ```{r}
 
 acs_clean %>% 
   count(race) %>% 
-  ggplot(mapping = aes(x = factor(race), y = n)) +
+  ggplot(mapping = aes(x = race, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Race, All Records") +
@@ -205,7 +213,7 @@ acs_clean %>%
 
 acs_clean %>% 
   count(hispan) %>% 
-  ggplot(mapping = aes(x = factor(hispan), y = n)) +
+  ggplot(mapping = aes(x = hispan, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Hispan, All Records") +
@@ -216,27 +224,20 @@ acs_clean %>%
 
 ```
 
-Create race/ethnicity variable.
+Create the race/ethnicity variable. For other race/ethnicity categories not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
 
+Rename the values from number category to race label: 
+  +Race is 2 and Hispan is 0 = "Black, Non-Hispanic"
+  +Hispan is >=1 and <=4 = "Hispanic"
+  +Race is >=3 and <=9 and Hispan is 0  = "Other Races and Ethnicities" 
+  +Race is 4 and Hispan is 0 = "White, Non-Hispanic" 
 ```{r}
 
 acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when((hispan == 0 & race == 1) ~ 4,
-                              (hispan == 0 & race == 2) ~ 1,
-                              (hispan == 0 & race %in% 3:9) ~ 3,
-                              (hispan %in% 1:4) ~ 2
-  ))
-
-```
-
-Rename the values from number category to race label 4 = "White, Non-Hispanic" 1 = "Black, Non-Hispanic" 3 = "Other Races and Ethnicities" 2 = "Hispanic"
-
-```{r}
-acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when(subgroup %in% 1 ~ 'Black, Non-Hispanic',
-                              subgroup %in% 2 ~ 'Hispanic',
-                              subgroup %in% 3 ~ 'Other Races and Ethnicities',
-                              subgroup %in% 4 ~ 'White, Non-Hispanic'
+  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
+                              (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
+                              (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
+                               hispan != "Not Hispanic" ~ "Hispanic"
   ))
 
 ```
@@ -260,7 +261,6 @@ acs_clean %>%
 ## Merge Crosswalk 
 
 Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
-
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
@@ -268,7 +268,6 @@ acs_clean <- acs_clean %>%
 ```
 
 Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
-
 ```{r}
 acs_clean %>% 
   group_by(crosswalk_period, year) %>% 
@@ -279,7 +278,7 @@ Join the cleaned ACS data onto the crosswalk.
 
 ```{r}
 
-acs_clean <- left_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"))
+acs_clean <- left_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"), relationship = "many-to-many")
 
 ```
 
@@ -308,7 +307,6 @@ acs_clean <- acs_clean %>%
 ```
 
 Adjust the person weight to account for PUMA-to-place mapping (those where unique_types do not equal 1).
-
 ```{r}
 
 acs_clean <- acs_clean %>%
@@ -333,36 +331,29 @@ microdata_emp_age <- acs_clean %>%
 ```
 
 Check how many records, if any, have NA reported for empstat after filtering.
-
 ```{r}
-
 microdata_emp_age %>%
   filter(is.na(empstat)) %>% 
   group_by(pernum) %>% 
   count()
-
 ```
 
 Confirm there are no vacant properties included in the data.
 
 ```{r}
-
 microdata_emp_age %>%
   filter(is.na(vacancy)) %>% 
   group_by(pernum) %>% 
   count()
-
 ```
 
-Create a variable to distinguish between 1 and 5 year ACS datasets. 5-year samples end in "03" and 1-year samples end in "01".
-
+Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
 ```{r}
 microdata_emp_age <- microdata_emp_age %>%
-  mutate(sample_structure = ifelse(str_sub(sample, start = 5, end = 6) == "03", "5year", "1year")) 
+  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
 ```
 
 Check national employment ratio.
-
 ```{r}
 metrics_employment <- microdata_emp_age %>%
   filter(sample_structure == "1year") %>% 
@@ -387,9 +378,7 @@ metrics_employment %>%
 
 
 ### All
-
-Create share employed for all individuals at the place-level.
-
+Create share employed for all individuals at the place-level (1-year data).
 ```{r}
 metrics_employment_all <- microdata_emp_age %>%
   filter(sample_structure == "1year") %>% 
@@ -397,79 +386,196 @@ metrics_employment_all <- microdata_emp_age %>%
   summarise(
     num_in_emp_age = sum(perwt),
     num_employed = sum((empstat == 1) * perwt),
-    count = n()
+    count = n(),
+    effective_sample = sum(afact)
   ) %>% 
   ungroup()
 ```
 
 Compute the ratio (share employed).
-
 ```{r}
 
 metrics_employment_all <- metrics_employment_all %>%
-  mutate(share_employed = num_employed/num_in_emp_age) %>% 
-  mutate(subgroup_type = "all",
-         subgroup = "All")
+  mutate(share_employed = num_employed/num_in_emp_age)
+```
 
+Sort by year, state and place.
+```{r}
+metrics_employment_all <- metrics_employment_all %>%
+  arrange(year, statefip, place)
+```
+
+*Create an indicator for data quality and suppression*
+
+Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
+```{r}
+metrics_employment_all <- left_join(metrics_employment_all, place_puma, by=c("crosswalk_period", "statefip","place"))
+```
+
+Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
+```{r}
+metrics_employment_all %>%
+  mutate(
+    effective_sample_cutoffs = case_when(
+      effective_sample < 30 ~ "Less than 30",
+      effective_sample >= 30 &
+        effective_sample <= 100 ~ "Over 30 but 100 or less",
+      effective_sample > 100 &
+        effective_sample <= 300 ~ "Over 100 but 300 or less",
+      TRUE ~ "Greater than 300"
+    ),
+    effective_sample_cutoffs = factor(
+      effective_sample_cutoffs,
+      levels = c(
+        "Less than 30",
+        "Over 30 but 100 or less",
+        "Over 100 but 300 or less",
+        "Greater than 300"
+      )
+    )
+  ) %>%
+  group_by(year, effective_sample_cutoffs) %>%
+  count() %>%
+  mutate(supression_share = n / 485) %>%
+  reactable()
+```
+
+Generate the quality variable for each place.
+```{r}
+metrics_employment_all <- metrics_employment_all %>% 
+  mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
+         share_employed_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
+                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
+                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
+                                     effective_sample_flag==1 ~ 3)
+  )
+```
+
+We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
+```{r}
+metrics_employment_all <- metrics_employment_all %>% 
+  mutate_at(c("share_employed"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+```
+
+Keep only relevant variables.
+```{r}
+metrics_employment_all <- metrics_employment_all %>%
+  select(year,
+         statefip,
+         place,
+         share_employed,
+         share_employed_quality)
 ```
 
 ### Subgroup
 
-Create share employed by race/ethnicity at the place-level.
-
+Create share employed by race/ethnicity at the place-level (5-year data).
 ```{r}
 metrics_employment_subgroup <- microdata_emp_age %>%
-  filter(sample_structure == "1year") %>% 
+  filter(sample_structure == "5year") %>% 
   group_by(year, crosswalk_period, statefip, place, subgroup) %>%
   summarise(
     num_in_emp_age = sum(perwt),
     num_employed = sum((empstat == 1) * perwt),
-    count = n()
+    count = n(),
+    effective_sample = sum(afact)
   )%>% 
   ungroup() %>% 
   mutate(subgroup_type = "race-ethnicity")
 ```
 
 Compute the ratio (share employed).
-
 ```{r}
-
 metrics_employment_subgroup <- metrics_employment_subgroup %>%
   mutate(share_employed = num_employed/num_in_emp_age)
-
 ```
 
-Append the "All" version of the data.
-
+Create the share employed measure for all values in the 5-year data. This will be merged onto the subgroup data. 
 ```{r}
-metrics_employment <- bind_rows(metrics_employment_subgroup, metrics_employment_all)
+metrics_employment_subgroup_all <- microdata_emp_age %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place) %>%
+  summarise(
+    num_in_emp_age = sum(perwt),
+    num_employed = sum((empstat == 1) * perwt),
+    count = n(),
+    effective_sample = sum(afact)
+  )%>% 
+  ungroup() %>% 
+  mutate(subgroup_type = "all",
+         subgroup = "All")
+
+metrics_employment_subgroup_all <- metrics_employment_subgroup_all %>%
+  mutate(share_employed = num_employed/num_in_emp_age)
 ```
 
-Sort by place again to double check we have 5 observations per place (All, Black, White, Hispanic, Other).
+Append the "All" version of the 5-year data.
 ```{r}
-metrics_employment <- metrics_employment %>%
+metrics_employment_sub <- bind_rows(metrics_employment_subgroup, metrics_employment_subgroup_all)
+```
+
+Sort by year, statefip and place.
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>%
   arrange(year, statefip, place)
 ```
 
+*Create an indicator for data quality and suppression*
+
 Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
 ```{r}
-metrics_employment <- left_join(metrics_employment, place_puma, by=c("crosswalk_period", "statefip","place"))
+metrics_employment_sub <- left_join(metrics_employment_sub, place_puma, by=c("crosswalk_period", "statefip","place"))
+```
+
+Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
+```{r}
+metrics_employment_sub %>%
+  mutate(
+    effective_sample_cutoffs = case_when(
+      effective_sample < 30 ~ "Less than 30",
+      effective_sample >= 30 &
+        effective_sample <= 100 ~ "Over 30 but 100 or less",
+      effective_sample > 100 &
+        effective_sample <= 300 ~ "Over 100 but 300 or less",
+      TRUE ~ "Greater than 300"
+    ),
+    effective_sample_cutoffs = factor(
+      effective_sample_cutoffs,
+      levels = c(
+        "Less than 30",
+        "Over 30 but 100 or less",
+        "Over 100 but 300 or less",
+        "Greater than 300"
+      )
+    )
+  ) %>%
+  group_by(year, subgroup, effective_sample_cutoffs) %>%
+  count() %>%
+  mutate(supression_share = n / 485) %>%
+  reactable()
 ```
 
 Generate the quality variable for each place.
 ```{r}
-metrics_employment <- metrics_employment %>% 
-  mutate(share_employed_quality = case_when(size_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     size_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     size_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     size_flag==1 ~ 3)
+metrics_employment_sub <- metrics_employment_sub %>% 
+  mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
+         share_employed_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
+                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
+                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
+                                     effective_sample_flag==1 ~ 3)
   )
+```
+
+We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>% 
+  mutate_at(c("share_employed"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
 ```{r}
 
-metrics_employment <- metrics_employment %>%
+metrics_employment_sub <- metrics_employment_sub %>%
   select(year,
          statefip,
          place,
@@ -482,17 +588,36 @@ metrics_employment <- metrics_employment %>%
 
 ### Evaluate results
 
-Look at distribution of employment share by place.
+Summarize the predictors for the 1-year and 5-year data.
+```{r}
+metrics_employment_all %>% 
+  select(share_employed:share_employed_quality) %>% 
+  summary()
 
+metrics_employment_sub %>% 
+  select(share_employed:share_employed_quality) %>% 
+  summary()
+```
+
+Look at distribution of employment share by place.
 ```{r}
 
-metrics_employment %>% 
-  filter(year == 2022, subgroup == "All") %>% 
+metrics_employment_all %>% 
+  filter(year == 2022) %>% 
   select(share_employed) %>% 
   ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Distribution of share employed, by place 2022") +
+  ggtitle("Distribution of share employed, by place 2022 (1-year data)") +
+  ylab("Density")
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "All") %>% 
+  select(share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share employed, by place 2022 (5-year data)") +
   ylab("Density")
   
 ```
@@ -500,7 +625,7 @@ metrics_employment %>%
 Look at distribution of employment share by place by race.
 ```{r}
 
-metrics_employment %>% 
+metrics_employment_sub %>% 
   filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
   select(place, share_employed) %>% 
   ggplot(aes(x = share_employed)) +
@@ -509,7 +634,7 @@ metrics_employment %>%
   ggtitle("Employment Share, Black") +
   ylab("Density")
 
-metrics_employment %>% 
+metrics_employment_sub %>% 
   filter(year == 2021, subgroup == "Hispanic") %>% 
   select(place, share_employed) %>% 
   ggplot(aes(x = share_employed)) +
@@ -518,7 +643,7 @@ metrics_employment %>%
   ggtitle("Employment Share, Hispanic") +
   ylab("Density")
 
-metrics_employment %>% 
+metrics_employment_sub %>% 
   filter(year == 2021, subgroup == "Other Races and Ethnicities") %>% 
   select(place, share_employed) %>% 
   ggplot(aes(x = share_employed)) +
@@ -527,7 +652,7 @@ metrics_employment %>%
   ggtitle("Employment Share, Other Races and Ethnicities") +
   ylab("Density")
 
-metrics_employment %>% 
+metrics_employment_sub %>% 
   filter(year == 2021, subgroup == "White, Non-Hispanic") %>% 
   select(place, share_employed) %>% 
   ggplot(aes(x = share_employed)) +
@@ -540,33 +665,61 @@ metrics_employment %>%
 
 Look at the counts of the quality flag.
 ```{r}
-metrics_employment %>% 
+metrics_employment_all %>% 
   select(share_employed_quality) %>% 
   ggplot(aes(x = share_employed_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
-  ggtitle("Quality Flag") +
+  ggtitle("Quality Flag (1-year data)") +
+  ylab("Count")
+
+metrics_employment_sub %>% 
+  select(share_employed_quality) %>% 
+  ggplot(aes(x = share_employed_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag (5-year data") +
   ylab("Count")
 ```
 
-## Export 
+Tabulate share of data suppressed by year.
+```{r}
+metrics_employment_all %>% 
+  group_by(year) %>% 
+  filter(is.na(share_employed)) %>% 
+  count()
 
+metrics_employment_sub %>% 
+  group_by(year) %>% 
+  filter(is.na(share_employed)) %>% 
+  count()
+```
+
+## Export 
 Rename state.
 ```{r}
-metrics_employment <- metrics_employment %>% 
+metrics_employment_all <- metrics_employment_all %>% 
   rename("state" = "statefip")
+
+metrics_employment_sub <- metrics_employment_sub %>% 
+  rename("state" = "statefip")
+```
 ```
 
 Order the variables how we want.
 ```{r}
-metrics_employment <- metrics_employment %>% 
+metrics_employment_all <- metrics_employment_all %>% 
+  select(year, state, place, share_employed, share_employed_quality)
+
+metrics_employment_sub <- metrics_employment_sub %>% 
   select(year, state, place, subgroup_type, subgroup, share_employed, share_employed_quality)
 ```
 
 Export as CSV
 
 ```{r}
-write_csv(metrics_employment, here::here("09_employment", "data", "final", "metrics_employment_city.csv"))
+write_csv(metrics_employment_all, here::here("09_employment", "data", "final", "metrics_employment_place_all_longitudinal.csv"))
+write_csv(metrics_employment_sub, here::here("09_employment", "data", "final", "metrics_employment_place_race-ethnicity_longitudinal.csv"))
 ```
 
 

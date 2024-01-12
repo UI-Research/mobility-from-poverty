@@ -1,0 +1,79 @@
+---
+title: "Historical Income  Metric Comparison"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: true
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+This program compares the results for the program updated by JP Walsh in 2023/24 with the results from the program originally written by Kevin in 2022 for the creation of the UMF income predictor. These processes should be the same and as a result the final metrics should be comparable.
+
+## House keeping
+
+```{r}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+options(scipen = 999)
+```
+
+## Longitudinal Data        
+
+Ready income metric.
+```{r}
+
+counties_old <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  filter(year == 2018)
+
+counties_new <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_20, pctl_50, pctl_80) %>% 
+  filter(year == 2018)
+  
+```
+
+Summarize the statistics. Remove NAs from the old dataset where we have added suppression so that the comparison groups are equal.
+```{r}
+counties_suppressed_new <- counties_new %>% 
+  mutate(fips = paste0(state, county)) %>% 
+  filter(is.na(pctl_20)) %>% 
+  select(fips) %>% 
+  pull()
+
+counties_old %>%
+  mutate(fips = paste0(state, county)) %>% 
+  filter(!fips %in% counties_suppressed_new) %>% 
+  summary()
+
+counties_new %>%
+  summary()
+```
+
+Join metrics and compare the results. There are minuscule differences between all counties.
+```{r}
+
+counties_new %>% 
+  left_join(counties_old, by = c("year", "state", "county")) %>% 
+  filter(!is.na(pctl_20)) %>% 
+  mutate(diff_20 = pctl_20 - pctl_income_20,
+         diff_50 = pctl_50 - pctl_income_50,
+         diff_80 = pctl_80 - pctl_income_80)%>% 
+  reactable::reactable()
+
+```
+
+
+
+
+
