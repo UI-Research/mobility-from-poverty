@@ -45,7 +45,7 @@ We already have pooled data from 2016-2020 for the 2022 Metric via County Health
   + Hispanic Origin: All Origins
   + Single Race 6: All Races
 4. Select year and month:
-  + Year/Month: 2018, 2019, 2020. 2021
+  + Year/Month: 2018, 2019, 2020, 2021
 5. Select weekday, autopsy and place of death:
   + Weekday: All Weekdays
   + Autopsy: All Values
@@ -74,6 +74,9 @@ We already have pooled data from 2016-2020 for the 2022 Metric via County Health
   + Data Access Timeout: 10 minutes
 
 Once the extract is created, select "Export" to generate a .txt file to read into R.
+
+2014-2020: https://wonder.cdc.gov/controller/saved/D158/D366F044
+2021:      https://wonder.cdc.gov/controller/saved/D158/D374F369 
 
 ```{r rmarkdown-setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -110,7 +113,189 @@ Y86 (Sequelae of other accidents)
 Y87 (Sequelae of intentional self-harm, assault and events of undetermined intent)
 Y89 (Sequelae of other external causes)
 
+## Read in data
 
+Once you have downloaded each data extract and stored it in the appropriate directory, we read in the data.
+```{r}
+# List all the files in the `bridged-race` folder
+paths <- list.files(here::here("04_health", "exposure-to-trauma", "data", "bridged-race"),
+                    pattern = "[.]txt$", full.names = TRUE)
+
+# Read the files in and append them
+deaths_14_20 <- paths |> 
+  set_names(basename) |> 
+  map(utils::read.delim) |> 
+  list_rbind(names_to = "year") |> 
+  mutate(year = parse_number(year))
+
+# Rename variables and remove `Notes` column
+deaths_14_20 <- deaths_14_20 |>
+  select(
+    year,
+    county_name = County,
+    GEOID = County.Code,
+    deaths = Deaths,
+    population = Population,
+    rate_injury_death = Crude.Rate,
+    rate_injury_death_lb = Crude.Rate.Lower.95..Confidence.Interval,
+    rate_injury_death_ub = Crude.Rate.Upper.95..Confidence.Interval,
+    rate_injury_death_se = Crude.Rate.Standard.Error,
+    rate_adj_injury_death = Age.Adjusted.Rate,
+    rate_adj_injury_death_lb = Age.Adjusted.Rate.Lower.95..Confidence.Interval,
+    rate_adj_injury_death_ub = Age.Adjusted.Rate.Upper.95..Confidence.Interval,
+    rate_adj_injury_death_se = Age.Adjusted.Rate.Standard.Error
+  )
+
+# Remove empty rows resulting from deleting the `Notes` column, and remove the total row
+deaths_14_20 <- deaths_14_20 %>%
+  filter(!is.na(GEOID))
+
+# Change all variables to numeric
+deaths_14_20 <- deaths_14_20 %>%
+  # mutate_all(~ifelse(. %in% c("Suppressed", "Unreliable"), NA, .)) %>%
+  mutate_at(vars(deaths, population, starts_with(c("rate"))), as.numeric)
+
+rm(paths)
+
+```
+
+
+```{r}
+# Read in the most recent year of data from the `single-race` folder
+deaths_21 <- read.delim(here::here("04_health", "exposure-to-trauma", "data", "single-race", "cdc2021.txt")) |>
+  mutate(year = 2021)
+
+# Rename variables and remove `Notes` column
+deaths_21 <- deaths_21 |>
+  select(
+    year,
+    county_name = County,
+    GEOID = County.Code,
+    deaths = Deaths,
+    population = Population,
+    rate_injury_death = Crude.Rate,
+    rate_injury_death_lb = Crude.Rate.Lower.95..Confidence.Interval,
+    rate_injury_death_ub = Crude.Rate.Upper.95..Confidence.Interval,
+    rate_injury_death_se = Crude.Rate.Standard.Error
+  )
+
+# Remove empty rows resulting from deleting the `Notes` column, and remove the total row
+deaths_21 <- deaths_21 |>
+  filter(!is.na(GEOID))
+
+# Change all variables to numeric
+deaths_21 <- deaths_21 |>
+  # mutate_all(~ifelse(. %in% c("Suppressed", "Unreliable"), NA, .)) %>%
+  mutate_at(vars(deaths, population, starts_with(c("rate"))), as.numeric)
+
+```
+
+Append files
+```{r}
+deaths <- bind_rows(deaths_14_20, deaths_21) |>
+  mutate(GEOID = str_pad(GEOID, 5, pad = "0"))
+
+rm(deaths_14_20, deaths_21)
+  
+```
+
+Read in Urban county file
+```{r}
+county_pop <- read.csv(here::here("04_health", "county-populations.csv")) %>%
+  filter(year != 2022) %>%
+  mutate(state = str_pad(state, 2, pad = "0"),
+         county = str_pad(county, 3, pad = "0"),
+         GEOID = str_c(state, county))
+```
+
+7 counties are present in the CDC data but not our universe of counties (51 observations total)
+```{r}
+anti_join(x = deaths, y = county_pop, by = "GEOID") %>%
+  group_by(county_name) %>%
+  count()
+
+```
+
+13 counties are present in our universe of counties but not the CDC data (29 observations total)
+```{r}
+anti_join(x = county_pop, y = deaths, by = "GEOID") %>%
+  group_by(state_name, county_name) %>%
+  count()
+
+```
+
+2014-2020 (the bridged-race files) all have 3147 counties, but 2021 (single-race file) only has 3142.
+```{r}
+deaths %>%
+  group_by(year) %>%
+  count()
+
+
+```
+
+
+### Validation
+
+```{r}
+deaths %>%
+  mutate(size = if_else(population < 200000, "1. small population", "2. big population")) %>%
+  ggplot(aes(population, rate_injury_death)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size, scales = "free_x") +
+  labs(title = "High Injury Death Rates are Concentrated in Smaller Counties") +
+  scatter_grid()
+
+```
+
+```{r}
+deaths %>%
+  ggplot(aes(deaths, rate_injury_death)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Injury Death Rates are Concentrated in Counties with Few Injury Deaths") +  
+  scatter_grid()
+
+```
+
+## 4. Add data quality flags
+
+```{r}
+deaths <- deaths %>%
+  mutate(cv = rate_injury_death_se / rate_injury_death,
+         rate_injury_death_quality = case_when(
+           cv < 0.2 ~ 1,
+           cv < 0.4 ~ 2,
+           cv >= 0.4 ~ 3
+         )
+  )
+
+```
+
+Most estimates have small coefficients of variation and are therefore of high quality.
+
+```{r}
+deaths %>%
+  ggplot(aes(x = rate_injury_death_quality)) +
+  geom_bar()
+  
+```
+
+Most estimates have small standard errors.
+
+```{r}
+injury_deaths %>%
+  ggplot(aes(injury_death_rate, se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Most Estimates Have Small SEs",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+```
+
+
+
+### Old
 ```{r}
 # Underlying Cause of Death. 2016-2020, by Bridged-Race Categories
 cdc2020 <- read.delim(
@@ -134,7 +319,9 @@ cdc2020 <- read.delim(
 # Underlying Cause of Death, 2018-2021, by Single-Race Categories
 cdc2021 <- read.delim(
   file = here::here("04_health", "exposure-to-trauma", "cdc2021_single_race.txt")
-) %>%
+) 
+
+cdc2021 <- cdc2021 %>%
   select(
     county_name = County,
     county_fips = County.Code,
@@ -144,9 +331,10 @@ cdc2021 <- read.delim(
     crude_rate_lb = Crude.Rate.Lower.95..Confidence.Interval,
     crude_rate_ub = Crude.Rate.Upper.95..Confidence.Interval,
     crude_rate_se = Crude.Rate.Standard.Error
-  )
+  ) %>%
+  mutate(year = 2021)
 
-# There are a bunch of empty rows for some reason, and also a total row
+# There are a bunch of empty rows after deleting the `Notes` column, and also a total row
 cdc2021 <- cdc2021 %>%
   filter(!is.na(county_fips))
 
