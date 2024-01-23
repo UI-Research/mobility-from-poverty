@@ -16,7 +16,10 @@ editor_options:
 
 # Mobility metrics median calculations
 
-This code calculates weighted medians of the mobility metrics at the county and then the place level.
+This code calculates weighted medians of the mobility metrics at the county and then the place level, by year and race/ethnicity subgroup. 
+
+We want to better understand the quality and availability of county- and place-level metrics that are being aggregated into these national-level medians to determine whether it is appropriate to report at the national level.
+
 
 We exclude missing values and calculate the proportion of places and proportion of population missing for each metric. The function below is used to calculate the proportion of population missing for each metric.
 
@@ -112,13 +115,13 @@ population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates(
 
 ## Calculate Medians
 
-We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American.
+We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. We also calculate `share_lq3`, which is the share of the population for which the given metric is either missing or `quality=3`. 
 
 ```{r}
 # Remove missing variable-year combos
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
-calc_year_subgroup_table <- function(metrics_df, table_caption) {
+calc_year_subgroup_table <- function(metrics_df) {
   metrics_df <- left_join(metrics_df, population, by = c("state", "county", "year")) |> 
     filter(!is.na(population))
   
@@ -185,47 +188,59 @@ calc_year_subgroup_table <- function(metrics_df, table_caption) {
     filter(missing_county < 1) |> 
     select(year, name, subgroup, share_lq3, everything()) |>
     arrange(desc(year), name, subgroup)
-    # kbl(caption = table_caption) |> 
-    # kable_styling(font_size = 10, fixed_thead = TRUE)
+
 }
+```
 
-calc_year_subgroup_table(metrics_01, "01_Metrics Table") |>    
-  datatable()
+### Percentile income, share in preschool, share employed, share with HS degree, rate low birth weight, and rate of learning achievement
 
-calc_year_subgroup_table(metrics_01, "01_Metrics Table") |>
+```{r}
+calc_year_subgroup_table(metrics_01) |>    
+  datatable(caption = "01_Metrics")
+
+calc_year_subgroup_table(metrics_01) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
     title = "County Race-Ethnicity Medians",
     x = "Share NA or Quality==3"
   )
+```
 
-calc_year_subgroup_table(metrics_02, "02_Metrics Table") |>    
-  datatable()
+### Share of digital access and rate of juvenile arrest
+```{r}
+calc_year_subgroup_table(metrics_02) |>    
+  datatable(caption = "02_Metrics")
 
-calc_year_subgroup_table(metrics_02, "02_Metrics Table") |>
+calc_year_subgroup_table(metrics_02) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
     title = "County Race Medians",
     x = "Share NA or Quality==3"
   )
+```
 
-calc_year_subgroup_table(metrics_03, "03_Metrics Table") |>    
-  datatable()
+### Air quality index, transit trips index, share with debt in collections, and transportation cost
+```{r}
+calc_year_subgroup_table(metrics_03) |>    
+  datatable(caption = "03_Metrics Table")
 
-calc_year_subgroup_table(metrics_03, "03_Metrics Table") |>
+calc_year_subgroup_table(metrics_03) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
     title = "County Race-Share Medians",
     x = "Share NA or Quality==3"
   )
+```
 
-calc_year_subgroup_table(poverty_02, "02_Poverty Table") |>    
-  datatable()
+### Share of poverty exposure
+```{r}
+calc_year_subgroup_table(poverty_02) |>    
+  datatable(caption = "02_Poverty Table")
 
-calc_year_subgroup_table(poverty_02, "02_Poverty Table") |>
+calc_year_subgroup_table(poverty_02) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
@@ -273,7 +288,7 @@ population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates_place(year = .x),
 
 ## Calculate Medians
 
-We calculate weighted medians for each numeric variable. This means our estimates represent the place mobility metric for the average American living in a large city.
+We calculate the same set of statistics as above for the county-level metrics. This means our estimates represent the place mobility metric for the average American living in a large city.
 
 ```{r}
 create_year_subgroup_table <- function(metrics_df, table_caption){
@@ -344,11 +359,17 @@ create_year_subgroup_table <- function(metrics_df, table_caption){
     select(year, name, subgroup, share_lq3, everything()) |>
     arrange(desc(year), name, subgroup) |>    
     datatable()
-    # kbl(caption = table_caption) |> 
-    # kable_styling(font_size = 10, fixed_thead = TRUE)
+  
 }
+```
 
+### Place level - Percentile income,share employed, share with HS degree, share in preschool, share homeless, rate of learning
+```{r}
 create_year_subgroup_table(metrics_06, '06_Metrics Table')
+```
+
+### Place level - rate of juvenile arrest, share of digital access
+```{r}
 create_year_subgroup_table(metrics_07, '07_Metrics Table')
 ```
 
@@ -360,9 +381,10 @@ create_year_subgroup_table(metrics_07, '07_Metrics Table')
 * `share_in_preschool`
 * `rate_low_birthweight`
 * `rate_learning`
-* `rate_juv_arrent`
+* `rate_juv_arrest`
 * `share_digital_access`
 * `index_air_quality`
 * `share_debt_col`
 * `index_transit_trips`
+* `transportation_cost`
 * `share_poverty_exposure`
