@@ -1,5 +1,5 @@
 ---
-title: "Employment Opportunities Predictor, place-level"
+title: "Employment Opportunities Predictor, Place-level"
 author: "JP Walsh"
 date: today
 format:
@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Program for the creation of the Employment Opportunities Predictor at the place-level*
+*Program for the creation of the Employment Opportunities Upward Mobility Predictor at the place-level*
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
@@ -26,7 +26,8 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 -   [Read Data](#read-data)
 -   [Clean Data](#clean-data)
 -   [Merge Crosswalk](#merge-crosswalk)
--   [Create Income Metric](#create-income-metric)
+-   [Setup Survey Design](#setup-survey-design)
+-   [Create Employment Metric](#create-employment-metric)
 -   [Evaluate Results](#evaluate-results)
 -   [Export](#export)
 
@@ -40,6 +41,7 @@ library(tidyverse)
 library(Hmisc)
 library(ipumsr)
 library(reactable)
+library(srvyr)
 
 options(scipen = 999)
 
@@ -58,7 +60,7 @@ acs <- extract_ipums(
 ) 
 ```
 
-Look at the distribution of samples in the data.
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
 ```{r}
 acs %>% 
   count(sample) %>% 
@@ -87,13 +89,13 @@ place_puma <- puma_place_crosswalk %>%
 
 ## Clean Data
 
-Missing data is reported in a variety of ways by IPUMS - listed below:
+Missing data is reported in a variety of ways by IPUMS data - listed below:
 
 Age: No missing values reported in variable description.
 Empstat: N/As reported as "0".
 Vacancy is reported as "0". 
 
-There is a large share of records missing for empstat. The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
+There is a large share of records reported as "0" for empstat. The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
 
 ```{r}
 acs %>% 
@@ -128,10 +130,9 @@ acs_clean <- acs %>%
   mutate(empstat = ifelse(empstat == 0, NA_integer_,
                           empstat)
   )
-
 ```
 
-Look at distribution of empstat after adjustment. There should be no more records with the value "0".
+Look at the distribution of empstat after adjustment for NAs. There should be no more records with the value "0".
 ```{r}
 acs_clean %>% 
   count(empstat) %>% 
@@ -145,8 +146,7 @@ acs_clean %>%
        y = NULL)
 ```
 
-Select our group quarters, we want to keep only households including additional households under updated definitions.
-
+Filter for group quarters (GQ), we want to keep only households including additional households under updated definitions.
 ```{r}
 acs_clean %>% 
   group_by(gq) %>% 
@@ -197,7 +197,7 @@ Evaluate the values in the RACE and HISPAN variables.
   + 4 Other 
   + 9 Not Reported 
 
-Check that group quarters fall only into household categories.
+Look at the distribution of values for the race and hispan variables.
 ```{r}
 
 acs_clean %>% 
@@ -224,13 +224,13 @@ acs_clean %>%
 
 ```
 
-Create the race/ethnicity variable. For other race/ethnicity categories not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
+Create the race/ethnicity variable. For race/ethnicity categories that are not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
 
 Rename the values from number category to race label: 
-  +Race is 2 and Hispan is 0 = "Black, Non-Hispanic"
-  +Hispan is >=1 and <=4 = "Hispanic"
-  +Race is >=3 and <=9 and Hispan is 0  = "Other Races and Ethnicities" 
-  +Race is 4 and Hispan is 0 = "White, Non-Hispanic" 
+  +Race is Black/African American and Hispan is Not Hispanic = "Black, Non-Hispanic"
+  +Hispan is not equal to Not Hispanic = "Hispanic"
+  +Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
+  +Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
 ```{r}
 
 acs_clean <- acs_clean %>%
@@ -242,8 +242,7 @@ acs_clean <- acs_clean %>%
 
 ```
 
-Look at subgroup distribution.
-
+Look at the subgroup distribution.
 ```{r}
 
 acs_clean %>% 
@@ -260,7 +259,7 @@ acs_clean %>%
 
 ## Merge Crosswalk 
 
-Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+Create a variable in the ACS data indicating whether the survey year is pre or post-2022. This will be used to join on the correct crosswalk information.
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
@@ -274,39 +273,29 @@ acs_clean %>%
   count()
 ```
 
-Join the cleaned ACS data onto the crosswalk.
-
+Join the cleaned ACS data onto the crosswalk. 
 ```{r}
-
 acs_clean <- left_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"), relationship = "many-to-many")
-
 ```
 
-Run anti_join to see how many cases on the left did not have a match on the right.
-
+Run anti_join to see how many cases did not have a match in the crosswalk. We only select the largest 450 places so this number should be significant.
 ```{r}
 anti_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"))
 ```
 
-Just under 21 million obs from the microdata (makes sense since we limit the records to only PUMAs that are overlapping with Places of interest).
-
 Drop any observations with NA for afact (i.e. there is no place of interest overlapping this PUMA).
-
 ```{r}
-
 acs_clean <- acs_clean %>% 
   filter(!is.na(afact))
-
 ```
 
-Also filter out cases where AFACT is equal to zero.
-
+Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
 ```{r}
 acs_clean <- acs_clean %>% 
   filter(afact > 0)
 ```
 
-Adjust the person weight to account for PUMA-to-place mapping (those where unique_types do not equal 1).
+Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
 ```{r}
 
 acs_clean <- acs_clean %>%
@@ -315,24 +304,27 @@ acs_clean <- acs_clean %>%
 
 ```
 
-## Create employment metric
-
-Create the employment metric. 
-
-Objective: get the percent of individuals between the ages 25 and 54 that are employed from the EMPSTAT variable.
-
-Aggregation should be weighted by PERWT (this is a person level statistic).
-
-First, isolate the dataset to 25-54 year-olds.
-
+Create a binary variable to distinguish between 1 and 5 year ACS data sets. 5-year samples include the term "5-year".
 ```{r}
-microdata_emp_age <- acs_clean %>% 
+acs_clean <- acs_clean %>%
+  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
+```
+
+Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation.
+```{r}
+acs_clean <- acs_clean %>% 
   filter(age >= 25 & age <= 54) 
 ```
 
-Check how many records, if any, have NA reported for empstat after filtering.
+Create a binary employed variable indicating employed or not-employed. IPUMS data codes "Employed" as equal to 1.
 ```{r}
-microdata_emp_age %>%
+acs_clean <- acs_clean %>% 
+  mutate(employed = ifelse(empstat == 1, 1, 0)) 
+```
+
+Check how many records, if any, have NA reported for empstat after filtering (this should be zero).
+```{r}
+acs_clean %>%
   filter(is.na(empstat)) %>% 
   group_by(pernum) %>% 
   count()
@@ -341,62 +333,62 @@ microdata_emp_age %>%
 Confirm there are no vacant properties included in the data.
 
 ```{r}
-microdata_emp_age %>%
+acs_clean %>%
   filter(is.na(vacancy)) %>% 
   group_by(pernum) %>% 
   count()
 ```
 
-Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
+## Setup Survey Design 
+
+Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the employed variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
 ```{r}
-microdata_emp_age <- microdata_emp_age %>%
-  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
+acs_survey_all <- acs_clean %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year, crosswalk_period, statefip, place, employed) %>% 
+  summarise(perwt = sum(perwt)) %>% 
+  as_survey_design(weights = perwt) %>% 
+  ungroup()
+
+acs_survey_subgroups <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place, employed, subgroup) %>% 
+  summarise(perwt = sum(perwt)) %>% 
+  as_survey_design(weights = perwt) %>% 
+  ungroup()
+
 ```
 
-Check national employment ratio.
+## Create employment metric
+
+Create the employment metric. 
+
+Objective: get the percent of individuals between the ages 25 and 54 that are employed in every place.
+
+Aggregation should be weighted by PERWT (this is a person level statistic).
+
+Check national employment ratio. Compute the ratio (share employed) for 2018, 2021 and 2022 nationally and show results.
 ```{r}
-metrics_employment <- microdata_emp_age %>%
-  filter(sample_structure == "1year") %>% 
+acs_survey_all %>%
   group_by(year) %>%
   summarise(
-    num_in_emp_age = sum(perwt),
-    num_employed = sum((empstat == 1) * perwt),
-    count = n()
+    share_employed = survey_mean(employed),
+    count = unweighted(n())
   ) %>% 
-  ungroup()
-```
-
-Compute the ratio (share employed) for 2018, 2021 and 2022 nationally.
-
-```{r}
-
-metrics_employment %>%
-  mutate(share_employed = num_employed/num_in_emp_age) %>% 
+  ungroup() %>% 
   reactable()
-
 ```
-
 
 ### All
-Create share employed for all individuals at the place-level (1-year data).
+
+Create share employed for all individuals at the place-level (1-year data) using the survey_mean function.
 ```{r}
-metrics_employment_all <- microdata_emp_age %>%
-  filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, place) %>%
+metrics_employment_all <- acs_survey_all %>%
+  group_by(year, crosswalk_period, statefip, place) %>% 
   summarise(
-    num_in_emp_age = sum(perwt),
-    num_employed = sum((empstat == 1) * perwt),
-    count = n(),
-    effective_sample = sum(afact)
+    share_employed = survey_mean(employed, vartype = NULL)
   ) %>% 
   ungroup()
-```
-
-Compute the ratio (share employed).
-```{r}
-
-metrics_employment_all <- metrics_employment_all %>%
-  mutate(share_employed = num_employed/num_in_emp_age)
 ```
 
 Sort by year, state and place.
@@ -407,9 +399,20 @@ metrics_employment_all <- metrics_employment_all %>%
 
 *Create an indicator for data quality and suppression*
 
-Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
+Calculate the effective sample count for each place, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
 ```{r}
-metrics_employment_all <- left_join(metrics_employment_all, place_puma, by=c("crosswalk_period", "statefip","place"))
+effective_sample <- acs_clean %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year, crosswalk_period, statefip, place) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  ungroup()
+```
+
+Merge the data quality flags from place_puma and effective sample onto the employment metric to create the final data quality metric. This metric is based on both size of place and the number of samples for that place.
+```{r}
+metrics_employment_all <- left_join(metrics_employment_all, place_puma, by=c("crosswalk_period", "statefip","place")) 
+
+metrics_employment_all <- left_join(metrics_employment_all, effective_sample, by=c("year", "crosswalk_period", "statefip","place"))
 ```
 
 Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
@@ -471,50 +474,33 @@ metrics_employment_all <- metrics_employment_all %>%
 
 Create share employed by race/ethnicity at the place-level (5-year data).
 ```{r}
-metrics_employment_subgroup <- microdata_emp_age %>%
-  filter(sample_structure == "5year") %>% 
+metrics_employment_subgroup <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place, subgroup) %>%
-  summarise(
-    num_in_emp_age = sum(perwt),
-    num_employed = sum((empstat == 1) * perwt),
-    count = n(),
-    effective_sample = sum(afact)
-  )%>% 
+ summarise(
+    share_employed = survey_mean(employed, vartype = NULL)
+  ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "race-ethnicity")
 ```
 
-Compute the ratio (share employed).
+Create the share employed measure for all values in the 5-year data (non-subgroup). This value will be merged onto the subgroup data. 
 ```{r}
-metrics_employment_subgroup <- metrics_employment_subgroup %>%
-  mutate(share_employed = num_employed/num_in_emp_age)
-```
-
-Create the share employed measure for all values in the 5-year data. This will be merged onto the subgroup data. 
-```{r}
-metrics_employment_subgroup_all <- microdata_emp_age %>%
-  filter(sample_structure == "5year") %>% 
+metrics_employment_subgroup_all <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place) %>%
   summarise(
-    num_in_emp_age = sum(perwt),
-    num_employed = sum((empstat == 1) * perwt),
-    count = n(),
-    effective_sample = sum(afact)
-  )%>% 
+   share_employed = survey_mean(employed, vartype = NULL)
+  ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "all",
          subgroup = "All")
-
-metrics_employment_subgroup_all <- metrics_employment_subgroup_all %>%
-  mutate(share_employed = num_employed/num_in_emp_age)
 ```
 
-Append the "All" version of the 5-year data.
+Append the "All" version of the 5-year data with the subgroup results.
 ```{r}
 metrics_employment_sub <- bind_rows(metrics_employment_subgroup, metrics_employment_subgroup_all)
 ```
 
-Sort by year, statefip and place.
+Sort by year, state and place.
 ```{r}
 metrics_employment_sub <- metrics_employment_sub %>%
   arrange(year, statefip, place)
@@ -522,9 +508,29 @@ metrics_employment_sub <- metrics_employment_sub %>%
 
 *Create an indicator for data quality and suppression*
 
+Calculate the effective sample count for each subgroup in all places as well as for all samples in every place in the 5-year data.
+```{r}
+effective_sample_sub_all <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "all",
+         subgroup = "All")
+
+effective_sample_sub <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place, subgroup) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  bind_rows(effective_sample_sub_all) %>% 
+  ungroup()
+```
+
 Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
 ```{r}
 metrics_employment_sub <- left_join(metrics_employment_sub, place_puma, by=c("crosswalk_period", "statefip","place"))
+
+metrics_employment_sub <- left_join(metrics_employment_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","place", "subgroup_type", "subgroup"))
 ```
 
 Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
@@ -696,6 +702,7 @@ metrics_employment_sub %>%
 ```
 
 ## Export 
+
 Rename state.
 ```{r}
 metrics_employment_all <- metrics_employment_all %>% 
@@ -703,7 +710,6 @@ metrics_employment_all <- metrics_employment_all %>%
 
 metrics_employment_sub <- metrics_employment_sub %>% 
   rename("state" = "statefip")
-```
 ```
 
 Order the variables how we want.

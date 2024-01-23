@@ -70,7 +70,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
-    select(-serial, -cbserial, -cluster, -strata, -raced, -hispand, -empstatd)
+    select(-serial, -cbserial, -raced, -strata, - cluster, -hispand, -empstatd)
   
   #Zap labels and reformat State and PUMA variable
   acs_imported <- acs_imported %>%

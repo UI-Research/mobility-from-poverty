@@ -39,12 +39,14 @@ library(tidyverse)
 library(Hmisc)
 library(ipumsr)
 library(reactable)
+library(srvyr)
 
 options(scipen = 999)
 
 #set_ipums_api_key("Your KEY", save = TRUE)
 
 source(here::here("functions", "API", "extract_ipums.R"))
+source(here::here("functions", "Calculations", "place_survey_quantiles.R"))
 ```
 
 
@@ -135,7 +137,6 @@ acs_clean %>%
 ```
 
 Select our group quarters, we want to keep only households including additional households under the 2000 definition.
-
 ```{r}
 acs_clean %>% 
   group_by(gq) %>% 
@@ -252,7 +253,6 @@ Create a variable in the ACS data indicating whether the survey is pre or post-2
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
-
 ```
 
 Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
@@ -308,28 +308,25 @@ acs_clean <- acs_clean %>%
 
 ```
 
-## Create Income Metric
-
-Create the income metric for each place overall and for race subgroups.
-
-Objective: Calculate the 20th, 50th and 80th percentile of household income for all  unique state+place combinations in all years.
-
-Aggregation should be weighted by HHWT (this is a household level statistic).
-
 Isolate data to include each household only once (PERNUM == 1 counts head of household only).
 
 ```{r}
-acs_income <- acs_clean %>%
+acs_clean <- acs_clean %>%
   filter(pernum == 1)
 ```
 
-Confirm there are no missing values remaining in the data set for the household income variable. 
 
+Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
+```{r}
+acs_clean <- acs_clean %>%
+  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
+```
+
+Confirm there are no missing values remaining in the data set for the household income variable. 
 ```{r}
 
-acs_income %>%
+acs_clean %>%
   filter(is.na(hhincome)) %>% 
-  group_by(pernum) %>% 
   count()
 
 ```
@@ -338,40 +335,31 @@ Confirm there are no vacant properties included in the data.
 
 ```{r}
 
-acs_income %>%
+acs_clean %>%
   filter(is.na(vacancy)) %>% 
-  group_by(pernum) %>% 
   count()
 
 ```
 
+## Create Income Metric
 
-Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
-```{r}
-acs_income <- acs_income %>%
-  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
-```
+Create the income metric for each place overall and for race subgroups.
 
-Check there are both 5year and 1year categories in the new sample_structure variable.
-```{r}
-acs_income %>% 
-  group_by(sample_structure) %>% 
-  count()
-```
+Objective: Calculate the 20th, 50th and 80th percentile of household income for all  unique state+place combinations in all years.
+
+Aggregation should be weighted by HHWT (this is a household level statistic).
 
 ### All
 
-Calculate quantiles by grouping variable place (1=year data).
+Calculate income quantiles by place (1-year data).
 ```{r}
-metrics_income_all <- acs_income %>%
+metrics_income_all <- acs_clean %>%
   filter(sample_structure == "1year") %>%
   group_by(year, crosswalk_period, statefip, place) %>%
   summarise(
-    pctl_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2),
-    pctl_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5),
-    pctl_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8),
-    count = n(),
-    effective_sample = sum(afact)
+    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, na.rm = TRUE),
+    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, na.rm = TRUE),
+    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, na.rm = TRUE)
   ) %>%
   ungroup() 
 ```
@@ -384,9 +372,20 @@ metrics_income_all <- metrics_income_all %>%
 
 *Create an indicator for data quality and suppression*
 
+Calculate the effective sample count for each county.
+```{r}
+effective_sample <- acs_clean %>%
+  filter(sample_structure == "1year") %>% 
+  group_by(year, crosswalk_period, statefip, place) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  ungroup()
+```
+
 Merge the data quality flag on geographic allocation from the crosswalk on to the metric data.
 ```{r}
 metrics_income_all <- left_join(metrics_income_all, place_puma, by=c("crosswalk_period", "statefip","place"))
+
+metrics_income_all <- left_join(metrics_income_all, effective_sample, by=c("year", "crosswalk_period", "statefip","place"))
 ```
 
 Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
@@ -439,30 +438,28 @@ metrics_income_all <- metrics_income_all %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  mutate_at(c("pctl_20", "pctl_50", "pctl_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("pctl_income_20", "pctl_income_50", "pctl_income_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  select(year, statefip, place, pctl_20, pctl_20_quality, 
-         pctl_50, pctl_50_quality, pctl_80, 
+  select(year, statefip, place, pctl_income_20, pctl_20_quality, 
+         pctl_income_50, pctl_50_quality, pctl_income_80, 
          pctl_80_quality)
 ```
 
 ### Subgroups
 
-Calculate quantiles by race/ethnicity and place (5-year data).
+Calculate income quantiles by race/ethnicity and place (5-year data). 
 ```{r}
-metrics_income_subgroup <- acs_income %>%
+metrics_income_subgroup <- acs_clean %>%
   filter(sample_structure == "5year") %>%
   group_by(year, crosswalk_period, statefip, place, subgroup) %>%
   summarise(
-    pctl_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2),
-    pctl_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5),
-    pctl_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8),
-    count = n(),
-    effective_sample = sum(afact)
+    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, na.rm = TRUE),
+    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, na.rm = TRUE),
+    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, na.rm = TRUE)
   ) %>%
   ungroup() %>%
   mutate(subgroup_type = "race-ethnicity")
@@ -470,15 +467,13 @@ metrics_income_subgroup <- acs_income %>%
 
 Calculate quantiles for all households with the 5-year data. To be appended onto the subgroup data by race/ethnicity.
 ```{r}
-metrics_income_subgroup_all <- acs_income %>%
+metrics_income_subgroup_all <- acs_clean %>%
   filter(sample_structure == "5year") %>%
   group_by(year, crosswalk_period, statefip, place) %>%
   summarise(
-    pctl_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2),
-    pctl_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5),
-    pctl_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8),
-    count = n(),
-    effective_sample = sum(afact)
+    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, na.rm = TRUE),
+    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, na.rm = TRUE),
+    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, na.rm = TRUE)
   ) %>%
   ungroup() %>%
   mutate(subgroup_type = "all",
@@ -498,9 +493,30 @@ metrics_income_sub <- metrics_income_sub %>%
 
 *Create an indicator for data quality and suppression*
 
+Calculate the effective sample count for each place.
+```{r}
+effective_sample_sub_all <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "all",
+         subgroup = "All")
+
+effective_sample_sub <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, place, subgroup) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  bind_rows(effective_sample_sub_all) %>% 
+  ungroup()
+```
+
+
 Merge the data quality flag on geographic allocation from the crosswalk on to the metric data.
 ```{r}
 metrics_income_sub <- left_join(metrics_income_sub, place_puma, by=c("crosswalk_period", "statefip","place"))
+
+metrics_income_sub <- left_join(metrics_income_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","place", "subgroup_type", "subgroup"))
 ```
 
 Tabulate effective sample counts for each subgroup, defined as the sum of the afact for that group in each place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported.
@@ -566,14 +582,14 @@ metrics_income_sub <- metrics_income_sub %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
-  mutate_at(c("pctl_20", "pctl_50", "pctl_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("pctl_income_20", "pctl_income_50", "pctl_income_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
-  select(year, statefip, place, subgroup_type, subgroup, pctl_20, pctl_20_quality, 
-         pctl_50, pctl_50_quality, pctl_80, 
+  select(year, statefip, place, subgroup_type, subgroup, pctl_income_20, pctl_20_quality, 
+         pctl_income_50, pctl_50_quality, pctl_income_80, 
          pctl_80_quality)
 ```
 
@@ -582,11 +598,11 @@ metrics_income_sub <- metrics_income_sub %>%
 Summarize the predictors for the 1-year and 5-year data.
 ```{r}
 metrics_income_all %>% 
-  select(pctl_20:pctl_80_quality) %>% 
+  select(pctl_income_20:pctl_80_quality) %>% 
   summary()
 
 metrics_income_sub %>% 
-  select(pctl_20:pctl_80_quality) %>% 
+  select(pctl_income_20:pctl_80_quality) %>% 
   summary()
 ```
 
@@ -595,8 +611,8 @@ Look at distributions of income percentiles by place for all (2022).
 
 metrics_income_all %>% 
   filter(year == 2022) %>% 
-  select(pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -605,8 +621,8 @@ metrics_income_all %>%
 
 metrics_income_sub %>% 
   filter(year == 2021, subgroup == "All") %>% 
-  select(pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -620,8 +636,8 @@ Break out distributions by subgroup (2021).
 
 metrics_income_sub %>% 
   filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
-  select(place, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(place, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -630,8 +646,8 @@ metrics_income_sub %>%
   
 metrics_income_sub %>% 
   filter(year == 2021, subgroup == "Hispanic") %>% 
-  select(place, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(place, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -640,8 +656,8 @@ metrics_income_sub %>%
   
 metrics_income_sub %>% 
   filter(year == 2021, subgroup == "Other Races and Ethnicities")  %>% 
-  select(place, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(place, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -650,8 +666,8 @@ metrics_income_sub %>%
   
 metrics_income_sub %>% 
   filter(year == 2021, subgroup == "White, Non-Hispanic")  %>% 
-  select(place, pctl_20, pctl_50, pctl_80) %>% 
-  pivot_longer(cols = c(pctl_20, pctl_50, pctl_80), names_to = "income", values_to = "percentile") %>% 
+  select(place, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -682,12 +698,12 @@ Tabulate share of data suppressed by year.
 ```{r}
 metrics_income_all %>% 
   group_by(year) %>% 
-  filter(is.na(pctl_20)) %>% 
+  filter(is.na(pctl_income_20)) %>% 
   count()
 
 metrics_income_sub %>% 
   group_by(year) %>% 
-  filter(is.na(pctl_20)) %>% 
+  filter(is.na(pctl_income_20)) %>% 
   count()
 ```
 
@@ -707,12 +723,12 @@ Order the variables how we want.
 
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  select(year, state, place, pctl_20, pctl_20_quality, pctl_50, 
-         pctl_50_quality, pctl_80, pctl_80_quality)
+  select(year, state, place, pctl_income_20, pctl_20_quality, pctl_income_50, 
+         pctl_50_quality, pctl_income_80, pctl_80_quality)
 
 metrics_income_sub <- metrics_income_sub %>% 
-  select(year, state, place, subgroup_type, subgroup, pctl_20, pctl_20_quality, pctl_50, 
-         pctl_50_quality, pctl_80, pctl_80_quality)
+  select(year, state, place, subgroup_type, subgroup, pctl_income_20, pctl_20_quality, pctl_income_50, 
+         pctl_50_quality, pctl_income_80, pctl_80_quality)
 ```
 
 Export as CSV
