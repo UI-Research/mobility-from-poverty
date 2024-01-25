@@ -40,10 +40,12 @@ library(Hmisc)
 library(ipumsr)
 library(reactable)
 library(srvyr)
+library(scales)
 
 options(scipen = 999)
 
-#set_ipums_api_key("Your KEY", save = TRUE)
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
+#set_ipums_api_key("INSERT KEY HERE", save = TRUE, overwrite = TRUE)
 
 source(here::here("functions", "API", "extract_ipums.R"))
 ```
@@ -112,7 +114,7 @@ acs %>%
   ylab("Density")
 ```
 
-Turn the missing/"not in universe" values for the hhincome variable into NAs.
+Turn the missing/"not in universe" values for the hhincome variable into NAs. Remove original data to save space.
 
 ```{r}
 
@@ -120,6 +122,8 @@ acs_clean <- acs %>%
   mutate(hhincome = ifelse(hhincome == 9999999, NA_integer_,
                            hhincome)
          )
+
+rm(acs)
 ```
 
 Look at distribution of HHINCOME after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
@@ -163,7 +167,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "GQ",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 ### Create race variable
@@ -201,7 +206,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Race",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 
 acs_clean %>% 
   count(hispan) %>% 
@@ -212,7 +218,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Hispan",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 
 ```
 
@@ -266,18 +273,19 @@ acs_clean %>%
   count()
 ```
 
-Join the cleaned ACS data onto the crosswalk.
+Join the cleaned ACS data onto the crosswalk. This is a many-to-many join because we are aggregating from PUMA to county.
 ```{r}
 
-acs_clean <- left_join(acs_clean, puma_county_crosswalk, by=c("crosswalk_period", "statefip","puma"))
+acs_clean <- left_join(acs_clean, puma_county_crosswalk, 
+                       by=c("crosswalk_period", "statefip","puma"), 
+                       relationship = "many-to-many")
 
 ```
 
 Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
 ```{r}
-
 acs_clean <- acs_clean %>% 
-  filter(!is.na(afact))
+    drop_na(afact)
 
 ```
 
@@ -315,21 +323,17 @@ acs_clean <- acs_clean %>%
 
 Confirm there are no missing values remaining in the data set for the household income variable. 
 ```{r}
-
 acs_clean %>%
   filter(is.na(hhincome)) %>% 
   count()
-
 ```
 
 Confirm there are no vacant properties included in the data.
 
 ```{r}
-
 acs_clean %>%
   filter(is.na(vacancy)) %>% 
   count()
-
 ```
 
 ## Create Income Metric
@@ -381,7 +385,8 @@ metrics_income_all <- left_join(metrics_income_all, effective_sample, by=c("year
 
 Tabulate effective sample counts for each county, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. In the 1-year data for all there are no cases of a county with less than 100 observations for 2018, 2021 and 2022.
 ```{r}
-metrics_income_all %>%
+# Generate base data
+reactable_data <- metrics_income_all %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -400,10 +405,19 @@ metrics_income_all %>%
         "Greater than 300"
       )
     )
-  ) %>%
-  group_by(year, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 3143) %>%
+  ) 
+
+# Get suppression factor for each year of data
+suppression_factor <- reactable_data %>%
+  group_by(year) %>%
+  summarize(yearly_total = n()) %>% 
+  select(year, yearly_total)
+
+# Create reactable for further examination
+reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
+  group_by(year,effective_sample_cutoffs) %>%
+  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
   reactable()
 ```
 
@@ -411,14 +425,17 @@ Generate the quality variable. Mark cases where the effective sample is less tha
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
   mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
+         
          pctl_20_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
                                      effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
                                      effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
                                      effective_sample_flag==1 ~ 3),
+         
          pctl_50_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
                                      effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
                                      effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
                                      effective_sample_flag==1 ~ 3),
+         
          pctl_80_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
                                      effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
                                      effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
@@ -513,7 +530,7 @@ metrics_income_sub <- left_join(metrics_income_sub, effective_sample_sub, by=c("
 
 Tabulate effective sample counts for each subgroup, defined as the sum of the afact for that group in each county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported.
 ```{r}
-metrics_income_sub %>%
+income_reactable_data <- metrics_income_sub %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -532,10 +549,13 @@ metrics_income_sub %>%
         "Greater than 300"
       )
     )
-  ) %>%
+  )
+
+# Create reactable for further examination using suppression factor defined earlier
+income_reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
   group_by(year, subgroup, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 3143) %>% 
+  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
   reactable()
 ```
 
@@ -599,7 +619,7 @@ metrics_income_sub %>%
 ```
 
 
-Look at distributions of income percentiles by county for all (2022).
+Look at distributions of income percentiles by county for all (2022 and 2021).
 ```{r}
 metrics_income_all %>% 
   filter(year == 2022) %>% 
@@ -728,8 +748,3 @@ Export as CSV
 write_csv(metrics_income_all, here::here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv"))
 write_csv(metrics_income_sub, here::here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv"))
 ```
-
-
-
-
-
