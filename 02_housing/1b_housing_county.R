@@ -86,7 +86,7 @@ vacant_microdata22 <- read_csv("data/temp/vacancy_microdata2022.csv") %>%
 # Calculate monthly P & I payment using monthly mortgage rate and compounded interest calculation
 
 vacant <- vacant_microdata22 %>%
-  mutate(VALUEH = VALUEH*ADJUST,
+  mutate(VALUEH = if_else(VALUEH == 9999999, NA,  VALUEH*ADJUST),
          loan = 0.9 * VALUEH,
          month_mortgage = (6 / 12) / 100,
          monthly_PI = loan * month_mortgage * ((1+month_mortgage)**360)/(((1+month_mortgage)**360)-1))
@@ -353,41 +353,35 @@ vacant_2022_new <- vacant_2022 %>%
     Affordable80AMI_all = case_when(
       is.na(l80_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30), 
-      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l80_4*0.30), 
-      VALUEH == 9999999 ~ NA),
+      VALUEH != NA ~ (total_monthly_cost*12) <= (l80_4*0.30)),
     Affordable80AMI_renter = case_when(
       is.na(l80_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30)),
     Affordable80AMI_owner = case_when(
       is.na(l80_4) ~ NA, 
-      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l80_4*0.30), 
-      VALUEH == 9999999 ~ NA),
+      VALUEH != NA ~ (total_monthly_cost*12) <= (l80_4*0.30)),
     # 50% AMI all, renter, and owner
     Affordable50AMI_all = case_when(
       is.na(l50_4) ~ NA,
       RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30), 
-      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l50_4*0.30), 
-      VALUEH == 9999999 ~ NA), 
+      VALUEH != NA ~ (total_monthly_cost*12) <= (l50_4*0.30)), 
     Affordable50AMI_renter = case_when(
       is.na(l50_4) ~ NA,
       RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30)),
     Affordable50AMI_owner = case_when(
       is.na(l50_4) ~ NA,
-      VALUEH != 9999999 ~ (total_monthly_cost*12) <= (l50_4*0.30), 
-      VALUEH == 9999999 ~ NA), 
+      VALUEH != NA ~ (total_monthly_cost*12) <= (l50_4*0.30)), 
     # 30% AMI all, renter, and owner
     Affordable30AMI_all = case_when(
       is.na(ELI_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30), 
-      VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
-      VALUEH == 9999999 ~ NA),
+      VALUEH != NA ~(total_monthly_cost*12) <= (ELI_4*0.30)),
     Affordable30AMI_renter = case_when(
       is.na(ELI_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30)),
     Affordable30AMI_owner = case_when(
       is.na(ELI_4) ~ NA, 
-      VALUEH != 9999999 ~(total_monthly_cost*12) <= (ELI_4*0.30), 
-      VALUEH == 9999999 ~ NA)) %>% 
+      VALUEH != NA ~(total_monthly_cost*12) <= (ELI_4*0.30))) %>% 
   # turn TRUE/FALSE booleans into binary 1/0 flags
   mutate(across(matches("Affordable"), ~as.integer(.x)))
 
