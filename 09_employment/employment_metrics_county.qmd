@@ -31,7 +31,6 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 -   [Evaluate Results](#evaluate-results)
 -   [Export](#export)
 
-
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -42,10 +41,13 @@ library(Hmisc)
 library(ipumsr)
 library(reactable)
 library(srvyr)
+library(scales)
 
 options(scipen = 999)
 
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
+
 source(here::here("functions", "API", "extract_ipums.R"))
 ```
 
@@ -164,6 +166,7 @@ acs_clean <- acs_clean %>%
 ```
 
 Check that group quarters fall only into household categories.
+
 ```{r}
 acs_clean %>% 
   count(gq) %>% 
@@ -174,7 +177,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "GQ",
-       y = NULL)
+       y = NULL) +
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 ### Create race variable
@@ -201,8 +205,8 @@ Evaluate the values in the RACE and HISPAN variables.
   + 9 Not Reported 
 
 Look at the distribution of values for the race and hispan variables.
-```{r}
 
+```{r}
 acs_clean %>% 
   count(race) %>% 
   ggplot(mapping = aes(x = race, y = n)) +
@@ -212,7 +216,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Race",
-       y = NULL)
+       y = NULL) +
+  scale_x_discrete(labels = label_wrap(10))
 
 acs_clean %>% 
   count(hispan) %>% 
@@ -223,7 +228,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Hispan",
-       y = NULL)
+       y = NULL) +
+  scale_x_discrete(labels = label_wrap(10))
 
 ```
 
@@ -257,7 +263,9 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Subgroup",
-       y = NULL)
+       y = NULL) +
+  scale_x_discrete(labels = label_wrap(10))
+
 ```
 
 ## Merge Crosswalk 
@@ -284,25 +292,25 @@ acs_clean <- left_join(acs_clean, puma_county_crosswalk, by=c("crosswalk_period"
 ```
 
 Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
-```{r}
 
+```{r}
 acs_clean <- acs_clean %>% 
-  filter(!is.na(afact))
+  drop_na(afact)
 
 ```
 
 Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
+
 ```{r}
 acs_clean <- acs_clean %>% 
   filter(afact > 0)
 ```
 
 Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
-```{r}
 
+```{r}
 acs_clean <- acs_clean %>%
-  mutate(perwt = perwt*afact
-  ) 
+  mutate(perwt = perwt*afact) 
 
 ```
 
@@ -418,7 +426,7 @@ metrics_employment_all <- left_join(metrics_employment_all, effective_sample, by
 
 Tabulate effective sample counts for each county, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. In the 1-year data for all there are no cases of a county with less than 100 observations for 2018, 2021 and 2022.
 ```{r}
-metrics_employment_all %>%
+reactable_data <- metrics_employment_all %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -437,11 +445,25 @@ metrics_employment_all %>%
         "Greater than 300"
       )
     )
-  ) %>%
-  group_by(year, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 3143) %>%
+  ) 
+
+# Get suppression factor for each year of data
+suppression_factor <- reactable_data %>%
+  group_by(year) %>%
+  summarize(yearly_total = n()) %>% 
+  select(year, yearly_total)
+
+# Create reactable for further examination
+reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
+  group_by(year,effective_sample_cutoffs) %>%
+  summarize(
+    n = n(), 
+    suppression_share = n()/unique(yearly_total)
+  ) %>% 
+  # yearly value has one unique value per year %>%
   reactable()
+
 ```
 
 Generate the quality variable for each county.
@@ -537,7 +559,7 @@ metrics_employment_sub <- left_join(metrics_employment_sub, effective_sample_sub
 
 Tabulate effective sample counts for each county by sugroup, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. 
 ```{r}
-metrics_employment_sub %>%
+reactable_data <- metrics_employment_sub %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -556,10 +578,17 @@ metrics_employment_sub %>%
         "Greater than 300"
       )
     )
-  ) %>%
-  group_by(year, subgroup, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 3143) %>%
+  ) 
+
+# Create reactable for further examination using suppression factor defined earlier
+reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
+  group_by(year,subgroup,effective_sample_cutoffs) %>%
+  summarize(
+    n = n(), 
+    suppression_share = n() / unique(yearly_total)
+  ) %>% 
+  # yearly value has one unique value per year %>%
   reactable()
 ```
 
