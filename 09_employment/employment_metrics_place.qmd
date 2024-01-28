@@ -42,6 +42,7 @@ library(Hmisc)
 library(ipumsr)
 library(reactable)
 library(srvyr)
+library(scales)
 
 options(scipen = 999)
 
@@ -171,7 +172,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "GQ",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 ### Create race variable
@@ -209,7 +211,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Race",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 
 acs_clean %>% 
   count(hispan) %>% 
@@ -220,7 +223,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Hispan",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 
 ```
 
@@ -254,7 +258,8 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Subgroup",
-       y = NULL)
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 ## Merge Crosswalk 
@@ -286,7 +291,7 @@ anti_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","
 Drop any observations with NA for afact (i.e. there is no place of interest overlapping this PUMA).
 ```{r}
 acs_clean <- acs_clean %>% 
-  filter(!is.na(afact))
+  drop_na(afact)
 ```
 
 Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
@@ -299,8 +304,7 @@ Adjust the person weight to account for PUMA-to-place mapping (those where the P
 ```{r}
 
 acs_clean <- acs_clean %>%
-  mutate(perwt = perwt*afact
-  ) 
+  mutate(perwt = perwt*afact) 
 
 ```
 
@@ -417,7 +421,7 @@ metrics_employment_all <- left_join(metrics_employment_all, effective_sample, by
 
 Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
 ```{r}
-metrics_employment_all %>%
+reactable_data <- metrics_employment_all %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -436,11 +440,21 @@ metrics_employment_all %>%
         "Greater than 300"
       )
     )
-  ) %>%
-  group_by(year, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 485) %>%
+  ) 
+
+# Get suppression factor for each year of data
+suppression_factor <- reactable_data %>%
+  group_by(year) %>%
+  summarize(yearly_total = n()) %>% 
+  select(year, yearly_total)
+
+# Create reactable for further examination
+reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
+  group_by(year,effective_sample_cutoffs) %>%
+  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
   reactable()
+
 ```
 
 Generate the quality variable for each place.
@@ -535,7 +549,7 @@ metrics_employment_sub <- left_join(metrics_employment_sub, effective_sample_sub
 
 Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
 ```{r}
-metrics_employment_sub %>%
+reactable_data <- metrics_employment_sub %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -554,10 +568,13 @@ metrics_employment_sub %>%
         "Greater than 300"
       )
     )
-  ) %>%
-  group_by(year, subgroup, effective_sample_cutoffs) %>%
-  count() %>%
-  mutate(supression_share = n / 485) %>%
+  )
+
+# Create reactable for further examination using suppression factor defined earlier
+reactable_data %>%
+  left_join(suppression_factor, by="year") %>% 
+  group_by(year,subgroup,effective_sample_cutoffs) %>%
+  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
   reactable()
 ```
 

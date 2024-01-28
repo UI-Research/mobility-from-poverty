@@ -1,12 +1,36 @@
-## API Pull Function
-
-#Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info("usa"). 
-#This function allows the user to chose the survey year and type (for example 2021a is the 1-year ACS data).
+# API Pull Function
+# 
+# Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info('usa'). 
+# This function allows the user to chose the survey year and type (for example 2021a is the 1-year ACS data).
+#
+# Function call: extract_ipums
+# Inputs:
+#   extract_name (str): the name of the extract that will be saved in the data/temp/raw folder
+#   extract_description (str): the metadata that will be attached to this extract
+#   survey (list of str): the list of survey
+# Outputs:
+#   extract_name_umf.dat.gz in folder data/temp/raw
+#   extract_name_umf.xml in folder data/temp/raw
+#   folder data/temp/raw if it does not exist already
+# Returns:
+#   acs_imported (tibble) containing the extract required for analysis
 
 extract_ipums <- function(extract_name, extract_description, survey){
+  # Add library here for filepath
+  library(here)
   
-  #Check if extract already exists in your directory. If it does this function will read in the existing data.
-  if(!file.exists(here::here("data", "temp", "raw", paste0(extract_name, "_umf.dat.gz")))){
+  # Set folder path, .gz, and .xml variables
+  folder_path <- here("data", "temp", "raw")
+  extract_gz_filename <- paste0(extract_name, "_umf.dat.gz")
+  extract_xml_filename <- paste0(extract_name, "_umf.xml")
+  
+  # Create the folder path if it doesn't exist
+  if (!dir.exists(folder_path)) {
+    dir.create(folder_path, recursive = TRUE)
+  }
+  
+  # Check if extract already exists in your directory. If it does this function will read in the existing data.
+  if(!file.exists(here(folder_path, extract_gz_filename))){
     
     #If extract does not exist, create the extract using the IPUMS API
     usa_ext_umf <-
@@ -38,33 +62,32 @@ extract_ipums <- function(extract_name, extract_description, survey){
     filepath <-
       download_extract(
         usa_ext_umf_submitted,
-        download_dir = here::here("data", "temp", "raw"),
+        download_dir = here(folder_path),
         progress = FALSE
       )
     
     #Rename extract file
-    
     ipums_files <-
-      list.files(paste0(here::here("data", "temp", "raw")), full.names = TRUE) %>%
+      list.files(paste0(here(folder_path)), full.names = TRUE) %>%
       as_tibble() %>%
       filter(str_detect(value, "dat.gz|xml"), !str_detect(value, "umf")) %>%
       pull()
     
     file.rename(ipums_files, c(
-      here::here("data", "temp", "raw", paste0(extract_name, "_umf.dat.gz")),
-      here::here("data", "temp", "raw", paste0(extract_name, "_umf.xml"))
+      here(folder_path, extract_gz_filename),
+      here(folder_path, extract_xml_filename)
     ))
     
   }
   
   # Read extract file
   ddi <-
-    read_ipums_ddi(here::here("data", "temp", "raw", paste0(extract_name, "_umf.xml")))
+    read_ipums_ddi(here(folder_path, extract_xml_filename))
   
   micro_data <-
     read_ipums_micro(
       ddi,
-      data_file = here::here("data", "temp", "raw", paste0(extract_name, "_umf.dat.gz"))
+      data_file = here(folder_path, extract_gz_filename)
     )
   
   #Lower variable names and get rid of unnecessary variables
