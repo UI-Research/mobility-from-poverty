@@ -30,23 +30,24 @@ options(scipen = 999)
 
 ## Longitudinal Data        
 
-Ready income metric.
+Ready income metric. These results are from all households in the 1-year ACS survey.
 ```{r}
 
-counties_old <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20_old = pctl_income_20, pctl_income_50_old = pctl_income_50, pctl_income_80_old = pctl_income_80,
-         subgroup) %>% 
-  filter(year == 2021, subgroup == "All")
+counties_old <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_income_20_old = pctl_income_20, pctl_income_50_old = pctl_income_50, pctl_income_80_old = pctl_income_80) %>% 
+  filter(year == 2018)
 
-counties_new <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80, subgroup) %>% 
-  filter(year == 2021, subgroup == "All")
+counties_new <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  filter(year == 2018)
   
 ```
 
-Summarize the statistics. Remove NAs from the old dataset where we have added suppression so that the comparison groups are equal.
+Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
+
+The summary tables below show that these results are near identical but for slight differences in the range of 100-300 dollars.
 ```{r}
-counties_suppressed_new <- counties_new %>% 
+counties_new_suppressed <- counties_new %>% 
   mutate(fips = paste0(state, county)) %>% 
   filter(is.na(pctl_income_20)) %>% 
   select(fips) %>% 
@@ -54,16 +55,17 @@ counties_suppressed_new <- counties_new %>%
 
 counties_old %>%
   mutate(fips = paste0(state, county)) %>% 
-  filter(!fips %in% counties_suppressed_new) %>% 
+  filter(!fips %in% counties_new_suppressed) %>% 
+  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
   summary()
 
 counties_new %>%
+  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
   summary()
 ```
 
-Join metrics and compare the results. There are minuscule differences between select counties likely caused by rounding.
+Join metrics and compare the results. There are minuscule differences between select counties that are driving the difference seen in the summary tables above.
 ```{r}
-
 counties_new %>% 
   left_join(counties_old, by = c("year", "state", "county")) %>% 
   filter(!is.na(pctl_income_20)) %>% 
@@ -75,7 +77,124 @@ counties_new %>%
 
 ```
 
+Summarize the differences. 
+The largest difference is just bellow eleven hundred dollars. However, on average the difference between the results are very small (between 5 and 10 dollars) and the median results are exactly the same. 
+```{r}
+counties_new %>% 
+  left_join(counties_old, by = c("year", "state", "county")) %>% 
+  filter(!is.na(pctl_income_20)) %>% 
+  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
+         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
+         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  select(diff_20, diff_50, diff_80) %>% 
+  summary()
+```
 
+
+## Race Ethnicity Data
+
+Ready income metric. These results are from households by race/ethnicity in the 5-year ACS survey.
+
+```{r}
+
+counties_old_race <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_income_20_old = pctl_income_20, pctl_income_50_old = pctl_income_50, pctl_income_80_old = pctl_income_80, subgroup) %>% 
+  filter(year %in% c(2018, 2021))
+
+counties_new_race <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv")) %>% 
+  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80, subgroup) %>% 
+  filter(year %in% c(2018, 2021))
+  
+```
+
+Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
+
+```{r}
+counties_new_race_suppressed <- counties_new_race %>% 
+  mutate(supp = paste0(subgroup, year, state, county)) %>% 
+  filter(is.na(pctl_income_20)) %>% 
+  select(supp) %>% 
+  pull()
+```
+
+Summary of 2018 data. There are differences for all summary stats.
+```{r}
+counties_old_race %>%
+  mutate(supp = paste0(subgroup, year, state, county)) %>% 
+  filter(!supp %in% counties_new_race_suppressed, year == 2018) %>% 
+  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
+  summary()
+
+counties_new_race %>% 
+  filter(year == 2018) %>% 
+  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  summary()
+```
+
+Summary of 2021 data. The summary statistics line up better than 2018 but differences between most of the summary stats. 
+```{r}
+counties_old_race %>%
+  mutate(supp = paste0(subgroup, year, state, county)) %>% 
+  filter(!supp %in% counties_new_race_suppressed, year == 2021) %>% 
+  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
+  summary()
+
+counties_new_race %>% 
+  filter(year == 2021) %>% 
+   select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  summary()
+```
+
+Join metrics and compare the results for subgroups and all in the 5-year data (for every county). 
+
+Comparison table for 2018 results.
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20), year == 2018) %>% 
+  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
+         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
+         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  reactable::reactable(searchable = TRUE)
+```
+
+Summarize the difference between the new and old 2018 results.
+The largest difference is significant at 30 thousand dollars (this is troubling). However, on average the difference is between 120 and 648 dollars. 
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20), year == 2018) %>% 
+  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
+         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
+         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  select(diff_20, diff_50, diff_80) %>% 
+  summary()
+```
+
+
+Comparison table for 2021 results.
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20), year == 2021) %>% 
+  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
+         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
+         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  reactable::reactable(searchable = TRUE)
+```
+
+Summarize the difference between the new and old 2021 results.
+The largest difference is 15 thousand dollars. However, on average the difference between the results are very small (etween 18 and 26 dollars) and the median results are almost exactly the same. 
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20), year == 2021) %>% 
+  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
+         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
+         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  select(diff_20, diff_50, diff_80) %>% 
+  summary()
+```
 
 
 
