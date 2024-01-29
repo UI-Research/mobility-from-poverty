@@ -31,21 +31,23 @@ options(scipen = 999)
 ## Longitudinal Data        
 
 Ready income metric.
+
 ```{r}
 
-counties_old <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, share_employed, subgroup) %>% 
-  filter(year == 2021, subgroup == "All")
+counties_old <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) %>% 
+  select(year, state, county, share_employed) %>% 
+  filter(year == 2018)
 
-counties_new <- read_csv(here("09_employment", "data", "final", "metrics_employment_county_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, share_employed_updt = share_employed, subgroup) %>% 
-  filter(year == 2021, subgroup == "All")
+counties_new <- read_csv(here("09_employment", "data", "final", "metrics_employment_county_all_longitudinal.csv")) %>% 
+  select(year, state, county, share_employed_updt = share_employed) %>% 
+  filter(year == 2018)
   
 ```
 
 Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
+
 ```{r}
-counties_suppressed_new <- counties_new %>% 
+counties_new_suppressed <- counties_new %>% 
   mutate(fips = paste0(state, county)) %>% 
   filter(is.na(share_employed_updt)) %>% 
   select(fips) %>% 
@@ -53,7 +55,7 @@ counties_suppressed_new <- counties_new %>%
 
 counties_old %>%
   mutate(fips = paste0(state, county)) %>% 
-  filter(!fips %in% counties_suppressed_new) %>% 
+  filter(!fips %in% counties_new_suppressed) %>% 
   summary()
 
 counties_new %>% 
@@ -61,10 +63,54 @@ counties_new %>%
 ```
 
 Join metrics and compare the results. There are minuscule differences between a selection of counties likely due to rounding differences.
-```{r}
 
+```{r}
 counties_new %>% 
   left_join(counties_old, by = c("year", "state", "county")) %>% 
+  filter(!is.na(share_employed_updt)) %>% 
+  mutate(diff_employed = round((share_employed_updt - share_employed), digits = 3)) %>% 
+  reactable::reactable()
+
+```
+
+
+## Race Ethnicity Data
+
+```{r}
+
+counties_old_race <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) %>% 
+  select(year, state, county, share_employed, subgroup) %>% 
+  filter(year == 2021)
+
+counties_new_race <- read_csv(here("09_employment", "data", "final", "metrics_employment_county_race-ethnicity_longitudinal.csv")) %>% 
+  select(year, state, county, share_employed_updt = share_employed, subgroup) %>% 
+  filter(year == 2021)
+  
+```
+
+Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
+
+```{r}
+counties_new_race_suppressed <- counties_new_race %>% 
+  mutate(fips = paste0(state, county)) %>% 
+  filter(is.na(share_employed_updt)) %>% 
+  select(fips) %>% 
+  pull()
+
+counties_old_race %>%
+  mutate(fips = paste0(state, county)) %>% 
+  filter(!fips %in% counties_new_race_suppressed) %>% 
+  summary()
+
+counties_new_race %>% 
+  summary()
+```
+
+Join metrics and compare the results. There are minuscule differences between a selection of counties likely due to rounding differences.
+
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
   filter(!is.na(share_employed_updt)) %>% 
   mutate(diff_employed = round((share_employed_updt - share_employed), digits = 3)) %>% 
   reactable::reactable()
