@@ -138,18 +138,18 @@ available_2022_final <- available_2022 %>%
   mutate(
     # number of affordable and available at 30 AMI per 100 households
     rate_affordable_available_30_ami_all = (at_rent30_all+Affordable30AMI_all_vacant)/Below30AMI*100, 
-    rate_affordable_available_30_ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI*100, 
-    rate_affordable_available_30_ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI*100, 
+    rate_affordable_available_30_ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI_renter*100, 
+    rate_affordable_available_30_ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI_owner*100, 
     
     # number of affordable and available at 50 AMI per 100 households
     rate_affordable_available_50_ami_all = (at_rent50_all+Affordable50AMI_all_vacant)/Below50AMI*100, 
-    rate_affordable_available_50_ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI*100, 
-    rate_affordable_available_50_ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI*100, 
+    rate_affordable_available_50_ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI_renter*100, 
+    rate_affordable_available_50_ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI_owner*100, 
     
     # number affordable and available at 80 AMI per 100 households
     rate_affordable_available_80_ami_all = (at_rent80_all+Affordable80AMI_all_vacant)/Below80AMI*100, 
-    rate_affordable_available_80_ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI*100, 
-    rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI*100
+    rate_affordable_available_80_ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI_renter*100, 
+    rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI_owner*100
   )
 
 ###################################################################

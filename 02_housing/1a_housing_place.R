@@ -152,7 +152,7 @@ vacant_places <- vacant_places %>%
 
 # Merge rent ratio into vacant unit microdata
 vacant_final<- left_join(vacant_places, rent_ratio, by = c("statefip", "place"))
-# 1 row doesn't merge - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3
+# 1 row doesn't merge - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3 (simi valley, CA)
 
 # Update the RENTGRS variable with our calculated ratio
 vacant_final <- vacant_final %>%
@@ -281,7 +281,6 @@ microdata_housing <- acs2022clean %>%
 
 
 # create new dataset called "households_year" to merge microdata & place income limits (place_income_limits_2022) by state and place
-
 households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("statefip","place"))
 # 745,674
 
@@ -291,11 +290,12 @@ households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("
 # l50 is 50% of median rent: Very low-income
 # ELI is 30% of median rent: Extremely low-income
 # l80 is 80% of median rent: Low-income
-
 # For owners, use the housing cost, and for renters, use the gross rent.
+# Also create variable for total population at 80% AMI, 50% AMI, and 30% AMI
+# for renter and owner subgroups, this is just the population of renters or owners at each income level
+
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
-
 households_2022 <- households_2022 %>%
   mutate(Affordable80AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                          OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
@@ -349,7 +349,6 @@ households_2022 <- households_2022 %>%
                                            OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
          Below30AMI = case_when((HHINCOME<ELI_4) ~ 1,
                                 (HHINCOME>ELI_4) ~ 0),
-         
          # renter population below 30 ami
          Below30AMI_renter = if_else((HHINCOME<ELI_4 & OWNERSHP == 2), 1,0),
          # owner population below 30 ami
@@ -386,41 +385,41 @@ vacant_2022_new <- vacant_2022 %>%
     Affordable80AMI_all = case_when(
       is.na(l80_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30), 
-      VALUEH != NA ~ (total_monthly_cost*12) <= (l80_4*0.30), 
-      VALUEH == NA ~ NA),
+      !is.na(VALUEH) ~ (total_monthly_cost*12) <= (l80_4*0.30), 
+      is.na(VALUEH) ~ NA),
     Affordable80AMI_renter = case_when(
       is.na(l80_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (l80_4*0.30)),
     Affordable80AMI_owner = case_when(
       is.na(l80_4) ~ NA, 
-      VALUEH != NA ~ (total_monthly_cost*12) <= (l80_4*0.30), 
-      VALUEH == NA ~ NA),
+      !is.na(VALUEH) ~ (total_monthly_cost*12) <= (l80_4*0.30), 
+      is.na(VALUEH) ~ NA),
     # 50% AMI all, renter, and owner
     Affordable50AMI_all = case_when(
       is.na(l50_4) ~ NA,
       RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30), 
-      VALUEH != NA ~ (total_monthly_cost*12) <= (l50_4*0.30), 
-      VALUEH == NA ~ NA), 
+      !is.na(VALUEH) ~ (total_monthly_cost*12) <= (l50_4*0.30), 
+      is.na(VALUEH) ~ NA), 
     Affordable50AMI_renter = case_when(
       is.na(l50_4) ~ NA,
       RENTGRS > 0 ~ (RENTGRS*12) <= (l50_4*0.30)),
     Affordable50AMI_owner = case_when(
       is.na(l50_4) ~ NA,
-      VALUEH != NA ~ (total_monthly_cost*12) <= (l50_4*0.30), 
-      VALUEH == NA ~ NA), 
+      !is.na(VALUEH) ~ (total_monthly_cost*12) <= (l50_4*0.30), 
+      is.na(VALUEH) ~ NA), 
     # 30% AMI all, renter, and owner
     Affordable30AMI_all = case_when(
       is.na(ELI_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30), 
-      VALUEH != NA ~(total_monthly_cost*12) <= (ELI_4*0.30), 
-      VALUEH == NA ~ NA),
+      !is.na(VALUEH) ~(total_monthly_cost*12) <= (ELI_4*0.30), 
+      is.na(VALUEH) ~ NA),
     Affordable30AMI_renter = case_when(
       is.na(ELI_4) ~ NA, 
       RENTGRS > 0 ~ (RENTGRS*12) <= (ELI_4*0.30)),
     Affordable30AMI_owner = case_when(
       is.na(ELI_4) ~ NA, 
-      VALUEH != NA ~(total_monthly_cost*12) <= (ELI_4*0.30), 
-      VALUEH == NA ~ NA)) %>% 
+      !is.na(VALUEH) ~(total_monthly_cost*12) <= (ELI_4*0.30), 
+      is.na(VALUEH) ~ NA)) %>% 
   # turn TRUE/FALSE booleans into binary 1/0 flags
   mutate(across(matches("Affordable"), ~as.integer(.x)))
 
@@ -472,13 +471,13 @@ housing_2022 <- housing_2022 %>%
     share_affordable_50_ami_all = (Affordable50AMI_all+Affordable50AMI_all_vacant)/Below50AMI,
     share_affordable_30_ami_all = (Affordable30AMI_all+Affordable30AMI_all_vacant)/Below30AMI,
     # renter subgroup
-    share_affordable_80_ami_renter = (Affordable80AMI_renter+Affordable80AMI_renter_vacant)/Below80AMI,
-    share_affordable_50_ami_renter = (Affordable50AMI_renter+Affordable50AMI_renter_vacant)/Below50AMI,
-    share_affordable_30_ami_renter = (Affordable30AMI_renter+Affordable30AMI_renter_vacant)/Below30AMI,
+    share_affordable_80_ami_renter = (Affordable80AMI_renter+Affordable80AMI_renter_vacant)/Below80AMI_renter,
+    share_affordable_50_ami_renter = (Affordable50AMI_renter+Affordable50AMI_renter_vacant)/Below50AMI_renter,
+    share_affordable_30_ami_renter = (Affordable30AMI_renter+Affordable30AMI_renter_vacant)/Below30AMI_renter,
     # owner subgroup
-    share_affordable_80_ami_owner = (Affordable80AMI_owner+Affordable80AMI_owner_vacant)/Below80AMI,
-    share_affordable_50_ami_owner = (Affordable50AMI_owner+Affordable50AMI_owner_vacant)/Below50AMI,
-    share_affordable_30_ami_owner = (Affordable30AMI_owner+Affordable30AMI_owner_vacant)/Below30AMI
+    share_affordable_80_ami_owner = (Affordable80AMI_owner+Affordable80AMI_owner_vacant)/Below80AMI_owner,
+    share_affordable_50_ami_owner = (Affordable50AMI_owner+Affordable50AMI_owner_vacant)/Below50AMI_owner,
+    share_affordable_30_ami_owner = (Affordable30AMI_owner+Affordable30AMI_owner_vacant)/Below30AMI_owner
   )
 
 
@@ -589,8 +588,6 @@ summary(housing_2022_overall)
 # NA's   :1              NA's   :1              NA's   :1              
 
 
-# Note: 
-
 
 # (10c) Check against last years metrics
 
@@ -610,11 +607,19 @@ summary(metrics_2021)
 # Max.   :2.6981          Max.   :2.8454          Max.   :3.4335    
 
 
+# NLIHC has an Out of Reach tool that is a good benchmark for comparing results to 
+# https://nlihc.org/oor
+# it's not a 1:1 equivalent measure, but gives a sense of the cost of renting in each 
+# state and by zip code
+
+
 # subgroup summaries
-temp <- housing_2022_subgroup %>% 
+subgroup_sum <- housing_2022_subgroup %>% 
   group_by(subgroup) %>% 
   reframe(across(c("share_affordable_30_ami",
                      "share_affordable_50_ami", 
                      "share_affordable_80_ami"),
                    list("mean" = mean,"min"= min,"max"= max),na.rm = T))
+
+# the place with the highest share affordable 30 ami for owners is Lehi, UT 
             
