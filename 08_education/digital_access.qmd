@@ -1,0 +1,426 @@
+---
+title: "Share of households with broadband access in the home"
+author: "Manu Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+editor_options: 
+  chunk_output_type: source
+execute:
+  warning: false
+  message: false
+editor:
+  markdown:
+    wrap: 80
+    canonical: true
+---
+
+```{r}
+options(scipen = 999)
+
+library(tidyverse)
+library(urbnthemes)
+library(tidycensus)
+library(censusapi)
+library(glue)
+
+set_urbn_defaults(style = "print")
+
+```
+
+This metric shows the ratio of households with the presence of a computer and a
+type of broadband internet subscription in their household (we calculate the
+overall ratio, as well as by racial subgroup - measured according to the race of
+each head of the household).
+
+## Process
+
+1.  Housekeeping
+
+2.  Pull demographics for Census Places and Census Counties
+
+3.  Clean and reshape to move data into the vars we want
+
+4.  Calculate the digital access metric
+
+5.  Create a data quality flag
+
+6.  Cleaning and export
+
+## Housekeeping
+
+```{r}
+#| label: housekeeping
+# Explore where to pull data from
+acs5_vars <- listCensusMetadata(name="2021/acs/acs5", type = "variables")
+
+acs_geos <- listCensusMetadata(name = "acs/acs5", vintage = 2021, type = "geography")
+
+```
+
+## Pull demographics for Census Places and Census Counties
+
+```{r}
+#| label: "Pull Census data"
+
+# First, list & save variables of interest as a vector
+
+popvars <-
+    c("total_people" = "B02001_001",
+    "white" = "B02001_002",
+    "black" = "B02001_003", 
+    "aian" = "B02001_004",
+    "asian" = "B02001_005",
+    "nhpi" = "B02001_006",
+    "other" = "B02001_007",
+    "two_or_more" = "B02001_008",
+    "hispanic" = "B03001_003")
+
+digitalvars <- c(
+    "white_digital" = "B28009A_004",
+    "black_digital" = "B28009B_004", 
+    "aian_digital" = "B28009C_004",
+    "asian_digital" = "B28009D_004",
+    "nhpi_digital" = "B28009E_004",
+    "other_digital" = "B28009F_004",
+    "two_or_more_digital" = "B28009G_004",
+    "hispanic_digital" = "B28009I_004"
+  )
+# Pull ACS data at the Census Place and Census County levels
+# first, all the demographic populations
+years = c(2018, 2019, 2021, 2022)
+
+pull_census_data <- function(vars, geography, years){
+  
+  census_data <- map_dfr(years, ~get_acs(geography = {{geography}},
+                      variables = vars,
+                      year = .x) %>% 
+                        mutate(year = .x) %>% 
+                          pivot_wider(names_from = variable, values_from = c(estimate, moe))) %>% 
+      rename_with(~str_remove(.x, "estimate_"), 
+                  starts_with("estimate_")) 
+      
+  
+  if(geography == "county"){
+    census_data <- census_data %>% 
+      filter(!str_detect(GEOID, "^72"))
+  }
+  
+  # If population vars are inputted, create asian_other column
+  if("B02001_001" %in% vars){
+   census_data <- census_data %>% 
+       mutate(
+    asian_other = aian + asian + nhpi + other + two_or_more
+  ) %>% 
+    select(GEOID,  NAME, year,
+                                              total_people, 
+                                              asian_other, 
+                                              black, 
+                                              hispanic, 
+                                              white)
+  }
+  
+  return(census_data)
+}
+
+places_pop <- pull_census_data(popvars, "place", years) 
+county_pop <- pull_census_data(popvars, "county", years) 
+
+places_digital <- pull_census_data(digitalvars, "place", years)
+county_digital <- pull_census_data(digitalvars, "county", years)
+
+places_digital
+```
+
+We combine margins of errors for detailed groups using rules from slide 51
+[here](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf).
+We then calculate coefficients of variation:
+
+1.  Convert the MOE into a standard error by dividing by 1.645 because Census
+    uses 90% confidence interval
+
+2.  Divide the standard error by the estimate
+
+```{r}
+#| label: calculate-coefficients-of-variation
+
+calculate_coefficients_of_variation <- function(data){
+    data %>% 
+        mutate(
+    asian_other_digital = aian_digital + asian_digital + nhpi_digital + other_digital + two_or_more_digital,
+    # don't include hispanic when calculating total!
+    total_people_digital = asian_other_digital + black_digital + white_digital,
+    moe_asian_other_digital = sqrt(
+      moe_aian_digital ^ 2 + 
+        moe_asian_digital ^ 2 + 
+        moe_nhpi_digital ^ 2 +
+        moe_other_digital ^ 2 + 
+        moe_two_or_more_digital ^ 2
+    ),
+    # don't include hispanic when calculating total!
+    moe_total_people_digital = sqrt(
+      moe_asian_other_digital ^ 2 + 
+        moe_black_digital ^ 2 + 
+        moe_white_digital ^ 2
+    )
+  ) %>%
+  mutate(
+    cv_total_people_digital = (moe_total_people_digital / 1.645) / total_people_digital, 
+    cv_asian_other_digital = (moe_asian_other_digital / 1.645) / asian_other_digital, 
+    cv_black_digital = (moe_black_digital / 1.645) / black_digital, 
+    cv_hispanic_digital = (moe_hispanic_digital / 1.645) / hispanic_digital, 
+    cv_white_digital = (moe_white_digital / 1.645) / white_digital
+  ) %>% 
+        select(GEOID, 
+                                                      NAME, 
+               year,
+                                                      total_people_digital, 
+                                                      asian_other_digital, 
+                                                      black_digital, 
+                                                      hispanic_digital, 
+                                                      white_digital,
+                                                      cv_total_people_digital, 
+                                                      cv_asian_other_digital, 
+                                                      cv_black_digital, 
+                                                      cv_hispanic_digital, 
+                                                      cv_white_digital) %>% 
+        arrange(GEOID, NAME, year)
+        
+}
+county_digital <- county_digital %>% calculate_coefficients_of_variation() 
+ 
+places_digital <- places_digital %>% calculate_coefficients_of_variation()
+
+
+```
+
+## Calculate the digital access metric
+
+```{r}
+#| label: calculate-digital-access-metric
+
+calculate_digital_access_metric <- function(pop_data, digital_data){
+  pop_data %>% 
+    left_join(digital_data, by=c("GEOID", "NAME", "year")) %>% 
+    mutate(
+      digital_access_total = total_people_digital / total_people,
+      digital_access_asian_other = asian_other_digital / asian_other, 
+      digital_access_black = black_digital / black, 
+      digital_access_hispanic = hispanic_digital / hispanic,
+      digital_access_white = white_digital / white
+    ) %>% 
+        arrange(GEOID, NAME, year) %>% 
+        # replace instances with division by zero
+          mutate(across(everything(), ~if_else(is.nan(.x) | is.infinite(.x), NA, .x)))
+}
+
+digital_access_county <- calculate_digital_access_metric(county_pop, county_digital)
+
+digital_access_city <- calculate_digital_access_metric(places_pop, places_digital)
+
+map_dbl(digital_access_county, ~sum(is.nan(.x)))
+map_dbl(digital_access_city, ~sum(is.nan(.x)))
+```
+
+# Create data quality flags
+
+We only look at the CVs for the numerator, which is less precise than the
+denominator. We use 0.1, 0.2, and 0.5 as thresholds because the CV only accounts
+for sampling error in the numerator. This is stricter than for some other
+metrics.
+
+```{r}
+#| label: county-data-quality-flags
+# Generate the quality var
+set_quality <- function(cv, digital_access) {
+  
+  quality <- case_when(
+    cv < 0.1 ~ 1,
+    cv < 0.2 ~ 2,
+    cv < 0.5 ~ 3,
+    TRUE ~ NA_real_
+  )
+  
+  quality <- if_else(is.na(digital_access), NA_real_, quality)
+  
+}
+
+digital_access_county <- digital_access_county %>% 
+  mutate(
+    digital_access_total_quality = set_quality(cv_total_people_digital, total_people_digital),
+    digital_access_asian_other_quality = set_quality(cv_asian_other_digital, asian_other_digital),
+    digital_access_black_quality = set_quality(cv_black_digital, black_digital),
+    digital_access_hispanic_quality = set_quality(cv_hispanic_digital, hispanic_digital),
+    digital_access_white_quality = set_quality(cv_white_digital, white_digital)
+  )
+
+count(digital_access_county, digital_access_total_quality)
+count(digital_access_county, digital_access_asian_other_quality)
+count(digital_access_county, digital_access_black_quality)
+count(digital_access_county, digital_access_hispanic_quality)
+count(digital_access_county, digital_access_white_quality)
+
+
+```
+
+```{r}
+#| label: city-data-quality-flags
+
+
+digital_access_city <- digital_access_city %>% 
+  mutate(
+    digital_access_total_quality = set_quality(cv_total_people_digital, total_people_digital),
+    digital_access_asian_other_quality = set_quality(cv_asian_other_digital, asian_other_digital),
+    digital_access_black_quality = set_quality(cv_black_digital, black_digital),
+    digital_access_hispanic_quality = set_quality(cv_hispanic_digital, hispanic_digital),
+    digital_access_white_quality = set_quality(cv_white_digital, white_digital)
+  )
+
+count(digital_access_city, digital_access_total_quality)
+count(digital_access_city, digital_access_asian_other_quality)
+count(digital_access_city, digital_access_black_quality)
+count(digital_access_city, digital_access_hispanic_quality)
+count(digital_access_city, digital_access_white_quality)
+
+
+```
+
+# Prepare the data for saving & export final Metrics files
+
+```{r}
+#| label: read-pop-files
+# Read final County or Places population file to isolate data needed for each geography
+# 
+# This function also cleans these files the following way:
+# - add in the lost leading zeroes for the state/county FIPs & state/place FIPs
+# - keep the most recent year of population data (not 2022, but 2020)
+# - add a geoid column
+#' 
+#' @param path 
+read_pop_file <- function(path){
+    data <- read_csv(here::here(path))
+    geo_var <- ifelse("county" %in% colnames(data), sym("county"), sym("place"))
+    digits <- ifelse("county" %in% colnames(data), 3, 5)
+    
+    data %>%
+        mutate(state = sprintf("%0.2d", as.numeric(state)),
+               !!geo_var := sprintf(glue("%0.{digits}d"), as.numeric(!!geo_var)),
+               GEOID = paste0(state, !!geo_var)) 
+
+}
+county_file <- read_pop_file("geographic-crosswalks/data/county-populations.csv")
+places_file <- read_pop_file("geographic-crosswalks/data/place-populations.csv")
+```
+
+```{r}
+#| label: merge-pop-files
+
+# merge the data files into the population files (left join, since data files have more observations)
+county_digital_access_by_race <- left_join(county_file, digital_access_county, by=c("GEOID", "year"))
+
+county_digital_access_by_race %>% 
+    count(year)
+
+place_digital_access_by_race <- left_join(places_file, digital_access_city, by=c("GEOID", "year"))
+
+place_digital_access_by_race %>% 
+    count(year)
+```
+
+```{r}
+#| label: reshape-to-export
+
+# RESHAPE TO PREPARE EXPORT
+# reshape each of these from wide to long (so that there are 5 obs per place -- all, white, black, asian, other)
+
+reshape_for_export <- function(data){
+    geo_var <- ifelse("county" %in% colnames(data), sym("county"), sym("place"))
+    
+    data %>% 
+        select(year, state, !!geo_var, digital_access_total, digital_access_asian_other, 
+           digital_access_black, digital_access_hispanic, digital_access_white,
+           ends_with("quality")
+    ) %>% 
+    pivot_longer(-c(year, state, !!geo_var),
+                 values_to = "digital_access",
+                 names_prefix = "digital_access_") %>%
+    mutate(name = if_else(!str_ends(name, "_quality"), paste0(name, "_share"), name)) %>% 
+    separate(name, c("subgroup", "value_type"), sep = "_(?!.*_)") %>% 
+    pivot_wider(names_from = value_type, values_from = digital_access) %>% 
+    mutate(subgroup = case_match(subgroup,
+                                 "total" ~ "All",
+                                 "asian_other" ~ "Other Races and Ethnicities", 
+                                 .default = str_to_title(subgroup))) %>% 
+    mutate(subgroup_type = case_when((subgroup %in% c("All")) ~ "all",
+                                     (subgroup %in% c("All",
+                                                      "Other Races and Ethnicities",
+                                                      "Black",
+                                                      "White",
+                                                      "Hispanic")) ~ "race-ethnicity"), .before = "subgroup") %>% 
+    arrange(year, state, !!geo_var) %>% 
+    rename(share_digital_access = share,
+           share_digital_access_quality = quality)
+}
+county_digital_access <-
+    county_digital_access_by_race %>% 
+    reshape_for_export()
+
+count(county_digital_access, year)
+# 3144 obs (counties) * 5 race groups = 15,720 obs -- accurate
+
+place_digital_access <-
+    place_digital_access_by_race %>% 
+    reshape_for_export()
+
+count(place_digital_access, year)
+# 486 obs (places) * 5 race groups = 2,430 obs -- accurate
+```
+
+We suppress showing metric values for observations with missing CVs
+
+```{r}
+#| label: suppress-bad-cvs
+
+suppress_bad_cvs <- function(data){
+    data %>% 
+        mutate(
+            share_digital_access = if_else(is.na(share_digital_access_quality), NA_real_, share_digital_access)
+        )
+}
+county_digital_access <- suppress_bad_cvs(county_digital_access) 
+place_digital_access <- suppress_bad_cvs(place_digital_access) 
+```
+
+```{r}
+#| label: export-csvs
+# Export each of the files as CSVs
+
+export_metric <- function(data, type = c("recent", "subgroup")){
+    browser()
+    geo <- ifelse("county" %in% colnames(data), "county", "city")
+    
+    if(type == "recent"){
+        data <- 
+            data %>% 
+            filter(subgroup == "All", year == max(year)) %>% 
+            select(-c(subgroup_type, subgroup)) 
+        
+        write_csv(data,
+                  here::here("08_education", glue("digital_access_{geo}_{unique(data$year)}.csv")))
+    } else if(type == "subgroup"){
+        write_csv(data,
+                  here::here("08_education", glue("digital_access_{geo}_subgroup_all.csv")))
+    }
+    else{
+        stop("type must be 'recent' or 'subgroup'")
+    }
+}
+
+
+export_metric(county_digital_access, "recent")
+export_metric(county_digital_access, "subgroup")
+export_metric(place_digital_access, "recent")
+export_metric(place_digital_access, "subgroup")
+```
