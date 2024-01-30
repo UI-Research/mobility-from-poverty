@@ -119,7 +119,7 @@ replace city_name="Anchorage" if city_name=="Anchorage municipality"
 qui sum year
 keep if year == `r(max)'
 
-save "intermediate/cityfile.dta", replace
+save "${intermediate_data}cityfile.dta", replace
 
 }
 
@@ -144,7 +144,7 @@ qui sum year
 keep if year == `r(max)'
 
 gen county_5digit = state + county
-save "intermediate/countyfile.dta", replace
+save "${intermediate_data}countyfile.dta", replace
 
 }
 
@@ -156,7 +156,7 @@ educationdata using "district ccd directory", sub(year=2021) col(year leaid city
 
 gen state = substr(leaid, 1, 2)  // create string fips variable
 
-save "intermediate/ccd_dir.dta", replace
+save "${intermediate_data}ccd_dir.dta", replace
 
 }
 
@@ -166,9 +166,9 @@ frame change seda
 ** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
 ** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda2022_admindist_poolsub_gys_2.0.dta" for 2021-22 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda2022_admindist_poolsub_gys_2.0.dta" "raw/seda2022_admindist_poolsub_gys_2.0.dta"
+cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda2022_admindist_poolsub_gys_2.0.dta" "${raw_data}seda2022_admindist_poolsub_gys_2.0.dta"
 
-use "C:\Users\jcarter\Documents\git_repos\city1\seda2022_admindist_poolsub_gys_2.0.dta", clear
+use "${raw_data}seda2022_admindist_poolsub_gys_2.0.dta", clear
 
 keep if subject=="rla"
 
@@ -269,7 +269,7 @@ drop missing_outcome
 //	- Probably could skip this and use a fillforward type command
 reshape wide achievement_change achievement_change_lb achievement_change_ub achievement_change_quality, i(state city_name) j(subgroup) string
 
-merge 1:1 city_name state using "intermediate/cityfile.dta"
+merge 1:1 city_name state using "${intermediate_data}cityfile.dta"
 
 tab _merge
 drop if _merge == 1
@@ -280,6 +280,7 @@ gsort state place
 order state place
 
 // Fix subgroups
+//# TODO: Make this a program so there's not code copying
 /*
  - The ECD and NEC subgroups are not "income levels" but are categories for Federal accountability purposes. 
  - It's possible removing them would be less confusing in context of the rest of the metrics. 
@@ -317,18 +318,88 @@ gen missing_outcome = missing(achievement_change)
 tab subgroup missing_outcome
 
 
-//# Export Data
-export delimited using "built/SEDA22_all_subgroups_city.csv", replace 
+//# Export City Data
+export delimited using "${final_data}SEDA22_all_subgroups_city.csv", replace 
 
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
-export delimited using "built/SEDA22_all_city.csv", replace
+export delimited using "${final_data}SEDA22_all_city.csv", replace
 
 
 //# County Level Metric
 
-
 frame change county_metric
 
 gen weight22 = round(avg_asmt22)
+
+collapse achievement_change achievement_change_lb achievement_change_ub achievement_change_quality [fw=weight22], by(state county_5digit subgroup)
+
+replace achievement_change_quality = round(achievement_change_quality, 1)
+
+gen missing_outcome = missing(achievement_change)
+tab subgroup missing_outcome
+
+drop missing_outcome
+
+// Reshape Wide for County Merge 
+//	- Probably could skip this and use a fillforward type command
+reshape wide achievement_change achievement_change_lb achievement_change_ub achievement_change_quality, i(state county_5digit) j(subgroup) string
+
+merge 1:1 state county_5digit state using "${intermediate_data}countyfile.dta"
+
+tab _merge
+drop if _merge == 1
+
+reshape long achievement_change achievement_change_lb achievement_change_ub achievement_change_quality, i(state county_5digit) j(subgroup) string
+
+gsort state county
+order state county
+
+// Fix subgroups
+//# TODO: Make this a program so there's not code copying
+/*
+ - The ECD and NEC subgroups are not "income levels" but are categories for Federal accountability purposes. 
+ - It's possible removing them would be less confusing in context of the rest of the metrics. 
+ - I have left them in for now.
+ 
+ - The commented out subgroup types are not in the SEDA2022 dataset but were in previous versions of the data.
+*/
+
+tab subgroup, mi 		// all blk ecd hsp nec wht
+
+gen subgroup_type=""
+replace subgroup_type = "all" if subgroup=="_all"
+replace subgroup_type = "race-ethnicity" if subgroup=="wht"
+replace subgroup_type = "race-ethnicity" if subgroup=="blk"
+replace subgroup_type = "race-ethnicity" if subgroup=="hsp"
+// replace subgroup_type = "race-ethnicity" if subgroup=="oth"		// Not in SEDA2022
+// replace subgroup_type = "gender" if subgroup=="mal"				// Not in SEDA2022
+// replace subgroup_type = "gender" if subgroup=="fem"				// Not in SEDA2022
+replace subgroup_type = "income" if subgroup=="ecd"				// Remove for clarity??
+replace subgroup_type = "income" if subgroup=="nec"				// Remove for clarity?
+
+replace subgroup = "All" if subgroup=="all"
+replace subgroup = "White, Non-Hispanic" if subgroup=="wht"
+replace subgroup = "Black, Non-Hispanic" if subgroup=="blk"
+replace subgroup = "Hispanic" if subgroup=="hsp"
+// replace subgroup = "Asian, API, Native American, Other" if subgroup=="oth"	// Not in SEDA2022
+// replace subgroup = "Male" if subgroup=="mal"									// Not in SEDA2022
+// replace subgroup = "Female" if subgroup=="fem"								// Not in SEDA2022
+replace subgroup = "Economically Disadvantaged" if subgroup=="ecd"
+replace subgroup = "Not Economically Disadvantaged" if subgroup=="nec"
+
+
+// Check Missingness
+gen missing_outcome = missing(achievement_change)
+tab subgroup missing_outcome
+
+
+//# Export County Data
+export delimited using "${final_data}SEDA_all_subgroups_county.csv", replace 
+
+keep if subgroup_type=="all"
+drop subgroup_type subgroup
+
+export delimited using "${final_data}SEDA_all_county.csv", replace
+
