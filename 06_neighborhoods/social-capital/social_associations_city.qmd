@@ -47,16 +47,29 @@ Data downloaded from: Census County Business Patterns 2021
 
 ## Download social organization data
 
+
+We pull our data from `library(censusapi)`.
+
+**Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below 
+
+```{r}
+#label: source-census-api-key
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+```
+
 ```{r}
 #| label: get-social-organization-data
 
-cbp_zip <- getCensus(
-  name = "cbp",
-  vintage = 2021,
-  vars = c("EMP", "ESTAB", "NAICS2017"),
-  region = "zipcode:*"
-) %>%
-  as_tibble()
+years <- c(2020, 2021)
+cbp_zip <-
+  map(years, 
+      ~getCensus(name = "cbp",
+                 vintage = .x,
+                 vars = c("EMP", "ESTAB", "NAICS2017"),
+                 region = "zipcode:*") %>% 
+        as_tibble() %>% 
+        mutate(year = .x)) %>% 
+  list_rbind()
 
 head(cbp_zip)
 ```
@@ -69,9 +82,9 @@ This means:
 
 -   isolate to only the following NAICS,
 
--    collapse & keep only relevant variables, and
+-   collapse & keep only relevant variables, and
 
--    add the year of these data.
+-   add the year of these data.
 
 Below are the codes/associations included in the County Health Rankings metric. See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) for more
 
@@ -95,32 +108,25 @@ cbp_zip <-
   mutate(naics = as.numeric(NAICS2017)) %>%
   filter(naics %in% naics_codes_to_keep) %>%
   # 2,926,340 to 28,599 rows
-  select(zip_code, orgs = ESTAB) %>%
+  select(zip_code, year, orgs = ESTAB) %>%
   # remove observations with missing data for our orgs variable
   drop_na(orgs) %>%
   # no missings (observations still at 28,599)
   # aggregate the total # of orgs per ZIP
-  summarize(count_orgs = sum(orgs), .by = "zip_code") %>%
+  summarize(count_orgs = sum(orgs), .by = c("year", "zip_code")) 
   # 28,599 observations to 16,644 observations
-  mutate(year = 2021)
+  
 ```
 
 ## Merge with the 2010 ZCTA -\> 2021 Census Place crosswalk
 
-Import the 2010 ZCTA -\> 2021 Census Place crosswalk file
+Import and clean the 2010 ZCTA -\> 2021 Census Place crosswalk file to prepare for merge
 
 ```{r}
-#| label: import-crosswalk
+#| label: import-and-clean-xwalk
 zcta_place_xwalk <- read_csv(here("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")) %>%
-  as_tibble()
-```
-
-Clean up the crosswalk file to prepare for the merge:
-
-```{r}
-#| label: clean-crosswalk
-zcta_place_xwalk <- zcta_place_xwalk %>%
-  rename(
+  as_tibble() %>% 
+    rename(
     zip_code = ZCTA5CE10,
     state_fips = STATEFP,
     place = PLACEFP,
@@ -179,7 +185,7 @@ stopifnot(
 )
 ```
 
-##  Collapse estimates to unique Places
+## Collapse estimates to unique Places
 
 First, as a data quality marker we create a new variable that tracks the number of ZCTAs falling in each Place (duplicates)
 
@@ -190,7 +196,7 @@ merged_sa_zip_city <-
   merged_sa_zip_city %>%
   mutate(
     count_zctas_in_place = n(),
-    .by = c(place, place_name)
+    .by = c(year, place, place_name)
   )
 ```
 
@@ -205,15 +211,15 @@ merged_sa_zip_city <-
     zip_total = mean(count_zctas_in_place),
     zips_in = sum(portion_in),
     avg_orgs_per_place_weighted_by_area = weighted.mean(count_orgs, ZCTAinPlace),
-    .by = c(state_fips, place)
+    .by = c(year, state_fips, place)
   )
 ```
 
-**Check:** Are there exactly 2,277 missing values in the `new_est_zip` variable?
+**Check:** Are there exactly 4,565 missing values in the `new_est_zip` variable?
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 2277
+  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 4565
 )
 ```
 
@@ -228,13 +234,13 @@ merged_sa_zip_city <-
 
 ## Check against Census Place file & limit to population cutoff Places
 
-Import the updated population-cutoff Places file
+Import the updated population-cutoff Places file for the relevant years
 
 ```{r}
 places_pop <-
   read_csv(here("geographic-crosswalks/data/place-populations.csv")) %>%
   rename(state_fips = state) %>%
-  filter(year == 2020)
+  filter(year %in% years)
 ```
 
 **Check:** Are there 486 Places in the population-cutoff file?
@@ -242,7 +248,9 @@ places_pop <-
 ```{r}
 #| label: check-number-of-places
 stopifnot(
-  nrow(places_pop) == 486
+  count(places_pop, year) %>%
+    pull(n) %>% 
+    unique() == 486
 )
 ```
 
@@ -252,13 +260,14 @@ Join `places_pop` with `merged_sa_zip_city` in order to get the final SA (numera
 sa_city_data <-
   places_pop %>%
   left_join(merged_sa_zip_city,
-    by = c("place", "state_fips")
+    by = c("year","place", "state_fips")
   )
 ```
 
 ## Use crosswalk population data to construct the ratio (Numerator/Denominator)
 
-## Create the social associations  per 10,000 people metric
+## Create the social associations per 10,000 people metric
+
 Now, we create the social associations metric by dividing the population by 10,000 and then dividing the numerator by that value.
 
 We also round the ratio metric to one decimal point as they do in County Health Rankings.
@@ -297,7 +306,11 @@ stopifnot(
 )
 ```
 
-We can use this ratio to create a data quality tag for the final file. In particular, these values are - Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place - Data Quality 2 = less than 10% of the ZIPs fall mostly in the census place
+We can use this ratio to create a data quality tag for the final file. In particular, these values are:
+
+-    Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place
+
+-    Data Quality 2 = less than 10% of the ZIPs fall mostly in the census place
 
 ```{r}
 #| label: create-data-quality-flag
@@ -331,8 +344,13 @@ stopifnot(
 ## Save the final file
 
 ```{r}
-write_csv(
-  sa_city_data,
-  here("06_neighborhoods/social-capital/data/social_associations_city_2021.csv")
-)
+sa_city_data %>% 
+  arrange(year, state, place) %>%
+  write_csv(here("06_neighborhoods/social-capital/data/social_associations_all_city.csv"))
+
+sa_city_data %>% 
+  filter(year == 2021) %>% 
+  select(-year) %>% 
+  arrange(state, place) %>%
+  write_csv(here("06_neighborhoods/social-capital/data/social_associations_2021_city.csv"))
 ```

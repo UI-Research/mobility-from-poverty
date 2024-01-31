@@ -43,28 +43,33 @@ b) isolate to only the following NAICS,\
 c) collapse & keep only relevant variables, and\
 d) add the year of these data.
 
-*Note*: This will require a Census API key. To use the Census APIs, sign up for an [API key](https://api.census.gov/data/key_signup.html), which will be sent to your provided email address. Lastly, you need to save the key to your ".Renviron" file. You can do this by calling `usethis::edit_r_environ()` and adding "CENSUS_API_KEY=key". Once you've saved your key,
 
-We pull our data from `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below 
+We pull our data from `library(censusapi)`. 
+
+**Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below
 
 ```{r}
+#| label: source-census-api-key
 source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
-```{r}
-#| label: Import and clean social associations data
 
-cbp_county <- getCensus(
-  name = "cbp",
-  vintage = 2021,
-  vars = c("EMP", "ESTAB", "NAICS2017"),
-  region = "county:*"
-) %>%
-  as_tibble()
+```{r}
+#| label: get-social-organization-data
+
+years <- c(2020, 2021)
+cbp_county <-
+  map(years, 
+      ~getCensus(name = "cbp",
+                 vintage = .x,
+                 vars = c("EMP", "ESTAB", "NAICS2017"),
+                 region = "county:*") %>% 
+        as_tibble() %>% 
+        mutate(year = .x)) %>% 
+  list_rbind()
 
 head(cbp_county)
 ```
-
 
 Below are the codes/associations included in the County Health Rankings metric. See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) for more
 
@@ -77,18 +82,17 @@ naics_codes_to_keep <- c("813410", "713950", "713910", "713940", "711211", "8131
 cbp_county <-
   cbp_county %>%
   filter(NAICS2017 %in% naics_codes_to_keep) %>%
-  select(state, county, orgs = ESTAB) %>%
+  select(year, state, county, orgs = ESTAB) %>%
   drop_na(orgs) %>%
-  summarise(count_orgs = sum(orgs), .by = c("state", "county")) %>%
-  mutate(year = 2021)
+  summarise(count_orgs = sum(orgs), .by = c("year", "state", "county")) 
 ```
 
 
 ## Download population data from ACS (denominator)
 
 ```{r}
-pop_20 <- read_csv(here("geographic-crosswalks/data/county-populations.csv")) %>%
-  filter(year == 2020) %>%
+pop <- read_csv(here("geographic-crosswalks/data/county-populations.csv")) %>%
+  filter(year %in% years) %>%
   select(year, state, county, population)
 ```
 
@@ -96,8 +100,8 @@ pop_20 <- read_csv(here("geographic-crosswalks/data/county-populations.csv")) %>
 
 ```{r}
 merged_sa <-
-  left_join(pop_20, cbp_county, by = c("state", "county")) %>%
-  select(year = year.y, state, county, count_orgs, population)
+  left_join(pop, cbp_county, by = c("year", "state", "county")) %>%
+  select(year, state, county, count_orgs, population)
 ```
 
 ## Create the social associations per 10,000 people metric
@@ -140,16 +144,24 @@ merged_sa <-
   )
 ```
 
-**Check:** Are there exactly 154 missing values?
+**Check:** Are there exactly 315 missing values?
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa$count_membership_associations_per_10k)) == 154
+  sum(is.na(merged_sa$count_membership_associations_per_10k)) == 315
 )
 ```
 
 ## Save the final file
 
 ```{r}
-write_csv(merged_sa, here("06_neighborhoods/social-capital/data/social_associations_county_2021.csv"))
+merged_sa %>% 
+  arrange(year, state, county) %>%
+  write_csv(here("06_neighborhoods/social-capital/data/social_associations_all_county.csv"))
+
+merged_sa %>% 
+  filter(year == 2021) %>% 
+  select(-year) %>% 
+  arrange(state, county) %>%
+  write_csv(here("06_neighborhoods/social-capital/data/social_associations_2021_county.csv"))
 ```
