@@ -126,15 +126,22 @@ calc_year_subgroup_table <- function(metrics_df) {
     filter(!is.na(population))
   
   weighted_median <- metrics_df |>
+    mutate(county_state = paste0(county_name, ', ', state_name)) |> 
    # regex matches vars ending in _quality except for index_air_quality 
-    select(subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |> 
+    select(county_state, subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |> 
     summarize(
       across(
-        .cols = -population, 
-        .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+        .cols = -c('population', 'county_state'),
+        .fns = list(
+          .wtd_median = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE),
+          .min_county = ~min(., na.rm = TRUE),
+          .max_county = ~max(., na.rm = TRUE)
+        )
       ), .by = c('year','subgroup')
     ) |>
-    pivot_longer(cols = -c('year','subgroup'), values_to = "weighted_median")
+    pivot_longer(cols = -c('year','subgroup'), names_to = c('name', '.value'), 
+                 names_pattern = '(.*)_\\.(.*)')
+                  
   
   state_count <- metrics_df |> 
     pivot_longer(cols = (matches('^(?!index_air_quality$).*_quality$', perl=TRUE)), names_to = 'qual_varname', values_to = 'quality') |> 
@@ -195,7 +202,8 @@ calc_year_subgroup_table <- function(metrics_df) {
 ### Percentile income, share in preschool, share employed, share with HS degree, rate low birth weight, and rate of learning achievement
 
 ```{r}
-calc_year_subgroup_table(metrics_01) |>    
+calc_year_subgroup_table(metrics_01) |>   
+  relocate(min_county, max_county, .after = last_col()) |> 
   datatable(caption = "01_Metrics")
 
 calc_year_subgroup_table(metrics_01) |>
@@ -210,7 +218,8 @@ calc_year_subgroup_table(metrics_01) |>
 
 ### Share of digital access and rate of juvenile arrest
 ```{r}
-calc_year_subgroup_table(metrics_02) |>    
+calc_year_subgroup_table(metrics_02) |>   
+  relocate(min_county, max_county, .after = last_col()) |> 
   datatable(caption = "02_Metrics")
 
 calc_year_subgroup_table(metrics_02) |>
@@ -225,7 +234,8 @@ calc_year_subgroup_table(metrics_02) |>
 
 ### Air quality index, transit trips index, share with debt in collections, and transportation cost
 ```{r}
-calc_year_subgroup_table(metrics_03) |>    
+calc_year_subgroup_table(metrics_03) |>
+  relocate(min_county, max_county, .after = last_col()) |> 
   datatable(caption = "03_Metrics Table")
 
 calc_year_subgroup_table(metrics_03) |>
@@ -240,7 +250,8 @@ calc_year_subgroup_table(metrics_03) |>
 
 ### Share of poverty exposure
 ```{r}
-calc_year_subgroup_table(poverty_02) |>    
+calc_year_subgroup_table(poverty_02) |>
+  relocate(min_county, max_county, .after = last_col()) |> 
   datatable(caption = "02_Poverty Table")
 
 calc_year_subgroup_table(poverty_02) |>
@@ -294,6 +305,7 @@ population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates_place(year = .x),
 
 We calculate the same set of statistics as above for the county-level metrics. This means our estimates represent the place mobility metric for the average American living in a large city.
 
+
 ```{r}
 create_year_subgroup_table <- function(metrics_df, table_caption){
 
@@ -301,14 +313,21 @@ create_year_subgroup_table <- function(metrics_df, table_caption){
     filter(!is.na(population))
   
   weighted_median <- metrics_df |>
-    select(subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
+    mutate(place_state = paste0(place_name, ', ', state_name)) |> 
+   # regex matches vars ending in _quality except for index_air_quality 
+    select(place_state, subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |> 
     summarize(
       across(
-        .cols = -population, 
-        .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+        .cols = -c('population', 'place_state'),
+        .fns = list(
+          .wtd_median = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE),
+          .min_place = ~min(., na.rm = TRUE),
+          .max_place = ~max(., na.rm = TRUE)
+        )
       ), .by = c('year','subgroup')
     ) |>
-    pivot_longer(cols = -c("year","subgroup"), values_to = "weighted_median")
+    pivot_longer(cols = -c('year','subgroup'), names_to = c('name', '.value'), 
+                 names_pattern = '(.*)_\\.(.*)')
   
   state_count <- metrics_df |> 
     pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
@@ -362,6 +381,7 @@ create_year_subgroup_table <- function(metrics_df, table_caption){
     filter(missing_place < 1) |>
     select(year, name, subgroup, share_lq3, everything()) |>
     arrange(desc(year), name, subgroup) |>    
+    relocate(min_place, max_place, .after = last_col()) |> 
     datatable()
   
 }

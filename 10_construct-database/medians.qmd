@@ -112,12 +112,10 @@ weighted_median <- metrics |>
     across(
       .cols = -c('county_state', 'population'), 
       .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE),
-                  .min_county = ~county_state[which.min(.)],
-                  .max_county = ~county_state[which.max(.)])
+                  .min = ~min(., na.rm=TRUE),
+                  .max = ~max(., na.rm=TRUE))
     )
   ) |>
-  # For pivoting purposes, convert to character
-  mutate(across(matches('\\.wtd_med', perl=TRUE), as.character)) |> 
   pivot_longer(cols = everything(), 
                names_to = c('.value', 'group'),
                names_pattern = "(.+)_\\.(.+)") |> 
@@ -125,8 +123,8 @@ weighted_median <- metrics |>
   as.data.frame() |> 
   rownames_to_column() |> 
   tail(-1) |> 
-  rename(name = rowname, weighted_median = V1, min_county = V2, max_county = V3) |> 
-  mutate(weighted_median = as.numeric(weighted_median))
+  mutate(across(V1:V3, as.numeric)) |> 
+  rename(name = rowname, weighted_median = V1, min_county = V2, max_county = V3)
 
   
 
@@ -240,12 +238,10 @@ weighted_median <- metrics |>
     across(
       .cols = -c('place_state', 'population'), 
       .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE),
-                  .min_place = ~place_state[which.min(.)],
-                  .max_place = ~place_state[which.max(.)])
+                  .min = ~min(., na.rm = TRUE),
+                  .max = ~max(., na.rm = TRUE))
     )
   ) |>
-  # For pivoting purposes, convert to character
-  mutate(across(matches('\\.wtd_med', perl=TRUE), as.character)) |> 
   pivot_longer(cols = everything(), 
                names_to = c('.value', 'group'),
                names_pattern = "(.+)_\\.(.+)") |> 
@@ -253,8 +249,8 @@ weighted_median <- metrics |>
   as.data.frame() |> 
   rownames_to_column() |> 
   tail(-1) |> 
-  rename(name = rowname, weighted_median = V1, min_place = V2, max_place = V3) |> 
-  mutate(weighted_median = as.numeric(weighted_median))
+  mutate(across(V1:V3, as.numeric)) |> 
+  rename(name = rowname, weighted_median = V1, min_place = V2, max_place = V3)
 
 proportion_by_qual <- metrics |>
   select(where(is.numeric)) |>
@@ -309,7 +305,10 @@ place_summary <- weighted_median |>
   select(name, share_lq3, everything())
 
 place_summary |>
+  relocate(min_place, max_place, .after = last_col()) |> 
   datatable()
+
+
 
 place_summary |>
   ggplot(aes(share_lq3, name)) +
