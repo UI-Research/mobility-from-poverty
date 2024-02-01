@@ -221,6 +221,7 @@ destring leaid, replace
 
 // Data is not provided by grade in the SEDA2022
 //		- Cannot calculate a growth measure like the previous versions of the metric
+// 		- The variable has been renamed to achievement_change to differentiate from earlier versions
 
 gen achievement_change = gys_chg_eb
 
