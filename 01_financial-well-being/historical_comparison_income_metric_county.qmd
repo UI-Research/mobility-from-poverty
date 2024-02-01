@@ -1,5 +1,5 @@
 ---
-title: "Historical Income Metric Comparison"
+title: "Quantile calculation comparison"
 author: "JP Walsh"
 date: today
 format:
@@ -14,185 +14,320 @@ editor_options:
   chunk_output_type: console
 ---
 
-This program compares the results for income metric updated by JP Walsh in 2023/24 with the results from the metric calculations originally written by Kevin Werner in 2022 for the creation of the UMF income predictor. These processes should be the same and as a result the final metrics should be comparable.
+This program compares the results for income quantiles between both the historical version of the income metric calculation and between various weighted quantile functions (primarily Hmisc and srvyr).
 
-## House keeping
+-   [Housekeeping](#housekeeping)
+-   [Prepare Data](#prepare-data)
+-   [Weighted Quantile Comparisons](#weighted-quantile-comparisons)
+-   [Compare Hmisc and Srvyr results](#compare-hmisc-and-srvyr-results)
+
+## Housekeeping
+
+Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
 
 ```{r}
 library(tidyverse)
-library(tidylog)
-library(here)
-library(assertr)
-library(gt)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+library(srvyr)
+library(scales)
 
 options(scipen = 999)
-```
 
-## Longitudinal Data        
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
+#set_ipums_api_key("INSERT KEY HERE", save = TRUE, overwrite = TRUE)
 
-Ready income metric. These results are from all households in the 1-year ACS survey.
-```{r}
-
-counties_old <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20_old = pctl_income_20, pctl_income_50_old = pctl_income_50, pctl_income_80_old = pctl_income_80) %>% 
-  filter(year == 2018)
-
-counties_new <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
-  filter(year == 2018)
-  
-```
-
-Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
-
-The summary tables below show that these results are near identical but for slight differences in the range of 100-300 dollars.
-```{r}
-counties_new_suppressed <- counties_new %>% 
-  mutate(fips = paste0(state, county)) %>% 
-  filter(is.na(pctl_income_20)) %>% 
-  select(fips) %>% 
-  pull()
-
-counties_old %>%
-  mutate(fips = paste0(state, county)) %>% 
-  filter(!fips %in% counties_new_suppressed) %>% 
-  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
-  summary()
-
-counties_new %>%
-  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
-  summary()
-```
-
-Join metrics and compare the results. There are minuscule differences between select counties that are driving the difference seen in the summary tables above.
-```{r}
-counties_new %>% 
-  left_join(counties_old, by = c("year", "state", "county")) %>% 
-  filter(!is.na(pctl_income_20)) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)
-         )%>% 
-  reactable::reactable()
-
-```
-
-Summarize the differences. 
-The largest difference is just bellow eleven hundred dollars. However, on average the difference between the results are very small (between 5 and 10 dollars) and the median results are exactly the same. 
-```{r}
-counties_new %>% 
-  left_join(counties_old, by = c("year", "state", "county")) %>% 
-  filter(!is.na(pctl_income_20)) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
-  select(diff_20, diff_50, diff_80) %>% 
-  summary()
+source(here::here("functions", "API", "extract_ipums.R"))
 ```
 
 
-## Race Ethnicity Data
+## Prepare data
 
-Ready income metric. These results are from households by race/ethnicity in the 5-year ACS survey.
+To provide the necessary comparisons this code runs the most recent version of the income metric up to the point of a cleaned and filtered ACS dataset. These next steps do that process and have already been reviewed.
+
+Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+```{r}
+acs <- extract_ipums(
+  extract_name = "umf_data_18_22",
+  extract_description = "Microdata pull for Mobility Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+) 
+```
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+```{r}
+puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+```
+
+Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
+```{r}
+county_puma <- puma_county_crosswalk %>%
+  group_by(crosswalk_period, statefip, county) %>% 
+  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
+  ungroup()
+```
+
+### Clean Data
+
+Turn the missing/"not in universe" values for the hhincome variable into NAs. Remove original data to save space.
+
 ```{r}
 
+acs_clean <- acs %>%
+  mutate(hhincome = ifelse(hhincome == 9999999, NA_integer_,
+                           hhincome)
+         )
+
+rm(acs)
+```
+
+```{r}
+acs_clean <- acs_clean %>% 
+  filter(gq %in% c("Households under 1970 definition", 
+                   "Additional households under 1990 definition",
+                   "Additional households under 2000 definition"))
+
+
+```
+
+### Create race variable
+
+Create the race/ethnicity variable. For other race/ethnicity categories not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
+
+Rename the values from number category to race label: 
+  +Race is 2 and Hispan is 0 = "Black, Non-Hispanic"
+  +Hispan is >=1 and <=4 = "Hispanic"
+  +Race is >=3 and <=9 and Hispan is 0  = "Other Races and Ethnicities" 
+  +Race is 4 and Hispan is 0 = "White, Non-Hispanic" 
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
+                              (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
+                              (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
+                               hispan != "Not Hispanic" ~ "Hispanic"
+  ))
+
+```
+
+### Merge Crosswalk 
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
+```
+
+Join the cleaned ACS data onto the crosswalk. This is a many-to-many join because we are aggregating from PUMA to county.
+```{r}
+
+acs_clean <- left_join(acs_clean, puma_county_crosswalk, 
+                       by=c("crosswalk_period", "statefip","puma"), 
+                       relationship = "many-to-many")
+
+```
+
+Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
+```{r}
+acs_clean <- acs_clean %>% 
+    drop_na(afact)
+
+```
+
+Also filter out cases where AFACT is equal to zero.
+```{r}
+acs_clean <- acs_clean %>% 
+  filter(afact > 0)
+```
+
+Adjust weight to account for PUMA-to-county mapping (those where unique_types do not equal 1).Drop PUMA flag variable from PUMA_county.
+
+Apply the Adjust variable to household income. Adjust converts the dollar amounts to the amount that they would have been had they been earned entirely during the calendar year. This is to deal with households being surveyed at different times during the year.
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(hhwt = hhwt*afact, 
+         hhincome = hhincome*adjust
+  ) 
+
+```
+
+Isolate data to include each household only once (PERNUM == 1 counts head of household only).
+
+```{r}
+acs_clean <- acs_clean %>%
+  filter(pernum == 1)
+```
+
+Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
+```{r}
+acs_clean <- acs_clean %>%
+  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
+```
+
+## Weighted Quantile Comparisons 
+
+Ready the income metric indicator. These results are for households by race/ethnicity in the 5-year ACS survey from the old program and updated program.
+```{r}
 counties_old_race <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20_old = pctl_income_20, pctl_income_50_old = pctl_income_50, pctl_income_80_old = pctl_income_80, subgroup) %>% 
+  select(year, state, county, pctl_income_20_sas = pctl_income_20, pctl_income_50_sas = pctl_income_50, pctl_income_80_sas = pctl_income_80, subgroup) %>% 
   filter(year %in% c(2018, 2021), subgroup != "All")
 
 counties_new_race <- read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv")) %>% 
-  select(year, state, county, pctl_income_20, pctl_income_50, pctl_income_80, subgroup) %>% 
+  select(year, state, county, pctl_income_20_Hmisc = pctl_income_20, pctl_income_50_Hmisc = pctl_income_50, 
+         pctl_income_80_Hmisc = pctl_income_80, subgroup) %>% 
   filter(year %in% c(2018, 2021), subgroup != "All")
-  
 ```
 
-Summarize the statistics. Remove NAs from the old data set where we have added suppression so that the comparison groups are equal.
-```{r}
-counties_new_race_suppressed <- counties_new_race %>% 
-  mutate(supp = paste0(subgroup, year, state, county)) %>% 
-  filter(is.na(pctl_income_20)) %>% 
-  select(supp) %>% 
-  pull()
-```
-
-Summary of 2018 data. There are differences for all summary stats.
-```{r}
-counties_old_race %>%
-  mutate(supp = paste0(subgroup, year, state, county)) %>% 
-  filter(!supp %in% counties_new_race_suppressed, year == 2018) %>% 
-  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
-  summary()
-
-counties_new_race %>% 
-  filter(year == 2018) %>% 
-  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
-  summary()
-```
-
-Summary of 2021 data. The summary statistics line up better than 2018 but differences between most of the summary stats. 
-```{r}
-counties_old_race %>%
-  mutate(supp = paste0(subgroup, year, state, county)) %>% 
-  filter(!supp %in% counties_new_race_suppressed, year == 2021) %>% 
-  select(pctl_income_20_old, pctl_income_50_old, pctl_income_80_old) %>% 
-  summary()
-
-counties_new_race %>% 
-  filter(year == 2021) %>% 
-   select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
-  summary()
-```
-
-Join metrics and compare the results for subgroups and all in the 5-year data (for every county). 
-
-Comparison table for 2018 results.
-```{r}
-counties_new_race %>% 
-  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
-  filter(!is.na(pctl_income_20), year == 2018) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
-  reactable::reactable(searchable = TRUE)
-```
-
-Summarize the difference between the new and old 2018 results.
-The largest difference is significant at just under 20 thousand dollars (this is troubling). However, on average the difference is between 41 and 87 dollars. 
-```{r}
-counties_new_race %>% 
-  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
-  filter(!is.na(pctl_income_20), year == 2018) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
-  select(diff_20, diff_50, diff_80) %>% 
-  summary()
-```
-
-
-Comparison table for 2021 results.
-```{r}
-counties_new_race %>% 
-  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
-  filter(!is.na(pctl_income_20), year == 2021) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
-  reactable::reactable(searchable = TRUE)
-```
-
-Summarize the difference between the new and old 2021 results.
+Summarize differences for the 2021 data.
 The largest difference is 15 thousand dollars. However, on average the difference between the results are very small (between 20 and 29 dollars) and the median results are almost exactly the same. 
 ```{r}
 counties_new_race %>% 
   left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
-  filter(!is.na(pctl_income_20), year == 2021) %>% 
-  mutate(diff_20 = round((pctl_income_20 - pctl_income_20_old), digits = 3),
-         diff_50 = round((pctl_income_50 - pctl_income_50_old), digits = 3),
-         diff_80 = round((pctl_income_80 - pctl_income_80_old), digits  = 3)) %>% 
+  filter(!is.na(pctl_income_20_Hmisc), year == 2021) %>% 
+  mutate(diff_20 = round((pctl_income_20_Hmisc - pctl_income_20_sas), digits = 3),
+         diff_50 = round((pctl_income_50_Hmisc - pctl_income_50_sas), digits = 3),
+         diff_80 = round((pctl_income_80_Hmisc - pctl_income_80_sas), digits  = 3)) %>% 
   select(diff_20, diff_50, diff_80) %>% 
   summary()
 ```
 
+Summarize differences for 2018.
+The largest difference is significant at just under 20 thousand dollars (this is troubling). However, on average the difference is between 41 and 87 dollars. 
+```{r}
+counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20_Hmisc), year == 2018) %>% 
+  mutate(diff_20 = round((pctl_income_20_Hmisc - pctl_income_20_sas), digits = 3),
+         diff_50 = round((pctl_income_50_Hmisc - pctl_income_50_sas), digits = 3),
+         diff_80 = round((pctl_income_80_Hmisc - pctl_income_80_sas), digits  = 3)) %>% 
+  select(diff_20, diff_50, diff_80) %>% 
+  summary()
+```
 
+To have a closer look at some of the significant outlier differences from above, we create a data frame with the county results where the largest differences exist between the new calculation and the old calculation.
+```{r}
+metric_diff_21 <- counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20_Hmisc), year == 2021) %>% 
+  mutate(diff_20 = round((pctl_income_20_Hmisc - pctl_income_20_sas), digits = 3),
+         diff_50 = round((pctl_income_50_Hmisc - pctl_income_50_sas), digits = 3),
+         diff_80 = round((pctl_income_80_Hmisc - pctl_income_80_sas), digits  = 3)) %>% 
+  filter(abs(diff_80) > 1000) %>% 
+  select(year, state, county, subgroup, pctl_income_80_Hmisc, pctl_income_80_sas)
 
+outliers_21 <- metric_diff_21 %>% 
+  mutate(id = paste0(year, state, county, subgroup)) %>% 
+  select(id) %>% 
+  pull()
+
+metric_diff_18 <- counties_new_race %>% 
+  left_join(counties_old_race, by = c("year", "state", "county", "subgroup")) %>% 
+  filter(!is.na(pctl_income_20_Hmisc), year == 2018) %>% 
+  mutate(diff_20 = round((pctl_income_20_Hmisc - pctl_income_20_sas), digits = 3),
+         diff_50 = round((pctl_income_50_Hmisc - pctl_income_50_sas), digits = 3),
+         diff_80 = round((pctl_income_80_Hmisc - pctl_income_80_sas), digits  = 3)) %>% 
+  filter(abs(diff_80) > 1000) %>% 
+  select(year, state, county, subgroup, pctl_income_80_Hmisc, pctl_income_80_sas)
+
+outliers_18 <- metric_diff_18 %>% 
+  mutate(id = paste0(year, state, county, subgroup)) %>% 
+  select(id) %>% 
+  pull()
+```
+
+### 2021 Data
+
+Filter the ACS data to only include counties in the outlier list above.
+```{r}
+acs_sample <- acs_clean %>%
+  mutate(id = paste0(year, statefip, county, subgroup)) %>% 
+  filter(sample_structure == "5year", id %in% outliers_21, gq != "Additional households under 2000 definition")
+```
+
+Comparing 2021 results to the default srvyr survey_quantie results we can see that many of the srvyr and historic SAS results are the same but there remain some differences. Most of the Hmisc and srvyr results are different however there is some overlap.  
+```{r}
+acs_sample %>% 
+  as_survey_design(weights = hhwt) %>% 
+  group_by(year, statefip, county, subgroup) %>% 
+  summarise(hhincome_srvyr = round(survey_quantile(hhincome, quantiles = c(0.80), vartype = NULL), 2)) %>% 
+  left_join(metric_diff_21, by = c("year", "statefip" = "state", "county", "subgroup")) %>% 
+  mutate(srvyr_sas_diff = hhincome_srvyr_q80 - pctl_income_80_sas) %>% 
+  reactable()
+```
+
+Next, looking at the srvyr survey_quantile results setting the quantile calculation rule to "hf3". HF3 uses a discrete method, which means it will always select a vaue that exists in the data. We can see almost all of the srvyr results are the same as the SAS results but for a few remaining cases. 
+```{r}
+acs_sample %>%
+  as_survey_design(weights = hhwt) %>% 
+  group_by(year, statefip, county, subgroup) %>%
+  summarise(hhincome_srvyr = round(survey_quantile(hhincome, quantiles = c(0.80), vartype = NULL, qrule = "hf3"), 2)) %>% 
+  left_join(metric_diff_21, by = c("year", "statefip" = "state", "county", "subgroup")) %>% 
+  mutate(srvyr_sas_diff = hhincome_srvyr_q80 - pctl_income_80_sas) %>% 
+  reactable()
+```
+
+In the few cases of dissimilarity remaining, the SAS value is either an existing point in the data that is adjacent in order to the srvyr result when arranging by hhincome or the mid-point between the svyr either the point directly above or below. 
+
+For example, in state 17 county 099 we can replicate the sas result by taking the midpoint of the svyr result and the result above. The sas result is 98041.4 and the srvyr result is 96025. When we filter for that hhincome value and the one just above it and take the median we can see the mid_point is the same as the SAS result (98041). 
+```{r}
+acs_sample %>% 
+  filter(statefip == "17", county == "099", hhincome > 96000 & hhincome < 100500) %>% 
+  arrange(desc(hhincome)) %>% 
+  select(year, statefip, county, subgroup, hhincome) %>% 
+  mutate(mid_point = median(hhincome))
+```
+
+### 2018 Data
+
+Filter the ACS data to only include counties in the outlier list above in the 2018 outliers.
+```{r}
+acs_sample <- acs_clean %>%
+  mutate(id = paste0(year, statefip, county, subgroup)) %>% 
+  filter(sample_structure == "5year", id %in% outliers_18, gq != "Additional households under 2000 definition")
+```
+
+Comparing 2018 results to the default srvyr setting we can see that some of the srvyr and SAS results are the same but many are different. Most of the Hmisc and srvyr results are different however there is some overlap.  
+```{r}
+acs_sample %>% 
+  as_survey_design(weights = hhwt) %>% 
+  group_by(year, statefip, county, subgroup) %>% 
+  summarise(hhincome_srvyr = round(survey_quantile(hhincome, quantiles = c(0.80), vartype = NULL), 2)) %>% 
+  left_join(metric_diff_18, by = c("year", "statefip" = "state", "county", "subgroup")) %>% 
+  mutate(srvyr_sas_diff = hhincome_srvyr_q80 - pctl_income_80_sas) %>% 
+  reactable()
+```
+
+Next, looking at the srvyr results setting the quantile calculation rule to "hf3". We can see that unlike in 2021 there number of identical results only increase marginally.
+```{r}
+acs_sample %>%
+  as_survey_design(weights = hhwt) %>% 
+  group_by(year, statefip, county, subgroup) %>%
+  summarise(hhincome_srvyr = round(survey_quantile(hhincome, quantiles = c(0.80), vartype = NULL, na.rm = FALSE, qrule = "hf3"), 2)) %>% 
+  left_join(metric_diff_18, by = c("year", "statefip" = "state", "county", "subgroup")) %>% 
+  mutate(srvyr_sas_diff = pctl_income_80_Hmisc - pctl_income_80_sas) %>% 
+  reactable()
+```
+
+Identifying the SAS result is not as easy in the 2018 data as in the 2021 results, the SAS results are neither an alternate result in the ACS data nor a mid-point. My conclusion is that there is something more fundamentally different in Kevin's results. 
+
+## Compare Hmisc and Srvyr results 
+
+Finally, the comparison below shows calculations for the weighted 80th percentile of income from the Hmisc package and Srvyr package. We can see that when the methods are set to be the same (in this case "i/n" for Hmisc and "hf4" for srvyr) these packages calculate the exact same results.  
+```{r}
+acs_sample %>%
+  group_by(year, statefip, county, subgroup) %>%
+  summarise(hhincome_hmisc = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, type = "i/n")) %>% 
+  reactable()
+
+acs_sample %>%
+  as_survey_design(weights = hhwt) %>% 
+  group_by(year, statefip, county, subgroup) %>%
+  summarise(hhincome_srvyr = round(survey_quantile(hhincome, quantiles = c(0.80), vartype = NULL, qrule = "hf4"), 2)) %>% 
+  reactable()
+
+```
+
+Given that Hmisc is able to process large datasets in a fraction of the time as srvyr it seems to be the right choice. 
