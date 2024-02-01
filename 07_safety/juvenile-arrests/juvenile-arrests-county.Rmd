@@ -36,73 +36,114 @@ library(tidylog)
 
 ```
 
+This metric represents the rate of juvenile arrests...
 
-## 1. Load and clean arrest data
-
+## Background
 The data for this metric come from the FBI's [National Incident-Based Reporting System (NIBRS)](https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs). This is the national standard for law enforcement crime data reporting in the United States. Processing the raw NIBRS data would take a lot of work.
 
 Instead, we use criminologist Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022. We use Version 9. These data are available for download via [openICPSR](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
 
-We want both the `arrestee` segment and the `group_b_arrest_report` segment for this metric, so we download the following two files:
-    1. `nibrs_1991_2022_arrestee_segment_rds.zip`
-    2. `nibrs_1991_2022_group_b_arrest_report_segment_rds.zip`
+The NIBRS data are separated into segments. For this metric, we use the following two segments:
 
-After agreeing to the `Terms of Use` for each download unzip the file, select `nibrs_arrestee_segment_2022.rds` or `nibrs_group_b_arrest_report_segment_2022.rds`, and move it to the appropriate directory and folder. Now, we read in the data.
+
+## Download NIBRS data
+This section describes the steps for manually downloading the NIBRS data segments necessary for this metric.
+
+Accessing these data requires an ICPSR account. Therefore, we do not directly download the data in the code. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+    1. Create an ICPSR account [here](https://www.icpsr.umich.edu/cgi-bin/newacct).
+    2. Navigate to Jacob Kaplan's project page for his NIBRS Concatenated Files [here](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+    3. Select `nibrs_1991_2022_arrestee_segment_rds.zip`
+        + Select `Download this file`
+        + Select `I Agree` on the `Terms of Use`
+        + Move the zip file from your `Downloads` folder to the appropriate directory
+    4. Navigate back to the [project page](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view)
+    5. Select `nibrs_group_b_arrest_report_segment_2022_rds.zip`
+        + Select `Download this file`
+        + Select `I Agree` on the `Terms of Use`
+        + Move the zip file from your `Downloads` folder to the appropriate directory
+
+
+## Read in and clean NIBRS data
+This section extracts the necessary files from each zip file downloaded in the previous step and reads the files into R. Each zip file contains data files for 1991-2022. However, we only want 2014-2022.
+
+Extract each file for the years 2014-2022 from the Group A `arrestee` segment and from the Group B `arrest_report` segment.
 ```{r}
-# Load 2022 NIBRS group A arrestee segment
-arrests_data <- readRDS(here::here(
-  "07_safety", "juvenile-arrests", "nibrs_arrestee_segment_2022.rds"))
+# Specify range of years
+start_year <- 2014
+end_year <- 2022
 
-# Load 2022 NIBRS group B arrest segment
-arrests_data_b <- readRDS(here::here(
-  "07_safety", "juvenile-arrests", "nibrs_group_b_arrest_report_segment_2022.rds"))
+# Create a vector of years between start_year and end_year
+my_years <- seq(start_year, end_year)
+
+# Extract years 2014-2022 for the arrestee segment
+for (year in my_years) {
+  unzip(
+  zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds.zip"),
+  files = paste0("nibrs_arrestee_segment_", year, ".rds"),
+  exdir = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds")
+)
+}
+
+# Extract years 2014-2022 for the Group B arrest report segment
+for (year in my_years) {
+  unzip(
+  zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds.zip"),
+  files = paste0("nibrs_group_b_arrest_report_segment_", year, ".rds"),
+  exdir = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds")
+)
+}
+
+# Remove zip files
+unlink(
+  here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds.zip"),
+  here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds.zip")
+  )
+
+# Clean up environment
+rm(start_year, end_year)
 
 ```
 
-We want to combine the group A and group B files. First we limit each file to the relevant variables.
+
+Read in each file and limit to relevant variables
 ```{r}
+# Load 2022 NIBRS group A arrestee segment
+arrests_a <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds", "nibrs_arrestee_segment_2022.rds"))
+
 # Select only necessary variables from group A
-arrests_data <- arrests_data %>%
-  select(year, ori, incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee,
-         ethnicity_of_arrestee) %>%
+arrests_a <- arrests_a %>%
+  select(year, ori, # ORI is a unique agency identifier
+         incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee, ethnicity_of_arrestee) %>%
   mutate(group = "A")
 
+
+# Load 2022 NIBRS group B arrest report segment
+arrests_b <- readRDS(here::here(
+  "07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds", "nibrs_group_b_arrest_report_segment_2022.rds"))
+
 # Select only necessary variables from group B
-arrests_data_b <- arrests_data_b %>%
+arrests_b <- arrests_b %>%
   rename(incident_number = arrest_transaction_incident_num) %>%
-  select(year, ori, incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee,
-         ethnicity_of_arrestee) %>%
+  select(year, ori, # ORI is a unique agency identifier
+         incident_number, ucr_arrest_offense_code, age_of_arrestee, race_of_arrestee, ethnicity_of_arrestee) %>%
   mutate(group = "B")
 
 ```
 
-The group B codes for race and ethnicity are different from group A. We edit the group B codes to be consistent with group A. 
-    todo(): I'm not totally certain that the recodes for the abbreviations in group B are accurate, but I can't find a codebook anywhere so I made my best guess
+Append Group A file and Group B file.
+    Note that the values for `race_of_arrestee` and `ethnicity_of_arrestee` are different between the A and B files.
 ```{r}
-# Look at race codes in each data frame
-arrests_data %>% group_by(race_of_arrestee) %>% count()
-arrests_data_b %>% group_by(race_of_arrestee) %>% count()
+arrests <- bind_rows(arrests_a, arrests_b)
 
-# Edit group B race codes to match those of group A
-arrests_data_b <- arrests_data_b %>%
-  mutate(race_of_arrestee = if_else(race_of_arrestee=="w", "white", race_of_arrestee),
-         race_of_arrestee = if_else(race_of_arrestee=="b", "black", race_of_arrestee),
-         race_of_arrestee = if_else(race_of_arrestee=="i", "american indian/alaskan native", race_of_arrestee),
-         race_of_arrestee = if_else(race_of_arrestee=="a", "asian", race_of_arrestee),
-         race_of_arrestee = if_else(race_of_arrestee=="p", "native hawaiian or other pacific islander", race_of_arrestee),
-         race_of_arrestee = if_else(race_of_arrestee=="u", "unknown", race_of_arrestee))
-
-# Look at ethnicity codes in each data frame
-arrests_data %>% group_by(ethnicity_of_arrestee) %>% count()
-arrests_data_b %>% group_by(ethnicity_of_arrestee) %>% count()
-
-# Edit group B ethnicity codes to match those of group A
-arrests_data_b <- arrests_data_b %>%
-  mutate(ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="h", "hispanic origin", ethnicity_of_arrestee),
-         ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="n", "not of hispanic origin", ethnicity_of_arrestee),
-         ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="u", "unknown", ethnicity_of_arrestee))
+# Remove obsolete files
+rm(arrests_a, arrests_b)
+gc()
 
 ```
+
+
+
 
 
 ```{r}
@@ -110,9 +151,7 @@ arrests_data_b <- arrests_data_b %>%
 arrests_ab <- arrests_data %>%
   bind_rows(arrests_data_b)
 
-# Remove obsolete files
-rm(arrests_data, arrests_data_b)
-gc()
+
   
 ```
 
