@@ -327,14 +327,21 @@ chr2023 <- chr2023 %>%
 
 The 2023 County Health Rankings uses the 2021-2022 AHRF file [(see Data and methods -> Methods -> Data Source)](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?). The latest year of primary care physician data available in the 2021-2022 AHRF file is 2020. So we are comparing 2020 data from each file.
 ```{r}
+# First filter our AHRF data to 2020 physicians
+ahrf_test <- ahrf %>%
+  filter(year %in% c("2020", "2021")) %>%
+  select(year, state, county, pc_physicians, pop, ratio_population_pc_physician) %>%
+  pivot_wider(names_from = year,
+              values_from = c(pc_physicians, pop, ratio_population_pc_physician))
+
 # Join County Health Rankings and AHRF data
 joined_data <- chr2023 %>%
-  mutate(year = "2020") %>%
-  select(year, state, county, pc_physicians_chr, ratio_population_pc_physician_chr, consequent, rate_pc_physicians_chr) %>%
-  full_join(y = ahrf %>%
-              filter(year == 2020) %>%
-              select(year, state, county, pc_physicians, ratio_population_pc_physician, pop),
-            by = c("year", "state", "county")) %>%
+  select(state, county, pc_physicians_chr, ratio_population_pc_physician_chr, consequent, rate_pc_physicians_chr) %>%
+  left_join(y = ahrf_test %>%
+              select(state, county, pc_physicians_2020, pc_physicians_2021,
+                     ratio_population_pc_physician_2020, ratio_population_pc_physician_2021,
+                     pop_2020, pop_2021),
+            by = c("state", "county")) %>%
   mutate(ratio_population_pc_physician_chr = as.numeric(ratio_population_pc_physician_chr))
 
 ```
@@ -344,28 +351,67 @@ joined_data <- chr2023 %>%
 
 County Health Rankings reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. We do not report a missing value for these observations. After removing observations with a missing value for PCPs from the CHR data, the number of PCPs is consistent across our data and the CHR data. This makes sense, because AHRF was the source for both.
 ```{r}
-test <- joined_data %>%
+joined_data <- joined_data %>%
   filter(!is.na(pc_physicians_chr))
 
-stopifnot(test$pc_physicians == test$pc_physicians_chr)
+stopifnot(joined_data$pc_physicians == joined_data$pc_physicians_chr)
 
 ```
 
 However, the ratios are not the same. This implies that County Health Rankings used a different population source than we did. We used the 2020 Decennial Census population, which was available in the AHRF file.
 ```{r}
-test <- test %>%
+test <- joined_data %>%
   filter(consequent==1)
 
-stopifnot(test$ratio_population_pc_physician == test$ratio_population_pc_physician_chr)
+stopifnot(test$ratio_population_pc_physician_2020 == test$ratio_population_pc_physician_chr)
 
 test <- test %>%
-  mutate(ratio_diff = abs(ratio_population_pc_physician - ratio_population_pc_physician_chr))
+  mutate(ratio_diff_pct = 
+           abs(ratio_population_pc_physician_2020 - ratio_population_pc_physician_chr) / ((ratio_population_pc_physician_chr + ratio_population_pc_physician_2020)/2))
 
-quantile(test$ratio_diff, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.99, 1), na.rm = TRUE)
+quantile(test$ratio_diff_pct, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.99, 1), na.rm = TRUE)
 
 ```
 
-County Health Rankings uses 2021 Census Population Estimates for their ratio, even though the measure of primary care physicians is from 2020.
+County Health Rankings documentation indicates that they use 2021 Census Population Estimates for their ratio, even though the measure of primary care physicians is from 2020. During a meeting with CHR researchers on 2024-01-31, one of their team members said they pulled population data for this metric from [this link](https://www2.census.gov/programs-surveys/popest/datasets/2020-2021/counties/totals/). However, another team member said they used Vintage 2020 population estimates, which are based on the 2010 Census (see more [here](https://www.census.gov/programs-surveys/popest/technical-documentation/research/evaluation-estimates/2020-evaluation-estimates.html)).
+```{r}
+download.file(
+  url = "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv",
+  destfile = "04_health/access-health-services/data/chr_pop.csv",
+  mode = "wb"
+)
+
+chr_pop <- read_csv(here::here("04_health", "access-health-services", "data", "chr_pop.csv")) %>%
+  select(
+    state = STATE,
+    county = COUNTY,
+    # estimates_base_2020 = ESTIMATESBASE2020,
+    # pop_2020_chr = POPESTIMATE2020,
+    # pop_2021_chr = POPESTIMATE2021
+    pop_2010_chr = CENSUS2010POP,
+    estimates_base_2010 = ESTIMATESBASE2010,
+    pop_2010_chr_est = POPESTIMATE2010,
+    pop_2019_chr = POPESTIMATE2019,
+    pop_2020_chr_est_04 = POPESTIMATE042020,
+    pop_2020_chr_est = POPESTIMATE2020
+  ) %>%
+  filter(county != "000")
+
+joined_data <- joined_data %>%
+  full_join(y = chr_pop, by = c("state", "county"))
+
+joined_data <- joined_data %>%
+  mutate(
+    ratio_test = case_when(
+      pc_physicians_chr > 0 ~ round(pop_2020_chr_est/pc_physicians_chr),
+      pc_physicians_chr == 0 ~ 0
+      )
+  ) %>%
+  select(state, county, ratio_population_pc_physician_2020, ratio_population_pc_physician_chr, ratio_test, pop_2020, pop_2020_chr_est)
+
+```
+
+
 ```{r}
 joined_data <- chr2023 %>%
   select(state, county, pc_physicians_chr, ratio_population_pc_physician_chr, consequent, rate_pc_physicians_chr) %>%
@@ -422,7 +468,7 @@ stopifnot(joined_data$pop_21_chr1 == joined_data$pop_21_chr2)
 
 ```{r}
 # CHR may have used 2020 data from the Population Estimates Program, which is released before the 2020 Census
-pop19_pep <- tidycensus::get_estimates("county", year = 2019, variables = "POP") %>%
+pop20_pep <- tidycensus::get_estimates("county", year = 2020, variables = "POPESTIMATE") %>%
   select(GEOID,
          population = value)
 
@@ -433,7 +479,7 @@ joined_data <- joined_data %>%
 
 test_pop <- censusapi::getCensus(
     name = "acs/acs5",
-    vintage = 2021, 
+    vintage = 2020, 
     vars = "B17001_001E", 
     region = "county")
 
