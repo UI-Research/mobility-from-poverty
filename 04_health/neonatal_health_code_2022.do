@@ -419,6 +419,7 @@ gen lbw_quality = .
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# TODO: Start Here
+//# Confidence Intervals
 *(8) construct 95 percent confidence intervals
 * note: confidence intervals are constructed following the User Guide to the 2010 Natality Public Use File, linked in the README and saved on Box 	
 * for more information, see README
@@ -520,6 +521,9 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 order year state county lbw lbw_lb lbw_ub lbw_quality	// order
 sort year state county									// sort
 
+rename lbw rate_low_birth_weight					// Rename per Aaron request
+rename lbw_* rate_low_birth_weight_*				// Rename per Aaron request
+
 save "${health_data}neonatal_health_`y4'.dta", replace
 export delimited using "${health_data_final}/neonatal_health_`y4'.csv", replace
 
@@ -544,6 +548,10 @@ gen str2 new_state = string(state, "%02.0f")			// fix to include leading zeroes 
 order year state county subgroup_type subgroup lbw lbw_lb lbw_ub lbw_quality 	// order
 sort year state county subgroup_type subgroup
 
+
+rename lbw rate_low_birth_weight 				// Rename per Aaron request
+rename lbw_* rate_low_birth_weight_*			// Rename per Aaron request
+
 append using "${health_data}neonatal_health_`y4'.dta"				// append aggregate county-level estimates to subgroup file
 
 replace subgroup_type = "all" if missing(subgroup_type)								// label aggregate county-level estimates as "all" 
@@ -552,7 +560,7 @@ replace subgroup = 0 if missing(subgroup)												// label aggregate county-l
 
 
 sort subgroup
-by subgroup: sum lbw															// checking share lowbirthweight by subgroup
+by subgroup: sum rate_low_birth_weight											// checking share lowbirthweight by subgroup
 
 sort year state county subgroup_type subgroup									// final sort
 
