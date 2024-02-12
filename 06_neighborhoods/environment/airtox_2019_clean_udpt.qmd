@@ -15,9 +15,7 @@ Primary data derived from the EPA AirTox Screen Assessment.
 -   [Program Overview](#program-overview)
 -   [Read Data](#read-data)
 -   [Clean Data](#clean-data)
--   [Merge Crosswalk](#merge-crosswalk)
--   [Setup Survey Design](#setup-survey-design)
--   [Create College Ready Metric](#create-college-ready-metric)
+-   [Create AirTox Metric](#create-airtox-metric)
 -   [Evaluate Results](#evaluate-results)
 -   [Create standard errors](#create-standard-errors)
 -   [Export](#export)
@@ -28,8 +26,9 @@ Primary data derived from the EPA AirTox Screen Assessment.
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
 
 ```{r, results='hide'}
-library(tidyverse)
+
 library(tidycensus)
+library(tidyverse)
 library(tm)
 library(skimr)
 library(rvest)
@@ -37,6 +36,10 @@ library(httr)
 library(readxl)
 library(tidylog)
 library(reactable)
+library(janitor)
+
+#Enter census API key here.
+#census_api_key(YOUR KEY)
 
 options(scipen = 999)
 ```
@@ -62,373 +65,241 @@ Create place files (12) prep city crosswalk data from geocorr (13) create place-
 
 ## Read data
 
-Import 2019 AirToxScreen Data on cancer, neuroligical and respitory health.
+Import AirToxScreen Data on cancer, neuroligical and respitory health for years 2014, 2018 and 2019.
 
 ```{r}
+airtox_data19 <- map_df(list.files(here::here("06_neighborhoods/environment/data/raw/2019/")), 
+~read_excel(paste0(here::here("06_neighborhoods/environment/data/raw/2019"), "/", .x))) %>% 
+  clean_names() %>% 
+  mutate(year = 2019)
+  
+airtox_data18 <- map_df(list.files(here::here("06_neighborhoods/environment/data/raw/2018/")), 
+~read_excel(paste0(here::here("06_neighborhoods/environment/data/raw/2018"), "/", .x))) %>%  
+  clean_names() %>% 
+  mutate(year = 2018)
 
-cancer_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_CancerRisk_by_tract_srcgrp.xlsx"))
-neuro_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_NeurHI_by_tract_srcgrp.xlsx"))
-resp_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/","2019_National_RespHI_by_tract_srcgrp.xlsx"))
-
-
+airtox_data14 <- map_df(list.files(here::here("06_neighborhoods/environment/data/raw/2014/")), 
+~read_excel(paste0(here::here("06_neighborhoods/environment/data/raw/2014"), "/", .x))) %>% 
+  clean_names() %>% 
+  mutate(year = 2014)
 ```
 
-
-# Create Air Quality Index for available years
-
-The Air Toxin screen assessment is available for years 2014, 2018 and 2019. The code segments below read in these data and create a indexed measure of air quality using normalization at the tract level.
-
-## Create tract-level indicators for 2019
-
-Import 2019 AirToxScreen Data on cancer, neuroligical and respitory health.
-
-```{r}
-
-cancer_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_CancerRisk_by_tract_srcgrp.xlsx"))
-neuro_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_NeurHI_by_tract_srcgrp.xlsx"))
-resp_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/","2019_National_RespHI_by_tract_srcgrp.xlsx"))
-
-
-```
 
 Select only the tract ID and tract level risk indicator from reach dataset.
 
+Combine the years by variable of interest. 
+First select only cases where total_cancer_risk is filled in and join they years.
+```{r}
+cancer_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_cancer_risk_per_million)), 
+                               airtox_data18 %>% filter(!is.na(total_cancer_risk_per_million)),
+                         airtox_data14 %>% filter(!is.na(total_cancer_risk_per_million))) %>% 
+  select(year, tract, total_cancer_risk_per_million)
+```
+
+Next, select only cases where total_neurological_hazard is filled in and join they years.
+```{r}
+nuero_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_neurological_hazard_quotient)), 
+                               airtox_data18 %>% filter(!is.na(total_neurological_hazard_quotient)),
+                         airtox_data14 %>% filter(!is.na(total_neurological_hazard_quotient))) %>% 
+  select(year, tract, total_neurological_hazard_quotient)
+```
+
+Next, select only cases where total_respiratory_hazard is filled in and join they years.
 ```{r}
 
-cancer_data19 <- cancer_data19 %>% 
-  select(Tract, `Total Cancer Risk (per million)`) 
-
-neuro_data19 <- neuro_data19 %>% 
-  select(Tract, `Total Neurological (hazard quotient)`) 
-
-resp_data19 <- resp_data19 %>% 
-  select(Tract, `Total Respiratory (hazard quotient)`)   
-
+resp_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_respiratory_hazard_quotient)), 
+                               airtox_data18 %>% filter(!is.na(total_respiratory_hazard_quotient)),
+                         airtox_data14 %>% filter(!is.na(total_respiratory_hazard_quotient))) %>% 
+  select(year, tract, total_respiratory_hazard_quotient)
 ```
 
 Join the datasets by census tract. Rename the variables so they are easily refered to throughout the program.
 
 ```{r}
 
-enviro19_int <- left_join(resp_data19, cancer_data19, by = "Tract") %>%
-  left_join(neuro_data19, by = "Tract") %>% 
-  select(tract = Tract, resp = `Total Respiratory (hazard quotient)`, carc = `Total Cancer Risk (per million)`,
-         neuro = `Total Neurological (hazard quotient)`)
+enviro_all <- left_join(cancer_data, nuero_data, by = c("tract", "year")) %>%
+  left_join(resp_data, by = c("tract", "year")) %>% 
+  select(year, tract, resp = total_respiratory_hazard_quotient, canc = total_cancer_risk_per_million,
+         neuro = total_neurological_hazard_quotient)
 
 ```
+## Clean Data
 
-The Tract variable contains some results that are not tracts. These rows can be identified because the last 6 digits are "0". Create a variable "tract1" that is just the last six digits of tract. Filter out results where tract1 is equal to "000000".
-
+Create a variable with just the tract GEOID information alone.
 ```{r}
-
-enviro19_int <- enviro19_int %>% 
-  mutate(tract1 = str_sub(tract, start = 6, end = 11))
-
-enviro19 <- filter(enviro19_int, tract1 != "000000") %>%
-  select(tract, resp, carc, neuro) 
+enviro_all_clean <- enviro_all %>% 
+  mutate(tract_id = str_sub(tract, start = 6, end = 11))
 ```
 
-Create variables with the mean and standard deviation of each health metric.
+The tract variable contains some results that are not tracts. These rows can be identified because the tract GEOID will be entirely zeros. Count the number of these rows.
+```{r}
+enviro_all_clean %>% 
+  filter(tract_id == "000000") %>% 
+  group_by(tract_id) %>% 
+  count()
+```
 
+Remove these rows from the data.
+```{r}
+enviro_all_clean <- enviro_all_clean %>% 
+  filter(tract_id  != "000000")
+```
+Confirm there are no non-tract level rows remaining.
+```{r}
+enviro_all_clean %>% 
+  filter(tract_id == "000000") %>% 
+  group_by(tract_id) %>% 
+  count()
+```
+
+## Create AirTox Metric 
+
+Create variables with the mean and standard deviation of each health metric for each year.
 ```{r}
 
-enviro19 <- enviro19 %>% 
+enviro_all_clean <- enviro_all_clean %>% 
+  group_by(year) %>% 
   mutate(resp_mean = mean(resp, na.rm = TRUE),
-         carc_mean = mean(carc, na.rm = TRUE),
+         canc_mean = mean(canc, na.rm = TRUE),
          neuro_mean = mean(neuro, na.rm = TRUE),
          resp_stdv = sd(resp, na.rm = TRUE),
-         carc_stdv = sd(carc, na.rm = TRUE),
-         neuro_stdv = sd(neuro, na.rm = TRUE))
+         canc_stdv = sd(canc, na.rm = TRUE),
+         neuro_stdv = sd(neuro, na.rm = TRUE)) %>% 
+  ungroup()
 
 ```
 
-Create the Environemtnal Health Indicator using the statistics calculated above. First calcualte the components, which is the individual health indicator for a tract minus the man of that indicator, divided by the standard deviation.
+Add a visual on the existing variables.
 
 ```{r}
 
-enviro19 <- enviro19 %>%
+
+```
+
+Create the Environemtnal Health Indicator using the statistics calculated above. First calcualte the components, which is the individual health indicator for a tract minus the mean of that indicator and divided by the standard deviation.
+
+```{r}
+
+enviro_all_clean <- enviro_all_clean %>%
   mutate(resp_norm = (resp - resp_mean)/resp_stdv,
-         carc_norm = (carc - carc_mean)/carc_stdv,
+         canc_norm = (canc - canc_mean)/canc_stdv,
          neuro_norm = (neuro - neuro_mean)/neuro_stdv)
 
 ```
 
-Add together the normalized results and multiple by negative 1.
-
+Add together the normalized results and multiple by negative 1 to create the index.
 ```{r}
-
-enviro19 <- enviro19 %>%
-  mutate(envhealth19 = (resp_norm + carc_norm + neuro_norm)*-1)
+enviro_all_clean <-enviro_all_clean %>%
+  mutate(envhealth = (resp_norm + canc_norm + neuro_norm)*-1)
 ```
 
-Percent rank the calculated values.
-
+Percent rank the calculated value, again grouping by year.
 ```{r}
-
-enviro19 <- enviro19 %>%
-  mutate(index_air_quality = round(percent_rank(envhealth19) * 100, 0))
+enviro_all_clean <- enviro_all_clean %>%
+  group_by(year) %>% 
+  mutate(index_air_quality = round(percent_rank(envhealth) * 100, 0)) %>% 
+  ungroup()
 ```
 
 Keep only the tract and hazard index variable.
-
 ```{r}
 
-haz_idx19 <- enviro19 %>% 
-  select(tract, index_air_quality)
+haz_index_all <- enviro_all_clean %>% 
+  select(year, tract, index_air_quality)
 
 ```
-
 Visualize the distribution to see how it looks.
-
 ```{r}
 
-haz_idx19 %>% 
-ggplot(aes(x = index_air_quality)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+haz_index_all %>% 
+  mutate(year = factor(year)) %>% 
+  ggplot(aes(x = index_air_quality, color = year, fill = year)) +
+  geom_density(alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by air quality index, distriubtion") +
   ylab("Density")
 
 ```
 
-## Create tract-level indicators for 2018
+### Subgroup information
 
-Import 2018 AirToxScreen Data on cancer, neurological and respiratory health.
-
+Add tract-level subgroup information which breaks out the racial composition of the census tract.
+First we will read in tract level population data. Total population and total white, non-Hispanic. Then total population in poverty.
 ```{r}
 
-cancer_data18 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2018_National_CancerRisk_by_tract_srcgrp.xlsx"))
-neuro_data18 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2018_National_NeurHI_by_tract_srcgrp.xlsx"))
-resp_data18 <- read_excel(here::here("06_neighborhoods/environment/data/raw/","2018_National_RespHI_by_tract_srcgrp.xlsx"))
+state_abrv <- state.abb
+
+pull_acs <- function(years) {
+  
+  tidycensus::get_acs(geography = "tract", 
+                      variables = c("total_pop" = "B02001_001",
+                                    "wnh" = "B03002_003", 
+                                    "total_pov" = "B17001_001", 
+                                    "poverty" = "B17001_002"),
+                      year = years,
+                      state = state_abrv,
+                      geometry = FALSE,
+                      output = "wide"
+  ) %>% 
+    mutate(year = years)
+}
+
+acs_tracts <- map_dfr(list(2019, 2018, 2014), pull_acs)
+
+```
+
+Use ACS data to create a variable for percent POC and percent in poverty, by tract.
+```{r}
+
+acs_tracts <- acs_tracts %>%
+  transmute(year = year,
+            GEOID = GEOID,
+            total_pop = total_popE,
+            wnh = wnhE,
+            poc = total_pop - wnh, 
+            percent_poc = poc/total_pop, 
+            total_pov = total_povE, 
+            poverty = povertyE, 
+            percent_pov = poverty / total_pov
+  )  
 
 
 ```
 
-Select only the tract ID and tract level risk indicator from reach dataset.
+Create indicator variable for race based on percentage of poc/nh-White in each tract. These percentage cut offs were determined by Marge Turner. Also create indicator for tracts in 'High Poverty', with 40% or higher poverty rate meaning the tract has a high level of poverty
 
 ```{r}
 
-cancer_data18 <- cancer_data18 %>% 
-  select(Tract, `Total Cancer Risk (per million)`) 
-
-neuro_data18 <- neuro_data18 %>% 
-  select(Tract, `Total Neurological (hazard quotient)`) 
-
-resp_data18 <- resp_data18 %>% 
-  select(Tract, `Total Respiratory (hazard quotient)`)   
-
-```
-
-Join the datasets by census tract. Rename the variables so they are easily referred to throughout the program.
-
-```{r}
-
-enviro18_int <- left_join(resp_data18, cancer_data18, by = "Tract") %>%
-  left_join(neuro_data18, by = "Tract") %>% 
-  select(tract = Tract, resp = `Total Respiratory (hazard quotient)`, carc = `Total Cancer Risk (per million)`,
-         neuro = `Total Neurological (hazard quotient)`)
+race_pov <- acs_tracts %>%
+  mutate(
+    race_ind = case_when(
+      percent_poc > .4 & percent_poc < .6 ~"No Majority Race/Ethnicity",
+      percent_poc >= .6 ~ "Majority Non-White",
+      percent_poc <= .6 ~ "Majority White, Non-Hispanic"), 
+    poverty_type = case_when(
+      percent_pov < .4 ~ "Not High Poverty",
+      percent_pov >=  .4 ~ "High Poverty")
+  )
 
 ```
 
-The Tract variable contains some results that are not tracts. These rows can be identified because the last 6 digits are "0". Create a variable "tract1" that is just the last six digits of tract. Filter out results where tract1 is equal to "000000".
-
-```{r}
-
-enviro18_int <- enviro18_int %>% 
-  mutate(tract1 = str_sub(tract, start = 6, end = 11))
-
-enviro18 <- filter(enviro18_int, tract1 != "000000") %>%
-  select(tract, resp, carc, neuro) 
-```
-
-Create variables with the mean and standard deviation of each health metric.
-
-```{r}
-
-enviro18 <- enviro18 %>% 
-  mutate(resp_mean = mean(resp, na.rm = TRUE),
-         carc_mean = mean(carc, na.rm = TRUE),
-         neuro_mean = mean(neuro, na.rm = TRUE),
-         resp_stdv = sd(resp, na.rm = TRUE),
-         carc_stdv = sd(carc, na.rm = TRUE),
-         neuro_stdv = sd(neuro, na.rm = TRUE))
-
-```
-
-Create the Environemtnal Health Indicator using the statistics calculated above. First calcualte the components, which is the individual health indicator for a tract minus the man of that indicator, divided by the standard deviation.
-
-```{r}
-
-enviro18 <- enviro18 %>%
-  mutate(resp_norm = (resp - resp_mean)/resp_stdv,
-         carc_norm = (carc - carc_mean)/carc_stdv,
-         neuro_norm = (neuro - neuro_mean)/neuro_stdv)
-
-```
-
-Add together the normalized results and multiple by negative 1.
-
-```{r}
-
-enviro18 <- enviro18 %>%
-  mutate(envhealth18 = (resp_norm + carc_norm + neuro_norm)*-1)
-```
-
-Percent rank the calculated values.
-
-```{r}
-
-enviro18 <- enviro18 %>%
-  mutate(index_air_quality = round(percent_rank(envhealth18) * 100, 0))
-```
-
-Keep only the tract and hazard index variable.
-
-```{r}
-
-haz_idx18 <- enviro18 %>% 
-  select(tract, index_air_quality)
-
-```
-
-Visaulize the distriubtion to see how it looks.
-
-```{r}
-
-haz_idx18 %>% 
-ggplot(aes(x = index_air_quality)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Tracts by air quality index, distriubtion") +
-  ylab("Density")
-
-```
-
-## Create tract-level indicators for 2014
-
-Import 2019 AirToxScreen Data on cancer, neuroligical and respitory health.
-
-```{r}
-
-cancer_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_CancerRisk_by_tract_srcgrp.xlsx"))
-neuro_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/", "2019_National_NeurHI_by_tract_srcgrp.xlsx"))
-resp_data19 <- read_excel(here::here("06_neighborhoods/environment/data/raw/","2019_National_RespHI_by_tract_srcgrp.xlsx"))
-
-
-```
-
-Select only the tract ID and tract level risk indicator from reach dataset.
-
-```{r}
-
-cancer_data19 <- cancer_data19 %>% 
-  select(Tract, `Total Cancer Risk (per million)`) 
-
-neuro_data19 <- neuro_data19 %>% 
-  select(Tract, `Total Neurological (hazard quotient)`) 
-
-resp_data19 <- resp_data19 %>% 
-  select(Tract, `Total Respiratory (hazard quotient)`)   
-
-```
-
-Join the datasets by census tract. Rename the variables so they are easily refered to throughout the program.
-
-```{r}
-
-enviro19_int <- left_join(resp_data19, cancer_data19, by = "Tract") %>%
-  left_join(neuro_data19, by = "Tract") %>% 
-  select(tract = Tract, resp = `Total Respiratory (hazard quotient)`, carc = `Total Cancer Risk (per million)`,
-         neuro = `Total Neurological (hazard quotient)`)
-
-```
-
-The Tract variable contains some results that are not tracts. These rows can be identified because the last 6 digits are "0". Create a variable "tract1" that is just the last six digits of tract. Filter out results where tract1 is equal to "000000".
-
-```{r}
-
-enviro19_int <- enviro19_int %>% 
-  mutate(tract1 = str_sub(tract, start = 6, end = 11))
-
-enviro19 <- filter(enviro19_int, tract1 != "000000") %>%
-  select(tract, resp, carc, neuro) 
-```
-
-Create variables with the mean and standard deviation of each health metric.
-
-```{r}
-
-enviro19 <- enviro19 %>% 
-  mutate(resp_mean = mean(resp, na.rm = TRUE),
-         carc_mean = mean(carc, na.rm = TRUE),
-         neuro_mean = mean(neuro, na.rm = TRUE),
-         resp_stdv = sd(resp, na.rm = TRUE),
-         carc_stdv = sd(carc, na.rm = TRUE),
-         neuro_stdv = sd(neuro, na.rm = TRUE))
-
-```
-
-Create the Environemtnal Health Indicator using the statistics calculated above. First calcualte the components, which is the individual health indicator for a tract minus the man of that indicator, divided by the standard deviation.
-
-```{r}
-
-enviro19 <- enviro19 %>%
-  mutate(resp_norm = (resp - resp_mean)/resp_stdv,
-         carc_norm = (carc - carc_mean)/carc_stdv,
-         neuro_norm = (neuro - neuro_mean)/neuro_stdv)
-
-
-         envhealth19 = (resp_norm + carc_norm + neuro_norm)*-1)
-```
-
-Add together the normalized results and multiple by negative 1.
-
-```{r}
-
-enviro19 <- enviro19 %>%
-  mutate(envhealth19 = (resp_norm + carc_norm + neuro_norm)*-1)
-```
-
-Percent rank the calculated values.
-
-```{r}
-
-enviro19 <- enviro19 %>%
-  mutate(index_air_quality = round(percent_rank(envhealth19) * 100, 0))
-```
-
-Keep only the tract and hazard index variable.
-
-```{r}
-
-haz_idx19 <- enviro19 %>% 
-  select(tract, index_air_quality)
-
-```
-
-# County
-
-## Crosswalk
+## Crosswalk to County
 
 Crosswalk the individual years of data onto their respective county crosswalk files taken from the geographic-crosswalks folder to confirm that all counties in the main UMF data set are present in the final data. Note that the EPA did not change which counties are included between 2018 and 2019.
 
 Read in county crosswalk and create tract level variable that combines state, county and tract IDs.
 
 ```{r}
-
 crosswalk_cnty <- read_csv(here::here("geographic-crosswalks/data", "tract-county-crosswalk_2018.csv")) %>% 
   mutate(tract = paste0(state, county, tract)) %>% 
-  select(year, tract)
-
+  select(tract)
 ```
-
-### Crosswalk 2019
 
 The EPA AirToxScreen data uses some census tracts from 2010 that have been changed since then. In order to link to counties we have to adjust these tracts manually first.
 
 ```{r}
 
-haz_idx19 <- haz_idx19 %>% 
+haz_index_all <- haz_index_all %>% 
   mutate(tract = case_when(                                  
       tract ==  "36053940101" ~ "36053030101",
       tract ==  "36053940102" ~ "36053030102",
@@ -465,26 +336,25 @@ Remove results form Puerto Rico and Virgin Islands.
 
 ```{r}
 
-haz_idx19 <- haz_idx19 %>%
+haz_index_all <- haz_index_all %>%
     mutate(state = str_sub(tract, 1, 2)) %>%
   filter(state != 72 & state != 78) %>%
-  select(tract, index_air_quality)
+  select(year, tract, index_air_quality)
 
 ```
 
 Merge the 2019 index data onto the country crosswalk file. Note that there are 531 tracts that do not have air quality data.
-
 ```{r}
 
-haz_idx19_cw <- crosswalk_cnty %>% 
-  left_join(haz_idx19, by = "tract")
+haz_index_county <- crosswalk_cnty %>% 
+  left_join(haz_index_all, by = "tract")
 
 ```
 
 Looking at the missing tracts in the crosswalk file, the states with the most missing are very large.
 
 ```{r}
-anti_join(crosswalk_cnty, haz_idx19, by = "tract") %>% 
+anti_join(crosswalk_cnty, haz_index_all, by = "tract") %>% 
   mutate(state = str_sub(tract, start = 1, end = 2)) %>% 
   group_by(state) %>%
   count() %>% 
@@ -497,189 +367,39 @@ Create state and county indicator for 2019 data
 ```{r}
 
 #split tract into state and county 
-enviro_haz19 <- haz_idx19_cw %>%
+haz_index_county <- haz_index_county %>%
   mutate(GEOID = str_sub(tract, start = 1, end = 11),
          state = str_sub(tract, start = 1, end = 2),
-         county = str_sub(tract, start = 3, end = 5),
-         tract = str_sub(tract, start = 6, end = 11)
+         county = str_sub(tract, start = 3, end = 5)
          )
 
 
 ```
+## Create AriTox Index Metric
 
-### Crosswalk 2018
-
-The EPA AirToxScreen data uses some census tracts from 2010 that have been changed since then.In order to link to counties we have to adjust these tracts manually first.
-
+### All
+Join onto the environmental hazard index data. Calculate the number of population from tracts where the index data is missing.
 ```{r}
-
-haz_idx18 <- haz_idx18 %>% 
-  mutate(tract = case_when(                                  
-      tract ==  "36053940101" ~ "36053030101",
-      tract ==  "36053940102" ~ "36053030102",
-      tract ==  "36053940103" ~ "36053030103", 
-      tract ==  "36053940200" ~ "36053030200",
-      tract ==  "36053940300" ~ "36053030300",
-      tract ==  "36053940401" ~ "36053030401",
-      tract ==  "36053940700" ~ "36053030402",
-      tract ==  "36053940403" ~ "36053030403",
-      tract ==  "36053940600" ~ "36053030600",
-      tract ==  "36065940100" ~ "36065024700",
-      tract ==  "36065940000" ~ "36065024800",
-      tract ==  "36065940200" ~ "36065024900",
-      tract ==  "04019002701" ~ "04019002704",
-      tract ==  "04019002903" ~ "04019002906",
-      tract ==  "04019410501" ~ "04019004118", 
-      tract ==  "04019410502" ~ "04019004121",
-      tract ==  "04019410503" ~ "04019004125", 
-      tract ==  "04019470400" ~ "04019005200", 
-      tract ==  "04019470500" ~ "04019005300", 
-      tract ==  "06037930401" ~ "06037137000",
-      tract ==  "51515050100" ~ "51019050100",
-      tract ==  "02270000100" ~ "02158000100",
-      tract ==  "46113940500" ~ "46102940500",
-      tract ==  "46113940800" ~ "46102940800",
-      tract ==  "46113940900" ~ "46102940900", 
-      TRUE ~ tract
-    ))
-
-
-```
-
-Remove Puerto Rico and Virgin Islands.
-
-```{r}
-
-haz_idx18 <- haz_idx18 %>%
-    mutate(state = str_sub(tract, 1, 2)) %>%
-  filter(state != 72 & state != 78) %>%
-  select(tract, index_air_quality)
-
-```
-
-The EPA AirToxScreen data uses some census tracts from 2010 that have been changed since then.In order to link to counties we have to adjust these tracts manually first.
-
-```{r}
-
-haz_idx19_cw <- crosswalk_cnty %>% 
-  left_join(haz_idx19, by = "tract")
-
-nomerge_hazidx19_1 <- anti_join(crosswalk_cnty, haz_idx19, by = "tract") 
-
-```
-
-Create state and county indicator for 2019 data
-
-```{r}
-
-
-#split tract into state and county 
-enviro_haz19 <- haz_idx19_cw %>%
-  mutate(GEOID = str_sub(tract, start = 1, end = 11),
-         state = str_sub(tract, start = 1, end = 2),
-         county = str_sub(tract, start = 3, end = 5),
-         tract = str_sub(tract, start = 6, end = 11)
-         )
-
-
-```
-
-## Read in Subgroup Information
-
-### 2019 Subgroup
-
-First we will read in tract level population data. Total population and total white, non-Hispanic. Then total population in poverty.
-
-```{r}
-
-state_abrv <- state.abb
-
-pull_acs <- function(state_fips) {
-  
-  tidycensus::get_acs(geography = "tract", 
-                      variables = c("total_pop" = "B02001_001",
-                                    "wnh" = "B03002_003", 
-                                    "total_pov" = "B17001_001", 
-                                    "poverty" = "B17001_002"),
-                      year = 2019,
-                      state = state_fips,
-                      geometry = FALSE,
-                      output = "wide"
-  )
-}
-
-acs19 <- map_df(state_abrv, pull_acs)
-
-```
-
-Use ACS data to create a variable for percent POC and percent in poverty, by 2019 tract.
-
-```{r}
-
-race_pov19 <- acs19 %>%
-  transmute(GEOID = GEOID,
-            name = NAME,
-            total_pop = total_popE,
-            wnh = wnhE,
-            poc = total_pop - wnh, 
-            percent_poc = poc/total_pop, 
-            total_pov = total_povE, 
-            poverty = povertyE, 
-            percent_pov = poverty / total_pov
-  )  
-
-
-```
-
-Create indicator variable for race based on percentage of poc/nh-White in each tract. These percentage cut offs were determined by Marge Turner. Also create indicator for tracts in 'High Poverty', with 40% or higher poverty rate meaning the tract has a high level of poverty
-
-```{r}
-
-race_pov19 <- race_pov19 %>%
-  mutate(
-    race_ind = case_when(
-      percent_poc > .4 & percent_poc < .6 ~"No Majority Race/Ethnicity",
-      percent_poc >= .6 ~ "Majority Non-White",
-      percent_poc <= .6 ~ "Majority White, Non-Hispanic"), 
-    poverty_type = case_when(
-      percent_pov < .4 ~ "Not High Poverty",
-      percent_pov >=  .4 ~ "High Poverty")
-  )
-
-```
-
-Join onto the environmental hazard index data.
-
-```{r}
-
-race_pov_enviro19 <- enviro_haz19 %>% 
-  left_join(race_pov19, by="GEOID") %>% 
+haz_index_county_acs <- haz_index_county %>% 
+  left_join(race_pov, by=c("GEOID", "year")) %>% 
   mutate(na_pop= if_else(is.na(index_air_quality), total_pop, 0))
-
 ```
 
-## Create county level index
-
-### 2019 County Index
-
-Calculate 2019 average of county level hazard index.
-
+Calculate the average of county level hazard index for each year. Weight the mean by the total population in tracts inside the county.
 ```{r}
 
-all_environment19 <- race_pov_enviro19 %>%
-  group_by(state, county) %>%
+haz_index_county_all <- haz_index_county_acs %>%
+  group_by(year, state, county) %>%
   summarise(index_air_quality = weighted.mean(index_air_quality, total_pop, na.rm = TRUE), 
             na_pop = sum(na_pop),
-            county_pop = sum (total_pop)) %>%
+            county_pop = sum(total_pop)) %>%
   ungroup()
 
 ```
 
 Calculate percent population of each county that has missing tract hazard information.
-
 ```{r}
-
-all_environment19 <- all_environment19 %>%
+haz_index_county_all <- haz_index_county_all %>%
   mutate(na_perc = na_pop / county_pop,
          subgroup = "All",
          subgroup_type = "all") %>%
@@ -687,18 +407,22 @@ all_environment19 <- all_environment19 %>%
   #add in geoid so on bind_rows, all rows have geoid
   mutate(geoid = paste0(state, county))
 
-
-
 ```
 
-Calculate county/poverty type index Create a weighting indicator so weights can be applied to the appropriate subgroup
+### Subgroups
 
+Create weighting indicator for the poverty categorization of each tract.
 ```{r}
-
-pov_environment19 <- race_pov_enviro19 %>% 
+haz_index_pov <- haz_index_county_acs %>% 
   mutate(weighting_ind = case_when(poverty_type == "High Poverty" ~ poverty,
                                    poverty_type == "Not High Poverty" ~ (total_pov - poverty)),
          na_pop = if_else(is.na(index_air_quality) | is.na(poverty_type), weighting_ind, 0)) %>%
+```
+
+
+Calculate county/poverty type index Create a weighting indicator so weights can be applied to the appropriate subgroup.
+```{r}
+haz_index_sub_poverty <- haz_index_pov %>% 
   group_by(year, state, county, poverty_type) %>%
   summarise(index_air_quality = weighted.mean(index_air_quality, weighting_ind, na.rm = TRUE),
             na_pop = sum(na_pop, na.rm = TRUE),
@@ -708,30 +432,20 @@ pov_environment19 <- race_pov_enviro19 %>%
   mutate(geoid = str_c(state,county),
          na_perc = na_pop / subgroup_pop) %>%
   select(-c(na_pop, subgroup_pop)) %>%
-  #Because we have missing data, we get nas which percolate into the poverty_type column
-  #This removes them:
   filter(!is.na(poverty_type))
-
-
 ```
 
 Expand data set for every county/poverty_type
-
 ```{r}
-
-expand_pov19 <- pov_environment19 %>%
-  expand(geoid, poverty_type)
-
+haz_index_county_sub_expand  <- haz_index_county_sub  %>%
+  expand(year, geoid, poverty_type)
 ```
 
 Make dataset of unique state/county pairs to join to
-
 ```{r}
-
-state_county19 <- race_pov_enviro19 %>%
-  transmute(geoid = str_c(state, county), state, county) %>%
+state_county <- haz_index_county_sub %>%
+  transmute(year, geoid = str_c(state, county), state, county) %>%
   distinct()
-
 ```
 
 Join dataset on expanded dataset, join with geo varibale, and add subgroup type variables
@@ -750,18 +464,21 @@ pov_environment_exp19 <- left_join(expand_pov19,
 
 ```
 
-Average county level hazard by race/ethnicity Create a weighting indicator so weights can be applied to the appropriate subgroup Weight the index by total population for tracts that have mixed race and ethnicity Weight by number of people of color for tracts that are majority non-white Weight by number of white, non-hispanic people for tracts that are majority white, non-hispanic Calculate missingness
-
+Create neigorhood racial majority weight.
 ```{r}
-
-
 haz_by_race19 <- race_pov_enviro19 %>%
   mutate(weighting_ind = case_when(
     race_ind == "No Majority Race/Ethnicity" ~ total_pop,
     race_ind == "Majority Non-White" ~ poc,
     race_ind == "Majority White, Non-Hispanic" ~ wnh
   ),
-  na_pop = if_else(is.na(index_air_quality) | is.na(race_ind), weighting_ind, 0)) %>%
+  na_pop = if_else(is.na(index_air_quality) | is.na(race_ind), weighting_ind, 0)) 
+```
+
+Average county level hazard by race/ethnicity Create a weighting indicator so weights can be applied to the appropriate subgroup Weight the index by total population for tracts that have mixed race and ethnicity Weight by number of people of color for tracts that are majority non-white Weight by number of white, non-hispanic people for tracts that are majority white, non-hispanic Calculate missingness
+
+```{r}
+haz_by_race19 <- race_pov_enviro19 %>%
   group_by(state, county, race_ind) %>%
   summarise(index_air_quality = weighted.mean(index_air_quality, weighting_ind, na.rm = TRUE),
             na_pop = sum(na_pop, na.rm = TRUE),
@@ -836,11 +553,9 @@ data_cnty19_final <- final_data_cnty_sub19 %>%
   filter(subgroup == "All")
 ```
 
-#Place
 
-Cross walk and create air-quality-index at the place level.
 
-## Crosswalk
+## Crosswalk palce
 
 Crosswalk tract-level data to places.
 
