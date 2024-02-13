@@ -32,16 +32,12 @@ ipums_repwt_college <- function(extract_name, extract_description, survey){
   # Check if extract already exists in your directory. If it does this function will read in the existing data.
   if(!file.exists(here(folder_path, extract_gz_filename))){
     
-    #If extract does not exist, create the extract using the IPUMS API
+    #If extract does not exist, create the extract using the IPUMS API. Note for college readiness we only need 19 and 20 year olds.
     usa_ext_umf <-
       define_extract_usa(
         description = extract_description,
         samples = c(survey),
         variables = list(
-          var_spec("GQ", 
-                   case_selections = c("1", 
-                                       "2",
-                                       "5")),
           var_spec("AGE", 
                    case_selections = c("19", "20")),
           "REPWTP",
