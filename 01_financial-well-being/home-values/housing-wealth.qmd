@@ -23,6 +23,17 @@ execute:
 
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
+-   [Housekeeping](#housekeeping)
+-   [Read Data](#read-data)
+-   [Clean Data](#clean-data)
+-   [Add Age Subgroup](#add-age-subgroup)
+-   [Merge Crosswalk](#merge-crosswalk)
+-   [Create Housing Wealth Metric](#create-employment-metric)
+-   [Evaluate Results](#evaluate-results)
+-   [Export](#export)
+
+## Housekeeping
+
 ```{r}
 #| label: setup
 
@@ -32,14 +43,14 @@ librarian::shelf(tidyverse, ipumsr, here, glue, labelled, skimr, urbnthemes)
 set_urbn_defaults(style = "print")
 ```
 
-#TODO: Paraphrase
+
 The metric compares a racial or ethnic group’s share of primary-residence housing wealth in a community to its share of the population. For example, if Black homeowners have 15 percent of the primary-residence housing
 wealth but make up 45 percent of the population, then the metric is a ratio of 15%:45%. The greater
 the gap between these percentages, the more inequity in housing wealth in the community.
 
-## Housekeeping
 
-### Download IPUMS microdata
+
+### Read Data
 
 We extract the 1 year ACS files from the IPUMS API using `ipumsr`. You will need to have an API key in order to do so. If you don't have one, you can register to the [IPUMS USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu) data collection and create an API key.
 
@@ -75,9 +86,10 @@ filepath <- download_extract(usa_ext_complete,
 )
 ```
 
-### Filter sample
+### Clean data
 
-We load the 2014-2022 1 Year ACS estimates we downloaded from IPUMS above. IPUMS loads the data as a person-level data set with some household variables. For example `hhincome` shows total household income with repeated values for each person in the same household. Therefore, we can analyze the data at the household level by only keeping the first person sampled in the household (i.e., `pernum == 1` where `pernum` is the "Person number in sample unit").
+We load the 2014-2022 1 Year ACS microdata we downloaded from IPUMS above. IPUMS loads the data as a person-level data set with some household variables. For example `hhincome` shows total household income with repeated values for each person in the same household. Therefore, we can analyze the data at the household level by keeping the first person sampled in the household (i.e., `pernum == 1` where `pernum` is the "Person number in sample unit").
+
 
 
 ```{r}
@@ -86,9 +98,8 @@ We load the 2014-2022 1 Year ACS estimates we downloaded from IPUMS above. IPUMS
 #| include: false
 
 # Set microdata to whatever the file you downloaded in the previous chunk is called
-
-microdata <- "usa_00002.xml"
-acs1yr_labelled <-
+microdata <- "usa_00004.xml"
+acs1yr <-
   read_ipums_micro(here(glue("01_financial-well-being/home-values/data/{microdata}"))) %>%
   janitor::clean_names() %>%
   filter(
@@ -98,21 +109,26 @@ acs1yr_labelled <-
   mutate(
     valueh = lbl_na_if(valueh, ~ .lbl %in% c("Missing", "N/A")),
     across(ends_with("fip"), zap_labels)
-  )
+  ) 
 ```
 
+Next, we exclude individuals living in group quarters because we only want households for this metric. In particular, we exclude people living in places other than housing units (e.g., correctional facilities, nursing homes, mental hospitals, dorms, barracks, group homes, missions). For more information, see the [variable description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on IPUMS USA. 
 
-Next, we exclude households living in group quarters. That is, we exclude people living in places other than housing units (e.g., correctional facilities, nursing homes, mental hospitals, dorms, barracks, group homes, missions). 
+```{r}
+#| label: keep-households-only
+acs1yr <-
+  acs1yr %>% 
+  unlabelled() %>%
+  filter(!(gq %in% c("Group quarters--Institutions", "Other group quarters")))
 
+```
 
 FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits. We can ensure this is the case with `stringr::str_pad()`.
 ```{r}
 #| label: define-analysis-unit-and-clean-fips-codes
 
 acs1yr <-
-  acs1yr_labelled %>%
-  unlabelled() %>%
-  filter(!(gq %in% c("Group quarters--Institutions", "Other group quarters"))) %>%
+  acs1yr%>%
   mutate(
     statefip = str_pad(statefip, width = 2, pad = "0", side = "left"),
     countyfip = str_pad(countyfip, width = 3, pad = "0", side = "left"),
@@ -120,7 +136,17 @@ acs1yr <-
   )
 ```
 
-### Crosswalk
+## Merge Crosswalk
+
+
+For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 Place. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 Place.
+
+See #Crosswalks_README.md
+
+```{r}
+read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")) %>% View()
+```
+
 
 We merge our 1-year ACS data with PUMA-County and PUMA-Place geocodes to get County and City boundaries. Counties with missing county codes in the ACS (i.e., those for which `county code == 0`) were updated using the PUMA-County crosswalk. 
 
@@ -133,7 +159,7 @@ Only the counties where ACS did not provide county codes (i.e., `county code == 
 ```{r}
 #| label: puma-to-county-crosswalk
 
-puma_county <- read_csv(here("01_financial-well-being/home-values/data/puma_to_county_geocorr2014.csv")) %>%
+puma_county <- read_csv(here("geographic-crosswalks/data/geocorr2014_puma_to_county.csv")) %>%
   mutate(
     state = str_pad(state, width = 2, pad = "0", side = "left"),
     county = str_pad(county, width = 3, pad = "0", side = "left")
@@ -232,7 +258,15 @@ place_hh <-
   adjust_hh_weights(place) %>%
   add_race_ethnicity_labels()
 ```
-# Step 4. Create Output Data: Household Share by Race and Ethnicity
+
+
+### Add Age Subgroup
+
+Add Age subgroup (max 2 groups) - Jung Choi suggested age 45 as the split, so something like <age 45 and 45+
+
+## Create Housing Wealth Metric
+
+### Housing Share
 
 We will now compute the share of households by race and ethnicity (i.e., total number of households for each race and ethnic group divided by the total number of households)
 
@@ -322,7 +356,7 @@ skimr::skim(county_hh_by_race_ethnicity)
 
 :::
 
-# Step 5. Create Output Data: Housing Wealth Share by Race/Ethnicity (Homeowners Only)
+### Housing Wealth Share
 
 We keep observations for homeowners only in order to calculate total aggregated housing wealth for homeowners for each race and ethnic group divided by the total aggregated housing wealth
 
@@ -346,7 +380,7 @@ house_value_by_race_ethnicity <- function(data, geo_var) {
 
 ::: {.panel-tabset}
 
-## County
+#### County
 ```{r}
 #| label: house-value-by-race-ethnicity-county
 
@@ -354,7 +388,7 @@ county_hv <- house_value_by_race_ethnicity(county_hh, county)
 ```
 
 
-## City
+#### City
 ```{r}
 #| label: house-value-by-race-ethnicity-city
 place_hv <- house_value_by_race_ethnicity(place_hh, place)
@@ -427,7 +461,6 @@ place_hv <-
   )
 ```
 
-## Calculate Housing Wealth Ratio by Race and Ethnicity
 
 ```{r}
 #| label: housing-wealth-ratio-function
@@ -439,6 +472,8 @@ housing_wealth_by_race_ethnicity <- function(data, geo_var) {
     select(year, statefip, {{ geo_var }}, race_ethnicity, hv, total_hv, share_hv, ratio_house_value_households_quality)
 }
 ```
+
+
 ```{r}
 #| label: housing-wealth-by-race-ethnicity
 
@@ -501,13 +536,14 @@ place_hh_hw_raceeth <-
   place_hh_by_race_ethnicity %>%
   filter(place != "NA") %>%
   hh_hw_by_race_ethnicity(
-    ,
-    place_hv_by_race_ethnicity, place
+    place_hh_by_race_ethnicity,
+    place_hv_by_race_ethnicity,
+    place
   )
 ```
 
 
-## Export Final Data
+## Export 
 
 ```{r}
 #| label: export-data
