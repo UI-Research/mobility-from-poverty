@@ -22,7 +22,7 @@ summarize_metric <- function(.data, var, quality_var, decimals = 2) {
       `Max.` = max({{ var }}, na.rm = TRUE),
       `NA's` = sum(is.na({{ var }}))
     ) %>%
-    gt::gt() %>%
+    gt::gt(id = "summary-table") %>%
     gt::fmt_number(columns = 1:4, decimals = decimals) %>%
     gt::opt_css(
       css = "
@@ -50,7 +50,7 @@ summarize_metric <- function(.data, var, quality_var, decimals = 2) {
       )       
     ) %>%
     dplyr::select({{ quality_var }}, quality_label, n) %>%
-    gt::gt(id = "table") %>%
+    gt::gt(id = "quality-table") %>%
     gt::opt_css(
       css = "
         .gt_table {
