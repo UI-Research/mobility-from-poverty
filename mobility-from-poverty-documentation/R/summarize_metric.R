@@ -50,7 +50,7 @@ summarize_metric <- function(.data, var, quality_var, decimals = 2) {
       )       
     ) %>%
     dplyr::select({{ quality_var }}, quality_label, n) %>%
-    gt::gt() %>%
+    gt::gt(id = "table") %>%
     gt::opt_css(
       css = "
         .gt_table {
