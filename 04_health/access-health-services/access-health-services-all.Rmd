@@ -1,0 +1,537 @@
+---
+title: "Access to Health Services"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+library(tidyverse)
+library(haven)
+library(urbnthemes)
+
+set_urbn_defaults(style = "print")
+
+options(scipen = 999)
+
+```
+
+This metric represents the number of individuals served by one primary care physician in a county, if the population was equally distributed across physicians. 
+
+The rest of this file is organized as follows:
+1. Background
+2. Download data
+3. Clean, join, and reshape data
+4. Construct ratio of population to primary care physicians
+5. Add data quality flags
+6. Validation
+7. Save and write out data
+
+## 1. Background
+This section provides background for the data used to create this metric.
+
+### Primary care physicians
+For 2022, we used data from [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?year=2022) for this metric, which used data from the [2020-2021 Area Health Resources File (AHRF)](https://data.hrsa.gov/data/download?data=AHRF#AHRF). The 2020-2021 AHRF gets county-level counts of physicians for 2019 from the [American Medical Association (AMA) Physician Masterfile](https://www.cdc.gov/nchs/hus/sources-definitions/ama.htm). So, the physician data was ultimately for 2019. 
+
+For 2023, we want to use the underlying source data used by CHR, which is the [Area Health Resource File, 2022-2023 County Level Data](https://data.hrsa.gov/data/download?data=AHRF#AHRF). The Area Health Resource File is a collection of data from more than 50 sources, including the American Medical Association, which maintains the Physician Masterfile. The Physician Masterfile contains information on nearly all the Doctors of Medicine and Doctors of Osteopathic Medicine in the nation. These are administrative data. A record for a physician is established when individuals enter medical schools accredited by the Liaison Committee on Medical Education (LCME), or in the case of international medical graduates (IMGs), upon entry into a post-graduate residency training program accredited by the Accreditation Council for Graduate Medical Education (ACGME) [source](https://www.ama-assn.org/about/physician-professional-data/ama-physician-professional-data).
+
+Primary care physicians include practicing non-federal physicians (M.D.s and D.O.s) under age 75 specializing in general practice medicine, family medicine, internal medicine, and pediatrics. It does not include nurse practitioners, physician assistants, or other practitioners available for primary care services. It also does not include hospital residents.
+    
+This variable is not available by sex, and we cannot reconstruct this variable by sex based on other variables. For instance, AHRF does have separate variables for Total MDs, Inactive MDs, Total DOs, and Inactive DOs (all non-federal) by sex. However, taking the sum of these variables by sex would still include physicians over the age of 75, and all specialties. There are also variables for MDs by specialty and age, but not by sex.
+
+Lastly, these data are unavailable at the Census place-level. County is the smallest geography available.
+
+### Population
+The Area Health Resource File already includes population data from the Census County Population Estimates for each year, as well as from the 2020 Census Redistricting file for 2020, and from LAPI for 2020 and 2021 (I don't know what LAPI means). These sources are recorded in the technical documentation Excel files available after downloading the AHRF zip file as described in section 3.
+
+However, to promote consistency across all metrics created as part of the Upward Mobility Framework project, we use population data compiled by Urban Institute researchers. These data are available on our project's GitHub repository [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/geographic-crosswalks/data/county-populations.csv).
+    todo(): I swear I read somewhere for this project that we should all be using this file for our population counts, but I cannot find that written down anywhere now. If true, we should be explicit about where that data is pulled from. If not true, maybe we can remove this part and just use the population data provided through AHRF.
+
+
+## 2. Download data
+First, this section downloads two AHRF zip files from the AHRF website. It then extracts one SAS file from each zip file and reads each file into the R environment. It keeps the zip files which contain documentation for each file. Second, this section reads in county-level population data compiled by Urban Institute which is used to construct the ratio of population to primary care physicians.
+
+### Download AHRF data
+The primary data for this metric come from the [Area Health Resource File 2022-2023 County-Level Data](https://data.hrsa.gov/data/download). 
+
+The 2022-2023 AHRF includes only the most recent two years of data for each variable (2020 and 2021 for primary care physicians), eliminating historical data across releases. Therefore, we also read in the 2021-2022 AHRF, which still includes historical data back to 2014.
+
+```{r}
+# URL of the 2022-2023 AHRF zip file
+## Note that the 2021-2022 file doesn't have a csv option, so I download the SAS version for consistency. For more information, download the `Technical documentation`.
+zip_url_23 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_SAS_2022-2023.zip"
+
+# Destination file path where we want to save the zip file
+zip_dest_23 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2022-2023.zip")
+
+# Download the zip file to the above path
+download.file(zip_url_23, zip_dest_23, mode = "wb")
+
+# Unzip the file
+unzip(zip_dest_23, exdir = here::here("04_health", "access-health-services", "data"))
+
+# Read in the SAS file containing the latest AHRF data
+ahrf23 <- haven::read_sas(here::here("04_health", "access-health-services", "data",
+                                "AHRF_SAS_2022-2023", "ahrf2023.sas7bdat"))
+
+# Remove zip file
+# unlink(zip_dest_23)
+
+# Clean up environment
+rm(zip_url_23, zip_dest_23)
+
+```
+
+```{r}
+# URL of the 2021-2022 AHRF zip file
+## Note that the 2021-2022 file doesn't have a csv option. For more information, download the `Technical documentation`.
+zip_url_22 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_2021-2022_SAS.zip"
+
+zip_dest_22 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2021-2022.zip")
+
+# Download the zip file to the above path
+download.file(zip_url_22, zip_dest_22, mode = "wb")
+
+# Unzip the file
+unzip(zip_dest_22, exdir = here::here("04_health", "access-health-services", "data"))
+
+# Read in the SAS file containing the 2021-2022 AHRF data
+ahrf22 <- haven::read_sas(here::here("04_health", "access-health-services", "data", "ahrf2022.sas7bdat"))
+
+# Remove zip file and irrelevant contents
+# unlink(zip_dest_22)
+# unlink(here::here("04_health", "access-health-services", "data", "2021-2022_AHRFDUA.doc"))
+
+# Clean up environment
+rm(zip_url_22, zip_dest_22)
+
+```
+
+### Download population data compiled by Urban Institute
+Population data compiled by Urban Institute researchers for 2015-2022 is available [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/geographic-crosswalks/data/county-populations.csv). You can manually download the data by selecting the `Download raw file` button which downloads a file titles `county-populations.csv`. Then, move it into the appropriate directory.
+    todo(): Is this step necessary or should we just use the population data provided in AHRF? If necessary, is there a way to automate this download?
+    
+Read in Urban Institute population data.
+```{r}
+county_pop <- read.csv(here::here("04_health", "county-populations.csv")) %>%
+  filter(!year %in% c(2022)) %>%
+  mutate(state = str_pad(state, 2, pad = "0"),
+         county = str_pad(county, 3, pad = "0"))
+
+```
+
+
+
+## 3. Clean, join, and reshape data
+This section limits the two AHRF files from above to our variables of interest and renames them. It then joins the two files and removes observations for US territories. There are variables for the number of primary care physicians and population for each year, so it then reshapes the data to be long by year after joining the two files.
+
+Select only the relevant variables from each AHRF file. Note that naming conventions in the 2022-2023 file differ from those in the 2021-2022 file. You can search the contents of the 2022-2023 file via `AHRF_CSV_2022-2023.zip\AHRF_CSV_2022-2023\DOC\AHRF 2022-2023 Technical Documentation.xlsx` and you can search the contents of the 2021-2022 file via `AHRF 2021-2022_User_Tech.zip\AHRF_USER_TECH_2021-2022\AHRF 2021-2022 Technical Documentation.xlsx`. You will need to re-download the zip files from above to access these documents.
+```{r}
+# Select and rename relevant variables from 2022-2023 file
+## Note that both files have (identical) information for 2020. We keep the 2020 information from the historic file for ease of future updates.
+ahrf23 <- ahrf23 %>%
+  select(
+    state = fips_st,
+    county = fips_cnty,
+    # GEOID = fips_st_cnty, 
+    # county_state = cnty_name_st_abbrev, 
+    # county_name = cnty_name, 
+    # state_abb = st_name_abbrev, 
+    # state_name = st_name,
+    pc_physicians_21 = phys_nf_prim_care_pc_exc_rsdt_21,
+    # pc_physicians_20 = phys_nf_prim_care_pc_exc_rsdt_20,
+    pop_21 = popn_est_21,
+    # pop_20 = cens_popn_20,
+  )
+
+# Select and rename relevant variables from 2021-2022 file
+## Note that both files have (identical) information for 2020. We keep the 2020 information from the historic file for ease of future updates.
+ahrf22 <- ahrf22 %>%
+  select(state = f00011, 
+         county = f00012,
+         # GEOID = f00002, 
+         # county_state = f04437, 
+         # county_name = f00010, 
+         # state_abb = f12424, 
+         # state_name = f00008,
+         pc_physicians_20 = f1467520,
+         pc_physicians_19 = f1467519,
+         pc_physicians_18 = f1467518,
+         pc_physicians_17 = f1467517,
+         pc_physicians_16 = f1467516,
+         pc_physicians_15 = f1467515,
+         pc_physicians_14 = f1467514,
+         pop_20 = f0453020,
+         pop_19 = f1198419,
+         pop_18 = f1198418,
+         pop_17 = f1198417,
+         pop_16 = f1198416,
+         pop_15 = f1198415,
+         pop_14 = f1198414,
+  )
+
+# Join both AHRF files by state and county
+ahrf_joined <- full_join(x = ahrf23, y = ahrf22, by = c("state", "county")) %>%
+  # Remove US territories
+  filter(
+    !state %in% c('66', '72', '78')
+  )
+
+```
+
+Alaska had one new county in 2021, so the 2022-2023 file (which has 2021 information for primary care physicians) has one extra observation.
+```{r}
+# Check join
+anti_join(x = ahrf22, y = ahrf23, b = c("state", "county")) %>%
+  select(state, county)
+
+```
+
+Reshape the data to be long by state/county/year
+```{r}
+# Reshape the joined data to be long by state/county/year
+ahrf_long <- pivot_longer(
+  ahrf_joined, 
+  cols = starts_with("pc_physicians_") | starts_with("pop"),
+  names_to = c(".value", "year"),
+  names_pattern = "(.*)_(\\d+)"
+) %>%
+  mutate(year = as.numeric(paste0(20, `year`)))
+
+# Clean up environment
+rm(ahrf22, ahrf23)
+
+```
+
+Join AHRF data to Urban Institute county populations
+```{r}
+my_data <- left_join(
+  x = county_pop, y = ahrf_long, 
+  by = c("year", "state", "county")
+) 
+
+```
+
+    todo(): There are 9 observations from Connecticut (2021) that are in Urban's universe of counties but not in AHRF. Need to crosswalk Connecticut county change from 2020 to 2021.
+```{r}
+anti_join(
+  x = county_pop, y = ahrf_long, 
+  by = c("year", "state", "county")
+) %>%
+  group_by(year, state) %>%
+  count()
+
+```
+
+    todo(): There are 70 observations in the AHRF data that are not in Urban's universe of counties (from Alaska, Connecticut, and Virginia). I imagine most or all of these are county changes - how do I crosswalk these?
+```{r}
+anti_join(
+  x = ahrf_long, y = county_pop, 
+  by = c("year", "state", "county")
+) %>%
+  group_by(state) %>%
+  count()
+
+```
+
+Urban Institute is missing population counts for 2014. We use the 2014 population counts from AHRF for this year instead.
+```{r}
+my_data <- my_data %>%
+  mutate(population = if_else(year==2014, pop, population))
+
+```
+
+Urban Institute and AHRF population sources match for every year except 2021.
+    todo(): probably a more elegant way to check this
+```{r}
+my_data %>%
+  mutate(pop_diff = population - pop) %>%
+  group_by(year) %>%
+  summarise(mean(pop_diff))
+
+```
+
+
+## 4. Construct ratio of population to primary care physicians
+This section creates actual the metric (ratio of population to primary care physicians).
+
+The antecedent of the ratio (numerator) is population and the consequent of the ratio (denominator) is number of primary care physicians. When there is at least 1 primary care physician in the county, the variable created in this step is the population per 1 primary care physician. If there are no primary care physicians in the county, we assign a value of 0.
+
+```{r}
+# Create the ratio
+my_data <- my_data %>%
+  mutate(
+    ratio_population_pc_physician = case_when(
+      pc_physicians > 0 ~ round(population/pc_physicians),
+      pc_physicians == 0 ~ 0
+      )
+  )
+
+```
+
+
+## 5. Add data quality flags
+This section adds a flag for counties with less than 2,000 people to indicate low population, and assigns a data quality flag based on the 
+
+    todo(): CHR reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. It is kind of unclear to me why they do that... maybe because they think the "0 PCPs" could be a reporting error for counties with a decent-sized population? But we don't do that here...
+    
+Create a flag for counties with low population    
+```{r}
+my_data <- my_data %>%
+  mutate(
+    low_pop_flag = case_when(
+      population < 2000 ~ "1",
+      population >= 2000 ~ "0"
+    )
+  )
+
+```
+
+We calculate the sensitivity of the ratio as measured by percent change in the ratio when adding 1 PCP to each county. E.g., if there are 2,000 people in a county with 1 physician, the addition of 1 more physician changes the ratio drastically.
+```{r}
+my_data <- my_data %>%
+  mutate(
+    # Add 1 to the denominator of the ratio and reconstruct the ratio
+    plus1 = population / (pc_physicians + 1),
+    # Calculate the differences between each of the new ratios and the original ratio
+    plus1_diff = abs(plus1 - as.numeric(ratio_population_pc_physician)),
+    sensitivity = plus1_diff / ratio_population_pc_physician
+  )
+
+```
+
+90 percent of counties across all years have a percent change less than or equal to 33 percent.
+```{r}
+# Remove counties with 0 physicians because their sensitivity value is infinity
+test <- my_data %>%
+  filter(pc_physicians != 0)
+  
+quantile(test$sensitivity, probs = c(0, 0.2, 0.4, 0.6, 0.75, 0.8, 0.9, 1), na.rm = TRUE)
+
+```
+
+Counties with the lowest number of PC physicians have the highest sensitivity.
+```{r}
+my_data %>%
+  filter(!is.na(ratio_population_pc_physician)) %>%
+  ggplot(aes(pc_physicians, sensitivity)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Counties with the lowest number of PC physicians have the highest sensitivity",
+       subtitle = "") +
+  scatter_grid()
+
+```
+
+To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of the number of population per primary care physician. If the ratio changes less than 20 percent we assign a quality value of 1. If the ratio changes between 20 percent and 39 percent we assign a quality value of 2. If the ratio changes between 40 percent and 59 percent we assign a quality value of 3.
+```{r}
+# Assign a data quality flag
+my_data <- my_data %>%
+  mutate(ratio_population_pc_physician_quality = 
+           case_when(
+             sensitivity < 0.2 ~ 1,
+             sensitivity < 0.4 ~ 2,
+             sensitivity < 0.6 ~ 3
+           )
+  )
+
+my_data %>%
+  count(ratio_population_pc_physician_quality)
+
+```
+
+
+## 6. Validation
+This section checks our results against the same metric created by [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?), which also used AHRF data.
+
+For a while, we could not get our results to match the latest results from County Health Rankings. The number of primary care physicians were identical, but the ratios were not, which indicated that we used a different population source (population was not reported in CHR data). I recreated our ratio multiple times using different sources of population but could not match the CHR results.
+
+On 2024-01-31, Vincent and Lily Robin met with a team of County Health Rankings researchers. Their documentation indicates that CHR used ... One of their researchers told us that they created their ratio using Vintage 2020 population estimates, which are based on the 2010 Census (see more [here](https://www.census.gov/programs-surveys/popest/technical-documentation/research/evaluation-estimates/2020-evaluation-estimates.html)). 
+
+
+### Download, read in, and clean the 2023 County Health Rankings Data
+The landing page to download these data is [here](https://www.countyhealthrankings.org/explore-health-rankings/rankings-data-documentation).
+
+```{r}
+# Download file directly from internet
+download.file(
+  url = "https://www.countyhealthrankings.org/sites/default/files/media/document/2023%20County%20Health%20Rankings%20Data%20-%20v2.xlsx",
+  destfile = "04_health/access-health-services/data/chr2023.xlsx",
+  mode = "wb"
+)
+
+# Read in CHR data
+chr2023 <- readxl::read_excel(here::here("04_health", "access-health-services", "data", "chr2023.xlsx"),
+                              sheet = "Ranked Measure Data",
+                              skip = 1,
+                              col_names = TRUE)
+
+# Limit CHR data to relevant variables
+chr2023 <- chr2023 %>%
+  select(
+    GEOID = "FIPS",
+    state_name = State,
+    county_name = County,
+    # Number of primary care physicians (PCP) in patient care
+    pc_physicians_chr = "# Primary Care Physicians",
+    # Primary Care Physicians per 100,000 population
+    rate_pc_physicians_chr = "Primary Care Physicians Rate", 
+    # Population to Primary Care Physicians ratio
+    ratio_population_pc_physician_chr = "Primary Care Physicians Ratio",
+  ) %>%
+  # Delete state-level observations
+  filter(!is.na(county_name))
+
+# The CHR metric is reported as an actual ratio, so we split the ratio into its parts
+chr2023 <- chr2023 %>%
+  separate(col = ratio_population_pc_physician_chr,
+           into = c('ratio_population_pc_physician_chr', 'consequent'),
+           remove = TRUE)
+
+# Split GEOID into separate state and county variables so we can join to main AHRF data
+chr2023 <- chr2023 %>%
+  mutate(
+    state = str_sub(GEOID, 1, 2),
+    county = str_sub(GEOID, 3, 5)
+  )
+
+```
+
+### Join 2023 AHRF data and 2023 CHR data
+
+The 2023 County Health Rankings uses the 2021-2022 AHRF file [(see Data and methods -> Methods -> Data Source)](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/clinical-care/access-to-care/primary-care-physicians?) for their ratio. The latest year of primary care physician data available in the 2021-2022 AHRF file is 2020. So we are comparing 2020 data from each file.
+
+However, the CHR documentation indicates that the population used to create this metric was from 2021, so we eventually recreate our ratio using 2020 physician data and 2021 population data.
+```{r}
+# First filter our AHRF data to 2020 physicians
+ahrf_test <- my_data %>%
+  filter(year %in% c("2020", "2021")) %>%
+  select(year, state, county, pc_physicians, population, ratio_population_pc_physician) %>%
+  pivot_wider(names_from = year,
+              values_from = c(pc_physicians, population, ratio_population_pc_physician))
+
+# Join County Health Rankings and AHRF data
+joined_data <- chr2023 %>%
+  select(state, county, pc_physicians_chr, ratio_population_pc_physician_chr, consequent, rate_pc_physicians_chr) %>%
+  left_join(y = ahrf_test %>%
+              select(state, county, pc_physicians_2020, pc_physicians_2021,
+                     ratio_population_pc_physician_2020, ratio_population_pc_physician_2021,
+                     population_2020, population_2021),
+            by = c("state", "county")) %>%
+  mutate(ratio_population_pc_physician_chr = as.numeric(ratio_population_pc_physician_chr))
+
+```
+
+
+### Compare values from CHR and AHRF
+
+County Health Rankings reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. We do not report a missing value for these observations. After removing observations with a missing value for PCPs from the CHR data, the number of PCPs is consistent across our data and the CHR data. This makes sense, because AHRF was the source for both.
+    todo(): The `stopifnot()` function was failing even though it is true as tested by subtracting the values and looking at the results (which were all 0)...
+```{r}
+joined_data <- joined_data %>%
+  filter(!is.na(pc_physicians_chr))
+
+# stopifnot(joined_data$pc_physicians_2020 == joined_data$pc_physicians_chr)
+
+```
+
+However, the ratios are not the same, even after removing observations with 0 PCPs. This implies that County Health Rankings used a different population source than we did. We used the 2020 Decennial Census population, which was available in the AHRF file.
+    todo(): The `stopifnot()` function was failing even though it is true
+```{r}
+test <- joined_data %>%
+  filter(consequent==1)
+
+# stopifnot(test$ratio_population_pc_physician_2020 != test$ratio_population_pc_physician_chr)
+
+test <- test %>%
+  mutate(ratio_diff_pct = 
+           abs(ratio_population_pc_physician_2020 - ratio_population_pc_physician_chr) / ((ratio_population_pc_physician_chr + ratio_population_pc_physician_2020)/2))
+
+quantile(test$ratio_diff_pct, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.99, 1), na.rm = TRUE)
+
+```
+
+County Health Rankings documentation indicates that they use 2021 Census Population Estimates for their ratio, even though the measure of primary care physicians is from 2020. During a meeting with CHR researchers on 2024-01-31, one of their team members said they pulled population data for this metric from [this link](https://www2.census.gov/programs-surveys/popest/datasets/2020-2021/counties/totals/). However, another team member said they used Vintage 2020 population estimates, which are based on the 2010 Census (see more [here](https://www.census.gov/programs-surveys/popest/technical-documentation/research/evaluation-estimates/2020-evaluation-estimates.html)).
+
+We download the Vintage 2020 population estimates and are able to recreate their ratio.
+```{r}
+download.file(
+  url = "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv",
+  destfile = "04_health/access-health-services/data/chr_pop.csv",
+  mode = "wb"
+)
+
+chr_pop <- read_csv(here::here("04_health", "access-health-services", "data", "chr_pop.csv")) %>%
+  select(
+    state = STATE,
+    county = COUNTY,
+    pop_2020_chr = POPESTIMATE2020
+  ) %>%
+  filter(county != "000")
+
+joined_data <- joined_data %>%
+  full_join(y = chr_pop, by = c("state", "county"))
+
+test <- joined_data %>%
+  mutate(
+    ratio_test = case_when(
+      pc_physicians_chr > 0 ~ round(pop_2020_chr/pc_physicians_chr),
+      pc_physicians_chr == 0 ~ 0
+      )
+  ) %>%
+  select(state, 
+         county, 
+         pc_physicians_2020,
+         pc_physicians_chr,
+         population_2020,
+         pop_2020_chr,
+         ratio_population_pc_physician_2020,
+         ratio_population_pc_physician_chr,
+         ratio_test,
+         )
+
+```
+
+
+## 7. Save and write out data
+    todo(): low_pop_flag likely needs renamed but I'm not sure to what. 
+```{r}
+# Limit to final variables
+final_data <- my_data %>% 
+  select(
+    year, 
+    state,
+    county,
+    state_name,
+    county_name,
+    ratio_population_pc_physician,
+    ratio_population_pc_physician_quality,
+    low_pop_flag
+  )
+
+# Write out data
+final_data %>%
+  write_csv(here::here("04_health",
+                       "access-health-services",
+                       "final",
+                       "pcp_metric_all_county.csv"))
+
+```
+
