@@ -8,7 +8,7 @@
 	
 clear all
 
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty"
 global years 2019 2020 2021 // refers to 2019-20 school year through most recent data
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
