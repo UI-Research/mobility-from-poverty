@@ -295,7 +295,7 @@ sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
 
-drop enrollment coverage* enroll_* *_districts_suppress
+drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_*
 
 order year state city_name *homeless* black* hispanic* other* white*
 

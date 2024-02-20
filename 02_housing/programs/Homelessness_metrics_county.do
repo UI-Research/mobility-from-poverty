@@ -185,6 +185,7 @@ foreach year in $years {
 	drop if _merge==2 //  don't need ccd data that doesn't match eddataexpress data
 	drop _merge
 	}
+	drop if county==""
 
 *replaces missing enrollments with zeros
 	replace enrollment=0 if enrollment<0 | enrollment==.
@@ -222,7 +223,7 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 
 *Quality check variables - use homeless/total
 	foreach var in homeless black white hispanic other {
-	gen `var'_quality = 1 if `var'_count_ub / `var'_count_lb <=1.05
+	gen `var'_quality_count = 1 if `var'_count_ub / `var'_count_lb <=1.05
 	replace `var'_quality = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_count_ub / `var'_count_lb <=1.1
 	replace `var'_quality = 3 if `var'_quality==. & `var'_count!=.
 	}
@@ -258,7 +259,7 @@ sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
 
-drop enrollment coverage* enroll_* *_districts_suppress
+drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_*
 
 order year state county *homeless* black* hispanic* other* white*
 
@@ -268,18 +269,19 @@ merge 1:1 year state county using "intermediate/countyfile.dta"
 tab year _merge 
 	drop if _merge==1 // Puerto Rico
 	keep if year>=2019 & year<=2021 // only updating 2019-2021 years
-
+	drop _merge
+/*
 bysort year: egen maxmerge=max(_merge)
 keep if maxmerge==3
 drop _merge maxmerge
-
+*/
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
 tab year // total of counties possible
 tab year if homeless_count==.
-*  2019:56/486 2020:54/486 2021:53/486
+* 2019: 295/3142, 2020: 308/3143, 2021: 296/3144
 
 order year state county 
 gsort -year state county
@@ -295,7 +297,7 @@ drop check*
 	*string variables, and replace -1 with NA & . with blank	
 	*tostring the rest of the variables
 	tostring *share, replace force
-	tostring *count* *share *quality, replace
+	tostring *count* *share *quality*, replace
 
 foreach group in homeless black white hispanic other {
 	foreach var in count count_lb count_ub quality share {
@@ -322,7 +324,7 @@ foreach var in homeless  {
 	ren `var'_quality_count count_`var'_quality
 	ren `var'_quality_share share_`var'_quality
 }
-keep year state county homeless_count homeless_count_lb homeless_count_ub homeless_share count_homeless_quality share_homeless_quality
+keep year state county count_homeless count_homeless_lb count_homeless_ub share_homeless count_homeless_quality share_homeless_quality
 *2019 was already calculated, 2020-21 and 2021-22 are the new data
 keep if year==2020 | year==2021
 export delimited using "final/homelessness_2020_21_county.csv", replace
@@ -337,7 +339,7 @@ rename other_* *Other
 rename white_* *White
 rename county code_county
 
-reshape long count count_lb count_ub share quality, i(year state code_county) j(subgroup) string
+reshape long count count_lb count_ub share quality_count quality_share, i(year state code_county) j(subgroup) string
 rename code_county county
 
 *reshape clean
