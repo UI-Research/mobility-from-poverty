@@ -28,7 +28,8 @@ global health_data_final "${health}final_data"
 global geo_xwalk "${gitfolder}geographic-crosswalks\data\"
 
 global sub = "nhblack hisp nhother nhwhite"
-global data_types = "all raceth"
+global ed_sub "lessthanhs hsgrad somecollege collegedegrees"
+global data_types = "all raceth momed"
 
 cd "${gitfolder}"
 
@@ -43,8 +44,8 @@ local y4 = 2000 + `y2'
 
 //# *(2) open, clean, and merge CDC WONDER files
 
-/// open and clean data: all births
-*low birth weight births
+//# open and clean data: all births
+//# All Low Birthweight Births
 import delimited using "${health_data}lbw_births_by_county_`y2'.txt", clear
 
 keep countyofresidence countyofresidencecode births
@@ -57,7 +58,7 @@ keep countyofresidence countyofresidencecode births
 	
 save "${health_data}lbw_births_by_county_`y2'.dta", replace
 
-*nonmissing birth weight births
+//# All nonmissing birth weight births
 import delimited using "${health_data}nomiss_bw_by_county_`y2'.txt", clear
 
 keep countyofresidence countyofresidencecode births	// do not need CDC notes	
@@ -72,8 +73,8 @@ keep countyofresidence countyofresidencecode births	// do not need CDC notes
 save "${health_data}nomiss_bw_by_county_`y2'.dta", replace
 
 
-/// open and clean data: race/ethnicity
-*low birth weight births
+//# open and clean data: race/ethnicity
+//# Low Birthweight Births - By Race
 foreach sub of global sub {
 	import delimited using "${health_data}lbw_births_by_county_`sub'_`y2'.txt", clear
 		codebook births
@@ -94,7 +95,7 @@ save "${health_data}lbw_births_by_county_`sub'_`y2'.dta", replace
 }
 
 
-*nonmissing birth weight births
+//# Nonmissing birth weight births - By Race
 foreach sub of global sub {
 	import delimited using "${health_data}nomiss_bw_by_county_`sub'_`y2'.txt", clear
 		keep countyofresidence countyofresidencecode births	// do not need CDC notes	
@@ -113,25 +114,83 @@ foreach sub of global sub {
 save "${health_data}nomiss_bw_by_county_`sub'_`y2'.dta", replace
 }
 
-/// merge files: all births
+//# open and clean data: mother's education
+//# Low Birthweight Births - By Mother's Education
+
+foreach ed of global ed_sub {
+	import delimited using "${health_data}lbw_births_by_county_`ed'_`y2'.txt", clear
+	di "`ed'"
+		codebook births
+		keep countyofresidence countyofresidencecode births	// do not need CDC notes
+		
+		cap drop if births=="Missing County"					// only keeping observations with birth data	
+			
+			rename countyofresidence county_name
+			rename countyofresidencecode fips
+			rename births lbw_births
+			
+	destring lbw_births, replace force
+	
+	gen subgroup_type = "mothers-education"	
+	
+	sort fips county_name								// count of low birthweight births
+	keep if !missing(fips)								// only keeping observations with data
+save "${health_data}lbw_births_by_county_`ed'_`y2'.dta", replace
+}
+
+//# Nonmissing birth weight births - By Mother's Education
+
+foreach ed of global ed_sub {
+	import delimited using "${health_data}nomiss_bw_by_county_`ed'_`y2'.txt", clear
+		keep countyofresidence countyofresidencecode births	// do not need CDC notes	
+			
+			rename countyofresidence county_name
+			rename countyofresidencecode fips
+			rename births nomiss_births 					// count of births with nonmissing birth weight data
+	
+	destring nomiss_births, replace force
+	
+	gen subgroup_type = "mothers-education"	
+	
+	sort fips county_name
+	keep if !missing(fips)								// only keeping observations with data
+
+save "${health_data}nomiss_bw_by_county_`ed'_`y2'.dta", replace
+}
+
+//# Merge Files
+//# merge files: all births
 use "${health_data}lbw_births_by_county_`y2'.dta", clear
 	merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`y2'.dta"
 		tab _merge
 		drop _merge
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
-/// merge files: race/ethnicity
+//# merge files: race/ethnicity
 foreach sub of global sub {
 use "${health_data}lbw_births_by_county_`sub'_`y2'.dta", clear
 	merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`sub'_`y2'.dta"
 		tab _merge
 		drop _merge
-		gen `sub'=1
+		gen `sub' = 1
 	save "${health_data}neonatal_health_intermediate_`sub'_`y2'.dta", replace
 }
 
-/// append data: race/ethnicity 
-use "${health_data}neonatal_health_intermediate_nhwhite_`y2'.dta", replace
+//# merge files: mother's education
+foreach ed of global ed_sub {
+	di "`ed'"
+	use "${health_data}lbw_births_by_county_`ed'_`y2'.dta", clear
+		merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`ed'_`y2'.dta"
+		tab _merge
+		drop _merge
+		gen `ed' = 1
+	save "${health_data}neonatal_health_intermediate_`ed'_`y2'.dta", replace
+
+}
+
+//# Append Data
+//# append data: race/ethnicity 
+use "${health_data}neonatal_health_intermediate_nhwhite_`y2'.dta", clear
 
 	append using "${health_data}neonatal_health_intermediate_nhblack_`y2'.dta"
 	append using "${health_data}neonatal_health_intermediate_hisp_`y2'.dta"
@@ -139,10 +198,17 @@ use "${health_data}neonatal_health_intermediate_nhwhite_`y2'.dta", replace
 
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
+//# append data: mother's education
+use "${health_data}neonatal_health_intermediate_lessthanhs_`y2'.dta", clear
+	append using "${health_data}neonatal_health_intermediate_hsgrad_`y2'.dta"
+	append using "${health_data}neonatal_health_intermediate_somecollege_`y2'.dta"
+	append using "${health_data}neonatal_health_intermediate_collegedegrees_`y2'.dta"
+
+save "${health_data}neonatal_health_intermediate_momed_`y2'.dta", replace
 
 //# *(3) intermediate file data cleaning	
 
-/// all births and by race/ethnicity
+//# all births - all, race/ethnicity, and mother's education
 foreach data_type of global data_types {
 	use "${health_data}neonatal_health_intermediate_`data_type'_`y2'.dta", clear
 
@@ -196,6 +262,28 @@ use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 	
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
+
+//# create subgroups: mother's education
+use "${health_data}neonatal_health_intermediate_momed_`y2'.dta", clear
+
+	gen subgroup = .
+		replace subgroup = 5 if lessthanhs == 1
+		replace subgroup = 6 if hsgrad == 1
+		replace subgroup = 7 if somecollege == 1
+		replace subgroup = 8 if collegedegrees == 1
+		
+	label defin sub2 0 "All" 5 "Less than High School" 6 "GED/High School Degree" 7 "Some College" 8 "College Degree or Higher"
+	label val subgroup sub2
+		
+	drop lessthanhs hsgrad somecollege collegedegrees
+		
+	*order, sort, and save
+	order year state county subgroup_type subgroup
+	sort state county subgroup_type subgroup
+	
+save "${health_data}neonatal_health_intermediate_momed_`y2'.dta", replace
+
+
 //# * (4) use crosswalk to add missing counties to data file
 
 /// all births
@@ -221,12 +309,18 @@ save "${health_data}clean_county_crosswalk_`y2'.dta", replace
 	gen sub1 = 1		// column for subgroup_type==1
 	gen sub2 = 2		// column for subgroup_type==2
 	gen sub3 = 3		// column for subgroup_type==3
-	gen sub4 = 4		// column for subgroup_type==4	
+	gen sub4 = 4		// column for subgroup_type==4
 
+	gen sub5 = 5		// column for subgroup_type==4
+	gen sub6 = 6		// column for subgroup_type==4
+	gen sub7 = 7		// column for subgroup_type==4
+	gen sub8 = 8		// column for subgroup_type==4
+	
 	reshape long sub, i(state county) j(subgroup)			// convert columns to rows of observations 
 		drop sub			// drop old column
 	
 	gen subgroup_type = "race-ethnicity"
+	replace subgroup_type = "mothers-education" if subgroup > 4 & subgroup < 9
 		sort state county subgroup		
 
 save "${health_data}clean_county_crosswalk_raceth_`y2'.dta", replace
