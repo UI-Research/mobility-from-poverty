@@ -1,5 +1,5 @@
 ---
-title: "Access to pre-kindergarten Predictor, Place-level"
+title: "Access to pre-kindergarten Predictor, County-level"
 author: "JP Walsh"
 date: today
 format:
@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the place-level*
+*Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the County-level*
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
@@ -78,15 +78,15 @@ acs %>%
        y = NULL)
 ```
 
-Read in the PUMA to place crosswalk file. This file is created by the program generate_puma_place_crosswalks.rmd in the geographic-crosswalks folder. 
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
 ```{r}
-puma_place_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv"))
+puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
 ```
 
-Crate a version of the crosswalk with just the place-level values of data quality variables for each crosswalk period.
+Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
 ```{r}
-place_puma <- puma_place_crosswalk %>%
-  group_by(crosswalk_period, statefip, place) %>% 
+county_puma <- puma_county_crosswalk %>%
+  group_by(crosswalk_period, statefip, county) %>% 
   summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
   ungroup()
 ```
@@ -258,7 +258,7 @@ acs_clean %>%
 
 ## Merge Crosswalk 
 
-Create a variable in the ACS data indicating whether the survey year is pre or post-2022. This will be used to join on the correct crosswalk information.
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
@@ -272,20 +272,18 @@ acs_clean %>%
   count()
 ```
 
-Join the cleaned ACS data onto the crosswalk. 
+Join the cleaned ACS data onto the crosswalk.
 ```{r}
-acs_clean <- left_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"), relationship = "many-to-many")
+
+acs_clean <- left_join(acs_clean, puma_county_crosswalk, by=c("crosswalk_period", "statefip","puma"))
+
 ```
 
-Run anti_join to see how many cases did not have a match in the crosswalk. We only select the largest 450 places so this number should be significant.
-```{r}
-anti_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"))
-```
-
-Drop any observations with NA for afact (i.e. there is no place of interest overlapping this PUMA).
+Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
 ```{r}
 acs_clean <- acs_clean %>% 
   drop_na(afact)
+
 ```
 
 Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
@@ -294,7 +292,7 @@ acs_clean <- acs_clean %>%
   filter(afact > 0)
 ```
 
-Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
+Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
 ```{r}
 
 acs_clean <- acs_clean %>%
@@ -380,10 +378,9 @@ repwts_person <- repwts_person %>%
   select(-sample)
 ```
 
-
 ## Setup Survey Design 
 
-Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the preschool access variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
+Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the college ready variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
 ```{r}
 acs_survey_all <- acs_clean %>%
   filter(sample_structure == "1year") %>% 
@@ -429,10 +426,10 @@ acs_survey_all %>%
 
 ### All
 
-Create share with preschool access for all 3 and 4 year-olds at the place-level (1-year data) using the survey_mean function.
+Create share with preschool access for all 3 and 4 year-olds at the county-level (1-year data) using the survey_mean function.
 ```{r}
 metrics_education_all <- acs_survey_all %>%
-  group_by(year, crosswalk_period, statefip, place) %>% 
+  group_by(year, crosswalk_period, statefip, county) %>% 
   summarise(
     share_in_preschool = survey_mean(preschool, vartype = "ci")
   ) %>% 
@@ -445,31 +442,31 @@ metrics_education_all <- metrics_education_all %>%
   mutate(share_in_preschool_upp =  ifelse(share_in_preschool_upp > 1, 1, share_in_preschool_upp))
 ```
 
-Sort by year, state and place.
+Sort by year, state and county.
 ```{r}
 metrics_education_all <- metrics_education_all %>%
-  arrange(year, statefip, place)
+  arrange(year, statefip, county)
 ```
 
 *Create an indicator for data quality and suppression*
 
-Calculate the effective sample count for each place, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
+Calculate the effective sample count for each county, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
 ```{r}
 effective_sample <- acs_clean %>%
   filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, place) %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
   summarise(effective_sample = sum(afact)) %>% 
   ungroup()
 ```
 
-Merge the data quality flags from place_puma and effective sample onto the preschool access metric to create the final data quality metric. This metric is based on both size of place and the number of samples for that place.
+Merge the data quality flags from county_puma and effective sample onto the preschool access metric to create the final data quality metric. This metric is based on both size of county and the number of samples for that county.
 ```{r}
-metrics_education_all <- left_join(metrics_education_all, place_puma, by=c("crosswalk_period", "statefip","place")) 
+metrics_education_all <- left_join(metrics_education_all, county_puma, by=c("crosswalk_period", "statefip","county")) 
 
-metrics_education_all <- left_join(metrics_education_all, effective_sample, by=c("year", "crosswalk_period", "statefip","place"))
+metrics_education_all <- left_join(metrics_education_all, effective_sample, by=c("year", "crosswalk_period", "statefip","county"))
 ```
 
-Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
+Tabulate effective sample counts for each county, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. In the 1-year data for all there are no cases of a county with less than 100 observations for 2018, 2021 and 2022.
 ```{r}
 reactable_data <- metrics_education_all %>%
   mutate(
@@ -507,7 +504,7 @@ reactable_data %>%
 
 ```
 
-Generate the quality variable for each place.
+Generate the quality variable for each county.
 ```{r}
 metrics_education_all <- metrics_education_all %>% 
   mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
@@ -529,7 +526,7 @@ Keep only relevant variables.
 metrics_education_all <- metrics_education_all %>%
   select(year,
          statefip,
-         place,
+         county,
          share_in_preschool,
          share_in_preschool_lb = share_in_preschool_low,
          share_in_preschool_ub = share_in_preschool_upp,
@@ -538,10 +535,10 @@ metrics_education_all <- metrics_education_all %>%
 
 ### Subgroup
 
-Create share with preschool access variable by race/ethnicity at the place-level (5-year data).
+Create share with preschool access variable by race/ethnicity at the county-level (5-year data).
 ```{r}
 metrics_education_subgroup <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, place, subgroup) %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
  summarise(
     share_in_preschool = survey_mean(preschool, vartype = "ci")
   ) %>% 
@@ -552,7 +549,7 @@ metrics_education_subgroup <- acs_survey_subgroups %>%
 Create the share with preschool access measure for all values in the 5-year data (non-subgroup). This value will be merged onto the subgroup data. 
 ```{r}
 metrics_education_subgroup_all <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, place) %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
   summarise(
    share_in_preschool = survey_mean(preschool, vartype = "ci")
   ) %>% 
@@ -572,26 +569,26 @@ metrics_education_sub <- metrics_education_sub %>%
   mutate(share_in_preschool_upp =  ifelse(share_in_preschool_upp > 1, 1, share_in_preschool_upp))
 ```
 
-Sort by year, state and place.
+Sort by year, state and county.
 ```{r}
 metrics_education_sub <- metrics_education_sub %>%
-  arrange(year, statefip, place)
+  arrange(year, statefip, county)
 ```
 
 *Create an indicator for data quality and suppression*
 
-Calculate the effective sample count for each subgroup in all places as well as for all samples in every place in the 5-year data.
+Calculate the effective sample count for each subgroup in all counties as well as for all samples in every county in the 5-year data.
 ```{r}
 effective_sample_sub_all <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place) %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
   summarise(effective_sample = sum(afact)) %>% 
   mutate(subgroup_type = "all",
          subgroup = "All")
 
 effective_sample_sub <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place, subgroup) %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
   summarise(effective_sample = sum(afact)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
   bind_rows(effective_sample_sub_all) %>% 
@@ -600,12 +597,12 @@ effective_sample_sub <- acs_clean %>%
 
 Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
 ```{r}
-metrics_education_sub <- left_join(metrics_education_sub, place_puma, by=c("crosswalk_period", "statefip","place"))
+metrics_education_sub <- left_join(metrics_education_sub, county_puma, by=c("crosswalk_period", "statefip","county"))
 
-metrics_education_sub <- left_join(metrics_education_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","place", "subgroup_type", "subgroup"))
+metrics_education_sub <- left_join(metrics_education_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","county", "subgroup_type", "subgroup"))
 ```
 
-Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
+Tabulate effective sample counts for each county by sugroup, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. 
 ```{r}
 reactable_data <- metrics_education_sub %>%
   mutate(
@@ -636,7 +633,7 @@ reactable_data %>%
   reactable()
 ```
 
-Generate the quality variable for each place.
+Generate the quality variable for each county.
 ```{r}
 metrics_education_sub <- metrics_education_sub %>% 
   mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
@@ -658,7 +655,7 @@ Keep only relevant variables.
 metrics_education_sub <- metrics_education_sub %>%
   select(year,
          statefip,
-         place,
+         county,
          subgroup_type, 
          subgroup,
          share_in_preschool,
@@ -680,7 +677,7 @@ metrics_education_sub %>%
   summary()
 ```
 
-Look at distribution of hs_degree share by place.
+Look at distribution of hs_degree share by county.
 ```{r}
 
 metrics_education_all %>% 
@@ -689,7 +686,7 @@ metrics_education_all %>%
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Distribution of share hs_degree, by place 2022 (1-year data)") +
+  ggtitle("Distribution of share hs_degree, by county 2022 (1-year data)") +
   ylab("Density")
 
 metrics_education_sub %>% 
@@ -698,17 +695,17 @@ metrics_education_sub %>%
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Distribution of share hs_degree, by place 2022 (5-year data)") +
+  ggtitle("Distribution of share hs_degree, by county 2022 (5-year data)") +
   ylab("Density")
   
 ```
 
-Look at distribution of hs_degree share by place by race.
+Look at distribution of hs_degree share by county by race.
 ```{r}
 
 metrics_education_sub %>% 
   filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
-  select(place, share_in_preschool) %>% 
+  select(county, share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -717,7 +714,7 @@ metrics_education_sub %>%
 
 metrics_education_sub %>% 
   filter(year == 2021, subgroup == "Hispanic") %>% 
-  select(place, share_in_preschool) %>% 
+  select(county, share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -726,7 +723,7 @@ metrics_education_sub %>%
 
 metrics_education_sub %>% 
   filter(year == 2021, subgroup == "Other Races and Ethnicities") %>% 
-  select(place, share_in_preschool) %>% 
+  select(county, share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -735,7 +732,7 @@ metrics_education_sub %>%
 
 metrics_education_sub %>% 
   filter(year == 2021, subgroup == "White, Non-Hispanic") %>% 
-  select(place, share_in_preschool) %>% 
+  select(county, share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
@@ -790,22 +787,18 @@ metrics_education_sub <- metrics_education_sub %>%
 Order the variables how we want.
 ```{r}
 metrics_education_all <- metrics_education_all %>% 
-  select(year, state, place, share_in_preschool, 
+  select(year, state, county, share_in_preschool, 
          share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality)
 
 metrics_education_sub <- metrics_education_sub %>% 
-  select(year, state, place, subgroup_type, subgroup, share_in_preschool,
+  select(year, state, county, subgroup_type, subgroup, share_in_preschool,
          share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality)
 ```
 
 Export as CSV
 
 ```{r}
-write_csv(metrics_education_all, here::here("08_education", "data", "final", "metrics_preschool_place_all_longitudinal.csv"))
-write_csv(metrics_education_sub, here::here("08_education", "data", "final", "metrics_preschool_place_race-ethnicity_longitudinal.csv"))
+write_csv(metrics_education_all, here::here("08_education", "data", "final", "metrics_preschool_county_all_longitudinal.csv"))
+write_csv(metrics_education_sub, here::here("08_education", "data", "final", "metrics_preschool_county_race-ethnicity_longitudinal.csv"))
 ```
-
-
-
-
 

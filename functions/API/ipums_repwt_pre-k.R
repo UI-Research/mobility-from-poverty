@@ -1,9 +1,9 @@
 # API Pull Function
 # 
-# Using the API, read in the IPUMS micro data. To check on available surveys you can use the function get_sample_info('usa'). 
+# Using the API, read in the IPUMS micro data replicate weights for individuals between 19 and 20 years old. To check on available surveys you can use the function get_sample_info('usa'). 
 # This function allows the user to chose the survey year and type (for example 2021a is the 1-year ACS data).
 #
-# Function call: extract_ipums
+# Function call: ipums_repwt_preschool
 # Inputs:
 #   extract_name (str): the name of the extract that will be saved in the data/temp/raw folder
 #   extract_description (str): the metadata that will be attached to this extract
@@ -15,7 +15,7 @@
 # Returns:
 #   acs_imported (tibble) containing the extract required for analysis
 
-extract_ipums <- function(extract_name, extract_description, survey){
+ipums_repwt_pre_k <- function(extract_name, extract_description, survey){
   # Add library here for filepath
   library(here)
   
@@ -32,25 +32,15 @@ extract_ipums <- function(extract_name, extract_description, survey){
   # Check if extract already exists in your directory. If it does this function will read in the existing data.
   if(!file.exists(here(folder_path, extract_gz_filename))){
     
-    #If extract does not exist, create the extract using the IPUMS API
+    #If extract does not exist, create the extract using the IPUMS API. Note for preschool readiness we only need 19 and 20 year olds.
     usa_ext_umf <-
       define_extract_usa(
         description = extract_description,
         samples = c(survey),
-        variables = c(
-          "ADJUST",
-          "STATEFIP",
-          "PUMA",
-          "GQ",
-          "HHINCOME",
-          "AGE",
-          "EMPSTAT",
-          "VACANCY",
-          "PERNUM",
-          "RACE",
-          "HISPAN",
-          "EDUCD",
-          "GRADEATT",
+        variables = list(
+          var_spec("AGE", 
+                   case_selections = c("3", "4")),
+          "REPWTP",
           "CBPERNUM"
         )
       )
@@ -95,18 +85,11 @@ extract_ipums <- function(extract_name, extract_description, survey){
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
-    select(-serial, -raced, -strata, - cluster, -hispand, -empstatd)
-  
-  #Zap labels and reformat State and PUMA variable
-  acs_imported <- acs_imported %>%
-    mutate(  
-      across(c(sample, gq, race, hispan), ~as_factor(.x)),
-      across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
-      statefip = sprintf("%0.2d", as.numeric(statefip)),
-      puma = sprintf("%0.5d", as.numeric(puma)),
-      unique_person_id = paste0(sample, cbserial, cbpernum)
-    )
-  
+    select(-serial, -strata, -cluster, -year,
+           -pernum, -perwt, -hhwt, -gq, -age) %>% 
+    mutate(sample = as_factor(sample),
+           unique_person_id = paste0(sample, cbserial, cbpernum))
+
   #Return the ACS data set
   return(acs_imported)
   
