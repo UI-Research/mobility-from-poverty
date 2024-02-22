@@ -50,6 +50,12 @@ extract_ipums <- function(extract_name, extract_description, survey){
           "RACE",
           "HISPAN",
           "EDUCD",
+          "SEX",
+          "DIFFCARE",
+          "DIFFSENS",
+          "DIFFMOB",
+          "DIFFPHYS",
+          "DIFFREM",
           "CBPERNUM"
         )
       )
@@ -99,7 +105,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
   #Zap labels and reformat State and PUMA variable
   acs_imported <- acs_imported %>%
     mutate(  
-      across(c(sample, gq, race, hispan), ~as_factor(.x)),
+      across(c(sample, gq, race, hispan, sex, diffcare, diffsens, diffmob, diffphys, diffrem), ~as_factor(.x)),
       across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
       statefip = sprintf("%0.2d", as.numeric(statefip)),
       puma = sprintf("%0.5d", as.numeric(puma)),

@@ -96,7 +96,7 @@ county_puma <- puma_county_crosswalk %>%
 Missing data is reported in a variety of ways by IPUMS data - listed below:
 
 Age: No missing values reported in variable description.
-EDUCD: N/As reported as "1". "000" in the 1980 and 1950 decennial census surveys (not used here).
+EDUCD: N/As reported as "1" in all modern surveys. N/As were "000" in the 1980 and 1950 decennial census surveys (not used here).
 Variable codes explained [here]([https://usa.ipums.org/usa-action/variables/EDUC#codes_section) & see "Detailed codes" at bottom).
 Vacancy is reported as "0". 
 
@@ -129,23 +129,30 @@ acs %>%
   ylab("Density")
 ```
 
-Confirm the missing values from the value labels of the Educd variable to ensure we are eliminating the correct values. The labels indicate that "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
+Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
 ```{r}
-head(ipums_val_labels(acs$educd), 50) %>% 
+acs_clean <- acs %>%
+  filter(age == 19 | age == 20) 
+
+rm(acs)
+```
+
+Confirm the missing values from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
+```{r}
+head(ipums_val_labels(acs_clean$educd), 50) %>% 
   reactable()
 ```
 
-
 Turn the missing/"not in universe" value from the educd variable into NAs and remove the labels for the rest of the analysis.
 ```{r}
-acs_clean <- acs %>%
+acs_clean <- acs_clean %>%
   mutate(educd = zap_labels(educd), 
          educd = ifelse(educd %in% c(1, 0, 999), NA_integer_,
                           educd)
   )
 ```
 
-Look at the distribution of Educd after adjustment for NAs. We can see that there are no longer records for Eucd = "1" but we now see "NA".
+Look at the distribution of Educd after adjustment for NAs. We can see that there are no longer records for "1" but we now see "NA".
 ```{r}
 acs_clean %>% 
   count(educd) %>% 
@@ -246,7 +253,7 @@ Rename the values from number category to race label:
 ```{r}
 
 acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
+  mutate(subgroup_race = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
                               (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
                               (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
                                hispan != "Not Hispanic" ~ "Hispanic"
@@ -254,18 +261,210 @@ acs_clean <- acs_clean %>%
 
 ```
 
-Look at the subgroup distribution.
+Look at the race/ethnicity subgroup distribution.
 ```{r}
 
 acs_clean %>% 
-  count(subgroup) %>% 
-  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
+  count(subgroup_race) %>% 
+  ggplot(mapping = aes(x = factor(subgroup_race), y = n)) +
   geom_col() +
   theme_minimal() +
-  ggtitle("Subgroup, All Records") +
+  ggtitle("Race/ethnicity, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Subgroup",
+  labs(x = "Race/ethnicity",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create gender variable
+
+Evaluate the values in the gender variable.
+
+* IPUMS documented values for SEX: 
+  + 1 Male
+  + 2 Female
+  + 9 Missing/blank 
+
+Look at the distribution of values for the sex variable. 
+```{r}
+
+acs_clean %>% 
+  count(sex) %>% 
+  ggplot(mapping = aes(x = sex, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("sex, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Sex",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+Create a variable for subgroup_gender from the sex variable. The titles remain the same but any values outside of Male and Female are mutated to NA character variables. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
+                                     sex == "Female" ~ "Female",
+                                     TRUE ~ NA_character_))
+```
+
+Check the variable breakout. This should be approximately 50/50.
+```{r}
+acs_clean %>% 
+  count(subgroup_gender) %>% 
+  ggplot(mapping = aes(x = subgroup_gender, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Gender, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gender",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create disability variable
+
+The ACS includes 5 variables covering physical and mental disabilitie (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM).
+Evaluate the values in these variables and create an overall subgroup for disability.
+We will count an individual to be disabled if they answer yes or have any of these difficulties. 
+
+* IPUMS documented values for DIFFCARE (Self-care difficulty): 
+  + 0 N/A
+  + 1 No
+  + 2 Yes 
+
+Plot the options for diffcare below.
+```{r}
+
+acs_clean %>% 
+  count(diffcare) %>% 
+  ggplot(mapping = aes(x = diffcare, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Self-care difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffcare",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFSENS (Vision or hearing difficulty): 
+  + 0 N/A
+  + 1 No vision or hearing difficulty
+  + 2 Has vision or hearing difficulty
+
+Plot the options for diffsens below.
+```{r}
+
+acs_clean %>% 
+  count(diffsens) %>% 
+  ggplot(mapping = aes(x = diffsens, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Vision or Hearing difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffsens",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFMOB (Independent living difficulty): 
+  + 0 N/A
+  + 1 No independent living difficulty
+  + 2 Has independent living difficulty
+
+Plot the options for diffmob below.
+```{r}
+
+acs_clean %>% 
+  count(diffmob) %>% 
+  ggplot(mapping = aes(x = diffmob, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Independent living difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffmob",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFPHYS (Ambulatory difficulty): 
+  + 0 N/A
+  + 1 No ambulatory difficulty
+  + 2 Has ambulatory difficulty 
+  
+Plot the options for diffphys below.
+```{r}
+
+acs_clean %>% 
+  count(diffphys) %>% 
+  ggplot(mapping = aes(x = diffphys, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Ambulatory difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffphys",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+  
+* IPUMS documented values for DIFFREM  (Cognitive difficulty): 
+  + 0 N/A
+  + 1 No cognitive difficulty
+  + 2 Has cognitive difficulty 
+  
+Plot the options for diffrem below.
+```{r}
+acs_clean %>% 
+  count(diffrem) %>% 
+  ggplot(mapping = aes(x = diffrem, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Cognitive difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffrem",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+
+Create the subgroup for disability. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_disability = case_when(diffrem == "Has cognitive difficulty" |
+                                           diffphys == "Has ambulatory difficulty" |
+                                           diffmob == "Has independent living difficulty" |
+                                           diffsens == "Has vision or hearing difficulty" |
+                                           diffcare == "Yes" ~ "with disabiliy",
+                                         TRUE ~ "without disability"))
+  
+```
+
+Check the variable breakout. 
+```{r}
+acs_clean %>% 
+  count(subgroup_disability) %>% 
+  ggplot(mapping = aes(x = subgroup_disability, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Disability, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Disability",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 ```
@@ -398,7 +597,16 @@ repwts_person <- repwts_person %>%
 
 ## Setup Survey Design 
 
-Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the college ready variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
+Shrink sample for now.
+```{r}
+acs_clean <- acs_clean %>% 
+  group_by(sample, county) %>% 
+  slice_sample(n = 125) %>% 
+  ungroup() 
+```
+
+
+Set up the survey design using instructions from IPUMS. Join the replicate weights onto the acs survey data using the unique person ID created for both.
 ```{r}
 acs_survey_all <- acs_clean %>%
   filter(sample_structure == "1year") %>% 
@@ -555,13 +763,38 @@ metrics_education_all <- metrics_education_all %>%
 
 Create share college ready by race/ethnicity at the county-level (5-year data).
 ```{r}
-metrics_education_subgroup <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
+metrics_education_subgroup_race <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
  summarise(
     share_hs_degree = survey_mean(college_ready, vartype = "ci")
   ) %>% 
   ungroup() %>% 
-  mutate(subgroup_type = "race-ethnicity")
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  rename(subgroup = subgroup_race)
+```
+
+Create share college ready by gender at the county-level (5-year data).
+```{r}
+metrics_education_subgroup_gender <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
+ summarise(
+    share_hs_degree = survey_mean(college_ready, vartype = "ci")
+  ) %>% 
+  ungroup() %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+```
+
+Create share college ready by disability at the county-level (5-year data).
+```{r}
+metrics_education_subgroup_disability <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
+ summarise(
+    share_hs_degree = survey_mean(college_ready, vartype = "ci")
+  ) %>% 
+  ungroup() %>% 
+  mutate(subgroup_type = "disability")%>% 
+  rename(subgroup = subgroup_disability)
 ```
 
 Create the share college ready measure for all values in the 5-year data (non-subgroup). This value will be merged onto the subgroup data. 
@@ -578,16 +811,22 @@ metrics_education_subgroup_all <- acs_survey_subgroups %>%
 
 Append the "All" version of the 5-year data with the subgroup results.
 ```{r}
-metrics_education_sub <- bind_rows(metrics_education_subgroup, metrics_education_subgroup_all)
+metrics_education_sub <- bind_rows(metrics_education_subgroup_race, metrics_education_subgroup_gender,
+                                   metrics_education_subgroup_disability, metrics_education_subgroup_all)
 ```
 
+Check that all subgroup types are included. We should see all, disability, gender and race-ethnicity.
+```{r}
+metrics_education_sub %>% 
+  group_by(subgroup_type) %>% 
+  count()
+```
 
 Cap upper-bound confidence intervals at 100% (above would be an illogical option). If it is greater than 1, make the share equal to exactly 1.
 ```{r}
 metrics_education_sub <- metrics_education_sub %>% 
   mutate(share_hs_degree_upp =  ifelse(share_hs_degree_upp > 1, 1, share_hs_degree_upp))
 ```
-
 
 Sort by year, state and county.
 ```{r}
@@ -597,7 +836,7 @@ metrics_education_sub <- metrics_education_sub %>%
 
 *Create an indicator for data quality and suppression*
 
-Calculate the effective sample count for each subgroup in all counties as well as for all samples in every county in the 5-year data.
+Calculate the effective sample count for each subgroup in all countys as well as for all samples in every county in the 5-year data.
 ```{r}
 effective_sample_sub_all <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
@@ -606,12 +845,27 @@ effective_sample_sub_all <- acs_clean %>%
   mutate(subgroup_type = "all",
          subgroup = "All")
 
-effective_sample_sub <- acs_clean %>%
+effective_sample_race <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
   summarise(effective_sample = sum(afact)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
-  bind_rows(effective_sample_sub_all) %>% 
+  rename(subgroup = subgroup_race)
+
+effective_sample_gender <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+effective_sample_sub <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability) %>% 
+  bind_rows(effective_sample_sub_all, effective_sample_race, effective_sample_gender) %>%
   ungroup()
 ```
 
@@ -622,7 +876,7 @@ metrics_education_sub <- left_join(metrics_education_sub, county_puma, by=c("cro
 metrics_education_sub <- left_join(metrics_education_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","county", "subgroup_type", "subgroup"))
 ```
 
-Tabulate effective sample counts for each county by subgroup, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. 
+Tabulate effective sample counts for each county by sugroup, defined as the sum of the afact for all records in that county. Look at the distribution of countys by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. 
 ```{r}
 reactable_data <- metrics_education_sub %>%
   mutate(
@@ -720,6 +974,7 @@ metrics_education_sub %>%
   
 ```
 
+### Race distribution
 Look at distribution of hs_degree share by county by race.
 ```{r}
 
@@ -757,6 +1012,53 @@ metrics_education_sub %>%
   geom_density(alpha = 0.15) +
   theme_minimal() +
   ggtitle("hs_degree Share, White, Non-Hispanic") +
+  ylab("Density")
+
+```
+
+### Gender distribution
+Look at distribution of hs_degree share by county by gender.
+```{r}
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup == "Male") %>% 
+  select(county, share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, males") +
+  ylab("Density")
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup == "Female") %>% 
+  select(county, share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, females") +
+  ylab("Density")
+```
+
+### Disability distribution
+Look at distribution of hs_degree share by county by disability status.
+```{r}
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup == "with disabiliy") %>% 
+  select(county, share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, with disabilities") +
+  ylab("Density")
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup == "without disability") %>% 
+  select(county, share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, without disabilities") +
   ylab("Density")
 
 ```
