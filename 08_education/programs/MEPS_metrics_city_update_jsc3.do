@@ -15,7 +15,7 @@ global education "${gitfolder}08_education\"
 
 global raw_data "${education}\data\raw\"
 global intermediate_data "${education}\data\intermediate\"
-global final_data "${education}\data\built\"
+global final_data "${education}\data\final_data\"
 
 global box "C:\Users\jcarter\Box\"
 // Files
@@ -232,3 +232,5 @@ drop old*
 drop d*
 
 rename meps20* share_meps20*
+
+export delimited using "${final_data}/meps_city_2020.csv", replace 
