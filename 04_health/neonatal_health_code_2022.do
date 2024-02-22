@@ -18,6 +18,16 @@
 	*use the same confidence interval formula. 
 ****************************************************************************
 
+
+/*
+
+Description: Program to Update Gates Mobility Metrics on Neonatal Health
+Author: Jay Carter
+Date: Feb 21, 2024
+
+Data from CDC Wonder - Instructions in Readme
+
+*/
 clear all 
 pause on 
 
