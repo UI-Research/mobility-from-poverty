@@ -300,18 +300,17 @@ transport_tracts_2015 <- do.call("rbind",lapply(tractpath15,FUN=function(files){
 
 # create correct FIPS columns
 transport_tracts_2015 <- transport_tracts_2015 %>%
-  rename (GEOID = tract) %>%
   mutate(
-    state = substr(GEOID, start = 2, stop = 3),
-    county = substr(GEOID, start = 4, stop = 6),
-    tract = substr(GEOID, start = 7, stop = 12)
+    state = substr(tract, start = 2, stop = 3),
+    county = substr(tract, start = 4, stop = 6),
+    tract = substr(tract, start = 7, stop = 12)
   )
 
 # keep only variables of interest
 transit_trips_tracts_2015 <- transport_tracts_2015 %>%
-  select(GEOID, state, county, tract, blkgrps, population, households, transit_trips_80ami)
+  select(state, county, tract, blkgrps, population, households, transit_trips_80ami)
 transit_cost_tracts_2015 <- transport_tracts_2015 %>%
-  select(GEOID, state, county, tract, blkgrps, population, households, transit_cost_80ami)
+  select(state, county, tract, blkgrps, population, households, transit_cost_80ami)
 
 
 
@@ -326,18 +325,17 @@ transport_tracts_2019 <- do.call("rbind",lapply(tractpath19,FUN=function(files){
 
 # create correct FIPS columns
 transport_tracts_2019 <- transport_tracts_2019 %>%
-  rename (GEOID = tract) %>%
   mutate(
-    state = substr(GEOID, start = 2, stop = 3),
-    county = substr(GEOID, start = 4, stop = 6),
-    tract = substr(GEOID, start = 7, stop = 12)
+    state = substr(tract, start = 2, stop = 3),
+    county = substr(tract, start = 4, stop = 6),
+    tract = substr(tract, start = 7, stop = 12)
   )
 
 # keep only variables of interest
 transit_trips_tracts_2019 <- transport_tracts_2019 %>%
-  select(GEOID, state, county, tract, blkgrps, population, households, transit_trips_80ami)
+  select(state, county, tract, blkgrps, population, households, transit_trips_80ami)
 transit_cost_tracts_2019 <- transport_tracts_2019 %>%
-  select(GEOID, state, county, tract, blkgrps, population, households, transit_cost_80ami)
+  select(state, county, tract, blkgrps, population, households, transit_cost_80ami)
 
 
 ###################################################################
@@ -354,7 +352,7 @@ ACSvars2019 <- load_variables(2019, "acs5", cache = TRUE)
 # B02001_003 Black or AfAm alone
 # B02001_004 Am Indian & Alaska Native alone
 # B02001_005 Asian alone
-# B02001_006 Native Hawaiian, Pacific Islander alone
+# B02001_006 Narive Hawaiian, Pacific Islander alone
 # B02001_007 Some other race alone
 # B02001_008 Two or more races
 
@@ -409,7 +407,6 @@ acs_tract_pop19 <- acs_tract_pop19 %>%
          other_population = B02001_007E
   )
 
-# keep only vars we want
 acs_tract_pop15 <- acs_tract_pop15 %>%
   select(GEOID, total_population, white_population, black_population,
          asian_population, aian_population, nhpi_population, other_population)
@@ -431,86 +428,71 @@ transit_trips_tracts_2019$GEOID <- paste0(transit_trips_tracts_2019$state, trans
 
 
 # merge population data with transit data files (4 of them)
-############################################################################
-# FIRST ONE - Cost in 2015
-############################################################################
 cost_data_2015 <- left_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEOID")
-#Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEOID") %>%
-    nrow() == 0
-)
-# Error - therefore, check how many missing cost values for observations where we have population
-missing_count <- sum(is.na(cost_data_2015$transit_cost_80ami))
-cat("Number of missing values for transit_cost_80ami:", missing_count, "\n")
-# 810 missing values
-
-############################################################################
-# SECOND ONE - Cost in 2019
-############################################################################
 cost_data_2019 <- left_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID")
-#Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID") %>%
-    nrow() == 0
-)
-# Error - therefore, check how many missing cost values for observations where we have population
-missing_count <- sum(is.na(cost_data_2019$transit_cost_80ami))
-cat("Number of missing values for transit_cost_80ami:", missing_count, "\n")
-# 831 missing values
 
-############################################################################
-# THIRD ONE - Trips in 2015
-############################################################################
 trips_data_2015 <- left_join(acs_tract_pop15, transit_trips_tracts_2015, by = "GEOID")
-#Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop15, transit_trips_tracts_2015, by = "GEOID") %>%
-    nrow() == 0
-)
-# Error - therefore, check how many missing trips values for observations where we have population
-missing_count <- sum(is.na(trips_data_2015$transit_trips_80ami))
-cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
-# 810 missing values - aligns with cost data for the same year, good
-
-############################################################################
-# FOURTH ONE - Trips in 2019
-############################################################################
 trips_data_2019 <- left_join(acs_tract_pop19, transit_trips_tracts_2019, by = "GEOID")
-#Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop19, transit_trips_tracts_2019, by = "GEOID") %>%
-    nrow() == 0
-)
-# Error - therefore, check how many missing trips values for observations where we have population
-missing_count <- sum(is.na(trips_data_2019$transit_trips_80ami))
-cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
-# 831 missing values - aligns with cost data for the same year, good
 
-############################################################################
 
-# For each tract, ID the race category
-# Calculate the percentage of total population for White & POC for each tract
+
+
+# 2b. for all tracts that are 60%+ of one race (or mixed) -- the buckets are: neighborhoods of color, white, and mixed
+
+#1. > 60% white
+#2. 40-60% white/POC
+#3. > 60% POC 
+
+#define category as when one group is over .6, 
+#and others go in the middle category if at least one group has more than .4
+#if there's not enough data to make that determination, set to missing.
 cost_data_2015 <- cost_data_2015 %>%
   mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+         perc_total = perc_white + perc_POC) %>%
+  mutate(
+    race_category = case_when(
+      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
+      perc_white >= 0.6 ~ "Predominantly White",
+      perc_POC >= 0.6 ~ "Predominantly People of Color",
+      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
+      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
+    )
+  )
 
 cost_data_2019 <- cost_data_2019 %>%
   mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+         perc_total = perc_white + perc_POC) %>%
+  mutate(
+    race_category = case_when(
+      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
+      perc_white >= 0.6 ~ "Predominantly White",
+      perc_POC >= 0.6 ~ "Predominantly People of Color",
+      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
+      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
+    )
+  )
+
 
 trips_data_2015 <- trips_data_2015 %>%
   mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+         perc_total = perc_white + perc_POC) %>%
+  mutate(
+    race_category = case_when(
+      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
+      perc_white >= 0.6 ~ "Predominantly White",
+      perc_POC >= 0.6 ~ "Predominantly People of Color",
+      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
+      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
+    )
+  )
 
 trips_data_2019 <- trips_data_2019 %>%
   mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
-
-# Assign race-category for each tract
-# If 0.6+ White, assign Predominantly White, if 0.6+ POC, assign Predominantly POC
-# 40-60% White or POC, assign No Predominant Racial Group
-cost_data_2015 <- cost_data_2015 %>%
+         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+         perc_total = perc_white + perc_POC) %>%
   mutate(
     race_category = case_when(
       is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
@@ -518,72 +500,13 @@ cost_data_2015 <- cost_data_2015 %>%
       perc_POC >= 0.6 ~ "Predominantly People of Color",
       perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
       perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
-    ))
+    )
+  )
 
-cost_data_2019 <- cost_data_2019 %>%
-  mutate(
-    race_category = case_when(
-      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
-      perc_white >= 0.6 ~ "Predominantly White",
-      perc_POC >= 0.6 ~ "Predominantly People of Color",
-      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
-      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
-    ))
 
-trips_data_2015 <- trips_data_2015 %>%
-  mutate(
-    race_category = case_when(
-      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
-      perc_white >= 0.6 ~ "Predominantly White",
-      perc_POC >= 0.6 ~ "Predominantly People of Color",
-      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
-      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
-    ))
-
-trips_data_2019 <- trips_data_2019 %>%
-  mutate(
-    race_category = case_when(
-      is.na(perc_white) | is.na(perc_POC) ~ as.character(NA), 
-      perc_white >= 0.6 ~ "Predominantly White",
-      perc_POC >= 0.6 ~ "Predominantly People of Color",
-      perc_white >= 0.4 | perc_POC >= 0.4 ~ "No Predominant Racial Group",
-      perc_white < 0.4 & perc_POC < 0.4 ~ as.character(NA)
-    ))
-
-############################################################################
-############################################################################
-############################################################################
-##########################################################################
 ###################################################################
 
-# 3a. Collapse to the county level to create ALL values (to be appended later)
-
-cost_all_15 <- cost_data_2015 %>%
-  group_by(state, county) %>%
-  summarize(transit_cost = weighted.mean(x = transit_cost_80ami, w = households, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
-
-cost_all_19 <- cost_data_2019 %>%
-  group_by(state, county) %>%
-  summarize(transit_cost = weighted.mean(x = transit_cost_80ami, w = households, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
-
-trips_all_15 <- trips_data_2015 %>%
-  group_by(state, county) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
-
-trips_all_19 <- trips_data_2019 %>%
-  group_by(state, county) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
-
-
-# 3b. Collapse accordingly -- to counties and race categories, weighting the measured by HH count per tract
+# 3. Crosswalk from tracts to county + collapse accordingly
 
 cost_by_race_15 <- cost_data_2015 %>%
   group_by(state, county, race_category) %>%
@@ -595,243 +518,24 @@ cost_by_race_19 <- cost_data_2019 %>%
 
 trips_by_race_15 <- trips_data_2015 %>%
   group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
+  summarize(transit_cost = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
 
 trips_by_race_19 <- trips_data_2019 %>%
   group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
+  summarize(transit_cost = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
 
-# Make sure we have 3 race vars accounted for each county - create dummy df for merging purposes
-county_expander <- expand_grid(
-  count(cost_by_race_15, state, county) %>% select(-n),
-  race_category = c("Predominantly White", "Predominantly People of Color", "No Predominant Racial Group")
-)
-
-# merge all four datasets into this dummy to account for all race categories
-cost_by_race_15 <- left_join(county_expander, cost_by_race_15, by = c("state", "county", "race_category")) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  rename(subgroup = race_category)
-# 9429 obs - 3*3143 counties - good
-
-cost_by_race_19 <- left_join(county_expander, cost_by_race_19, by = c("state", "county", "race_category")) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  rename(subgroup = race_category)
-
-trips_by_race_15 <- left_join(county_expander, trips_by_race_15, by = c("state", "county", "race_category")) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  rename(subgroup = race_category)
-
-trips_by_race_19 <- left_join(county_expander, trips_by_race_19, by = c("state", "county", "race_category")) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  rename(subgroup = race_category)
-
-# remove dummy df
-rm(county_expander)
 
 ###################################################################
 
 # 4. QC checks
-# create a histogram plot and summary stats for each dataframe
-# check that all values are non-negative & count missing values
-# examine outliers
-
-# Cost 2015
-#############################
-# look at histograms
-# County-Level Transit Cost 2015 by Race Category (look at transit costs below $250 so we can
-# actually see something; above 250, we have already explored outliers above)
-ggplot(subset(cost_by_race_15, transit_cost < 250), aes(x = transit_cost, fill = race_category)) +
-  geom_histogram(binwidth = 1) +
-  labs(title = "Histogram of Transit Cost (Below 250) by Race Category, 2015",
-       x = "Transit Cost",
-       y = "Frequency") +
-  facet_wrap(~race_category, scales = "fixed")
-
-# look at summary stats
-summary_by_race <- cost_by_race_15 %>%
-  group_by(race_category) %>%
-  summarise(
-    count = n(),
-    mean = mean(transit_cost, na.rm = TRUE),
-    median = median(transit_cost, na.rm = TRUE),
-    min = min(transit_cost, na.rm = TRUE),
-    max = max(transit_cost, na.rm = TRUE),
-    sd = sd(transit_cost, na.rm = TRUE)
-  )
-
-print(summary_by_race)
-
-# examine outliers
-cost_by_race_2015_outliers <- cost_by_race_15 %>% 
-  filter(transit_cost>250) 
-# Nothing unexpected
-
-# Use stopifnot to check if all values are non-negative
-stopifnot(min(cost_by_race_15$transit_cost, na.rm = TRUE) >= 0)
-# Good to go
-
-
-
-# Cost 2019
-#############################
-# look at histograms
-# County-Level Transit Cost 2019 by Race Category (look at transit costs below $250 so we can
-# actually see something; above 250, we have already explored outliers above)
-ggplot(subset(cost_by_race_19, transit_cost < 250), aes(x = transit_cost, fill = race_category)) +
-  geom_histogram(binwidth = 1) +
-  labs(title = "Histogram of Transit Cost (Below 250) by Race Category, 2019",
-       x = "Transit Cost",
-       y = "Frequency") +
-  facet_wrap(~race_category, scales = "fixed")
-
-# look at summary stats
-summary_by_race <- cost_by_race_19 %>%
-  group_by(race_category) %>%
-  summarise(
-    count = n(),
-    mean = mean(transit_cost, na.rm = TRUE),
-    median = median(transit_cost, na.rm = TRUE),
-    min = min(transit_cost, na.rm = TRUE),
-    max = max(transit_cost, na.rm = TRUE),
-    sd = sd(transit_cost, na.rm = TRUE)
-  )
-
-print(summary_by_race)
-
-# examine outliers
-cost_by_race_2019_outliers <- cost_by_race_19 %>% 
-  filter(transit_cost>250) 
-# Nothing unexpected
-
-# Use stopifnot to check if all values are non-negative
-stopifnot(min(cost_by_race_19$transit_cost, na.rm = TRUE) >= 0)
-# Good to go
-
-
-
-# Trips 2015
-#############################
-# look at histograms
-# County-Level Transit Trips 2015 by Race Category (look at transit costs below 100 trips so we can
-# actually see something; above 100, we have already explored outliers above)
-ggplot(subset(trips_by_race_15, transit_trips<100), aes(x = transit_trips, fill = race_category)) +
-  geom_histogram(binwidth = 1) +
-  labs(title = "Histogram of Transit Trips (below 100) by Race Category, 2015",
-       x = "Transit Trips",
-       y = "Frequency") +
-  facet_wrap(~race_category, scales = "fixed")
-
-# look at summary stats
-summary_by_race <- trips_by_race_15 %>%
-  group_by(race_category) %>%
-  summarise(
-    count = n(),
-    mean = mean(transit_trips, na.rm = TRUE),
-    median = median(transit_trips, na.rm = TRUE),
-    min = min(transit_trips, na.rm = TRUE),
-    max = max(transit_trips, na.rm = TRUE),
-    sd = sd(transit_trips, na.rm = TRUE)
-  )
-
-print(summary_by_race)
-
-# examine outliers
-trips_by_race_2015_outliers <- trips_by_race_15 %>% 
-  filter(transit_trips>100) 
-# Nothing unexpected
-
-# Use stopifnot to check if all values are non-negative
-stopifnot(min(trips_by_race_15$transit_trips, na.rm = TRUE) >= 0)
-# Good to go
-
-
-
-# Trips 2019
-#############################
-# look at histograms
-# County-Level Transit Trips 2019 by Race Category (look at transit trips below 100 so we can
-# actually see something; above 100, we have already explored outliers above)
-ggplot(subset(trips_by_race_19, transit_trips < 100), aes(x = transit_trips, fill = race_category)) +
-  geom_histogram(binwidth = 1) +
-  labs(title = "Histogram of Transit Trips (Below 100) by Race Category, 2019",
-       x = "Transit Trips",
-       y = "Frequency") +
-  facet_wrap(~race_category, scales = "fixed")
-
-# look at summary stats
-summary_by_race <- trips_by_race_19 %>%
-  group_by(race_category) %>%
-  summarise(
-    count = n(),
-    mean = mean(transit_trips, na.rm = TRUE),
-    median = median(transit_trips, na.rm = TRUE),
-    min = min(transit_trips, na.rm = TRUE),
-    max = max(transit_trips, na.rm = TRUE),
-    sd = sd(transit_trips, na.rm = TRUE)
-  )
-
-print(summary_by_race)
-
-# examine outliers
-trips_by_race_2019_outliers <- trips_by_race_19 %>% 
-  filter(transit_trips>100) 
-# Nothing unexpected
-
-# Use stopifnot to check if all values are non-negative
-stopifnot(min(trips_by_race_19$transit_trips, na.rm = TRUE) >= 0)
-# Good to go
-
 
 ###################################################################
 
 # 5. Data Quality marker
-# TBD I am confused how to approach this
 
 ###################################################################
 
 # 6. Export
-
-# Combine the All values with the Subgroup values by appending
-cost_race_15 <- bind_rows(cost_all_15, cost_by_race_15)
-cost_race_19 <- bind_rows(cost_all_19, cost_by_race_19)
-trips_race_15 <- bind_rows(trips_all_15, trips_by_race_15)
-trips_race_19 <- bind_rows(trips_all_19, trips_by_race_19)
-
-
-# add a variable for the year of the data
-cost_race_15 <- cost_race_15 %>%
-  mutate(
-    year = 2015
-  )
-cost_race_19 <- cost_race_19 %>%
-  mutate(
-    year = 2019
-  )
-trips_race_15 <- trips_race_15 %>%
-  mutate(
-    year = 2015
-  )
-trips_race_19 <- trips_race_19 %>%
-  mutate(
-    year = 2019
-  )
-
-# Combine the two years into one overall files for both variables
-transit_cost_subgroup_county <- rbind(cost_race_15, cost_race_19)
-transit_trips_subgroup_county <- rbind(trips_race_15, trips_race_19)
-
-
-# Keep variables of interest and order them appropriately
-#transit_trips_subgroup_county <- transit_trips_subgroup_county %>%
-#  select(year, state, county, subgroup_type, subgroup, transit_trips, transit_trips_quality)
-#transit_cost_subgroup_county <- transit_cost_subgroup_county %>%
-#  select(year, state, county, subgroup_type, subgroup, transit_cost, transit_cost_quality)
-
-
-# Save as non-subgroup all-year files
-#write_csv(transit_trips_county, "06_neighborhoods/transit_trips_all_subgroups_county.csv")
-#write_csv(transit_cost_county, "06_neighborhoods/transit_cost_all_subgroups_county.csv")  
-
 
 
 
