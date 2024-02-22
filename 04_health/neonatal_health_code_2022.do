@@ -34,7 +34,7 @@ pause on
 global gitfolder "C:\Users\jcarter\Documents\git_repos\mobility-from-poverty\"	// update path as necessary to the local mobility metrics repository folder
 global health "${gitfolder}04_health\"
 global health_data "${health}data\"
-global health_data_final "${health}final_data"
+global health_data_final "${health}final_data\"
 global geo_xwalk "${gitfolder}geographic-crosswalks\data\"
 
 global sub = "nhblack hisp nhother nhwhite"
@@ -657,7 +657,7 @@ rename lbw rate_low_birth_weight					// Rename per Aaron request
 rename lbw_* rate_low_birth_weight_*				// Rename per Aaron request
 
 save "${health_data}neonatal_health_`y4'.dta", replace
-export delimited using "${health_data_final}/neonatal_health_`y4'.csv", replace
+export delimited using "${health_data_final}neonatal_health_`y4'.csv", replace
 
 // race/ethnicity
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
