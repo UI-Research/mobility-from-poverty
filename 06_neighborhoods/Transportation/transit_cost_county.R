@@ -182,7 +182,7 @@ transit_cost_county <- transit_cost_county %>%
   
 
 # Save as non-subgroup all-year files
-write_csv(transit_cost_county, "06_neighborhoods/Transportation/output/transit_cost_all_county.csv")  
+write_csv(transit_cost_county, "06_neighborhoods/Transportation/final/transit_cost_all_county.csv")  
 
 
   

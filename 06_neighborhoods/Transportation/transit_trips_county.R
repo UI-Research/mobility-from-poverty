@@ -64,7 +64,7 @@ transit_trips_county_2019 <- transport_county_2019 %>%
 
 # Compare to our official county file to make sure we have all counties accounted for
 # Bring in the official county file
-counties <- read_csv("C:/Users/tchelidze/Documents/GitHub/mobility-from-poverty/geographic-crosswalks/data/county-populations.csv")
+counties <- read_csv("C:/Users/USERNAME/Documents/GitHub/mobility-from-poverty/geographic-crosswalks/data/county-populations.csv")
 counties_2015 <- counties %>%
   filter(year == 2015)
 counties_2019 <- counties %>%
@@ -197,7 +197,7 @@ transit_trips_county <- transit_trips_county %>%
   
 
 # Save as non-subgroup all-year files
-write_csv(transit_trips_county, "06_neighborhoods/Transportation/output/transit_trips_all_county.csv")
+write_csv(transit_trips_county, "06_neighborhoods/Transportation/final/transit_trips_all_county.csv")
 
 
 ############################################################

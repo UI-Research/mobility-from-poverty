@@ -277,7 +277,7 @@ transit_trips_city <- rbind(transit_trips_city_2015, transit_trips_city_2019)
 
 
 # Save as non-subgroup all-year files
-write_csv(transit_cost_city, "06_neighborhoods/Transportation/output/transit_cost_all_city.csv")  
-write_csv(transit_trips_city, "06_neighborhoods/Transportation/output/transit_trips_all_city.csv")  
+write_csv(transit_cost_city, "06_neighborhoods/Transportation/final/transit_cost_all_city.csv")  
+write_csv(transit_trips_city, "06_neighborhoods/Transportation/final/transit_trips_all_city.csv")  
 
 
