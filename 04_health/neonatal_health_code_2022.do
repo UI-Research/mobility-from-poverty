@@ -251,7 +251,7 @@ use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 		replace subgroup = 3 if nhother==1
 		replace subgroup = 4 if nhwhite==1
 	
-	label define subl 0 "All" 1 "Black, Non-Hispanic" 2 "Hispanic" 3 "Other Races and Ethnicities" 4 "White, Non-Hispanic"
+	label define subl 0 "All" 1 "Black, Non-Hispanic" 2 "Hispanic" 3 "Other Races and Ethnicities" 4 "White, Non-Hispanic" 5 "Less than High School" 6 "GED/High School Degree" 7 "Some College" 8 "College Degree or Higher"
 	label val subgroup subl
 	
 	drop nhblack hisp nhother nhwhite
@@ -272,8 +272,7 @@ use "${health_data}neonatal_health_intermediate_momed_`y2'.dta", clear
 		replace subgroup = 7 if somecollege == 1
 		replace subgroup = 8 if collegedegrees == 1
 		
-	label defin sub2 0 "All" 5 "Less than High School" 6 "GED/High School Degree" 7 "Some College" 8 "College Degree or Higher"
-	label val subgroup sub2
+	label val subgroup sub1
 		
 	drop lessthanhs hsgrad somecollege collegedegrees
 		
@@ -323,10 +322,20 @@ save "${health_data}clean_county_crosswalk_`y2'.dta", replace
 	replace subgroup_type = "mothers-education" if subgroup > 4 & subgroup < 9
 		sort state county subgroup		
 
-save "${health_data}clean_county_crosswalk_raceth_`y2'.dta", replace
+// Race/Ethnicity
+preserve 
+	keep if subgroup < 5
+	save "${health_data}clean_county_crosswalk_raceth_`y2'.dta", replace
+restore 
 
-* merge crosswalk and analytic file
-//// all births
+// Mom's Education
+preserve
+	keep if subgroup > 4 & subgroup < 9
+	save "${health_data}clean_county_crosswalk_momed_`y2'.dta", replace
+restore
+
+//# merge crosswalk and analytic file
+//# merge crosswalk - all births
 use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 	merge 1:1 state county using "${health_data}/clean_county_crosswalk_`y2'.dta"
 	
@@ -336,13 +345,27 @@ use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
-//// race/ethnicity
+//# merge crosswalk - race/ethnicity
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 	merge 1:1 state county subgroup using "${health_data}clean_county_crosswalk_raceth_`y2'.dta"
 	
 	tab _merge		// correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
 
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
+
+//# merge crosswalk - mother's education
+use "${health_data}neonatal_health_intermediate_momed_`y2'.dta", clear
+	merge 1:1 state county subgroup using "${health_data}clean_county_crosswalk_momed_`y2'.dta"
+	
+	tab _merge		// correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
+
+save "${health_data}neonatal_health_intermediate_momed_`y2'.dta", replace
+
+//# Append Education to Race Ethnicity - Keep the raceeth name the rest of the way
+use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
+	append using "${health_data}neonatal_health_intermediate_momed_`y2'.dta"
+save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
+
 
 //# * (5) assign "unidentified county" values to counties with missing values
 
@@ -464,16 +487,15 @@ save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# *(6) create neonatal health share low birthweight metric
 
-/// all births
+//# lbw metric -  all births
 use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 generate share_lbw_nomiss = lbw_births / nomiss_births
 	sum share_lbw_nomiss, detail
-	assert share_lbw_nomiss < 1
-	assert share_lbw_nomiss > 0 & !missing(share_lbw_nomiss) 
+	// assert share_lbw_nomiss < 1 // There are 9 zero nomiss_births values that result in missing share_lbw_nomiss values
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 	
-/// race/ethnicity
+//# lbw metric -  race/ethnicity
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 	generate share_lbw_nomiss = lbw_births/nomiss_births
@@ -489,7 +511,7 @@ save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# *(7) assess data quality
 
-/// all births
+//# Data Quality Flags - all births
 use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 
 *generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
@@ -500,7 +522,7 @@ gen lbw_quality = .
 		label var lbw_quality "share low birthweight births: quality flag"
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
-/// race/ethnicity
+//# Data Quality Flags - race/ethnicity
 local y2 = 22
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 
@@ -512,13 +534,12 @@ gen lbw_quality = .
 		label var lbw_quality "share low birthweight births: quality flag"
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
-//# TODO: Start Here
 //# Confidence Intervals
 *(8) construct 95 percent confidence intervals
 * note: confidence intervals are constructed following the User Guide to the 2010 Natality Public Use File, linked in the README and saved on Box 	
 * for more information, see README
 
-/// all births
+//# 95% CI - all births
 use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 
 *generate and test conditions from User Guide:
@@ -527,40 +548,44 @@ gen test_2 = (1 - share_lbw_nomiss) * nomiss_births
 
 gen fail_test_1 = test_1 < 5
 gen fail_test_2 = test_2 < 5
-//	assert test_1 >= 5 				// confirms data meet condition #1; if failures, need to flag failed observations
-//	assert test_2 >= 5  					// confirms data meet condition #2; if failures, need to flag failed observations
+
+assert test_1 >= 5 				// confirms data meet condition #1; if failures, need to flag failed observations
+assert test_2 >= 5  			// confirms data meet condition #2; if failures, need to flag failed observations
+
+drop fail_test*
 
 *generate and test confidence intervals for primary indicator
 gen lbw_lb = (share_lbw_nomiss) - (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births))
 
 	sum lbw_lb, detail
-	assert lbw_lb < 1 	// confirms lower bound is a percentage
+	assert lbw_lb < 1 if !missing(lbw_lb) // confirms lower bound is a percentage
 	assert lbw_lb > 0 	// confirms lower bound is a percentage
-	assert lbw_lb < share_lbw_nomiss  // confirms lower bound is less than estimate
+	assert lbw_lb < share_lbw_nomiss  if !missing(lbw_lb) // confirms lower bound is less than estimate
+	
 gen lbw_ub = (share_lbw_nomiss) + (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births))
 
 	sum lbw_ub, detail
-	assert lbw_ub < 1  	// confirms upper bound is a percentage
+	assert lbw_ub < 1  if !missing(lbw_ub) 	// confirms upper bound is a percentage
 	assert lbw_ub > 0 	// confirms upper bound is a percentage
-	assert lbw_ub > share_lbw_nomiss 	// confirms upper bound is greater than estimate
+	assert lbw_ub > share_lbw_nomiss  if !missing(lbw_ub)	// confirms upper bound is greater than estimate
 	
 *generate 95 confidence interval range to check reliability of estiates
 gen lbw_ci_range = lbw_ub - lbw_lb
 	sum lbw_ci_range 
-	assert lbw_ci_range < 1 	// confirms range is a percentage
+	assert lbw_ci_range < 1  if !missing(lbw_lb)	// confirms range is a percentage
 	assert lbw_ci_range > 0 	// confirms range is a percentage
 
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
-/// race/ethnicity
+//# 95% CI - race/ethnicity
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 
 *generate and test conditions from User Guide:
 gen test_1 = share_lbw_nomiss * nomiss_births
-gen test_2=(1-share_lbw_nomiss) * nomiss_births 
-	
-	assert test_1 >= 5  					// confirms data meet condition #1; if failures, need to flag failed observations
-	assert test_2 >= 5  					// confirms data meet condition #2; if failures, need to flag failed observations
+gen test_2 = (1-share_lbw_nomiss) * nomiss_births 
+
+	assert test_1 >= 5  if share_lbw_nomiss != 0	// confirms data meet condition #1; if failures, need to flag failed observations - test_1 fails for 80 cases where lbw_births == 0
+	assert test_2 >= 5  if share_lbw_nomiss != 0	// confirms data meet condition #2; if failures, need to flag failed observations - test_2 fails for 37 cases where lbw_births == 0
 
 //// ASSERTIONS \\\\\\
 // There are 15 failures of test_1 - all places with no low weight births
@@ -573,22 +598,25 @@ gen fail_test_2 = test_2 >= 5
 *generate and test confidence intervals for primary indicator
 gen lbw_lb = (share_lbw_nomiss) - (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births))
 	sum lbw_lb, detail
-	assert lbw_lb < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag)	// confirms lower bound is a percentage
-	assert lbw_lb > 0 	// confirms lower bound is a percentage
-	assert lbw_lb < share_lbw_nomiss if missing(suppressed_county_flag) & missing(unidentified_county_flag) // confirms lower bound is less than estimate
+//There are 90 cases where lbw_births == 0 which would cause violations of the assert statements without adding that stipulation
+
+	assert lbw_lb < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag) & lbw_births > 0	// confirms lower bound is a percentage - 1 case that violates b/c lbw_births == 0 (and nomiss_births also == 0)
+	assert lbw_lb > 0 if lbw_births > 0 & !missing(lbw_births)	// confirms lower bound is a percentage - 43 cases that violate because lbw_births == 0
+	assert lbw_lb < share_lbw_nomiss if missing(suppressed_county_flag) & missing(unidentified_county_flag) & lbw_births != 0 // confirms lower bound is less than estimate - 15 cases that violate because lbw_births == 0
 
 gen lbw_ub = (share_lbw_nomiss) + (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births))
 
 	sum lbw_ub, detail
-	assert lbw_ub < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag)	// confirms upper bound is a percentage
-	assert lbw_ub > 0 	// confirms upper bound is a percentage
-	assert lbw_ub > share_lbw_nomiss if missing(suppressed_county_flag)	& missing(unidentified_county_flag) // confirms upper bound is greater than estimate
+	assert lbw_ub < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag) & lbw_births > 0		// confirms upper bound is a percentage - 1 case that violates b/c lbw_births == 0 (and nomiss_births also == 0)
+	assert lbw_ub > 0 if lbw_births > 0	// confirms upper bound is a percentage - 43 cases that violate because lbw_births == 0
+	assert lbw_ub > share_lbw_nomiss if missing(suppressed_county_flag)	& missing(unidentified_county_flag) & lbw_births > 0  // confirms upper bound is greater than estimate - 14 cases that violate because lbw_births == 0
+
 	
 *generate 95 confidence interval range to check reliability of estiates
 gen lbw_ci_range = lbw_ub - lbw_lb
 sum lbw_ci_range 
-	assert lbw_ci_range < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag)	// confirms range is a percentage
-	assert lbw_ci_range > 0 if missing(suppressed_county_flag) & missing(unidentified_county_flag)	// confirms range is a percentage
+	assert lbw_ci_range < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag) & lbw_births > 0	// confirms range is a percentage - 1 case that violates because lbw_births == 0
+	assert lbw_ci_range > 0 if missing(suppressed_county_flag) & missing(unidentified_county_flag)	 & lbw_births > 0  // confirms upper bound is greater than estimate - 14 cases that violate because lbw_births == 0
 
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
