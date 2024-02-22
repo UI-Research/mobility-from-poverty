@@ -1,5 +1,5 @@
 /***************************
-This file imports the 2023 QCEW data and exports average weekly wage for each
+This file imports the 2022 QCEW data and exports average weekly wage for each
 county. The file can be edited to read in data from any other year.
 
 Before using this file, download the relevant year of data from QCEW NAICS-Based Data Files, County High-Level (and select the annual summary)
@@ -177,15 +177,15 @@ replace county_name = "Tolland County" if state == "09" & county == "013"
 replace county_name = "Windham County" if state == "09" & county == "015"
 replace county_name = "Valdez-Cordova Census Area" if state == "02" & county == "261"
 
-drop if _merge == 1
+drop if _merge == 1 & state != "09"
 
-*** also want to drop new 2022 planning regions since they won't have data-- could also keep these as missing and drop the old county structure
-*drop if state == "09" & (county == 110 | county == "120" | county == "130" | county == "140" | county == "150" | county == "160" | county == "170" | county == "180" | county == "190")
-generate flag = 1 if state == "09" & average_to_living_wage_ratio == ""
+*** also want to drop old counties and impute missing values 
+generate flag = 1 if state == "09" & average_to_living_wage_ratio == "NA"
 drop if flag == 1
 
-** drop the alaska census area to be coherent-- TBD
-
+*** make missing
+replace average_to_living_wage_ratio = "NA" if state == "09"
+replace ratio_living_wage_quality = 3 if state == "09"
 
 /* export final dataset */
 
