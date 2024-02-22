@@ -227,3 +227,8 @@ bysort year: sum d_*
 
 *very slight (but expected) differences
 
+
+drop old*
+drop d*
+
+rename meps20* share_meps20*
