@@ -6,7 +6,7 @@
 ** Produces city level data 
 
 /*
-Update MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024
+Update City-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024
 
 */
 
