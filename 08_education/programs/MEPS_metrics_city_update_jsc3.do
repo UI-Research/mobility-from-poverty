@@ -15,9 +15,12 @@ global education "${gitfolder}08_education\"
 
 global raw_data "${education}\data\raw\"
 global intermediate_data "${education}\data\intermediate\"
+global built_data "${education}data\built\"
 global final_data "${education}\data\final_data\"
 
 global box "C:\Users\jcarter\Box\"
+
+
 // Files
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
@@ -28,6 +31,8 @@ cap n mkdir ${raw_data}
 cap n mkdir ${intermediate_data}
 cap n mkdir ${final_data}
 
+
+global rebuild_portal_data = 0
 
 ** install educationdata command **
 cap n ssc install libjson
@@ -80,8 +85,13 @@ save "intermediate/cityfile.dta", replace
 
 ** get CCD enrollment **
 *add if, else command once decide how to deal with future iterations
+if $rebuild_portal_data == 1 {
 educationdata using "school ccd enrollment race", sub(year=2014:${year}) csv clear
 save "raw\ccd_enr_2014-${year}.dta", replace
+}
+if $rebuild_portal_data == 0 {
+	use "${raw_data}ccd_enr_2014-${year}.dta", clear
+}
 
 keep if grade==99 & sex==99
 drop leaid ncessch_num grade sex fips
@@ -113,24 +123,30 @@ save "intermediate/combined_2014-${year}.dta", replace
 ** city-level rates **
 use "intermediate/combined_2014-${year}.dta", clear
 
-drop if enrollment==. | enrollment==0
+drop if missing(enrollment) | enrollment==0
 
 *Using MEPS
 gen meps_share = meps_poverty_pct/100
-gen meps_20 = (meps_share>=.20) if meps_share!=.
-replace meps_20 = 0 if meps_share==.
+gen meps_20 = (meps_share>=.20) if !missing(meps_share)
+replace meps_20 = 0 if missing(meps_share)
 
 gen numerator = enrollment
 replace numerator = 0 if meps_20 == 0
 
+// White, Black Hispanic
 forvalues i=1/3 {
 	gen numerator`i' = enrollment`i'
 	replace numerator`i' = 0 if meps_20 == 0
 } 
 
+gen enrollment_other = enrollment4 + enrollment5 + enrollment6 + enrollment7 + enrollment9
+gen numerator4 = enrollment_other
+
+replace numerator4 = 0 if meps_20 == 0
+
 numlabel, add
 *clean for state variable
-replace county_code=. if county_code==-2
+replace county_code = . if county_code == -2
 _strip_labels county_code
 tostring county_code, replace // EG: 112 county codes observations have county_code==-2 [not applicable] (2015), 331 missing (2014/2015)
 replace county_code = "0" + county_code if strlen(county_code)==4
@@ -141,8 +157,13 @@ assert strlen(state)==2
 gen city_name=lower(city_location)
 replace city_name = proper(city_name)
 
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 numerator*, by(year state city_name)
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3 enrollment_other numerator*, by(year state city_name)
 
+rename enrollment enrollment99
+rename numerator numerator99
+rename enrollment_other enrollment4
+
+//# TODO: STart here
 gen meps20_total = numerator/enrollment
 gen meps20_white = numerator1/enrollment1
 gen meps20_black = numerator2/enrollment2
@@ -174,7 +195,7 @@ meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispa
 duplicates drop
 
 *city data only available for 2016+ and MEPS only available up to 2020
-keep if year>=2016 & year<=$year
+keep if year >= 2016 & year <= $year
 merge 1:1 year state city_name using "Intermediate/cityfile.dta"
 *drop if year>=2019 // edited 9_13_24 - no longer need with new MEPS years
 tab year _merge
@@ -202,11 +223,16 @@ drop city_name
 order year state place
 gsort -year state place
 
-drop meps20_total meps20_total_quality
+rename meps20* share_meps20*
 
-export delimited using "built/MEPS_2016-2020_city.csv", replace
+export delimited using "${final_data}/meps_city_2020.csv", replace 
+
+
+//drop meps20_total meps20_total_quality
+
 destring year state place, replace
-save "built/MEPS_2016-2020_city.dta", replace
+save "${built_data}MEPS_2016-2020_city.dta", replace
+
 
 *9_14_23 - check against old data
 import delimited using "${box}Mobility Metrics - MEPS\Old\MEPS_2016-2018_city", clear
@@ -231,6 +257,3 @@ bysort year: sum d_*
 drop old*
 drop d*
 
-rename meps20* share_meps20*
-
-export delimited using "${final_data}/meps_city_2020.csv", replace 
