@@ -18,10 +18,10 @@ global year=2020
 global gitfolder "C:\Users\jcarter\Documents\git_repos\mobility-from-poverty\"
 global education "${gitfolder}08_education\"
 
-global raw_data "${education}\data\raw\"
+global raw_data "${education}data\raw\"
 global intermediate_data "${education}\data\intermediate\"
 global built_data "${education}data\built\"
-global final_data "${education}\data\final_data\"
+global final_data "${education}data\final_data\"
 
 global box "C:\Users\jcarter\Box\"
 
@@ -219,7 +219,7 @@ tab year if missing(meps20)
 
 rename meps20* share_meps20*
 
-export delimited using "${final_data}/meps_city_2020.csv", replace 
+export delimited using "${final_data}meps_city_2020.csv", replace 
 
 destring year state place, replace
 

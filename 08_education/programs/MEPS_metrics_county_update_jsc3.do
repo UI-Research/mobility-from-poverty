@@ -167,7 +167,7 @@ tab year if missing(meps20)
 
 rename meps20* share_meps20*
 
-export delimited using "${final_data}/meps_county_2020.csv", replace
+export delimited using "${final_data}meps_county_2020.csv", replace
 
 destring year state county, replace
 
