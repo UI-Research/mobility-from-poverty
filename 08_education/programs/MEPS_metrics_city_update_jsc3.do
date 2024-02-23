@@ -5,6 +5,11 @@
 ** 2022/11/28 ** Update 9/14/23 with MEPS through 2020-21
 ** Produces city level data 
 
+/*
+Update MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024
+
+*/
+
 clear all
 
 global year=2020
@@ -95,6 +100,9 @@ if $rebuild_portal_data == 0 {
 
 keep if grade==99 & sex==99
 drop leaid ncessch_num grade sex fips
+
+replace enrollment = 0 if enrollment < 0
+
 reshape wide enrollment, i(year ncessch) j(race)
 *1-white, 2-black, 3-hispanic
 save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
@@ -110,6 +118,7 @@ save "raw\ccd_meps_2014-${year}.dta", replace
 
 *Merge Data together
 use "raw\ccd_dir_2014-${year}.dta", clear
+replace enrollment = 0 if enrollment < 0
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 drop _merge
 *merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\My Box Notes\Mobility Metrics - MEPS\Abrv Set of Portal Variables
@@ -163,97 +172,55 @@ rename enrollment enrollment99
 rename numerator numerator99
 rename enrollment_other enrollment4
 
-//# TODO: STart here
-gen meps20_total = numerator/enrollment
-gen meps20_white = numerator1/enrollment1
-gen meps20_black = numerator2/enrollment2
-gen meps20_hispanic = numerator3/enrollment3
-
-*Quality Check Variables
-gen meps20_total_quality = 1 if enrollment>=30 & meps20_total!=.
-replace meps20_total_quality = 2 if enrollment>=15 & meps20_total_quality==. & meps20_total!=.
-replace meps20_total_quality = 3 if meps20_total_quality==. & meps20_total!=.
-
-gen meps20_white_quality = 1 if enrollment1>=30 &  meps20_white!=.
-replace meps20_white_quality = 2 if enrollment1>=15 & meps20_white_quality==. & meps20_white!=.
-replace meps20_white_quality = 3 if meps20_white_quality==. & meps20_white!=.
-
-gen meps20_black_quality = 1 if enrollment2>=30 & meps20_black!=.
-replace meps20_black_quality = 2 if enrollment2>=15 & meps20_black_quality==. & meps20_black!=.
-replace meps20_black_quality = 3 if meps20_black_quality==. & meps20_black!=.
-
-gen meps20_hispanic_quality = 1 if enrollment3>=30 & meps20_hispanic!=.
-replace meps20_hispanic_quality = 2 if enrollment3>=15 & meps20_hispanic_quality==. & meps20_hispanic!=.
-replace meps20_hispanic_quality = 3 if meps20_hispanic_quality==. & meps20_hispanic!=.
-
-drop enrollment* numerator* 
-
-keep year state city_name meps20_total meps20_total_quality ///
-meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
-order year state city_name meps20_total meps20_total_quality ///
-meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
-duplicates drop
-
 *city data only available for 2016+ and MEPS only available up to 2020
 keep if year >= 2016 & year <= $year
-merge 1:1 year state city_name using "Intermediate/cityfile.dta"
-*drop if year>=2019 // edited 9_13_24 - no longer need with new MEPS years
+merge m:1 year state city_name using "Intermediate/cityfile.dta"
+
 tab year _merge
-*2 from city file (south fulton georgia & mount pleasant south carolina) don't exist in school dataset
-brow if _merge==2 // Honolulu doesn't match well
-	drop if _merge==1 // drop district data that doesn't match 
-	drop _merge state_name 
-	
+
+drop if year > $year
+
+tab _merge if missing(place)
+
+drop if _merge==1 // drop district data that doesn't match 
+
+drop _merge city_name state_name
+
+// Reshape Data Wide
+reshape long enrollment numerator, i(year state place) j(gp)
+
+gen subgroup = ""
+replace subgroup = "White, Non-Hispanic" if gp == 1
+replace subgroup = "Black, Non-Hispanic" if gp == 2
+replace subgroup = "Hispanic" if gp == 3
+replace subgroup = "Other Races and Ethnicities" if gp == 4
+replace subgroup = "All" if gp == 99
+
+gen meps20 = 100 * (numerator / enrollment)
+
+* Data Quality Variable
+gen meps20_quality = .
+replace meps20_quality = 1 if enrollment >= 30 & !missing(meps20)
+replace meps20_quality = 2 if enrollment >= 15 & missing(meps20_quality) & !missing(meps20)
+replace meps20_quality = 3 if missing(meps20_quality) & !missing(meps20)
+
+keep year state place subgroup meps20 meps20_quality
+order year state place subgroup meps20 meps20_quality
+
+gsort -year state place
+
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
 *missingness
 tab year
-tab year if meps20_black==.
-tab year if meps20_hispanic==.
-tab year if meps20_white==.
-tab year if meps20_total==.
-
-order year state city place meps20_black* meps20_hispanic* meps20_white* meps20_total*
-gsort -year state city
-
-drop city_name 
-
-order year state place
-gsort -year state place
+tab year if missing(meps20)
 
 rename meps20* share_meps20*
 
 export delimited using "${final_data}/meps_city_2020.csv", replace 
 
-
-//drop meps20_total meps20_total_quality
-
 destring year state place, replace
+
 save "${built_data}MEPS_2016-2020_city.dta", replace
-
-
-*9_14_23 - check against old data
-import delimited using "${box}Mobility Metrics - MEPS\Old\MEPS_2016-2018_city", clear
-ren meps* old_meps*
-
-merge 1:1 year state place using "${box}Mobility Metrics - MEPS\Update\08_education\data\built\MEPS_2016-2020_city.dta"
-tab year _merge
-keep if _merge==3 // only need to compare 2016-2018 numbers
-drop _merge
-
-
-foreach var in meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality meps20_white meps20_white_quality {
-gen d_`var' = `var' - old_`var'
-}
-
-bysort year: sum old* meps*
-bysort year: sum d_*
-
-*very slight (but expected) differences
-
-
-drop old*
-drop d*
-
