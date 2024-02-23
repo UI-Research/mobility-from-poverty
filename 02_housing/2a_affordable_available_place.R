@@ -35,11 +35,10 @@
 #     (3b) Summarize at_rent for each subgroup and number of units/households at each
 #       income threshold by place
 # (4) calculate the number of affordable and available units at each income level per 100 households
-# (5) Create the Data Quality variable
-# (6) Clean and export
-#     (6a) subgroup file
-#     (6b) overall file
-# (7) Quality Check
+# (5) Clean and export
+#     (5a) subgroup file
+#     (5b) overall file
+# (5) Quality Check
 
 ###################################################################
 
@@ -132,40 +131,19 @@ available_2022_final <- available_2022 %>%
     rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI_owner*100
   )
 
-###################################################################
 
-# (5) Create the Data Quality variable
-
-# For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
-# Create a "Size Flag" for any place-level observations made off of less than 30 observed HH, vacant or otherwise
-available_2022_final <- available_2022_final %>% 
-  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         place_size_flag = case_when((affordableHH_sum < 30) ~ 1,
-                               (affordableHH_sum >= 30) ~ 0))
-
-# bring in the PUMA flag file if you have not run "0_microdata_place.R" before this
-place_puma <- read_csv("data/temp/place_puma.csv") %>% 
-  rename("state" = "statefip")
-
-# Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-available_2022_final <- left_join(available_2022_final, place_puma, by=c("state","place"))
-# 486 rows
-
-# Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
-available_2022_final <- available_2022_final %>% 
-  mutate(housing_quality = case_when(place_size_flag==0 & puma_flag==1 ~ 1, # 239 obs
-                                     place_size_flag==0 & puma_flag==2 ~ 2, # 239 obs
-                                     place_size_flag==0 & puma_flag==3 ~ 3, # 7 obs
-                                     place_size_flag==1 ~ 3))
 
 ###################################################################
 
-# (6) Clean and export
+# (5) Clean and export
 
-# (6a) subgroup file
+# (5a) subgroup file
+# combine with overall share_affordable file 
+affordable_2022_subgroup <- read_csv("02_housing/data/housing_2022_subgroups_city.csv")
+
 # turn long for subgroup output
 available_2022_subgroup <- available_2022_final %>%
-  select(state, place, starts_with("rate_affordable_"), housing_quality) %>% 
+  select(state, place, starts_with("rate_affordable_")) %>% 
   # create year variable
   mutate(year = 2022) %>% 
   # seperate share_afforadable by AMI and the subgroup
@@ -181,18 +159,25 @@ available_2022_subgroup <- available_2022_final %>%
   # clean subgroup names and add subgroup type column 
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
-         subgroup_type = "renter-owner" )
+         subgroup_type = "tenure" ) %>% 
+  # join with affordable values for final file
+  left_join(affordable_2022_subgroup)
 
 # export our file as a .csv
 write_csv(available_2022_subgroup, "02_housing/data/available_2022_subgroups_city.csv")  
 
 
-# (6b) overall file
+# (5b) overall file
+
+# combine with share_affordable file 
+affordable_2022_overall <- read_csv("02_housing/data/housing_2022_city.csv")
+
 # keep what we need
 available_2022_overall <- available_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, place, rate_affordable_available_80_ami, rate_affordable_available_50_ami, rate_affordable_available_30_ami, housing_quality) %>% 
-  arrange(year, state, place)
+  select(year, state, place, rate_affordable_available_80_ami, rate_affordable_available_50_ami, rate_affordable_available_30_ami) %>% 
+  arrange(year, state, place) %>% 
+  left_join(affordable_2022_overall)
 
 # export our file as a .csv
 write_csv(available_2022_overall, "02_housing/data/available_2022_subgroups_city.csv")  
@@ -200,9 +185,9 @@ write_csv(available_2022_overall, "02_housing/data/available_2022_subgroups_city
 
 ###################################################################
 
-# (7) Quality check tests 
+# (6) Quality check tests 
 
-#   (7a) see if state trends match 
+#   (6a) see if state trends match 
 #   National Low Income Housing Coalition Report - https://nlihc.org/gap
 
 # this is a really rough comparison since there isn't really local level data for this measure
@@ -221,7 +206,7 @@ state_av <- available_2022_subgroup %>%
 range(state_av$rate_affordable_available_30_ami)
 
 
-#  (7b) Histograms
+#  (6b) Histograms
 
 # share affordable and available at 30 AMI histogram
 available_2022_subgroup %>% 

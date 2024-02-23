@@ -424,8 +424,20 @@ households_summed_2022 <- households_2022 %>%
   dplyr::group_by(statefip, county) %>%
   # summarize all Below80AMI, Below50AMI, Below30AMI, and 
   # Affordable80AMI, Affordable50AMI, Affordable30AMI (all, renter, owner) variables
-  dplyr::summarise(across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE)), 
-                   HHobs_count = n()) %>% 
+  dplyr::summarise(
+    # get unweighted N for households below 30 ami for quality flag
+    HH_30_ami_quality_all = sum(Below30AMI == 1),
+    HH_30_ami_quality_renter = sum(Below30AMI_renter == 1), 
+    HH_30_ami_quality_owner = sum(Below30AMI_owner == 1), 
+    # get unweighted N for households below 50 ami for quality flag
+    HH_50_ami_quality_all = sum(Below50AMI == 1),
+    HH_50_ami_quality_renter = sum(Below50AMI_renter == 1), 
+    HH_50_ami_quality_owner = sum(Below50AMI_owner == 1), 
+    # get unweighted N for households below 80 ami for quality flag
+    HH_80_ami_quality_all = sum(Below80AMI == 1),
+    HH_80_ami_quality_renter = sum(Below80AMI_renter == 1), 
+    HH_80_ami_quality_owner = sum(Below80AMI_owner == 1), 
+    across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE))) %>% 
   rename("state" = "statefip") %>% 
   ungroup()
 
@@ -437,8 +449,7 @@ vacant_summed_2022 <- vacant_2022_new %>%
   dplyr::group_by(statefip, county) %>%
   dplyr::summarize(across(matches("Affordable"), ~ sum(.x*HHWT.x, na.rm = TRUE), 
                           # create naming onvention to add _vacant after columns name
-                          .names = "{.col}_vacant"),
-                   vacantHHobs_count = n()) %>% 
+                          .names = "{.col}_vacant")) %>% 
   rename("state" = "statefip") %>% 
   ungroup()
 
@@ -475,9 +486,10 @@ housing_2022 <- housing_2022 %>%
 # (8a) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
 # Create a "Size Flag" for any county-level observations made off of less than 30 observed HH, vacant or otherwise
 housing_2022 <- housing_2022 %>% 
-  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         county_size_flag = case_when((affordableHH_sum < 30) ~ 1,
-                                      (affordableHH_sum >= 30) ~ 0))
+  # This data quality flag is based on if the unqieghted number of observations for household below 30/50/80 ami (overall/renter/owner subgroup)
+  # is less than 30 
+  mutate(across(starts_with("HH_"), 
+                \(x) if_else(x < 30, 1, 0)))
 
 # bring in the PUMA flag file if you have not run "0_microdata_county.R" before this
 county_puma <- read_csv("data/temp/county_puma.csv")
@@ -488,10 +500,13 @@ housing_2022 <- left_join(housing_2022, county_puma, by=c("state" = "statefip","
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing_2022 <- housing_2022 %>% 
-  mutate(housing_quality = case_when(county_size_flag==0 & puma_flag==1 ~ 1,# 579
-                                     county_size_flag==0 & puma_flag==2 ~ 2,# 454
-                                     county_size_flag==0 & puma_flag==3 ~ 3,# 2110
-                                     county_size_flag==1 ~ 3))
+  mutate(across(matches("^HH_.*quality"), 
+                \(x) case_when(x==0 & puma_flag==1 ~ 1, 
+                               x==0 & puma_flag==2 ~ 2, 
+                               x==0 & puma_flag==3 ~ 3, 
+                               x==1 ~ 3))) %>% 
+  # rename variables to match data quality naming convention of e.g. "share_affordable_30_ami_quality"
+  rename_with(~str_replace(., "HH", "share_affordable"), matches("^HH_.*quality"))
 
 
 ###################################################################
@@ -515,13 +530,14 @@ housing_2022_subgroup <- housing_2022 %>%
   # clean subgroup names and add subgroup type column 
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
-         subgroup_type = "renter-owner" )
+         subgroup_type = "tenure" )
 
 # (9a) overall file
 # keep what we need
 housing_2022_overall <- housing_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, county, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  select(year, state, county, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, 
+         share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, county)
 
 # export our file as a .csv
@@ -530,7 +546,8 @@ write_csv(housing_2022_overall, "02_housing/data/housing_2022_county.csv")
 # (9b) subgroup file
 # keep what we need
 housing_2022_subgroup_final <- housing_2022_subgroup %>% 
-  select(year, state, county,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  select(year, state, county,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, 
+         share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, county, subgroup_type, subgroup)
 
 # export our file as a .csv

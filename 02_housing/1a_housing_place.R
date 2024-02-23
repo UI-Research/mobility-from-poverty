@@ -298,7 +298,7 @@ households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("
 households_2022 <- households_2022 %>%
   mutate(Affordable80AMI_all = 
            case_when(# deal with cases when RENTGRS and OWNCOST are 0
-            # RENTGRS == 0 | OWNCOST == 0 ~ 0,
+             # RENTGRS == 0 | OWNCOST == 0 ~ 0,
              OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
              OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
              OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
@@ -362,7 +362,7 @@ households_2022 <- households_2022 %>%
 write_csv(households_2022, "data/temp/households_2022.csv")
 
 # Data is 1/3 renters 2/3 owners 
-skimr::skim(households_2022)
+#skimr::skim(households_2022)
 
 
 ###################################################################
@@ -430,7 +430,7 @@ vacant_2022_new <- vacant_2022 %>%
 write_csv(vacant_2022_new, "data/temp/vacant_2022.csv")
 
 # look at data
-skimr::skim(vacant_2022_new)
+#skimr::skim(vacant_2022_new)
 
 ###################################################################
 
@@ -443,17 +443,17 @@ households_summed_2022 <- households_2022 %>%
   # Affordable80AMI, Affordable50AMI, Affordable30AMI (all, renter, owner) variables
   summarise( 
     # get unweighted N for households below 30 ami for quality flag
-    HH_30ami_count = sum(Below30AMI == 1),
-    HH_30ami_renter_count = sum(Below30AMI_renter == 1), 
-    HH_30ami_owner_count = sum(Below30AMI_owner == 1), 
+    HH_30_ami_quality_all = sum(Below30AMI == 1),
+    HH_30_ami_quality_renter = sum(Below30AMI_renter == 1), 
+    HH_30_ami_quality_owner = sum(Below30AMI_owner == 1), 
     # get unweighted N for households below 50 ami for quality flag
-    HH_50ami_count = sum(Below50AMI == 1),
-    HH_50ami_renter_count = sum(Below50AMI_renter == 1), 
-    HH_50ami_owner_count = sum(Below50AMI_owner == 1), 
+    HH_50_ami_quality_all = sum(Below50AMI == 1),
+    HH_50_ami_quality_renter = sum(Below50AMI_renter == 1), 
+    HH_50_ami_quality_owner = sum(Below50AMI_owner == 1), 
     # get unweighted N for households below 80 ami for quality flag
-    HH_80ami_count = sum(Below80AMI == 1),
-    HH_80ami_renter_count = sum(Below80AMI_renter == 1), 
-    HH_80ami_owner_count = sum(Below80AMI_owner == 1), 
+    HH_80_ami_quality_all = sum(Below80AMI == 1),
+    HH_80_ami_quality_renter = sum(Below80AMI_renter == 1), 
+    HH_80_ami_quality_owner = sum(Below80AMI_owner == 1), 
     across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE))) %>% 
   rename("state" = "statefip")
 
@@ -464,22 +464,9 @@ households_summed_2022 <- households_2022 %>%
 vacant_summed_2022 <- vacant_2022_new %>% 
   group_by(statefip, place) %>%
   summarize(
-    # get unweighted N for units affordable at 30 ami for quality flag
-    vacant_30ami_count = sum(Below30AMI == 1),
-    vacant_30ami_renter_count = sum(Below30AMI_renter == 1), 
-    vacant_30ami_owner_count = sum(Below30AMI_owner == 1), 
-    # get unweighted N for units affordable at 50 ami for quality flag
-    vacant_50ami_count = sum(Below50AMI == 1),
-    vacant_50ami_renter_count = sum(Below50AMI_renter == 1), 
-    vacant_50ami_owner_count = sum(Below50AMI_owner == 1), 
-    # get unweighted N for units affordable at 80 ami for quality flag
-    vacant_80ami_count = sum(Below80AMI == 1),
-    vacant_80ami_renter_count = sum(Below80AMI_renter == 1), 
-    vacant_80ami_owner_count = sum(Below80AMI_owner == 1), 
     across(matches("Affordable"), ~ sum(.x*HHWT.x, na.rm = TRUE), 
-                          # create naming onvention to add _vacant after columns name
-                          .names = "{.col}_vacant"),
-                   vacantHHobs_count = n()) %>% 
+           # create naming onvention to add _vacant after columns name
+           .names = "{.col}_vacant")) %>% 
   rename("state" = "statefip")
 
 # save csv for avaiablity calculation in 2a_affordable_available_place.R
@@ -516,9 +503,10 @@ housing_2022 <- housing_2022 %>%
 # For Housing metric: total number of HH below 30/50/80% AMI 
 # Create a "Size Flag" for any place-level observations made off of less than 30 observed HH
 housing_2022 <- housing_2022 %>% 
-  mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
-         place_size_flag = case_when((affordableHH_sum < 30) ~ 1,
-                                     (affordableHH_sum >= 30) ~ 0))
+  # This data quality flag is based on if the unqieghted number of observations for household below 30/50/80 ami (overall/renter/owner subgroup)
+  # is less than 30 
+  mutate(across(starts_with("HH_"), 
+                \(x) if_else(x < 30, 1, 0)))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
 place_puma <- read_csv("data/temp/place_puma.csv") %>% 
@@ -529,10 +517,13 @@ housing_2022 <- left_join(housing_2022, place_puma, by=c("state","place"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing_2022 <- housing_2022 %>% 
-  mutate(housing_quality = case_when(place_size_flag==0 & puma_flag==1 ~ 1, # 239 obs
-                                     place_size_flag==0 & puma_flag==2 ~ 2, # 239 obs
-                                     place_size_flag==0 & puma_flag==3 ~ 3, # 7 obs
-                                     place_size_flag==1 ~ 3))
+  mutate(across(matches("^HH_.*quality"), 
+                \(x) case_when(x==0 & puma_flag==1 ~ 1, 
+                               x==0 & puma_flag==2 ~ 2, 
+                               x==0 & puma_flag==3 ~ 3, 
+                               x==1 ~ 3))) %>% 
+  # rename variables to match data quality naming convention of e.g. "share_affordable_30_ami_quality"
+  rename_with(~str_replace(., "HH", "share_affordable"), matches("^HH_.*quality"))
 
 ###################################################################
 
@@ -543,7 +534,7 @@ housing_2022_subgroup <- housing_2022 %>%
   # create year variable
   mutate(year = 2022) %>% 
   # seperate share_afforadable by AMI and the subgroup
-  pivot_longer(cols = c(contains("share_affordable")), 
+  pivot_longer(cols = matches("share_affordable_"), 
                names_to = c("affordable", "subgroup"),
                names_pattern = "(.+?(?=_[^_]+$))(_[^_]+$)", # this creates two columns - "share_affordable_XXAMI" and "_owner/_renter/_all"
                values_to = "value") %>% 
@@ -555,13 +546,14 @@ housing_2022_subgroup <- housing_2022 %>%
   # clean subgroup names and add subgroup type column 
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
-         subgroup_type = "renter-owner" )
+         subgroup_type = "tenure" )
 
 # (9a) overall file
 # keep what we need
 housing_2022_overall <- housing_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  select(year, state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami,
+         share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, place)
 
 # export our file as a .csv
@@ -570,7 +562,8 @@ write_csv(housing_2022_overall, "02_housing/data/housing_2022_city.csv")
 # (9b) subgroup file
 # keep what we need
 housing_2022_subgroup_final <- housing_2022_subgroup %>% 
-  select(year, state, place,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, housing_quality) %>% 
+  select(year, state, place,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, 
+         share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, place, subgroup_type, subgroup)
 
 # export our file as a .csv
