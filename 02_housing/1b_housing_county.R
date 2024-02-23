@@ -111,7 +111,7 @@ rent_ratio <- acs2022clean %>%
 # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
 rent_ratio <- rent_ratio %>%
   tidylog::filter(PERNUM == 1,
-         OWNERSHP == 2)
+                  OWNERSHP == 2)
 # removed 6,217,253 rows (90%), 697,673 rows remaining
 
 # (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
@@ -154,6 +154,8 @@ vacant_final <- vacant_final %>%
 
 # (4) Import HUD county Income Levels for each FMR and population for FMR 
 #           (population will be used for weighting)
+# NOTE: There is an API to do this that should be used in future updates of the data 
+# but we didn't have the capacity to update in 2023
 
 # Access via https://www.huduser.gov/portal/datasets/il.html#data_2022	
 
@@ -279,10 +281,13 @@ households_2022 <- left_join( microdata_housing, county_income_limits_2022, by=c
 # if OWNERSHP is not equal to 1 or 2, leave as NA
 
 households_2022 <- households_2022 %>%
-  mutate(Affordable80AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
-                                         OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
-                                         OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
-                                         OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
+  mutate(Affordable80AMI_all =
+           case_when(# deal with cases when RENTGRS and OWNCOST are 0
+             RENTGRS == 0 | OWNCOST == 0 ~ 0,
+             OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
+             OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
+             OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
+             OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
          # create subgroups for renter and owners specifically
          Affordable80AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                             OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0), 
@@ -294,7 +299,9 @@ households_2022 <- households_2022 %>%
          # renter population below 80 ami
          Below80AMI_renter = if_else((HHINCOME<l80_4 & OWNERSHP == 2), 1,0),
          # owner population below 80 ami
-         Below80AMI_owner = if_else((HHINCOME<l80_4 & OWNERSHP == 1), 1,0)
+         Below80AMI_owner = if_else((HHINCOME<l80_4 & OWNERSHP == 1), 1,0),
+         # create for data quality flag
+         Below80AMI_HH = HHWT*Below80AMI
   )
 
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
@@ -315,6 +322,7 @@ households_2022<- households_2022 %>%
          Below50AMI_renter = if_else((HHINCOME<l50_4 & OWNERSHP == 2), 1,0),
          # owner population below 80 ami
          Below50AMI_owner = if_else((HHINCOME<l50_4 & OWNERSHP == 1), 1,0),
+         # create for data quality flag
          Below50AMI_HH = HHWT*Below50AMI
   )
 
@@ -334,7 +342,9 @@ households_2022 <- households_2022 %>%
          # renter population below 30 ami
          Below30AMI_renter = if_else((HHINCOME<ELI_4 & OWNERSHP == 2), 1,0),
          # owner population below 30 ami
-         Below30AMI_owner = if_else((HHINCOME<ELI_4 & OWNERSHP == 1), 1,0)
+         Below30AMI_owner = if_else((HHINCOME<ELI_4 & OWNERSHP == 1), 1,0),
+         # create for data quality flag
+         Below30AMI_HH = HHWT*Below30AMI
   )
 
 # save file to use for affordability measure in 2b_afordable_available_county.R
@@ -467,7 +477,7 @@ housing_2022 <- housing_2022 %>%
 housing_2022 <- housing_2022 %>% 
   mutate(affordableHH_sum = HHobs_count + vacantHHobs_count,
          county_size_flag = case_when((affordableHH_sum < 30) ~ 1,
-                               (affordableHH_sum >= 30) ~ 0))
+                                      (affordableHH_sum >= 30) ~ 0))
 
 # bring in the PUMA flag file if you have not run "0_microdata_county.R" before this
 county_puma <- read_csv("data/temp/county_puma.csv")
@@ -573,7 +583,10 @@ summary(housing_2022_overall)
 
 # read in 2021 data
 # download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10
-metrics_2021 <- read_csv("C:/Users/ARogin/Downloads/mobility_metrics_county.csv") %>% 
+# and save in Downloads folder as "mobility_metrics_county.csv"
+username = getwd() %>% str_match("Users/.*?/") %>% str_remove_all("Users|/")
+
+metrics_2021 <- read_csv(paste0("C:/Users/",username,"/Downloads/mobility_metrics_county.csv") %>% 
   filter(year == 2021) %>% 
   select(state, county, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
 

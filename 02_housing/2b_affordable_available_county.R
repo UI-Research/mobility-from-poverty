@@ -95,36 +95,18 @@ available_2022 <- households_2022 %>%
     # AT RENT 80% AMI
     at_rent80_all = if_else(Affordable80AMI_all == 1 & Below80AMI == 1 & VACANCY == 0, 1, 0), 
     at_rent80_renter = if_else(OWNERSHP == 2 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0),
-    at_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0), 
-    
-    # DOWN RENT 30% AMI 
-    down_rent30_all = if_else(Affordable30AMI_all == 1 & Below30AMI == 0 & VACANCY == 0, 1, 0), 
-    down_rent30_renter = if_else(OWNERSHP == 2 & Affordable30AMI_all == 0 & Below30AMI == 1 & VACANCY == 0, 1, 0),
-    down_rent30_owner = if_else(OWNERSHP == 1 & Affordable30AMI_all == 0 & Below30AMI == 1 & VACANCY == 0, 1, 0), 
-    # DOWN RENT 50% AMI
-    down_rent50_all = if_else(Affordable50AMI_all == 1 & Below50AMI == 0 & VACANCY == 0, 1, 0), 
-    down_rent50_renter = if_else(OWNERSHP == 2 & Affordable50AMI_all == 0 & Below50AMI == 1  & VACANCY == 0, 1, 0),
-    down_rent50_owner = if_else(OWNERSHP == 1 & Affordable50AMI_all == 0 & Below50AMI == 1  & VACANCY == 0, 1, 0),
-    # DOWN RENT 80% AMI
-    down_rent80_all = if_else(Affordable80AMI_all == 1 & Below80AMI == 0 & VACANCY == 0, 1, 0), 
-    down_rent80_renter = if_else(OWNERSHP == 2 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0),
-    down_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 0 & Below80AMI == 1  & VACANCY == 0, 1, 0)) 
+    at_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0)) 
 
 
 # (3b) Summarize at_rent for each subgroup and number of units/households at each
 #       income threshold by place
 available_2022 <- available_2022 %>% 
   group_by(statefip, county) %>% 
-  dplyr::summarise(across(matches("Below|Affordable|down_|at_"), ~sum(.x*HHWT, na.rm = TRUE)), 
+  dplyr::summarise(across(matches("Below|Affordable|at_"), ~sum(.x*HHWT, na.rm = TRUE)), 
                    HHobs_count = n()) %>% 
   rename("state" = "statefip") %>% 
   ungroup()
 
-# test that the down rent and at rent values sum to the affordable value at each income bracket
-available_2022 %>% 
-  mutate(combine_rent = rowSums(select(.,"at_rent30_all", "down_rent30_all"), na.rm = TRUE), 
-         rent_dif = Affordable30AMI_all - combine_rent) %>% 
-  summary(rent_dif)
 
 ###################################################################
 # (4) calculate the number of affordable and available units at each income level per 100 households
