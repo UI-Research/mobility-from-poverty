@@ -26,6 +26,7 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 -   [Read Data](#read-data)
 -   [Clean Data](#clean-data)
 -   [Merge Crosswalk](#merge-crosswalk)
+-   [Read replicate weights](#read-replicate-weights)
 -   [Setup Survey Design](#setup-survey-design)
 -   [Create Employment Metric](#create-employment-metric)
 -   [Evaluate Results](#evaluate-results)
@@ -42,13 +43,15 @@ library(ipumsr)
 library(reactable)
 library(srvyr)
 library(scales)
+library(data.table)
 
 options(scipen = 999)
 
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
 
-source(here::here("functions", "API", "extract_ipums.R"))
+map(list.files(here::here("functions", "API")), 
+    ~source(here::here("functions", "API", .x)))
 ```
 
 ## Read Data
@@ -127,9 +130,17 @@ acs %>%
   ylab("Density")
 ```
 
+Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation.
+```{r}
+acs_clean <- acs %>% 
+  filter(age >= 25 & age <= 54) 
+
+rm(acs)
+```
+
 Turn the missing/"not in universe" value from the empstat variable into NAs.
 ```{r}
-acs_clean <- acs %>%
+acs_clean <- acs_clean %>%
   mutate(empstat = ifelse(empstat == 0, NA_integer_,
                           empstat)
   )
@@ -243,7 +254,7 @@ Rename the values from number category to race label:
 ```{r}
 
 acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
+  mutate(subgroup_race = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
                               (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
                               (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
                                hispan != "Not Hispanic" ~ "Hispanic"
@@ -255,17 +266,210 @@ Look at subgroup distribution.
 ```{r}
 
 acs_clean %>% 
-  count(subgroup) %>% 
-  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
+  count(subgroup_race) %>% 
+  ggplot(mapping = aes(x = factor(subgroup_race), y = n)) +
   geom_col() +
   theme_minimal() +
-  ggtitle("Subgroup, All Records") +
+  ggtitle("Race/Ethnicity, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Subgroup",
+  labs(x = "Race",
        y = NULL) +
   scale_x_discrete(labels = label_wrap(10))
 
+```
+
+### Create gender variable
+
+Evaluate the values in the gender variable.
+
+* IPUMS documented values for SEX: 
+  + 1 Male
+  + 2 Female
+  + 9 Missing/blank 
+
+Look at the distribution of values for the sex variable. 
+```{r}
+
+acs_clean %>% 
+  count(sex) %>% 
+  ggplot(mapping = aes(x = sex, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("sex, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Sex",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+Create a variable for subgroup_gender from the sex variable. The titles remain the same but any values outside of Male and Female are mutated to NA character variables. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
+                                     sex == "Female" ~ "Female",
+                                     TRUE ~ NA_character_))
+```
+
+Check the variable breakout. This should be approximately 50/50.
+```{r}
+acs_clean %>% 
+  count(subgroup_gender) %>% 
+  ggplot(mapping = aes(x = subgroup_gender, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Gender, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gender",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create disability variable
+
+The ACS includes 5 variables covering physical and mental disabilitie (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM).
+Evaluate the values in these variables and create an overall subgroup for disability.
+We will count an individual to be disabled if they answer yes or have any of these difficulties. 
+
+* IPUMS documented values for DIFFCARE (Self-care difficulty): 
+  + 0 N/A
+  + 1 No
+  + 2 Yes 
+
+Plot the options for diffcare below.
+```{r}
+
+acs_clean %>% 
+  count(diffcare) %>% 
+  ggplot(mapping = aes(x = diffcare, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Self-care difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffcare",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFSENS (Vision or hearing difficulty): 
+  + 0 N/A
+  + 1 No vision or hearing difficulty
+  + 2 Has vision or hearing difficulty
+
+Plot the options for diffsens below.
+```{r}
+
+acs_clean %>% 
+  count(diffsens) %>% 
+  ggplot(mapping = aes(x = diffsens, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Vision or Hearing difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffsens",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFMOB (Independent living difficulty): 
+  + 0 N/A
+  + 1 No independent living difficulty
+  + 2 Has independent living difficulty
+
+Plot the options for diffmob below.
+```{r}
+
+acs_clean %>% 
+  count(diffmob) %>% 
+  ggplot(mapping = aes(x = diffmob, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Independent living difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffmob",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for DIFFPHYS (Ambulatory difficulty): 
+  + 0 N/A
+  + 1 No ambulatory difficulty
+  + 2 Has ambulatory difficulty 
+  
+Plot the options for diffphys below.
+```{r}
+
+acs_clean %>% 
+  count(diffphys) %>% 
+  ggplot(mapping = aes(x = diffphys, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Ambulatory difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffphys",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+  
+* IPUMS documented values for DIFFREM  (Cognitive difficulty): 
+  + 0 N/A
+  + 1 No cognitive difficulty
+  + 2 Has cognitive difficulty 
+  
+Plot the options for diffrem below.
+```{r}
+acs_clean %>% 
+  count(diffrem) %>% 
+  ggplot(mapping = aes(x = diffrem, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Cognitive difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Diffrem",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+
+Create the subgroup for disability. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_disability = case_when(diffrem == "Has cognitive difficulty" |
+                                           diffphys == "Has ambulatory difficulty" |
+                                           diffmob == "Has independent living difficulty" |
+                                           diffsens == "Has vision or hearing difficulty" |
+                                           diffcare == "Yes" ~ "with disabiliy",
+                                         TRUE ~ "without disability"))
+  
+```
+
+
+Check the variable breakout. 
+```{r}
+acs_clean %>% 
+  count(subgroup_disability) %>% 
+  ggplot(mapping = aes(x = subgroup_disability, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Disability, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Disability",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 ## Merge Crosswalk 
@@ -320,12 +524,6 @@ acs_clean <- acs_clean %>%
   mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
 ```
 
-Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation.
-```{r}
-acs_clean <- acs_clean %>% 
-  filter(age >= 25 & age <= 54) 
-```
-
 Create a binary employed variable for calculating the share employed. IPUMS data codes "Employed" as equal to 1.
 ```{r}
 acs_clean <- acs_clean %>% 
@@ -348,24 +546,90 @@ acs_clean %>%
   count()
 ```
 
+## Read replicate weights 
+
+Read in person-level replicate weights for the 25 to 54 year old population. These will be used in creating standard errors for the employment opportunity calculation. 
+```{r}
+repwts_person <- ipums_repwt_employment(
+  extract_name = "employment_replicate_weights",
+  extract_description = "Person replicate weights for Employment Opportunities Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+```{r}
+repwts_person %>% 
+  count(sample) %>% 
+  ggplot(mapping = aes(x = sample, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Samples, All Records in Repwt File") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Samples",
+       y = NULL)
+```
+
+Remove the sample variable.
+```{r}
+repwts_person <- repwts_person %>% 
+  select(-sample)
+```
+
 ## Setup Survey Design 
 
-Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the employed variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
+Shrink sample for now.
 ```{r}
-acs_survey_all <- acs_clean %>%
+acs_clean_samp <- acs_clean %>% 
+  group_by(sample, county) %>% 
+  slice_sample(n = 30) %>% 
+  ungroup()
+
+acs_clean_samp_state <- acs_clean_samp %>% 
+  filter(statefip == "17")
+
+acs_clean_samp_dupe <- acs_clean_samp %>% 
+  filter(statefip == "17") %>% 
+  bind_rows(acs_clean_samp_state)
+
+```
+
+Set up the survey design using instructions from IPUMS. Join the replicate weights onto the ACS survey data using the unique person ID created for both.
+```{r}
+acs_survey_all <- acs_clean_samp %>%
+  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
   filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, county, employed) %>% 
-  summarise(perwt = sum(perwt)) %>% 
-  as_survey_design(weights = perwt) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+  as_survey_design(weights = perwt, 
+                   repweights = matches("repwtp[0-9]+"),
+                   type = "JK1",
+                   scale = 4/ 80,
+                   rscales = rep(1, 80 ), mse = TRUE) %>% 
   ungroup()
 
-acs_survey_subgroups <- acs_clean %>%
+
+acs_survey_all_acs <- acs_clean_samp %>%
+  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
+  filter(sample_structure == "1year") %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+  as_survey_design(weights = perwt, 
+                   repweights = matches("repwtp[0-9]+"),
+                   type = "ACS",
+                   scale = 4/ 80,
+                   rscales = rep(1, 80 ), mse = TRUE) %>% 
+  ungroup()
+
+acs_survey_subgroups <- acs_clean_samp %>%
   filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, county, employed, subgroup) %>% 
-  summarise(perwt = sum(perwt)) %>% 
-  as_survey_design(weights = perwt) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+  as_survey_design(weights = perwt, 
+                   repweights = matches("repwtp[0-9]+"),
+                   type = "JK1",
+                   scale = 4/ 80,
+                   rscales = rep(1, 80 ), mse = TRUE) %>% 
   ungroup()
-
 ```
 
 ## Create employment metric
@@ -381,7 +645,7 @@ Check national employment ratio. Compute the ratio (share employed) for 2018, 20
 acs_survey_all %>%
   group_by(year) %>%
   summarise(
-    share_employed = survey_mean(employed),
+    share_employed = survey_mean(employed, vartype = "ci"),
     count = unweighted(n())
   ) %>% 
   ungroup() %>% 
@@ -390,14 +654,133 @@ acs_survey_all %>%
 
 ### All
 
+Function for survey means.
+```{r}
+
+grouped_survey_mean <- function(id_list, df) {
+  df %>%
+    filter(survey_id == id_list) %>% 
+    summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+    ) %>% 
+    mutate(survey_id = id_list)
+}
+```
+
+
 Create share employed for all individuals at the county-level (1-year data) using the survey_mean function.
 ```{r}
+
+#Option 1
+
+start_time1 <- Sys.time()
 metrics_employment_all <- acs_survey_all %>%
   group_by(year, crosswalk_period, statefip, county) %>%
   summarise(
-    share_employed = survey_mean(employed, vartype = NULL)
+    share_employed = survey_mean(employed, vartype = "ci")
   ) %>% 
   ungroup()
+end_time1 <- Sys.time()
+
+option1 <- end_time1 - start_time1
+
+#Option 2
+
+
+list_ids <- acs_clean_samp %>%
+  filter(sample_structure == "1year") %>% 
+  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
+  select(survey_id) %>% 
+  unique() %>% 
+  pull()
+
+start_time2 <- Sys.time()
+
+metrics_employment_all <- map_df(list_ids, ~grouped_survey_mean(id_list = .x,
+                                                      df = acs_survey_all)) %>% 
+  mutate(year = as.integer(str_sub(survey_id, 1, 4)),
+         crosswalk_period = str_sub(survey_id, 5, 12),
+         statefip = str_sub(survey_id, 13, 14),
+         county = str_sub(survey_id, 15, 18)
+         )
+end_time2 <- Sys.time()
+
+option2 <- end_time2 - start_time2
+
+
+option12 <- end_time1 - start_time1
+
+start_time_check <- Sys.time()
+
+metrics_employment_all_check <- acs_survey_all %>%
+  filter(survey_id == list_ids[200]) %>% 
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  )
+
+end_time_check <- Sys.time()
+
+start_time_check - end_time_check
+
+acs_clean_samp %>% 
+  select(statefip, county) %>% 
+  unique() %>% 
+  count()
+#Option 3 Data table group (Bust so far)
+
+# Convert the survey design to data.table
+start_time1 <- Sys.time()
+my_survey_dt <- as.data.table(acs_survey_all)
+
+check <- my_survey_dt[, .(share_employed = survey_mean(employed, vartype = "ci", na.rm = TRUE)), by = .(year, crosswalk_period, statefip, county)]
+end_time1 <- Sys.time()
+
+dt_option <- end_time1 - start_time1
+
+#Option 4 run state by state 
+
+
+start_time1 <- Sys.time()
+metrics_employment_all <- acs_survey_state2 %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  ) %>% 
+  ungroup()
+end_time1 <- Sys.time()
+
+state2 <- end_time1 - start_time1
+
+start_time1 <- Sys.time()
+metrics_employment_all <- acs_survey_state1 %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  ) %>% 
+  ungroup()
+end_time1 <- Sys.time()
+
+state1 <- end_time1 - start_time1
+
+#Option 5 ACS format 
+
+start_time1 <- Sys.time()
+metrics_employment_all <- acs_survey_all_acs %>%
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  ) %>% 
+  ungroup()
+end_time1 <- Sys.time()
+
+option1 <- end_time1 - start_time1
+
+```
+
+Cap upper-bound confidence intervals at 100% (above would be an illogical option). If it is greater than 1, make the share equal to exactly 1.
+```{r}
+metrics_employment_all <- metrics_employment_all %>% 
+  mutate(share_employed_upp =  ifelse(share_employed_upp > 1, 1, share_employed_upp))
 ```
 
 Sort by year, state and county.
@@ -417,7 +800,7 @@ effective_sample <- acs_clean %>%
   ungroup()
 ```
 
-Merge the data quality flags from place_puma and effective sample to create the final data quality metric based on both size and geographic allocation.
+Merge the data quality flags from county_puma and effective sample to create the final data quality metric based on both size and geographic allocation.
 ```{r}
 metrics_employment_all <- left_join(metrics_employment_all, county_puma, by=c("crosswalk_period", "statefip","county"))
 
@@ -480,7 +863,7 @@ metrics_employment_all <- metrics_employment_all %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_employment_all <- metrics_employment_all %>% 
-  mutate_at(c("share_employed"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("share_employed", "share_employed_low", "share_employed_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
@@ -490,6 +873,8 @@ metrics_employment_all <- metrics_employment_all %>%
          statefip,
          county,
          share_employed,
+         share_employed_lb = share_employed_low,
+         share_employed_ub = share_employed_upp,
          share_employed_quality)
 ```
 
@@ -498,13 +883,38 @@ metrics_employment_all <- metrics_employment_all %>%
 
 Create share employed by race/ethnicity at the county-level (5-year data) using the survey_mean function.
 ```{r}
-metrics_employment_subgroup <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
+metrics_employment_subgroup_race <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
   summarise(
-    share_employed = survey_mean(employed, vartype = NULL)
+    share_employed = survey_mean(employed, vartype = "ci")
   ) %>% 
   ungroup() %>%
-  mutate(subgroup_type = "race-ethnicity")
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  rename(subgroup = subgroup_race)
+```
+
+Create share employed by gender at the county-level (5-year data) using the survey_mean function.
+```{r}
+metrics_employment_subgroup_gender <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  ) %>% 
+  ungroup() %>%
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_race)
+```
+
+Create share employed by disability at the county-level (5-year data) using the survey_mean function.
+```{r}
+metrics_employment_subgroup_disability <- acs_survey_subgroups %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(
+    share_employed = survey_mean(employed, vartype = "ci")
+  ) %>% 
+  ungroup() %>%
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_race)
 ```
 
 Create the share employed measure for all values in the 5-year data (non-subgroup). This will be merged onto the subgroup data. 
@@ -512,7 +922,7 @@ Create the share employed measure for all values in the 5-year data (non-subgrou
 metrics_employment_subgroup_all <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, county) %>%
   summarise(
-    share_employed = survey_mean(employed, vartype = NULL)
+    share_employed = survey_mean(employed, vartype = "ci")
   ) %>% 
   ungroup() %>%
   mutate(subgroup_type = "all",
@@ -521,7 +931,20 @@ metrics_employment_subgroup_all <- acs_survey_subgroups %>%
 
 Append the "All" version of the data.
 ```{r}
-metrics_employment_sub <- bind_rows(metrics_employment_subgroup, metrics_employment_subgroup_all)
+metrics_employment_sub <- bind_rows(metrics_employment_subgroup_race, metrics_employment_subgroup_gender, metrics_employment_subgroup_disability, metrics_employment_subgroup_all)
+```
+
+Check that all subgroup types are included. We should see all, disability, gender and race-ethnicity.
+```{r}
+metrics_employment_sub %>% 
+  group_by(subgroup_type) %>% 
+  count()
+```
+
+Cap upper-bound confidence intervals at 100% (above would be an illogical option). If it is greater than 1, make the share equal to exactly 1.
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>% 
+  mutate(share_employed_upp =  ifelse(share_employed_upp > 1, 1, share_employed_upp))
 ```
 
 Sort by county again to double check we have 5 observations per county (All, Black, White, Hispanic, Other).
@@ -541,16 +964,31 @@ effective_sample_sub_all <- acs_clean %>%
   mutate(subgroup_type = "all",
          subgroup = "All")
 
-effective_sample_sub <- acs_clean %>%
+effective_sample_race <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
+  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
   summarise(effective_sample = sum(afact)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
-  bind_rows(effective_sample_sub_all) %>% 
+  rename(subgroup = subgroup_race)
+
+effective_sample_gender <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+effective_sample_sub <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability) %>% 
+  bind_rows(effective_sample_sub_all, effective_sample_race, effective_sample_gender) %>% 
   ungroup()
 ```
 
-Merge the data quality flags from place_puma and effective sample to create the final data quality metric based on both size and geographic allocation.
+Merge the data quality flags from county_puma and effective sample to create the final data quality metric based on both size and geographic allocation.
 ```{r}
 metrics_employment_sub <- left_join(metrics_employment_sub, county_puma, by=c("crosswalk_period", "statefip","county"))
 
@@ -606,7 +1044,7 @@ metrics_employment_sub <- metrics_employment_sub %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_employment_sub <- metrics_employment_sub %>% 
-  mutate_at(c("share_employed"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("share_employed", "share_employed_low", "share_employed_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
@@ -619,6 +1057,8 @@ metrics_employment_sub <- metrics_employment_sub %>%
          subgroup_type, 
          subgroup,
          share_employed,
+         share_employed_lb = share_employed_low,
+         share_employed_ub = share_employed_upp,
          share_employed_quality)
 
 ```
@@ -660,7 +1100,8 @@ metrics_employment_sub %>%
   
 ```
 
-Look at distribution of employment share by county by race from the subgroup data.
+### Race distribution
+Look at distribution of hs_degree share by county by race.
 ```{r}
 
 metrics_employment_sub %>% 
@@ -669,7 +1110,7 @@ metrics_employment_sub %>%
   ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Employment Share, Black") +
+  ggtitle("hs_degree Share, Black") +
   ylab("Density")
 
 metrics_employment_sub %>% 
@@ -678,7 +1119,7 @@ metrics_employment_sub %>%
   ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Employment Share, Hispanic") +
+  ggtitle("hs_degree Share, Hispanic") +
   ylab("Density")
 
 metrics_employment_sub %>% 
@@ -687,7 +1128,7 @@ metrics_employment_sub %>%
   ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Employment Share, Other Races and Ethnicities") +
+  ggtitle("hs_degree Share, Other Races and Ethnicities") +
   ylab("Density")
 
 metrics_employment_sub %>% 
@@ -696,11 +1137,56 @@ metrics_employment_sub %>%
   ggplot(aes(x = share_employed)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Employment Share, White, Non-Hispanic") +
+  ggtitle("hs_degree Share, White, Non-Hispanic") +
   ylab("Density")
 
 ```
 
+### Gender distribution
+Look at distribution of hs_degree share by county by gender.
+```{r}
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "Male") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, males") +
+  ylab("Density")
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "Female") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, females") +
+  ylab("Density")
+```
+
+### Disability distribution
+Look at distribution of hs_degree share by county by disability status.
+```{r}
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "with disabiliy") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, with disabilities") +
+  ylab("Density")
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "without disability") %>% 
+  select(county, share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("hs_degree Share, without disabilities") +
+  ylab("Density")
+
+```
 Look at the counts of the quality flag.
 ```{r}
 metrics_employment_all %>% 
@@ -747,10 +1233,11 @@ metrics_employment_sub <- metrics_employment_sub %>%
 Order the variables how we want.
 ```{r}
 metrics_employment_all <- metrics_employment_all %>% 
-  select(year, state, county, share_employed, share_employed_quality)
+  select(year, state, county, share_employed, share_employed_lb,
+         share_employed_ub, share_employed_quality)
 
 metrics_employment_sub <- metrics_employment_sub %>% 
-  select(year, state, county, subgroup_type, subgroup, share_employed, share_employed_quality)
+  select(year, state, county, subgroup_type, subgroup, share_employed, share_employed, share_employed_lb, share_employed_ub, share_employed_quality)
 ```
 
 Export as CSV
