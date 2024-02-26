@@ -62,14 +62,10 @@ rename city_name_edited city_name
 	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
-	*replace city_name="Lees Summit" if city_name=="Lee's Summit"
-	*replace city_name="Ofallon" if city_name=="O'Fallon"
 	
 	*changes specific to this data
 	replace city_name="Port St Lucie" if city_name=="Port St. Lucie"
 	replace city_name="Saint Paul" if city_name=="St. Paul"
-	*replace city_name="Las Vegas" if city_name=="North Las Vegas"
-	*replace city_name="Charleston" if city_name=="North Charleston"
 	
 	save "intermediate/cityfile.dta", replace
 
