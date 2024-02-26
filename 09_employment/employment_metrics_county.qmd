@@ -44,8 +44,12 @@ library(reactable)
 library(srvyr)
 library(scales)
 library(data.table)
+library(furrr)
+library(tictok)
+
 
 options(scipen = 999)
+options(future.globals.maxSize= 150000000000)
 
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
@@ -443,7 +447,6 @@ acs_clean %>%
 
 ```
 
-
 Create the subgroup for disability. 
 ```{r}
 acs_clean <- acs_clean %>% 
@@ -455,7 +458,6 @@ acs_clean <- acs_clean %>%
                                          TRUE ~ "without disability"))
   
 ```
-
 
 Check the variable breakout. 
 ```{r}
@@ -578,61 +580,33 @@ repwts_person <- repwts_person %>%
   select(-sample)
 ```
 
-## Setup Survey Design 
+## Create employment metric: All
 
-Shrink sample for now.
+### Clean and merge on repwts
+
+First, to save time when processing the metric, calculate the effective sample count for each county, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 100 rows (below the quality cutoff).
 ```{r}
-acs_clean_samp <- acs_clean %>% 
-  group_by(sample, county) %>% 
-  slice_sample(n = 30) %>% 
-  ungroup()
-
-acs_clean_samp_state <- acs_clean_samp %>% 
-  filter(statefip == "17")
-
-acs_clean_samp_dupe <- acs_clean_samp %>% 
-  filter(statefip == "17") %>% 
-  bind_rows(acs_clean_samp_state)
-
-```
-
-Set up the survey design using instructions from IPUMS. Join the replicate weights onto the ACS survey data using the unique person ID created for both.
-```{r}
-acs_survey_all <- acs_clean_samp %>%
-  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
-  filter(sample_structure == "1year") %>% 
-  left_join(repwts_person, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = perwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "JK1",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
-
-
-acs_survey_all_acs <- acs_clean_samp %>%
-  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
-  filter(sample_structure == "1year") %>% 
-  left_join(repwts_person, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = perwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "ACS",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
-
-acs_survey_subgroups <- acs_clean_samp %>%
+effective_sample <- acs_clean %>%
   filter(sample_structure == "5year") %>% 
-  left_join(repwts_person, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = perwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "JK1",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(effective_sample = sum(afact)) %>% 
   ungroup()
 ```
 
-## Create employment metric
+Remove records from counties below the size quality cutoff. 
+```{r}
+acs_clean_all <- acs_clean %>% 
+  left_join(effective_sample) %>% 
+  filter(effective_sample >= 100, sample_structure == "1year") %>% 
+  select(-effective_sample) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+    mutate(across(matches('REPWTP[0-9]+'),
+                  ~.x * afact)
+    ) #%>% 
+ # mutate(geoid = paste0(year, crosswalk_period, statefip, county))
+```
+
+### Calculate metric
 
 Create the employment metric. 
 
@@ -652,129 +626,45 @@ acs_survey_all %>%
   reactable()
 ```
 
-### All
+Write function for calculating the survey_mean for all records at the county level.
 
-Function for survey means.
 ```{r}
-
-grouped_survey_mean <- function(id_list, df) {
+calculate_survey_mean <- function(geoid_select, df) {
   df %>%
-    filter(survey_id == id_list) %>% 
+    filter(statefip == geoid_select) %>% 
+    as_survey_design(weights = perwt, 
+                     repweights = matches("repwtp[0-9]+"),
+                     type = "ACS",
+                     scale = 4/ 80,
+                     rscales = rep(1, 80 ), mse = TRUE) %>% 
+    ungroup() %>% 
+    group_by(year, crosswalk_period, statefip, county) %>% 
     summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-    ) %>% 
-    mutate(survey_id = id_list)
+      share_employed = survey_mean(employed, vartype = "ci")
+    )
 }
 ```
 
+Create a list of state fips for calculation.
+
+```{r}
+state_fips <- acs_clean_all %>% 
+  select(statefip) %>% 
+  unique() %>% 
+  pull()
+```
+
+Set future options.
+```{r}
+n_workers <- 8
+# Setup parallelization
+future::plan(future::multisession, workers=n_workers)
+```
 
 Create share employed for all individuals at the county-level (1-year data) using the survey_mean function.
 ```{r}
-
-#Option 1
-
-start_time1 <- Sys.time()
-metrics_employment_all <- acs_survey_all %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
-  ungroup()
-end_time1 <- Sys.time()
-
-option1 <- end_time1 - start_time1
-
-#Option 2
-
-
-list_ids <- acs_clean_samp %>%
-  filter(sample_structure == "1year") %>% 
-  mutate(survey_id = paste0(year, crosswalk_period, statefip, county)) %>% 
-  select(survey_id) %>% 
-  unique() %>% 
-  pull()
-
-start_time2 <- Sys.time()
-
-metrics_employment_all <- map_df(list_ids, ~grouped_survey_mean(id_list = .x,
-                                                      df = acs_survey_all)) %>% 
-  mutate(year = as.integer(str_sub(survey_id, 1, 4)),
-         crosswalk_period = str_sub(survey_id, 5, 12),
-         statefip = str_sub(survey_id, 13, 14),
-         county = str_sub(survey_id, 15, 18)
-         )
-end_time2 <- Sys.time()
-
-option2 <- end_time2 - start_time2
-
-
-option12 <- end_time1 - start_time1
-
-start_time_check <- Sys.time()
-
-metrics_employment_all_check <- acs_survey_all %>%
-  filter(survey_id == list_ids[200]) %>% 
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  )
-
-end_time_check <- Sys.time()
-
-start_time_check - end_time_check
-
-acs_clean_samp %>% 
-  select(statefip, county) %>% 
-  unique() %>% 
-  count()
-#Option 3 Data table group (Bust so far)
-
-# Convert the survey design to data.table
-start_time1 <- Sys.time()
-my_survey_dt <- as.data.table(acs_survey_all)
-
-check <- my_survey_dt[, .(share_employed = survey_mean(employed, vartype = "ci", na.rm = TRUE)), by = .(year, crosswalk_period, statefip, county)]
-end_time1 <- Sys.time()
-
-dt_option <- end_time1 - start_time1
-
-#Option 4 run state by state 
-
-
-start_time1 <- Sys.time()
-metrics_employment_all <- acs_survey_state2 %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
-  ungroup()
-end_time1 <- Sys.time()
-
-state2 <- end_time1 - start_time1
-
-start_time1 <- Sys.time()
-metrics_employment_all <- acs_survey_state1 %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
-  ungroup()
-end_time1 <- Sys.time()
-
-state1 <- end_time1 - start_time1
-
-#Option 5 ACS format 
-
-start_time1 <- Sys.time()
-metrics_employment_all <- acs_survey_all_acs %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
-  ungroup()
-end_time1 <- Sys.time()
-
-option1 <- end_time1 - start_time1
-
+metrics_employment_all <- furrr::future_map_dfr(state_fips, ~calculate_survey_mean(geoid_select = .x,
+                                                                                 df = acs_clean_all))
 ```
 
 Cap upper-bound confidence intervals at 100% (above would be an illogical option). If it is greater than 1, make the share equal to exactly 1.
@@ -790,15 +680,6 @@ metrics_employment_all <- metrics_employment_all %>%
 ```
 
 *Create an indicator for data quality and suppression*
-
-Calculate the effective sample count for each county, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
-```{r}
-effective_sample <- acs_clean %>%
-  filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  ungroup()
-```
 
 Merge the data quality flags from county_puma and effective sample to create the final data quality metric based on both size and geographic allocation.
 ```{r}
@@ -878,43 +759,150 @@ metrics_employment_all <- metrics_employment_all %>%
          share_employed_quality)
 ```
 
+## Create employment metric: Subgroups
 
-### Subgroup
+### Set Up Survey Design
+
+First, to save time on process the metric, calculate the effective sample count for each county, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 100 rows (below the quality cutoff).
+```{r}
+effective_sample_sub_all <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "all",
+         subgroup = "All")
+
+effective_sample_race <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  rename(subgroup = subgroup_race)
+
+effective_sample_gender <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+effective_sample_sub <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(effective_sample = sum(afact)) %>% 
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability) %>% 
+  bind_rows(effective_sample_sub_all, effective_sample_race, effective_sample_gender) %>% 
+  ungroup()
+```
+
+### Calculate metric
+
+Create state and year list.
+```{r}
+state_fips_year <- acs_clean %>% 
+  filter(sample_structure == "5year") %>% 
+  select(statefip, year) %>% 
+  unique()
+
+state_fips_sub <- state_fips_year %>% 
+  select(statefip) %>% 
+  head(1) %>% 
+  pull()
+
+years_sub <- state_fips_year %>% 
+  select(year) %>% 
+  head(1) %>% 
+  pull()
+```
+
+Create survey_mean calculation fucntion for subgroups.
+```{r}
+calculate_survey_mean_sub <- function(geoid_select, year_select, by_sub, df) {
+  df %>%
+    filter(statefip == geoid_selec, year == year_select) %>% 
+    as_survey_design(weights = perwt, 
+                     repweights = matches("repwtp[0-9]+"),
+                     type = "ACS",
+                     scale = 4/ 80,
+                     rscales = rep(1, 80 ), mse = TRUE) %>% 
+    ungroup() %>% 
+    group_by(year, crosswalk_period, statefip, county, {{ by_sub }}) %>% 
+    summarise(
+      share_employed = survey_mean(employed, vartype = "ci")
+    )
+}
+```
+
+Remove records from counties below the size quality cutoff. 
+```{r}
+acs_clean_disability <- acs_clean %>% 
+  left_join(effective_sample_sub,
+            by = c("year", "crosswalk_period", "statefip", "county", "subgroup_disability" = "subgroup")) %>% 
+  filter(effective_sample >= 100, sample_structure == "5year") %>% 
+  select(-effective_sample) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+    mutate(across(matches('REPWTP[0-9]+'),
+                  ~.x * afact)
+    )
+
+```
+
+Create share employed for individuals by disability status at the county-level (5-year data) using the survey_mean function.
+```{r}
+metrics_employment_subgroup_disability <- furrr::future_map_dfr(state_fips, ~calculate_survey_mean_sub(geoid_select = .x,
+                                                                                 df = acs_clean_disability)) %>% 
+  ungroup() %>%
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability)
+```
+
+Remove records from counties below the size quality cutoff for race/ethnicity.
+```{r}
+acs_clean_race <- acs_clean %>% 
+  left_join(effective_sample_sub,
+            by = c("year", "crosswalk_period", "statefip", "county", "subgroup_race" = "subgroup")) %>% 
+  filter(effective_sample >= 100, sample_structure == "5year") %>% 
+  select(-effective_sample) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+    mutate(across(matches('REPWTP[0-9]+'),
+                  ~.x * afact)
+    )
+```
 
 Create share employed by race/ethnicity at the county-level (5-year data) using the survey_mean function.
 ```{r}
-metrics_employment_subgroup_race <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup_race) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
+metrics_employment_subgroup_race <- furrr::future_map2_dfr(state_fips_sub, years_sub, years, ~calculate_survey_mean_sub(geoid_select = .x,
+                                                                                                        year_select = .y,
+                                                                                                        by = subgroup_race,
+                                                                                 df = acs_clean_race)) %>% 
   ungroup() %>%
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
 ```
 
-Create share employed by gender at the county-level (5-year data) using the survey_mean function.
+Remove records from counties below the size quality cutoff for gender.
 ```{r}
-metrics_employment_subgroup_gender <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup_gender) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
-  ungroup() %>%
-  mutate(subgroup_type = "gender") %>% 
-  rename(subgroup = subgroup_race)
+acs_clean_gender <- acs_clean %>% 
+  left_join(effective_sample_sub,
+            by = c("year", "crosswalk_period", "statefip", "county", "subgroup_gender" = "subgroup")) %>% 
+  filter(effective_sample >= 100, sample_structure == "5year") %>% 
+  select(-effective_sample) %>% 
+  left_join(repwts_person, by = c("unique_person_id")) %>% 
+    mutate(across(matches('REPWTP[0-9]+'),
+                  ~.x * afact)
+    )
 ```
 
-Create share employed by disability at the county-level (5-year data) using the survey_mean function.
+Create share employed by gender at the county-level (5-year data) using the survey_mean function.
 ```{r}
-metrics_employment_subgroup_disability <- acs_survey_subgroups %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup_disability) %>%
-  summarise(
-    share_employed = survey_mean(employed, vartype = "ci")
-  ) %>% 
+metrics_employment_subgroup_race <-  furrr::future_map2_dfr(state_fips_sub, years_sub, years, ~calculate_survey_mean_sub(geoid_select = .x,
+                                                                                                        year_select = .y,
+                                                                                                        by = subgroup_gender,
+                                                                                 df = acs_clean_gender)) %>% 
   ungroup() %>%
-  mutate(subgroup_type = "disability") %>% 
-  rename(subgroup = subgroup_race)
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
 ```
 
 Create the share employed measure for all values in the 5-year data (non-subgroup). This will be merged onto the subgroup data. 
