@@ -1,5 +1,5 @@
 ---
-title: "Juvenile Arrests - County"
+title: "Juvenile Arrests - Place"
 author: "Vincent Pancini"
 date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
 output:
@@ -28,7 +28,6 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 options(scipen = 999)
 
 library(tidyverse)
-library(skimr)
 library(tidylog)
 library(urbnthemes)
 
@@ -36,19 +35,20 @@ set_urbn_defaults(style = "print")
 
 ```
 
-This file creates the county-level metric for juvenile arrests per 100,000 juveniles (age 10-17).
+This file creates the place-level metric for juvenile arrests per 100,000 juveniles (age 10-17).
 
-This file relies on data created in `01_agency_geo_county.Rmd`. You must run that file before running this file.
+This file relies on data created in `01_agency_geo_place.Rmd`. You must run that file before running this file.
 
 The rest of this file is organized as follows:
 1. Background
 2. Manually download NIBRS data from openICPSR
 3. Read in and clean NIBRS data
-4. Aggregate agency-level arrests to the place-level
+4. Aggregate agency-level arrests to the place level
 5. Calculate reporting rate for all agencies
-6. Calculate rates of juvenile arrests per 100,000 juveniles
+6. Calculate rates of juvenile justice arrests per 100,000 juveniles
 7. Construct quality indicators
 8. Save and write out data
+
 
 ## 1. Background
 This section provides background for the data used to create this metric.
@@ -62,6 +62,7 @@ The NIBRS data are separated into segments. For this metric, we use the followin
 * Group B Arrest Report segment
 
 To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For this metric, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 police agencies (covering about 45% of the US population) reported NIBRS data. This represented less than half of the approximately 18,000 police agencies in the United States. Instead, agencies primarily reported [UCR data](https://ucrbook.com/). However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). We do not want to use NIBRS data for some years and UCR data for others. This means that **there will be a lot of missing values prior to 2021**.
+
 
 ## 2. Manually download NIBRS data from openICPSR
 This section describes the steps for manually downloading the NIBRS data segments necessary for this metric.
@@ -81,21 +82,21 @@ Accessing these data requires an ICPSR account. Therefore, we do not directly do
 
 
 ## 3. Read in and clean NIBRS data
-This section extracts the necessary files from each zip file downloaded in the previous step and reads the files into the R environment. Each zip file contains data files for 1991-2022. However, we only want 2014-2022.
+This section extracts the necessary files from each zip file downloaded in the previous step and reads the files into the R environment. Each zip file contains data files for 1991-2022. However, we only want 2016-2022.
 
 ### 3.1 Read in NIBRS data
 
-#### 3.1a Extract files for 2014-2022 from the zip files for both segments
-Extract each file for the years 2014-2022 from the Group A `arrestee` segment and from the Group B `arrest_report` segment.
+#### 3.1a Extract files for 2016-2022 from the zip files for both segments
+Extract each file for the years 2016-2022 from the Group A `arrestee` segment and from the Group B `arrest_report` segment.
 ```{r}
 # Specify range of years
-start_year <- 2014
+start_year <- 2016
 end_year <- 2022
 
 # Create a vector of years between start_year and end_year
 my_years <- seq(start_year, end_year)
 
-# Extract years 2014-2022 for the arrestee segment
+# Extract years 2016-2022 for the arrestee segment
 for (year in my_years) {
   unzip(
   zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds.zip"),
@@ -104,7 +105,7 @@ for (year in my_years) {
 )
 }
 
-# Extract years 2014-2022 for the Group B arrest report segment
+# Extract years 2016-2022 for the Group B arrest report segment
 for (year in my_years) {
   unzip(
   zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds.zip"),
@@ -123,8 +124,8 @@ rm(start_year, end_year)
 
 ```
 
-#### 3.1b Read in and append 2014-2022 NIBRS data for both groups
-For each segment, read in the files for years 2014-2022 and append them. We also limit the appended files to relevant variables. 
+#### 3.1b Read in and append 2016-2022 NIBRS data for both groups
+For each segment, read in the files for years 2016-2022 and append them. We also limit the appended files to relevant variables.
     todo(): This section has a very long run time. Is there a quicker way to read in and append all files for each segment?
 ```{r}
 # List all files in the Arrestee segment folder (Group A)
@@ -139,7 +140,7 @@ arrests_a <- file_list %>%
   list_rbind(names_to = "year") %>%
   mutate(year = parse_number(year))
 
-# Select only necessary variables from Group A and limit observations to under age 18
+# Select only necessary variables from Group A
 arrests_a <- arrests_a %>%
   select(year, ori, # ORI is a unique agency identifier
          incident_number, ucr_arrest_offense_code, age_of_arrestee, sex_of_arrestee, race_of_arrestee, ethnicity_of_arrestee) %>%
@@ -159,7 +160,7 @@ arrests_b <- file_list %>%
   list_rbind(names_to = "year") %>%
   mutate(year = parse_number(year))
 
-# Select only necessary variables from Group B and limit observations to under age 18
+# Select only necessary variables from Group B
 arrests_b <- arrests_b %>%
   rename(incident_number = arrest_transaction_incident_num) %>%
   select(year, ori, # ORI is a unique agency identifier
@@ -170,7 +171,7 @@ arrests_b <- arrests_b %>%
 ```
 
 
-#### 3.1c Append the 2014-2022 Group A file and the 2014-2022 Group B file.
+#### 3.1c Append the 2016-2022 Group A file and the 2016-2022 Group B file.
 Append Group A and Group B files for all arrests
 ```{r}
 # Append files
@@ -181,10 +182,10 @@ arrests_all <- bind_rows(arrests_a, arrests_b)
 Note that because the process of extracting and reading in these files takes so long, I write out the appended all arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
 ```{r}
 # Write out all arrests data
-write_csv(arrests_all, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_all_14_22.csv"))
+write_csv(arrests_all, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_all_16_22.csv"))
 
 # Read all arrests data back in for ease of future use
-arrests_all <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_all_14_22.csv"))
+arrests_all <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_all_16_22.csv"))
 
 ```
 
@@ -200,10 +201,10 @@ arrests_juv <- arrests_all %>%
 Note that because the process of extracting and reading in these files takes so long, I write out appended juvenile arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
 ```{r}
 # Write out juvenile arrests data
-write_csv(arrests_juv, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_14_22.csv"))
+write_csv(arrests_juv, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_16_22.csv"))
 
 # Read juvenile arrests data back in for ease of future use
-arrests <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_14_22.csv"))
+arrests <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_16_22.csv"))
 
 # Remove obsolete files
 rm(arrests_a, arrests_b)
@@ -215,16 +216,10 @@ gc()
 ### 3.2 Identify violent crimes and property crimes
 Group A offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. Group B offense codes do not receive any of these categorizations. We are interested in property crimes and violent crimes. Using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf), we create a data frame of all offense, crime type, and group combinations. We then use this data to identify property crimes and violent crimes in our data. 
     
-There are 113 distinct offense codes across all years. 
-    Note that 2015 contains nonconventional codes like `c09`, `m10`, and `n90`. I can't find any documentation for what these codes represent, and the counts are relatively small, so they get ignored in the next step.
+There are 65 distinct offense codes across all years.
 ```{r}
 # Count number of observations in each offense code
 arrests %>%
-  count(ucr_arrest_offense_code)
-
-# Looking at the results above gave me unexpected results like `c09`, `m10`, and `n90`. I've identified that these all occur in 2015
-arrests %>%
-  filter(year==2015) %>%
   count(ucr_arrest_offense_code)
 
 ```
@@ -343,7 +338,7 @@ rm(codes, property, violent)
 
 ```
 
-1,339,746 observations (51%) are not in either category of arrests. These are all crimes against society, Group B offenses, or offense codes that are not classified (e.g., `c09`).
+1,025,994 observations (51%) are not in either category of arrests. These are all crimes against society or Group B offenses.
 ```{r}
 arrests %>%
   group_by(property, violent) %>%
@@ -396,15 +391,12 @@ arrests <- arrests %>%
 
 ```
 
-2015 has 1953 observations with a race code of `f`. There is no codebook and I'm unclear what this means. Additionally, observations with a race code of `f` or `unknown` have ethnicity codes of `a`, `b`, `i`, and `w`. There are 3,877 observations with these ethnicity codes for the `unknown` race group.
+207,231 observations have `unknown` ethnicity and 183,693 have missing ethnicity
 ```{r}
-# Check race and ethnicity codes for 2015
-arrests %>%
-  filter(year==2015) %>%
-  group_by(race_of_arrestee, ethnicity_of_arrestee) %>%
+arrests %>% 
+  group_by(race_of_arrestee, ethnicity_of_arrestee) %>% 
   count()
 
-# Additionally, 273,774 observations have `unknown` ethnicity and 228,623 have missing ethnicity
 arrests %>% 
   group_by(ethnicity_of_arrestee) %>% 
   count()
@@ -442,7 +434,7 @@ arrests_agency <- arrests %>%
 
 ```
 
-4,721 agencies across all years only have Group B arrests of juveniles
+3,842 agencies across all years only have Group B arrests of juveniles
 ```{r}
 arrests_agency %>% 
   count(group_a, group_b)
@@ -467,69 +459,50 @@ arrests_agency <- arrests_agency %>%
 ```
 
 
-## 4. Aggregate agency-level arrests to the county-level
-This section aggregates the agency-level arrest counts from the agency-level to the county-level.
+## 4. Aggregate agency-level arrests to the place-level
+This section aggregates the agency-level arrest counts from the agency-level to the place-level.
 
-Our data are currently long by year/agency. However, we want to know the arrest counts at the county level, not the agency level. In the `01_agency_geo_county.Rmd` program, we constructed a file that linked reporting agencies to counties. For agencies that served more than one county, the file includes a weight to assign proportions of agency-level counts to each county based on population. We can use that file to aggregate counts from agencies to counties.
+Our data are currently long by year/agency. However, we want to know the arrest counts at the place level, not the agency level. In the `01_agency_geo_place.Rmd` program, we constructed a file that linked reporting agencies to places. We can use that file to aggregate counts from agencies to places.
 
-### 4.1 Load universe of county/agency pairs with weights
-First load the universe of agencies linked to counties with weight for each county. This file was created in `01_agency_geo_county.Rmd` and is long by unique agency/county pairs.
+### 4.1 Load universe of place/agency pairs
+First load the universe of agencies linked to places. This file was created in `01_agency_geo_place.Rmd` and is long by unique agency/place pairs.
 ```{r}
-agency_weights <- read_csv(here::here("07_safety", "modified data", "all_agency_county.csv")) 
+bhf_place_urb <- read_csv(here::here("07_safety", "modified data", "all_agency_place.csv"))
 
 ```
 
-### 4.2 Join agency-level arrests for all years onto the county-agency file
-Join arrests onto the full universe of county-agencies and multiply counts by the agency-county weight.
+
+### 4.2 Join agency-level arrests for all years onto the place-agency file
+Join arrests onto the full universe of place-agencies.
+    Note that the place-agency file does not contain `year`.
 ```{r}
-# Join agency-level juvenile arrests onto universe of agencies
-arrests_agency_geo <- left_join(
-  x = agency_weights,
-  y = arrests_agency, 
-  by = c("ori", "year")
-) %>%
-# Multiply stats by agency-county weight
-  mutate(across(arr_total:ethn_hispanic, ~.x * weight))
-
-```
-
-There are a lot of unmatched observations. 126,152 observations are only in our universe of agencies with county-agency weights. My first thought is that since this is the universe of *all* agencies, some agencies may not have reported arrests and are therefore not in the arrests data. 4,392 observations are only in the 2014-2022 agency-level arrests data. My first thought is that since we only used the Batch Header File from 2022 to construct the universe of agencies and agency-county weights, it may be missing agencies from other years. 
-
-To test this second hypothesis, I repeat the join for 2020 only. There is a proportional number of unmatched observations from each data set for 2020 as compared to 2014-2022. So, I think this is okay.
-    todo(): Reviewer, does this logic make sense to you? I don't know what else I can do here to explain the unmatched observations. Many agencies did not report NIBRS data prior to 2021, so we expect a lot of missings.
-```{r}
-test_2020 <- left_join(
-  x = agency_weights %>% filter(year==2020),
-  y = arrests_agency %>% filter(year==2020), 
-  by = c("ori", "year")
+arrests_agency_place <- left_join(
+  x = bhf_place_urb,
+  y = arrests_agency,
+  by = c("ori")
 )
-
-```
-```{r}
-# Remove obsolete file
-rm(test_2020)
+  
 ```
 
-
-### 4.3 Summarize agency-level arrests to the county level
-Now that we have joined our agency-level juvenile arrests data onto the full universe of county-agencies, which links agencies to counties and assigns weights for agencies that serve more than one county, we can aggregate the counts from the agency to the county level.
+### 4.3 Summarize agency-level arrests to the place level
+Now that we have joined our agency-level juvenile arrests data onto the full universe of place-agencies, we can aggregate the counts from the agency to the place level.
 ```{r}
-# Count number of arrests from reporting agencies in each county
-arrests_county <- arrests_agency_geo %>%
-  group_by(year, GEOID, state, county) %>%
+# Count number of arrests from reporting agencies in each place
+arrests_place <- arrests_agency_place %>%
+  group_by(state, place) %>%
+  # AR: there are some agencies with no data and this summarize statement
+  # makes it so that the value is zero instead of missing (ori - CA0300400)
   summarize(across(arr_total:ethn_hispanic, ~sum(.x, na.rm=TRUE))) %>%
+  mutate(GEOID = str_c(state, place)) %>%
   ungroup()
 
 ```
 
- 
-## 5. Calculate reporting rate for all arrests
-Agencies may have zero juvenile arrests. We use the full arrests file (i.e., all arrests and not just juvenile arrests) to calculate agency reporting rates.
-```{r}
-# Read appended juvenile arrests data back in for ease of future use
-arrests_all <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_all_14_22.csv"))
 
-# Sum total arrests by year and reporting agency
+
+## 5. Calculate reporting rate for all agencies
+Agencies may have reported zero juvenile arrests. We use the full arrests file (i.e., all arrests and not just juvenile arrests) to calculate agency reporting rates.
+```{r}
 arrests_all_agency <- arrests_all %>%
   group_by(year, ori) %>%
   summarize(arr_total_any = n()) %>%
@@ -537,119 +510,88 @@ arrests_all_agency <- arrests_all %>%
 
 ```
 
-Join total number of arrests for each agency onto the county/agency weight file.
+Join total number of arrests for each agency onto the place/agency file.
+    todo(): This should be for all years, not just 2022
 ```{r}
-# Join by year and reporting agency
-arrests_all_agency_county <- left_join(
-  x = agency_weights,
-  y = arrests_all_agency,
-  by = c("year", "ori")
-)
-
-```
-
-There are a lot of unmatched observations. 108,943 observations are only in our universe of agencies with county-agency weights. My first thought is that since this is the universe of *all* agencies, some agencies may not have reported arrests and are therefore not in the arrests data. 7,680 observations are only in the 2014-2022 agency-level arrests data. My first thought is that since we only used the Batch Header File from 2022 to construct the universe of agencies and agency-county weights, it may be missing agencies from other years. 
-
-To test this second hypothesis, I repeat the join for 2020 only. There is a proportional number of unmatched observations from each data set for 2020 as compared to 2014-2022. So, I think this is okay.
-    todo(): Reviewer, does this logic make sense to you? I don't know what else I can do here to explain the unmatched observations. Many agencies did not report NIBRS data prior to 2021, so we expect a lot of missings.
-```{r}
-# Join by reporting agency for only 2020
-test_2020 <- left_join(
-  x = agency_weights %>% filter(year==2020),
-  y = arrests_all_agency %>% filter(year==2020),
-  by = c("year", "ori")
-)
-```
-```{r}
-# Remove obsolete file
-rm(test_2020)
-```
-
-Now that we think the join worked, return to the joined all arrests with counties and county-agency weights file. Weight total arrests and indicate reporting by county-agency pairs.
-```{r}
-arrests_all_agency_county <- arrests_all_agency_county %>%
+arrests_all_agency_place <- left_join(
+   x = bhf_place_urb,
+   y = arrests_all_agency %>%
+     filter(year==2022),
+   by = c("ori")
+ ) %>%
   mutate(
-    # Weight total arrest by county weight
-    arr_total_any_wt = arr_total_any * weight,
-    # Indicate reporting by county-agency
+    # Indicate reporting by place-agency
     reporting = ifelse(is.na(arr_total_any), 0, 1)
-  )
+    )
 
 ```
 
-Aggregate variables to the county level.
+Aggregate variables to the place level.
 ```{r}
-# Summarize by county. We want both an unweighted and weighted count of agencies reporting, as well as percentage reporting
-arrests_all_county <- arrests_all_agency_county %>%
-  group_by(year, state, county) %>%
+# Summarize by place
+arrests_all_place <- arrests_all_agency_place %>%
+  group_by(state, place) %>%
   summarize(
     n = n(), 
-    n_wt = sum(weight), # check how weighted agencies compares to total agencies
     n_reporting = sum(reporting),
-    n_reporting_wt = sum(reporting * weight),
     n_core_city = sum(core_city),
     n_core_city_rpt = sum(core_city==1 & reporting==1),
     across(arr_total_any, ~sum(.x, na.rm=TRUE))
   ) %>%
   mutate(
     agencies_reporting = n_reporting / n,
-    agencies_reporting_wt = n_reporting_wt / n_wt,
     core_reporting = n_core_city_rpt / n_core_city,
     core_reporting = ifelse(is.nan(core_reporting), NA, core_reporting),
-    GEOID = str_c(state, county)
+    GEOID = str_c(state, place)
   ) %>%
   ungroup()
 
 ```
 
-
-Join total arrests back to juvenile arrest file.
+Join total arrests back to juvenile arrest file
 ```{r}
 # Join all arrests and juvenile arrests
-arrests_county <- left_join(
-  x = arrests_county, # juvenile arrests
-  y = arrests_all_county,
-  by = c("year", "GEOID", "state", "county")
+arrests_place <- left_join(
+  x = arrests_place,
+  y = arrests_all_place,
+  by = c("GEOID", "state", "place")
 )
-  
+
 ```
 
 
-## 6. Calculate rates of juvenile justice arrests per 100,000 juveniles
+
+## 6. Calculate rates of juvenile arrests per 100,000 juveniles
 Each instance of an arrest, citation, or summons for an offense is counted as an arrest. Note that an individual can be arrested more than once and therefore the rates constructed are of arrests, not of persons arrested. Arrest rates are calculated for all offense types available in NIBRS data, including offenses against property, persons, and society.
 
-First load the demographic information for each county and for each year 2014-2022. This file was created using 5 year ACS data in `01_agency_geo_county.Rmd`.
+First load the demographic information for each place and for each year 2016-2022. This file was created using 5 year ACS data in `01_agency_geo_place.Rmd`.
 ```{r}
-county_demo <- read_csv(here::here("07_safety", "modified data", "all_county_demo.csv"))
+place_demo <- read_csv(here::here("07_safety", "modified data", "all_place_demo.csv"))
 
 ```
 
-
-Join the county-level juvenile arrest data onto the county-level population and demographic information from ACS.
-All 28,282 observations match.
+Join the place-level juvenile arrests data onto place-level population and demographic information from ACS.
 ```{r}
-arrests_county_demo <- left_join(
-  x = county_demo,
-  y = arrests_county,
-  by = c("year", "GEOID")
+arrests_place_demo <- left_join(
+  x = place_demo,
+  y = arrests_place,
+  by = c("GEOID")
 )
 
-
 ```
 
-Calculate arrest rates per 100,000 juveniles
+Calculate arrest rates per 100,000 juveniles 
 ```{r}
-# Calculate arrest rates (per 100,000 people)
-arrest_rates_county <- arrests_county_demo %>%
+arrest_rates_place <- arrests_place_demo %>%
   mutate(
     rate_juv_arrest = arr_total / age_1017 * 100000,
     rate_juv_arrest_violent = arr_viol / age_1017 * 100000,
     rate_juv_arrest_property = arr_prop / age_1017 * 100000,
     rate_juv_arrest_white = race_white / age_1017_white * 100000,
     rate_juv_arrest_black = race_black / age_1017_black * 100000,
-    #rate_juv_arrest_aian  = race_aian / age_1017_aian * 100000,
+    # rate_juv_arrest_aian  = race_aian / age_1017_aian * 100000,
     rate_juv_arrest_asian_other = race_asian_other / age_1017_asian_other * 100000,
-    #rate_juv_arrest_nhpi  = race_nhpi / age_1017_nhpi * 100000,
+    # rate_juv_arrest_nhpi  = race_nhpi / age_1017_nhpi * 100000,
     rate_juv_arrest_hispanic  = ethn_hispanic / age_1017_hispanic * 100000
   )
 
@@ -658,16 +600,16 @@ arrest_rates_county <- arrests_county_demo %>%
 Replace the rates of observations with a population less than 30 with `NA`.
 ```{r}
 # Suppress data using populations < 30 people
-arrest_rates_county <- arrest_rates_county %>%
+arrest_rates_place <- arrest_rates_place %>%
   mutate(
     rate_juv_arrest = ifelse(age_1017 < 30, NA, rate_juv_arrest),
     rate_juv_arrest_violent = ifelse(age_1017 < 30, NA, rate_juv_arrest_violent),
     rate_juv_arrest_property = ifelse(age_1017 < 30, NA, rate_juv_arrest_property),
     rate_juv_arrest_white = ifelse(age_1017_white < 30, NA, rate_juv_arrest_white),
     rate_juv_arrest_black = ifelse(age_1017_black < 30, NA, rate_juv_arrest_black),
-    #rate_juv_arrest_aian = ifelse(age_1017_aian < 30, NA, rate_juv_arrest_aian),
+    # rate_juv_arrest_aian = ifelse(age_1017_aian < 30, NA, rate_juv_arrest_aian),
     rate_juv_arrest_asian_other = ifelse(age_1017_asian_other < 30, NA, rate_juv_arrest_asian_other),
-    #rate_juv_arrest_nhpi = ifelse(age_1017_nhpi < 30, NA, rate_juv_arrest_nhpi),
+    # rate_juv_arrest_nhpi = ifelse(age_1017_nhpi < 30, NA, rate_juv_arrest_nhpi),
     rate_juv_arrest_hispanic = ifelse(age_1017_hispanic < 30, NA, rate_juv_arrest_hispanic)
   )
 
@@ -676,7 +618,7 @@ arrest_rates_county <- arrest_rates_county %>%
 Check the distribution of rates
 ```{r}
 # Check rates
-arrest_rates_county %>%
+arrest_rates_place %>%
   select(starts_with("rate_juv_arrest")) %>%
   skim()
 
@@ -689,12 +631,13 @@ This section constructs an indicator used to assess the quality of data for each
 Construct the quality indicator.
 ```{r}
 # Compare all reporting plus core reporting
-arrest_rates_county <- arrest_rates_county %>%
-  mutate(rate_juv_arrest_quality = case_when(
-    agencies_reporting == 1 ~ 1,
-    agencies_reporting >= 0.8 ~ 2,
-    agencies_reporting > 0 ~ 3,
-    agencies_reporting == 0 ~ NA_real_
+arrest_rates_place <- arrest_rates_place %>%
+  mutate(
+    rate_juv_arrest_quality = case_when(
+      agencies_reporting == 1 ~ 1,
+      agencies_reporting >= 0.8 ~ 2,
+      agencies_reporting > 0 ~ 3,
+      agencies_reporting == 0 ~ NA_real_
     ),
     # Quality for core reporting agencies
     rate_juv_arrest_core_quality = case_when(
@@ -702,62 +645,63 @@ arrest_rates_county <- arrest_rates_county %>%
       agencies_reporting >= 0.8 | core_reporting==1 ~ 2,
       agencies_reporting > 0 ~ 3,
       agencies_reporting == 0 ~ NA_real_
-      ),
+    ),
     rate_juv_arrest_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_quality),
     rate_juv_arrest_core_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_core_quality)
   )
 
 ```
 
-With core reporting, 1,406 counties move from a quality indicator of 3 to a quality indicator of 2.
+
+With core reporting, XX counties move from a quality indicator of 3 to a quality indicator of 2.
     Note the 2021 file used the `rate_juv_arrest_core_quality` version of the quality metric. I rename it below to adhere to our naming conventions
 ```{r}
 # Check distribution of quality for all agencies and for core reporting agencies
-arrest_rates_county %>%
+arrest_rates_place %>%
   count(rate_juv_arrest_quality, rate_juv_arrest_core_quality)
 
 # Remove all quality metric and rename core reporting quality metric
-arrest_rates_county <- arrest_rates_county %>%
+arrest_rates_place <- arrest_rates_place %>%
   select(-rate_juv_arrest_quality) %>%
   rename(rate_juv_arrest_quality = rate_juv_arrest_core_quality)
 
 ```
 
 
-## 8. Save and write out Data
+## 8. Save and write out data
 ```{r}
-arrest_rates_county_all <- arrest_rates_county %>%
+arrest_rates_place_all <- arrest_rates_place %>%
   mutate(across(starts_with("rate"), 
                 ~ifelse(is.na(rate_juv_arrest_quality), NA, .x)),
          ) %>%
-  select(c(year, state, county, starts_with("rate"), starts_with("age_1017")))
+  select(c(year, state, place, starts_with("rate"), starts_with("age_1017")))
 ```
 
 We expect a lot of missingness because most agencies did not use NIBRS to 2021.
 ```{r}
-skim(arrest_rates_county_all)
+skim(arrest_rates_place_all)
 
 ```
 
 Create a subset without subgroup rates and write out this data set
 ```{r}
 # File with only total juvenile arrest rates
-juv_arrest_county <- arrest_rates_county_all %>%
+juv_arrest_place <- arrest_rates_place_all %>%
   select(year,
          state,
-         county,
+         place,
          rate_juv_arrest,
          rate_juv_arrest_violent,
          rate_juv_arrest_property,
          rate_juv_arrest_quality)
 
-skim(juv_arrest_county)
+skim(juv_arrest_place)
 
 # Write out this data set
-juv_arrest_county %>%
+juv_arrest_place %>%
   write_csv(here::here("07_safety",
                        "modified data",
-                       "ja_metric_all_county.csv"))
+                       "ja_metric_all_place.csv"))
 
 ```
 
@@ -766,12 +710,12 @@ Create a file that is long by subgroup and write it out
 # long form file with juvenile arrest rates by subgroup
 # pivot longer subgroup populations
 # create all row with overall juvenile population and arrest rate
-juv_pop_all_subgroup <- arrest_rates_county_all %>%
+juv_pop_all_subgroup <- arrest_rates_place_all %>%
   mutate(age_1017_all = age_1017) %>%
   select(
     year, 
     state,
-    county, 
+    place, 
     age_1017_all, 
     age_1017_white, 
     age_1017_black, 
@@ -786,12 +730,12 @@ juv_pop_all_subgroup <- arrest_rates_county_all %>%
                names_pattern = "age_1017_(.*)")
 
 # pivot longer subgroup arrest rates
-juv_arrest_all_subgroup <- arrest_rates_county_all %>%
+juv_arrest_all_subgroup <- arrest_rates_place_all %>%
   mutate(rate_juv_arrest_all = rate_juv_arrest) %>%
   select(
     year, 
     state, 
-    county, 
+    place, 
     rate_juv_arrest_all, 
     rate_juv_arrest_white, 
     rate_juv_arrest_black,
@@ -806,34 +750,26 @@ juv_arrest_all_subgroup <- arrest_rates_county_all %>%
 
 # combine into one file
 # replace quality indicators with missing if subgroup population < 30
-juv_arrest_county_all_subgroup <- left_join(
+juv_arrest_place_all_subgroup <- left_join(
   x = juv_pop_all_subgroup,
   y = juv_arrest_all_subgroup,
-  by = c("year", "state", "county", "subgroup")
+  by = c("year", "state", "place", "subgroup")
 ) %>%
   mutate(subgroup_type = "race-ethnicity",
          rate_juv_arrest_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_quality)) %>%
   select(-age_1017)
 
-skim(juv_arrest_county_all_subgroup)
+skim(juv_arrest_place_all_subgroup)
 
-juv_arrest_county_all_subgroup %>% 
+juv_arrest_place_all_subgroup %>% 
   count(rate_juv_arrest_quality, is.na(rate_juv_arrest))
 
 # Write out this data set
-juv_arrest_county_all_subgroup %>%
+juv_arrest_place_all_subgroup %>%
   write_csv(here::here("07_safety",
                        "modified data",
-                       "ja_metric_all_county_subgroup.csv"))
+                       "ja_metric_all_place_subgroup.csv"))
 ```
-
-
-
-
-
-
-
-
 
 
 
