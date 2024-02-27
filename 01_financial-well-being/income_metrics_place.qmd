@@ -26,6 +26,8 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 -   [Read Data](#read-data)
 -   [Clean Data](#clean-data)
 -   [Merge Crosswalk](#merge-crosswalk)
+-   [Read replicate weights](#read-replicate-weights)
+-   [Setup Survey Design](#setup-survey-design)
 -   [Create Income Metric](#create-income-metric)
 -   [Evaluate Results](#evaluate-results)
 -   [Export](#export)
@@ -47,8 +49,9 @@ options(scipen = 999)
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
 
-source(here::here("functions", "API", "extract_ipums.R"))
-source(here::here("functions", "Calculations", "place_survey_quantiles.R"))
+#set_ipums_api_key("Your KEY", save = TRUE)
+map(list.files(here::here("functions", "API")), 
+    ~source(here::here("functions", "API", .x)))
 ```
 
 
@@ -354,6 +357,73 @@ acs_clean %>%
 
 ```
 
+## Read replicate weights 
+
+Read in household-level replicate weights for all records where pernum is equal to 1. These will be used in creating standard errors for the income calculations. 
+```{r}
+repwts_household <- ipums_repwt_household(
+  extract_name = "household_replicate_weights",
+  extract_description = "Household level replicate weights for income quantiles metric. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+```{r}
+repwts_household %>% 
+  count(sample) %>% 
+  ggplot(mapping = aes(x = sample, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Samples, All Records in Repwt File") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Samples",
+       y = NULL)
+```
+
+
+Remove the sample variable.
+```{r}
+repwts_household <- repwts_household %>% 
+  select(-sample)
+```
+
+## Setup Survey Design 
+
+Shrink sample for now.
+```{r}
+acs_clean <- acs_clean %>% 
+  group_by(sample, place) %>% 
+  slice_sample(n = 200) %>% 
+  ungroup() 
+```
+
+Set up the survey design using instructions from IPUMS. Join the replicate weights onto the acs survey data using the unique person ID created for both.
+```{r}
+acs_survey_all <- acs_clean %>%
+  filter(sample_structure == "1year") %>% 
+  left_join(repwts_household, by = c("unique_person_id")) %>% 
+  as_survey_design(weights = hhwt, 
+                   repweights = matches("repwtp[0-9]+"),
+                   type = "JK1",
+                   scale = 4/ 80,
+                   rscales = rep(1, 80 ), mse = TRUE) %>% 
+  ungroup()
+
+acs_survey_subgroups <- acs_clean %>%
+  filter(sample_structure == "5year") %>% 
+  left_join(repwts_household, by = c("unique_person_id")) %>% 
+  as_survey_design(weights = hhwt, 
+                   repweights = matches("repwtp[0-9]+"),
+                   type = "JK1",
+                   scale = 4/ 80,
+                   rscales = rep(1, 80 ), mse = TRUE) %>% 
+  ungroup()
+
+```
+
 ## Create Income Metric
 
 Create the income metric for each place overall and for race subgroups.
@@ -370,12 +440,12 @@ Calculate income quantiles by place (1-year data).
 metrics_income_all <- acs_clean %>%
   filter(sample_structure == "1year") %>%
   group_by(year, crosswalk_period, statefip, place) %>%
-  summarise(
-    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, type = "i/n"),
-    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, type = "i/n"),
-    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, type = "i/n")
-  ) %>%
-  ungroup() 
+  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
+                                             qrule = c("hf9")))
 ```
 
 Sort by year, state and place. 
@@ -469,14 +539,22 @@ metrics_income_all <- metrics_income_all %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  mutate_at(c("pctl_income_20", "pctl_income_50", "pctl_income_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("pctl_income_20", "pctl_income_20_low", "pctl_income_20_upp",
+              "pctl_income_50", "pctl_income_50_low", "pctl_income_50_upp",
+              "pctl_income_80", "pctl_income_80_low", "pctl_income_80_upp"), 
+            ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  select(year, statefip, place, pctl_income_20, pctl_20_quality, 
-         pctl_income_50, pctl_50_quality, pctl_income_80, 
+  select(year, statefip, place, 
+         pctl_income_20, pctl_income_20_lb = pctl_income_20_low, 
+         pctl_income_20_ub = pctl_income_20_upp, pctl_20_quality, 
+         pctl_income_50, pctl_income_50_lb = pctl_income_50_low, 
+         pctl_income_50_ub = pctl_income_50_upp, pctl_50_quality, 
+         pctl_income_80, pctl_income_80_lb = pctl_income_80_low, 
+         pctl_income_80_ub = pctl_income_80_upp,
          pctl_80_quality)
 ```
 
@@ -487,11 +565,12 @@ Calculate income quantiles by race/ethnicity and place (5-year data).
 metrics_income_subgroup <- acs_clean %>%
   filter(sample_structure == "5year") %>%
   group_by(year, crosswalk_period, statefip, place, subgroup) %>%
-  summarise(
-    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, type = "i/n"),
-    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, type = "i/n"),
-    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, type = "i/n")
-  ) %>%
+  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
+                                             qrule = c("hf9"))) %>%
   ungroup() %>%
   mutate(subgroup_type = "race-ethnicity")
 ```
@@ -501,11 +580,12 @@ Calculate quantiles for all households with the 5-year data. To be appended onto
 metrics_income_subgroup_all <- acs_clean %>%
   filter(sample_structure == "5year") %>%
   group_by(year, crosswalk_period, statefip, place) %>%
-  summarise(
-    pctl_income_20 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.2, type = "i/n"),
-    pctl_income_50 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.5, type = "i/n"),
-    pctl_income_80 = Hmisc::wtd.quantile(hhincome, weights = hhwt, probs = 0.8, type = "i/n")
-  ) %>%
+  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
+                                             qrule = c("hf9")),
+            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
+                                             qrule = c("hf9"))) %>%
   ungroup() %>%
   mutate(subgroup_type = "all",
          subgroup = "All")
@@ -619,14 +699,20 @@ metrics_income_sub <- metrics_income_sub %>%
 We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
-  mutate_at(c("pctl_income_20", "pctl_income_50", "pctl_income_80"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+  mutate_at(c("pctl_income_20", "pctl_income_20_low", "pctl_income_20_upp",
+              "pctl_income_50", "pctl_income_50_low", "pctl_income_50_upp",
+              "pctl_income_80", "pctl_income_80_low", "pctl_income_80_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
 ```
 
 Keep only relevant variables.
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
-  select(year, statefip, place, subgroup_type, subgroup, pctl_income_20, pctl_20_quality, 
-         pctl_income_50, pctl_50_quality, pctl_income_80, 
+  select(year, statefip, place, subgroup_type, subgroup, pctl_income_20, pctl_income_20_lb = pctl_income_20_low, 
+         pctl_income_20_ub = pctl_income_20_upp, pctl_20_quality, 
+         pctl_income_50, pctl_income_50_lb = pctl_income_50_low, 
+         pctl_income_50_ub = pctl_income_50_upp, pctl_50_quality, 
+         pctl_income_80, pctl_income_80_lb = pctl_income_80_low, 
+         pctl_income_80_ub = pctl_income_80_upp,
          pctl_80_quality)
 ```
 
@@ -762,12 +848,22 @@ Order the variables how we want.
 
 ```{r}
 metrics_income_all <- metrics_income_all %>% 
-  select(year, state, place, pctl_income_20, pctl_20_quality, pctl_income_50, 
-         pctl_50_quality, pctl_income_80, pctl_80_quality)
+  select(year, state, place, pctl_income_20, pctl_income_20_lb, 
+         pctl_income_20_ub, pctl_20_quality, 
+         pctl_income_50, pctl_income_50_lb, 
+         pctl_income_50_ub, pctl_50_quality, 
+         pctl_income_80, pctl_income_80_lb, 
+         pctl_income_80_ub,
+         pctl_80_quality)
 
 metrics_income_sub <- metrics_income_sub %>% 
-  select(year, state, place, subgroup_type, subgroup, pctl_income_20, pctl_20_quality, pctl_income_50, 
-         pctl_50_quality, pctl_income_80, pctl_80_quality)
+  select(year, state, place, subgroup_type, subgroup, pctl_income_20, pctl_income_20_lb, 
+         pctl_income_20_ub, pctl_20_quality, 
+         pctl_income_50, pctl_income_50_lb, 
+         pctl_income_50_ub, pctl_50_quality, 
+         pctl_income_80, pctl_income_80_lb, 
+         pctl_income_80_ub,
+         pctl_80_quality)
 ```
 
 Export as CSV.
