@@ -63,63 +63,15 @@ bind_rows(
 ) %>%
   write_csv(here("data", "temp", "metrics_college_subgroup.csv"))
 
-bind_rows(
-  read_csv(here("09_employment", "metrics_employment_subgroup.csv")) %>%
-    rename(share_employed_quality = employed_quality),
-  read_csv(here("09_employment", "metrics_employ_subgroup_2021.csv"))
-) %>%
-  write_csv(here("data", "temp", "metrics_employment_subgroup.csv"))
+read_csv(here("09_employment", "data", "final", "metrics_employment_county_race-ethnicity_longitudinal.csv")) %>%
+  filter(year < 2022) %>%
+  write_csv(here("data", "temp", "metrics_employment_county_race-ethnicity_longitudinal.csv"))
 
-bind_rows(
-  read_csv(here("01_financial-well-being", "metrics_income_subgroup.csv")),
-  read_csv(here("01_financial-well-being", "metrics_income_subgroup_2021.csv"))
-) %>%
-  write_csv(here("data", "temp", "metrics_income_subgroup.csv"))
-
+read_csv(here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv")) %>%
+  filter(year < 2022) %>%
+  write_csv(here("data", "temp", "metrics_income_county_race-ethnicity_longitudinal.csv"))
 
 ```
-
-
-Add the "all" data to the subgroup data. 
-
-<!-- ```{r} -->
-<!-- fix_files <- c( -->
-<!--   here("01_financial-well-being", "metrics_income.csv"), -->
-<!--   here("08_education", "metrics_college.csv"), -->
-<!--   here("08_education", "metrics_preschool.csv"), -->
-<!--   here("09_employment", "metrics_employment.csv") -->
-<!-- ) -->
-
-<!-- wrong_files <- c( -->
-<!--   here("01_financial-well-being", "metrics_income_subgroup.csv"), -->
-<!--   here("08_education", "metrics_college_subgroup.csv"),   -->
-<!--   here("08_education", "metrics_preschool_subgroup.csv"), -->
-<!--   here("09_employment", "metrics_employment_subgroup.csv") -->
-<!-- ) -->
-
-<!-- add_all <- function(all, subgroup) { -->
-
-<!--   # read all -->
-<!--   all_csv <- read_csv(all, guess_max = 5000) %>% -->
-<!--     mutate(subgroup_type = "all", -->
-<!--            subgroup = "All") -->
-
-<!--   # read subgroup -->
-<!--   subgroup_csv <- read_csv(subgroup, guess_max = 5000) %>% -->
-<!--     filter(subgroup_type != "all") -->
-
-<!--   # replace all with bind_rows -->
-<!--   fixed_csv <- bind_rows(subgroup_csv, all_csv) %>% -->
-<!--     arrange(year, state, county, subgroup_type, subgroup) -->
-
-<!--   # write -->
-<!--   write_csv(fixed_csv, subgroup) -->
-
-<!-- } -->
-
-<!-- map2(fix_files, wrong_files, ~add_all(all = .x, subgroup = .y)) -->
-
-<!-- ``` -->
 
 ```{r}
 files <- c(
@@ -130,7 +82,7 @@ files <- c(
   here("08_education", "SEDA_all_subgroups_county.csv"), #Effective public education
   
   ### FINANCIAL WELLBEING ###
-  here("data", "temp", "metrics_income_subgroup.csv"),
+  here("data", "temp", "metrics_income_county_race-ethnicity_longitudinal.csv"),
 
   ### HEALTH ###
   here("data", "temp", "neonatal_health_subgroup_CORRECT.csv"),
@@ -142,7 +94,7 @@ files <- c(
   ### SAFETY ###
 
     ### WORK ### 
-  here("data", "temp", "metrics_employment_subgroup.csv")
+  here("data", "temp", "metrics_employment_county_race-ethnicity_longitudinal.csv")
 )
 
 ```
@@ -169,7 +121,9 @@ db <- map(files, read_csv_and_clean) %>%
 # fix non-missing quality flags
 db <- db %>%
   mutate(
-    pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
+    pctl_20_quality = if_else(is.na(pctl_income_20), as.numeric(NA), pctl_20_quality),
+    pctl_50_quality = if_else(is.na(pctl_income_50), as.numeric(NA), pctl_50_quality),
+    pctl_80_quality = if_else(is.na(pctl_income_80), as.numeric(NA), pctl_80_quality),
     share_hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), share_hs_degree_quality),
     share_in_preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), share_in_preschool_quality),
     share_employed_quality = if_else(is.na(share_employed), as.numeric(NA), share_employed_quality)
@@ -230,8 +184,9 @@ clean_data <- function(db_unclean){
   db <- db_unclean %>%
     rename_with(~str_replace_all(.x, "learning_rate", "rate_learning")
                 ) %>%
-    rename_with(.cols = starts_with("pctl"), 
-              ~str_replace_all(.x, "pctl_", "pctl_income_"))
+    mutate(
+      pctl_income_quality = pctl_20_quality 
+    )
   
   return(db)
   
@@ -249,75 +204,6 @@ nrow(db) / nrow(t)
 
 # Recent-year Database
 
-```{r}
-read_csv_recent <- function(file) {
-  
-  file <- read_csv(file, guess_max = 5000)  %>%
-    mutate(state = stringr::str_pad(state, width = 2, pad = "0"),
-           county = stringr::str_pad(county, width = 3, pad = "0")) %>%
-    mutate(subgroup_type = str_replace(subgroup_type, "Race-ethnicity", "race-ethnicity")) %>%
-    mutate(subgroup = str_replace(subgroup, "Other Races and Eth$", "Other Races and Ethnicities")) %>%
-    mutate(subgroup = str_replace(subgroup, "White, Non Hispanic", "White, Non-Hispanic")) %>%
-    mutate(subgroup = str_replace(subgroup, "Black, Non Hispanic", "Black, Non-Hispanic")) %>%
-    slice_max(year) %>% 
-    select(-year)
-  
-  return(file)
-  
-}
-
-# construct multiyear database
-db_recent <- map(files, read_csv_recent) %>%
-  reduce(full_join, by = c("state", "county", "subgroup_type", "subgroup"))
-
-# fix non-missing quality flags
-db_recent <- db_recent %>%
-  mutate(
-    pctl_quality = if_else(is.na(pctl_20), as.numeric(NA), pctl_quality),
-    share_hs_degree_quality = if_else(is.na(share_hs_degree), as.numeric(NA), share_hs_degree_quality),
-    share_in_preschool_quality = if_else(is.na(share_in_preschool), as.numeric(NA), share_in_preschool_quality),
-    share_employed_quality = if_else(is.na(share_employed), as.numeric(NA), share_employed_quality)
-  ) %>%
-  #get rid of non race/ethnicity groups:
- filter(subgroup_type == "race-ethnicity" | subgroup_type == "all")
-
-  
-db_recent <- clean_data(db_recent)
-
-```
-
-```{r}
-#Check below:
-#5 racial categories(all, nh-White, nh-Black, Hispanic, Other)
-# 3144 counties, there were 3142 pre-2020, then one in Alaska split into 2 others
-#   hence why we have a total of 3144 appearing here 
-
-stopifnot(nrow(db_recent) == ((3142 + 2) * 5))
-
-# 
-# frame <-
-#   bind_rows(
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-#       subgroup_type = c("all"),
-#       subgroup = c("All")
-#     ),
-#     expand_grid(
-#       read_csv(here("geographic-crosswalks", "data", "county-file.csv"), guess_max = 5000),
-#       subgroup_type = c("race-ethnicity"),
-#       subgroup = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
-#     )
-#   ) %>%
-#   arrange(year, state, county, subgroup_type, subgroup) %>%
-#   filter(year == max(year)) %>%
-#   select(-year)
-# 
-# db_recent <- full_join(frame, db_recent, by = c("state", "county", "subgroup_type", "subgroup"))
-# 
-# stopifnot(nrow(frame) == nrow(db_recent)) #todo(aaron): resolve
-
-```
-
 ## Quality and Completeness
 
 ### Full Database
@@ -332,17 +218,6 @@ db %>%
   select(ends_with("_quality")) %>%
   pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
   count(variable, quality)
-
-```
-
-### Recent Database
-
-```{r}
-db_recent %>%
-  select(ends_with("_quality")) %>%
-  pivot_longer(everything(), names_to = "variable", values_to = "quality") %>%
-  count(variable, quality) %>%
-  gt()
 
 ```
 
@@ -394,13 +269,6 @@ db %>%
   verify(is.na(share_hs_degree) | share_hs_degree_lb <= share_hs_degree_ub) %>%
   verify(is.na(share_hs_degree) | share_hs_degree <= share_hs_degree_ub)
 
-
-
-db %>%
-  verify(is.na(share_employed) | share_employed_lb < share_employed) %>%
-  verify(is.na(share_employed) | share_employed_lb < share_employed_ub) %>%
-  verify(is.na(share_employed) | share_employed< share_employed_ub)
-
 ```
 
 ```{r}
@@ -421,7 +289,6 @@ db <- db %>%
   relocate(year, state, county, state_name, county_name) %>%
   select(
     -share_hs_degree_lb, -share_hs_degree_ub, 
-    -share_employed_lb, -share_employed_ub,
     -share_in_preschool_lb, -share_in_preschool_ub
   )
 
@@ -430,6 +297,6 @@ db <- db %>%
 ## Write the File
 
 ```{r}
-#write_csv(db_recent, here("data", "01_mobility-metrics_race-ethnicity_recent.csv"))
 write_csv(db, here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv"))
+
 ```
