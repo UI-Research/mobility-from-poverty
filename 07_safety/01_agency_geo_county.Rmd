@@ -38,8 +38,8 @@ set_urbn_defaults(style = "print")
 ```
 
 This file is a prerequisite file to the following files:
-* `reported-crime-county-all.Rmd` which creates the place-level metric for reported property crimes per 100,000 people and reported violent crimes per 100,000 people
-* `juvenile-arrests-county-all.Rmd` which creates the place-level metric for juvenile arrests per 100,000 juveniles
+* `reported-crime-county-all.Rmd` which creates the county-level metric for reported property crimes per 100,000 people and reported violent crimes per 100,000 people
+* `juvenile-arrests-county-all.Rmd` which creates the county-level metric for juvenile arrests per 100,000 juveniles
 
 You must run this file before either of the above files to create either metric at the county-level.
 
@@ -49,12 +49,12 @@ The rest of this file is organized as follows:
 1. Background and NIBRS Batch Header File download
 2. Load and clean NIBRS Batch Header File
 3. Join county FIPS codes onto NIBRS agencies that are missing county using Law Enforcement Agency Identifiers Crosswalk
-4. Construct County-Level Demographics Using ACS
-5. Join Batch Header File and ACS County Demographics by County
-6. Create County-Agency Weights
+4. Construct county-level population and demographics using ACS
+5. Join Batch Header File onto ACS county demographics by county
+6. Create county-agency weights
 7. Write out data
 
-All data used in this file and to create the two safety metrics are available on Box [here]().
+All data used in this file and to create the two safety metrics are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf).
 
 ## 1. Background and NIBRS Batch Header File download
 This program and the safety metrics rely on National Incident-based Reporting System (NIBRS) data. NIBRS is an annual data collection that compiles information on criminal incidents and arrests reported by participating law enforcement agencies. It is a part of the Uniform Crime Reporting Program (UCR) which is administered by the Federal Bureau of Investigation (FBI).
@@ -63,7 +63,9 @@ NIBRS data as constructed and formatted by the FBI are stored in a single file. 
 
 The segment of NIBRS data this file is concerned with is called the Batch Header File (also called the Batch Header Segment). Prior to the 2013 data, the Batch Header information was released as three segments. Due to the NIBRS data rapidly growing in size, the FBI released a single file instead. The Batch Header File identifies individual police agencies by originating agency identifier (ORI). An individual police agency (ORI) will appear in the batch header segment once. It also includes variables for each county served by each agency, which is what we are particularly interested in. The data used for both safety metrics (arrests and crimes) are reported at the agency-level. The purpose of using the Batch Header File is to be able to link the agencies to counties for those metrics.
 
-To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 police agencies (covering about 45% of the US population) reported NIBRS data. This represented less than half of the approximately 18,000 police agencies in the United States. Instead, agencies primarily reported [UCR data](https://ucrbook.com/). However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). We do not want to use NIBRS data for some years and UCR data for others. This means that **there will be a lot of missing values prior to 2021**.
+To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Instead, agencies primarily reported [UCR data](https://ucrbook.com/) for 2020 and before. However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). 
+
+We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2014 and should keep this in mind.
 
     Note that we only use the 2022 Batch Header File. Using the Batch Header File from each year might be more accurate, but for the most part it won't matter, especially because so few agencies reported through NIBRS prior to 2021. Additionally, downloading and reading in the Batch Header File for each year takes a lot of time and computing power, and must be done manually for each year which introduces room for error in replication. Future updates may consider using the Batch Header Files for each year, which can be accessed through the following links:
     * [2014](https://www.icpsr.umich.edu/web/ICPSR/studies/36421)
@@ -86,12 +88,11 @@ Accessing these data requires an ICPSR account. Manually downloading these data 
     5. This will download a zip file titled `ICPSR_38925-V2`. Unzip the file, navigate to `ICPSR_38925\DS0001\38925-0001-Data.tsv`, and move it to the appropriate directory/folder. This is the `Batch Header File`.
 
 
-
 ## 2. Load and clean NIBRS Batch Header File
 This section reads in and cleans the reporting agency data contained in the Batch Header File.
 
 ### 2.1 Get universe of agencies from the 2022 NIBRS Batch Header File
-Load Batch Header File
+Load 2022 Batch Header File
 ```{r, message=FALSE}
 batch_header_file <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.tsv"))
 
@@ -99,6 +100,7 @@ batch_header_file <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.t
 
 Limit file to necessary variables and rename. We use the codebook (`ICPSR_38925\DS0001\38925-0001-Codebook-ICPSR`) to determine what each variable represents.
 ```{r}
+# Note that commented out variables were included in the 2021 code for this metric but not used in the analysis. Will delete them at final step.
 batch_header_file <- batch_header_file %>%
   select(
     ori = BH003, # ori is unique agency identifier used across multiple files
@@ -137,7 +139,7 @@ batch_header_file <- batch_header_file %>%
 
 ```
 
-If an agency is only linked to one county, the other county variables have a value of `-6` for `Not Applicable`. We replace these values with `NA`.
+If an agency is only linked to one county, the other county variables have a value of `-6` for `Not Applicable`. We replace these values with `NA`. Note that in Batch Header Files prior to 2022, these observations simply have a value of `NA`.
 ```{r}
 batch_header_file <- batch_header_file %>%
   mutate(across(c(fips_county_2, fips_county_3, fips_county_4), 
@@ -145,7 +147,7 @@ batch_header_file <- batch_header_file %>%
 
 ```
 
-## 2.2 Convert NIBRS state codes to state FIPS codes
+### 2.2 Convert NIBRS state codes to state FIPS codes
 The state identifiers included in NIBRS are state abbreviation and a state code. NIBRS state codes are in alphabetical order and do not follow FIPS codes. We manually create a crosswalk between state FIPS codes and NIBRS codes by looking at the codebook (`ICPSR_38566\DS0001\38566-0001-Codebook`) and then join state FIPS codes onto the Batch Header File.
 ```{r, message=FALSE}
 # Create "crosswalk" for NIBRS state codes to state FIPS codes.
@@ -271,8 +273,10 @@ The goal of this section is to match a county FIPS code onto every agency in the
 ### 3.1 Background on LEAIC and manual download
 To address the agencies that are missing county information, we use the 2012 Law Enforcement Agency Identifiers Crosswalk (LEAIC)
 
-The LEAIC facilitates linking reported crime data with socio-economic data. Note that 2012 is the most recent year for which this crosswalk is available. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR at the following link:
+The LEAIC facilitates linking reported crime data with socio-economic data. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR at the following link:
   * [LEAIC](https://www.icpsr.umich.edu/web/NACJD/studies/35158).
+  
+Note that 2012 is the most recent year for which this crosswalk is available. This may present issues in harmonizing data across years, because some counties have changed since 2012. Future updates should check if a more recent crosswalk is available yet.
   
 Accessing these data requires an ICPSR account. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
     1. Create an ICPSR account [here](https://login.icpsr.umich.edu/realms/icpsr/login-actions/registration?client_id=icpsr-web-prod&tab_id=BqotoE6wnqw).
@@ -303,6 +307,7 @@ Limit file to necessary variables and rename. We use the codebook (`ICPSR_35158\
 leaic <- leaic %>%
   select(
     ori = ORI9,
+    # state = FIPS_ST,
     county = FIPS_COUNTY
   ) %>%
   # Remove agencies with invalid ORI
@@ -342,6 +347,7 @@ batch_header_file <- batch_header_file %>%
   # Assign county fips from LEAIC to the NIBRS county fips variable
   mutate(fips_county_1 = county)
 
+
 # Remove obsolete files
 rm(leaic, bhf_missing_county)
 
@@ -354,7 +360,7 @@ Recall that this file serves as a precursor file to the files that create both o
 * Reported violent crimes per 100,000 people and reported property crimes per 100,000 people
 * Juvenile arrests per 100,000 juveniles
 
-Additionally, for the juvenile arrests metric, we are interested in subgroups by age, race, and sex. To calculate these rates (both total and by subgroup), we need total population and demographic information for our denominators. We pull total population and demographic data from the 5-year ACS files for each year 2014-2022.
+Additionally, for the juvenile arrests metric, we are interested in subgroups by age, race, and sex. To calculate these rates (both total and by subgroup), we need total population and demographic information for our denominators. We pull total population and demographic data from the 5-year ACS files for each year 2021-2022.
 
 This section relies on the `tidycensus` package, which requires a Census API key. You can acquire a key [here](https://api.census.gov/data/key_signup.html) and learn more about installing your key [here](https://walker-data.com/tidycensus/reference/census_api_key.html).
 ```{r}
@@ -366,19 +372,22 @@ This section relies on the `tidycensus` package, which requires a Census API key
 ### 4.1 Check ACS variable names and identify those we need
 Load ACS variables for our first and last years. Manually explore each file and spot check several observations. The naming conventions of ACS variables do not seem to change during our time period.
     Note that if they did we would need to split up the code that reads in the years below.
+    Note that future updates of the safety metrics may want to pull data back to 2014, in which case the first year should be changed below.
 ```{r}
-# Check ACS variables for 2014 and 2022 to see if they change over time
-variables2014 <- tidycensus::load_variables(2014, "acs5")
-variables2022 <- tidycensus::load_variables(2022, "acs5")
+# Check ACS variables for the first and last years to see if they change over time
+variables_fy <- tidycensus::load_variables(2021, "acs5")
+variables_ly <- tidycensus::load_variables(2022, "acs5")
 
 ```
 
 ### 4.2 Create vectors for years and variables of interest
-    Note that the `two or more race` variable is not appearing and may not be available at the county level.
-    todo(): depending on the subgroups desired for the safety metrics, the sex/age group/race variables pulled here may need updated.
+Note that the `two or more race` variable is not appearing and may not be available at the county level.
+Note that if additional subgroups for either safety metric are desired in future updates, the variables pulled here may need updated.
+Note that future updates of the safety metrics may want to pull data back to 2016, in which case the list of years should be changed below.
 ```{r}
 # Create a list of all our years
-years <- lst(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)
+# years <- lst(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022)
+years <- lst(2021, 2022)
 
 # Create a vector for our ACS variables of interest
 my_vars <- c(
@@ -427,7 +436,7 @@ my_vars <- c(
 
 ```
 
-### 4.3 Pull 2014-2022 5-year ACS data at the county level
+### 4.3 Pull 5-year ACS data for all years 2021-2022 at the county level
 Pull 5-year ACS data at the county level for each year
 ```{r}
 # Pull data
@@ -451,7 +460,7 @@ county_demo <- county_demo_full %>%
   filter(state != "72")
 
 # Remove obsolete files
-rm(variables2014, variables2022, years, my_vars)
+rm(variables_fy, variables_ly, years, my_vars)
 
 ```
 
@@ -464,13 +473,19 @@ county_demo <- county_demo %>%
 
 ```
 
-#### 4.4a Construct subgroups for age, race/ethnicity, and sex
-    todo(): For the rate of juvenile justice arrests metric, we want additional subgroups of sex (male, female) and age groups (age 10-14, age 15-17) for all years.
+#### 4.4a Construct subgroups for race/ethnicity, sex, and age subgroups
+For the rate of juvenile arrests per 100,000 juveniles metric, we want subgroups by race, sex, and age subgroups. These are subgroups of all observations ages 10-17, so the sum of each subgroup should equal the total number of observations ages 10-17.
+    * Race: white, Black, Hispanic, Asian/other
+    * Sex: male, female
+    * Age: ages 10-14, ages 15-17
+
 ```{r}
-# Sum sex and age groups by race
+# Create the total for ages 10-17 and the race, sex, and age subgroups
 county_demo <- county_demo %>%
   mutate(
+    # Total age 10-17
     age_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
+    # Race subgroups
     age_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
     age_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
     age_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
@@ -480,6 +495,12 @@ county_demo <- county_demo %>%
     # age_1017_twom = age_m_1014_twom + age_m_1517_twom + age_f_1014_twom + age_f_1517_twom,
     age_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
     age_1017_white_nh = age_m_1014_white_nh + age_m_1517_white_nh + age_f_1014_white_nh + age_f_1517_white_nh,
+    # Sex subgroups
+    sex_1017_m = age_m_1014 + age_m_1517,
+    sex_1017_f = age_f_1014 + age_f_1517,
+    # Age subgroups
+    age_1014_all = age_m_1014 + age_f_1014,
+    age_1517_all = age_m_1517 + age_f_1517
   )
 
 # Edit race variables  
@@ -499,7 +520,7 @@ Limit ACS data to relevant variables
 ```{r}
 # Limit to relevant variables
 county_demo <- county_demo %>%
-  select(year, GEOID, total_people, starts_with("age_1017"))
+  select(year, GEOID, total_people, starts_with("age_1017"), starts_with("sex_1017"), ends_with("_all"))
 
 ```
 
@@ -548,21 +569,14 @@ joined_data <- left_join(
 
 ```
 
-
-There are no observations that are only in the Batch Header File but not the ACS data. However, 61 observations (county/year pairs) are only in the ACS data and not in the Batch Header File. 
-    todo(): 43 of these observations are from Alaska but I am not sure how to crosswalk/harmonize them.
-    todo(): 9 of these observations are from Hawaii but I am not sure how to crosswalk/harmonize them.
-    Note that 9 of these observations are from Connecticut. Connecticut county changes are reflected in the 2022 ACS data products [source](https://www.census.gov/programs-surveys/acs/technical-documentation/table-and-geography-changes/2022/geography-changes.html). However, we don't have a way to crosswalk these observations for now.
-    Note that these may be counties that did not have any reporting agencies and are therefore excluded from the Batch Header File?
+#### 5.2a Investigate unmatched observations
+##### 5.2a.i Observations in pooled ACS data but not in the 2022 Batch Header File
+23 observations are in the pooled ACS data but not in the 2022 Batch Header File.
 ```{r}
-# Check whether there are any unmatched observations when joining the data
-test <- left_join(
-  x = county_demo, y = batch_header_file, by = "GEOID"
-)
-
-# Check which observations do not match 
 test <- anti_join(
-  x = county_demo, y = batch_header_file, by = "GEOID"
+  x = county_demo,
+  y = batch_header_file, 
+  by = c("GEOID")
 )
 
 # Check which states the unmatched observations come from
@@ -571,21 +585,97 @@ test %>%
   group_by(state) %>%
   count()
 
-# Remove the test version of this file
-rm(test)
+```
+
+9/23 of the unmatched observations that are in the ACS but not the Batch Header File are from Connecticut.
+Note that Connecticut adopted the state's nine Councils of Government as the county-equivalent geographic unit, and this change is reflected in ACS data products for the first time in 2022 ([source](https://www.census.gov/programs-surveys/acs/technical-documentation/table-and-geography-changes/2022/geography-changes.html)). This update to the safety metric ignores this change for now, but future updates may be interested in harmonizing Connecticut counties across years. [These relationship files](https://www.census.gov/geographies/reference-files/time-series/geo/relationship-files.html) may (or may not) be helpful in accomplishing that task.
+```{r}
+test %>%
+  mutate(state = substr(GEOID, 1, 2)) %>%
+  filter(state == "09") %>%
+  group_by(state, year) %>%
+  count()
 
 ```
 
+2/23 of the unmatched observations that are in the ACS but not the Batch Header File are from Kalawao County, Hawaii (FIPS 15005).
+Note that Kalawao County, HI is the smallest county in the 50 states by land area and the second-smallest county by population. Because of the small population, it does not have the same functions as other Hawaii counties and is instead a judicial district of Maui County. It is entirely plausible that this county is missing from the Batch Header File because it does not have any police agencies, or if it does, the agencies have not reported NIBRS data. We ignore these observations.
+```{r}
+test %>%
+  mutate(state = substr(GEOID, 1, 2)) %>%
+  filter(state == "15") %>%
+  group_by(GEOID, year) %>%
+  count(total_people)
 
-## 6. Create county-agency eeights
+```
+
+The remaining 12/23 of the remaining unmatched observations that are in the ACS but not the Batch Header File are from Alaska. There are 6 observations for 2021 and 6 observations for 2022. [This documentation](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518) explains the following changes to counties in Alaska that account for 4/12 of these unmatched observations
+    * Chugach Census Area (02063) was created from part of former Valdez-Cordova Census Area (02261) effective January 02, 2019
+    * Copper River Census Area (02066) was created from part of former Valdez-Cordova Census Area (02261) effective January 02, 2019
+    
+Note that future updates may want to account for the change to these counties. 
+
+The other 8/12 unmatched observations are from the following counties: Denali Borough (02068), Lake and Peninsula Borough (02164), Southeast Fairbanks Census Area (02240), and the City and Borough of Yakutat (02282). Note that all four of these counties have very small populations. It is entirely plausible that these counties are missing from the Batch Header File because they do not have any police agencies, or if they do, the agencies have not reported NIBRS data. We ignore these observations.
+```{r}
+test %>%
+  mutate(state = substr(GEOID, 1, 2)) %>%
+  filter(state == "02") %>%
+  group_by(GEOID, year) %>%
+  count(total_people)
+
+```
+
+##### 5.2a.ii Observations in the 2022 Batch Header File but not in the pooled ACS data
+5 observations are in the 2022 Batch Header File but not the pooled ACS data.
+```{r}
+rm(test)
+
+test <- anti_join(
+  x = batch_header_file,
+  y = county_demo,
+  by = c("GEOID")
+)
+
+# Check which counties the unmatched observations come from
+test %>%
+  group_by(GEOID) %>%
+  count()
+
+```
+3/5 of the unmatched observations that are in the 2022 Batch Header File but not the pooled ACS data are from Valdez-Cordova Census Area, Alaska (02261). [This documentation](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518) explains that Valdez-Cordova Census Area was split into Chugach Census Area, Alaska (02063) and Copper River Census Area (02066) effective January 02, 2019. It appears that at least some of the 2022 Batch Header File agencies have not accounted for this change. Note that future updates may want to account for the change to this county, but we ignore these observations for now.
+
+2/5 of the unmatched observations that are in the 2022 Batch Header File but not the pooled ACS data are from Shannon County, South Dakota (46113). [This documentation](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518) explains that Shannon County, SD changed its name and FIPS code to Oglala Lakota County (46102) effective May 1, 2015. We correct the 2022 Batch Header File for this change below
+```{r}
+batch_header_file <- batch_header_file %>%
+  mutate(
+    county = ifelse(state=="46" & county=="113", "102", county),
+    GEOID = ifelse(state=="46"& GEOID=="46113", "46102", GEOID)
+    )
+
+```
+#### 5.2b Re-join the NIBRS data (Batch Header File) onto the ACS county population and demographics after harmonizing county changes over time
+```{r}
+# Join data
+joined_data <- left_join(
+  x = county_demo %>% 
+    select(year, GEOID, total_people),
+  y = batch_header_file,
+  by = "GEOID"
+)
+```
+
+
+## 6. Create county-agency weights
 For agencies that cover multiple counties, assign weight based on county population (e.g., if Agency A has jurisdiction in both County 1 which has 10,000 people and County 2 which has 5,000 people, the weights will be 0.667 and 0.333, respectively).
 ```{r}
 # Make agency weights based on population of counties they cover
 joined_data <- joined_data %>%
   filter(!is.na(total_people)) %>%  
   group_by(year, ori) %>%
-  mutate(weight = total_people / sum(total_people),
-         weight = if_else(is.na(ori), NA, weight)) %>%
+  mutate(
+    weight = total_people / sum(total_people),
+    weight = if_else(is.na(ori), NA, weight)
+  ) %>%
   ungroup()
 
 ```
@@ -595,14 +685,17 @@ Count number of agencies in each county.
 ```{r}
 county_agency <- joined_data %>%
   group_by(GEOID, year) %>%
-  summarize(n_agencies = n_distinct(ori),
-            n_core_city = sum(core_city==1),
-            core_city = max(core_city),
-            n_agen_city = sum(agency_type==1),
-            n_agen_cnty = sum(agency_type==2),
-            n_agen_univ = sum(agency_type==3),
-            n_agen_spcl = sum(agency_type==5),
-            n_agen_trbl = sum(agency_type==7)) %>%
+  summarize(
+    n_agencies = n_distinct(ori),
+    n_wt = sum(weight),
+    n_core_city = sum(core_city==1),
+    core_city = max(core_city),
+    n_agen_city = sum(agency_type==1),
+    n_agen_cnty = sum(agency_type==2),
+    n_agen_univ = sum(agency_type==3),
+    n_agen_spcl = sum(agency_type==5),
+    n_agen_trbl = sum(agency_type==7)
+  ) %>%
   ungroup()
 
 ```

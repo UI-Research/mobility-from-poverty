@@ -36,7 +36,7 @@ set_urbn_defaults(style = "print")
 
 ```
 
-This metric represents the place-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2016-2022.
+This metric represents the place-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2021-2022.
 
 This file relies on data created in `01_agency_geo_place.Rmd`. You must run `01_agency_geo_place.Rmd` before running this file.
 
@@ -47,7 +47,8 @@ The rest of this file is organized as follows:
 4. Aggregate agency-level offenses to the place level
 5. Calculate rates of reported property crimes per 100,000 people and reported violent crimes per 100,000 people
 6. Construct quality indicators
-7. Save and write out data
+7. Validation
+8. Save and write out data
 
 ## 1. Background
 This section provides background information for the data used to create this metric.
@@ -59,7 +60,11 @@ Instead of downloading the raw data directly, we use criminologist Jacob Kaplan'
 The NIBRS data are separated into segments. For this metric, we use the following segment:
 * Offense segment
 
-To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For this metric, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 police agencies (covering about 45% of the US population) reported NIBRS data. This represented less than half of the approximately 18,000 police agencies in the United States. Instead, agencies primarily reported [UCR data](https://ucrbook.com/). However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). We do not want to use NIBRS data for some years and UCR data for others. This means that **there will be a lot of missing values prior to 2021**.
+Note that data for a single year may change with each version release (e.g., 2021 NIBRS data included in Version 8 may not match 2021 NIBRS data released in Version 9). I think this is because as more agencies switch from reporting through UCR to NIBRS, they also provide historical information. Future updates should make sure to run past years with the most recent version as well.
+
+To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Instead, agencies primarily reported [UCR data](https://ucrbook.com/) for 2020 and before. However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). 
+
+We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2016 and should keep this in mind.
 
 
 ## 2. Manually download NIBRS offense data from openICPSR
@@ -75,19 +80,19 @@ Accessing these data requires an ICPSR account. Therefore, we do not directly do
 
 
 ## 3. Read in and clean NIBRS offense data
-This section extracts the necessary files from the zip file downloaded in the previous step and reads the files into the R environment. The zip file contains data files for 1991-2022. However, we only want 2016-2022.
+This section extracts the necessary files from the zip file downloaded in the previous step and reads the files into the R environment. The zip file contains data files for 1991-2022. However, we only want 2021-2022. Note that future updates of this metric may want to include historical NIBRS data back to 2016 and should update this section to include all years.
 
-### 3.1 Extract files for 2016-2022 from the zip file
-Extract each file for the years 2016-2022 from the `offense` segment.
+### 3.1 Extract files for 2021-2022 from the zip file
+Extract each file for the years 2021-2022 from the `offense` segment.
 ```{r}
 # Specify range of years
-start_year <- 2016
+start_year <- 2021
 end_year <- 2022
 
 # Create a vector of years between start_year and end_year
 my_years <- seq(start_year, end_year)
 
-# Extract years 2016-2022 for the offense segment
+# Extract years 2021-2022 for the offense segment
 for (year in my_years) {
   unzip(
   zipfile = here::here("07_safety", "reported-crime", "data", "nibrs_1991_2022_offense_segment_rds.zip"),
@@ -97,12 +102,12 @@ for (year in my_years) {
 }
 
 # Clean up environment
-rm(start_year, end_year)
+rm(start_year, end_year, my_years)
 
 ```
 
 ### 3.2 Prepare data to be read and cleaned
-Note that the offense segment files are very large. They were too large to read in and append in one step (at least with the code that I was using). Instead, I create a function that reads in the offense segment for each year and cleans it. This makes each file smaller and more manageable, and we are then able to append those smaller files for each year.
+Note that the offense segment files are very large. They were too large to read in and append in one step (at least with the code that I was using) for years 2016-2022. Because future updates may want to include historical data back to 2016, I create a function that reads in the offense segment for each year and cleans it. This makes each file smaller and more manageable, and we are then able to append those smaller files for each year.
 
 #### 3.2a Identify violent crimes and property crimes
 Each observation in the offense segment is a single offense/crime, and includes a variable for the offense code. Offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. We are interested in property crimes and violent crimes. Using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf), we create a data frame of all offense and crime type combinations. We then use this data to identify property crimes and violent crimes in our data. 
@@ -247,36 +252,45 @@ clean_offense_data <- function(year) {
 
 ### 3.3 Read in (and clean) NIBRS offense data
 ```{r}
+# Note that future updates may want to include historical data and should un-comment the lines for 2020 and before
 offenses_2022 <- clean_offense_data(year=2022)
 offenses_2021 <- clean_offense_data(year=2021)
-offenses_2020 <- clean_offense_data(year=2020)
-offenses_2019 <- clean_offense_data(year=2019)
-offenses_2018 <- clean_offense_data(year=2018)
-offenses_2017 <- clean_offense_data(year=2017)
-offenses_2016 <- clean_offense_data(year=2016)
+# offenses_2020 <- clean_offense_data(year=2020)
+# offenses_2019 <- clean_offense_data(year=2019)
+# offenses_2018 <- clean_offense_data(year=2018)
+# offenses_2017 <- clean_offense_data(year=2017)
+# offenses_2016 <- clean_offense_data(year=2016)
 
 ```
 
 ### 3.4 Append NIBRS offense data for all years
 ```{r}
-offenses <- bind_rows(
-  offenses_2016, offenses_2017, offenses_2018, offenses_2019, 
-  offenses_2020, offenses_2021, offenses_2022
+# Note that future updates may want to include historical data and should use the lines that are currently commented out
+offenses_agency <- bind_rows(
+  offenses_2021, offenses_2022
 )
 
 rm(codes, violent, property, clean_offense_data,
-   offenses_2016, offenses_2017, offenses_2018, offenses_2019, 
-   offenses_2020, offenses_2021, offenses_2022)
+   offenses_2021, offenses_2022)
+
+# offenses <- bind_rows(
+#   offenses_2014, offenses_2015, offenses_2016, offenses_2017, offenses_2018,
+#   offenses_2019, offenses_2020, offenses_2021, offenses_2022
+# )
+# 
+# rm(codes, violent, property, clean_offense_data,
+#    offenses_2014, offenses_2015, offenses_2016, offenses_2017, offenses_2018, 
+#    offenses_2019, offenses_2020, offenses_2021, offenses_2022)
 
 ```
 
 Note that because the process of extracting and reading in these files takes so long, I write out the appended all arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
 ```{r}
 # Write out agency-level offense data
-write_csv(offenses, file = here::here("07_safety", "reported-crime", "data", "offenses_16_22.csv"))
+write_csv(offenses_agency, file = here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
 
 # Read agency-level offense data back in for ease of future use
-offenses_agency <- read.csv(here::here("07_safety", "reported-crime", "data", "offenses_16_22.csv"))
+offenses_agency <- read.csv(here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
 
 ```
 
@@ -329,47 +343,29 @@ offenses_agency_place %>%
 ```
 
 ### 4.3 Summarize by place
-    todo(): In the 2022 update, we want there to be a quality variable assigned to each of the two metric values, not one overall (previously the variable was `rate_crime_quality` for both). I think this is the first code chunk in the program where that change would start to be implemented.
-    
 Count number of crimes and number of reporting agencies at the place-level.
+
+Note that this section calculates the percent of agencies reporting violent crimes and property crimes separately from all crimes because the 2022 update requires separate quality measures for each rate. However, all agencies either report both types of crime or no crime, so the numbers are identical.
 ```{r}
 offenses_place <- offenses_agency_place %>%
   group_by(year, state, place) %>%
   summarize(
     n = n(),
     n_reporting_all = sum(reporting_all),
+    n_reporting_violent = sum(reporting_violent),
+    n_reporting_property = sum(reporting_property),
     n_core_city = sum(core_city),
     n_core_city_rpt = sum(core_city==1 & reporting_all==1),
     across(all:property, ~sum(.x, na.rm=TRUE))
   ) %>%
   mutate(
     agencies_reporting_all = n_reporting_all / n,
+    agencies_reporting_violent = n_reporting_violent / n,
+    agencies_reporting_property = n_reporting_property / n,
     core_reporting = n_core_city_rpt / n_core_city,
     GEOID = str_c(state, place)
   ) %>%
   ungroup()
-
-# The following code is my first attempt at creating a quality metric for both rates instead of one overall quality metric 
-
-# offenses_county <- offenses_agency_geo %>%
-#   group_by(year, state, county) %>%
-#   summarize(
-#     n = n(),
-#     n_reporting_all = sum(reporting_all),
-#     n_reporting_violent = sum(reporting_violent),
-#     n_reporting_property = sum(reporting_property),
-#     n_core_city = sum(core_city),
-#     n_core_city_rpt = sum(core_city==1 & reporting_all==1),
-#     n_core_city_rpt_violent = sum(core_city==1 & reporting_violent==1),
-#     n_core_city_rpt_property = sum(core_city==1 & reporting_property==1),
-#     across(all:property, ~sum(.x, na.rm=TRUE))
-#   )
-#   mutate(
-#     agencies_reporting = n_reporting / n,
-#     core_reporting = n_core_city_rpt / n_core_city,
-#     GEOID = str_c(state, county)
-#   ) %>%
-#   ungroup()
 
 ```
 
@@ -409,7 +405,7 @@ rates_place <- offense_place_demo %>%
 
 ```
 
-Suppress rates for counties that have population less than 30 people.
+Suppress rates for places that have population less than 30 people.
 ```{r}
 rates_place <- rates_place %>%
   mutate(
@@ -420,54 +416,105 @@ rates_place <- rates_place %>%
 ```
 
 
-## 7. Construct quality indicators
-    todo(): In the 2022 update, we want there to be a quality variable assigned to each of the two metric values, not one overall (previously the variable was `rate_crime_quality` for both).
-    
+## 6. Construct quality indicators
 This section constructs an indicator used to assess the quality of data for each place. Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
+
+The quality indicator is constructed separately for agencies reporting violent crimes and agencies reporting property crimes, though the values are identical.
 
 Construct the quality indicator.
 ```{r}
 rates_place <- rates_place %>%
   mutate(
-    rate_crime_quality = case_when(
-      agencies_reporting_all == 1 ~ 1,
-      agencies_reporting_all >= 0.8 ~ 2,
-      agencies_reporting_all > 0 ~ 3,
-      agencies_reporting_all == 0 ~ NA_real_),
-    rate_crime_core_quality = case_when(
-      agencies_reporting_all == 1 ~ 1,
-      agencies_reporting_all >= 0.8 | core_reporting==1 ~ 2,
-      agencies_reporting_all > 0 ~ 3,
-      agencies_reporting_all == 0 ~ NA_real_),
-    rate_crime_quality = ifelse(total_people < 30, NA, rate_crime_quality),
-    rate_crime_core_quality = ifelse(total_people < 30, NA, rate_crime_core_quality)
+    rate_crime_violent_quality = case_when(
+      agencies_reporting_violent == 1 ~ 1,
+      agencies_reporting_violent >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting_violent > 0 ~ 3,
+      agencies_reporting_violent == 0 ~ NA_real_),
+    rate_crime_property_quality = case_when(
+      agencies_reporting_property == 1 ~ 1,
+      agencies_reporting_property >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting_property > 0 ~ 3,
+      agencies_reporting_property == 0 ~ NA_real_),
   )
 
 ```
-
-With core reporting, XX places move from a quality indicator of 3 to a quality indicator of 2.
+All places that had any agencies reporting had all agencies reporting.
 ```{r}
-# Check distribution of quality for all agencies and for core reporting agencies
 rates_place %>%
-  count(rate_crime_quality, rate_crime_core_quality)
+  group_by(year) %>%
+  ggplot(aes(x = rate_crime_property_quality)) +
+  geom_bar()
 
-# Remove the all quality metric and rename core reporting quality metric.
-rates_place <- rates_place %>%
-  select(-rate_crime_quality) %>%
-  rename(rate_crime_quality = rate_crime_core_quality)
+```
+
+```{r}
+rates_place %>%
+  group_by(year) %>%
+  ggplot(aes(x = rate_crime_violent_quality)) +
+  geom_bar()
+
+```
+
+
+## 7. Validation
+This section performs several checks on the calculated rates of violent and property crimes.
+
+Check the distribution of rates of property crimes for 2021-2022.
+```{r}
+quantile(
+  rates_place$rate_crime_property,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+
+```
+
+There are a few outliers, but these still seem plausible.
+```{r}
+rates_place %>%
+  filter(rate_crime_property > 10000)
+
+```
+
+Check the distribution of rates of violent crimes for 2021-2022.
+```{r}
+quantile(
+  rates_place$rate_crime_violent,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+
+```
+
+There are is one large outlier in Alabama, but the rates still seem plausible.
+```{r}
+rates_place %>%
+  filter(rate_crime_violent > 10000)
+
+```
+
+
+Rates of reported violent crime and reported property crime are roughly correlated, though there are some outliers.
+```{r}
+rates_place %>%
+  ggplot(aes(rate_crime_property, rate_crime_violent)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Rates of reported violent crime and reported property crime are roughly correlated",
+       subtitle = "") +
+  scatter_grid()
 
 ```
 
 
 ## 8. Save and write out data
-This section saves and write out the final data file. This file is long by place and year (2016-2022). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
+This section saves and write out the final data file. This file is long by place and year (2021-2022). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
 
 Construct the final file.
 ```{r}
 rates_crime_place_all <- rates_place %>%
   mutate(
-    across(c(rate_crime_violent, rate_crime_property),
-           ~ifelse(is.na(rate_crime_quality), NA, .x)),
+    rate_crime_property = ifelse(is.na(rate_crime_property_quality), NA, rate_crime_property),
+    rate_crime_violent = ifelse(is.na(rate_crime_violent_quality), NA, rate_crime_violent),
     state = ifelse(is.na(state), str_sub(GEOID, 1, 2), state),
     place = ifelse(is.na(place), str_sub(GEOID, 3, 7), place)
   ) %>%
@@ -475,7 +522,6 @@ rates_crime_place_all <- rates_place %>%
     year,
     state,
     place,
-    total_people,
     starts_with("rate")
   )
   
@@ -485,7 +531,7 @@ Write out the final file in `.csv` format.
 ```{r}
 write_csv(
   rates_crime_place_all,
-  file = "07_safety/modified data/rates_crime_place_all.csv"
+  file = here::here("07_safety", "modified data", "rates_crime_place_all.csv")
 )
 
 ```
