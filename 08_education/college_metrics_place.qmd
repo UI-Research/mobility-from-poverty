@@ -18,7 +18,7 @@ editor_options:
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
-Primary data derived from the IPUMS API.
+Primary data derived from the IPUMS API. This program produces the metric only for the 450 places included in the UMF data dashboard (other places are left out).
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
@@ -50,13 +50,15 @@ options(scipen = 999)
 
 #set_ipums_api_key("YOUR API KEY", save = TRUE)
 
-map(list.files(here::here("functions", "API")), 
+purrr::walk(list.files(here::here("functions", "API")), 
     ~source(here::here("functions", "API", .x)))
 ```
 
 ## Read Data
 
 Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+
+*Note this download is slow and will take some time to finish. The notes on "Checking extract status" are a feature of the IPUMSR package and are to be expected*
 ```{r}
 acs <- extract_ipums(
   extract_name = "umf_data_18_22",
@@ -94,14 +96,24 @@ place_puma <- puma_place_crosswalk %>%
 
 ## Clean Data
 
-Missing data is reported in a variety of ways by IPUMS data - listed below:
+Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
 
-Age: No missing values reported in variable description.
+Age: No missing values reported in variable description. Check the distribution to confirm there are no abnormalities: the distribution of age looks reasonable (no bunching or extreme outliers).
+
+```{r}
+acs %>% 
+  ggplot(aes(x = age)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Age Variable Results") +
+  ylab("Density")
+```
+
 EDUCD: N/As reported as "1" in all modern surveys. N/As were "000" in the 1980 and 1950 decennial census surveys (not used here).
 Variable codes explained [here]([https://usa.ipums.org/usa-action/variables/EDUC#codes_section) & see "Detailed codes" at bottom).
 Vacancy is reported as "0". 
 
-There is a significant share of records reported as "1" for the education variable. The distribution of age looks reasonable (no bunching or extreme outliers). Note there are no vacancy results by default of the structure of census data read in.
+There is a significant share of records reported as "1" for the education variable. 
 
 ```{r}
 acs %>% 
@@ -114,15 +126,42 @@ acs %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Educational Attainment",
        y = NULL)
+```
 
-acs %>% 
-  ggplot(aes(x = age)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+Confirm the missing values from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
+
+Note that there are no records with values of zero in the bar chart above which eliminates the need to deal with the "no schooling" option.
+```{r}
+head(ipums_val_labels(acs$educd), 50) %>% 
+  reactable()
+```
+
+Turn the missing/"not in universe" value from the educd variable into NAs and remove the labels for the rest of the analysis. Rename to the more meaningful "education_detailed". 
+```{r}
+acs_educ <- acs %>%
+  mutate(education_detailed = zap_labels(educd), 
+         education_detailed = ifelse(education_detailed %in% c(1, 0, 999), NA_integer_,
+                          education_detailed)
+  )
+```
+
+Look at the distribution of education_detailed after adjustment for NAs. We can see that there are no longer records for "1" but we now see "NA".
+```{r}
+acs_educ %>% 
+  count(education_detailed) %>% 
+  ggplot(mapping = aes(x = factor(education_detailed), y = n)) +
+  geom_col() +
   theme_minimal() +
-  ggtitle("Age Variable Results") +
-  ylab("Density")
+  ggtitle("Education Detailed, All Records") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Educational Attainment",
+       y = NULL)
+```
 
-acs %>% 
+Vacancy: Value is reported as "0" according to IPUMs. Note there are no vacancy results by default of the structure of census data read in (confirmed in the distribution of the variable).
+
+```{r}
+acs_educ %>% 
   ggplot(aes(x = vacancy)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   theme_minimal() +
@@ -132,38 +171,8 @@ acs %>%
 
 Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
 ```{r}
-acs_clean <- acs %>%
+acs_clean <- acs_educ %>%
   filter(age == 19 | age == 20) 
-
-rm(acs)
-```
-
-Confirm the missing values from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
-```{r}
-head(ipums_val_labels(acs_clean$educd), 50) %>% 
-  reactable()
-```
-
-Turn the missing/"not in universe" value from the educd variable into NAs and remove the labels for the rest of the analysis.
-```{r}
-acs_clean <- acs_clean %>%
-  mutate(educd = zap_labels(educd), 
-         educd = ifelse(educd %in% c(1, 0, 999), NA_integer_,
-                          educd)
-  )
-```
-
-Look at the distribution of Educd after adjustment for NAs. We can see that there are no longer records for "1" but we now see "NA".
-```{r}
-acs_clean %>% 
-  count(educd) %>% 
-  ggplot(mapping = aes(x = factor(educd), y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Educd, All Records") +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Educational Attainment",
-       y = NULL)
 ```
 
 Examine the group quarters variable, we want to include both households and Group Quarters in this metric as both are relevant to the college readiness of a geography.
@@ -197,27 +206,26 @@ acs_clean %>%
 Evaluate the values in the RACE and HISPAN variables.
 
 * IPUMS documented values for RACE: 
-  + 1 White
-  + 2 Black/African American/Negro
-  + 3 American Indian or Alaska Native 
-  + 4 Chinese 
-  + 5 Japanese
-  + 6 Other Asian or Pacific Islander 
-  + 7 Other race 
-  + 8 Two major races 
-  + 9 Three or more major races
+    + 1 White
+    + 2 Black/African American/Negro
+    + 3 American Indian or Alaska Native 
+    + 4 Chinese 
+    + 5 Japanese
+    + 6 Other Asian or Pacific Islander 
+    + 7 Other race 
+    + 8 Two major races 
+    + 9 Three or more major races
 
 * IPUMS documented values for HISPAN: 
-  + 0 Not Hispanic 
-  + 1 Mexican 
-  + 2 Puerto Rican 
-  + 3 Cuban 
-  + 4 Other 
-  + 9 Not Reported 
+    + 0 Not Hispanic 
+    + 1 Mexican 
+    + 2 Puerto Rican 
+    + 3 Cuban 
+    + 4 Other 
+    + 9 Not Reported 
 
 Look at the distribution of values for the race and hispan variables.
 ```{r}
-
 acs_clean %>% 
   count(race) %>% 
   ggplot(mapping = aes(x = race, y = n)) +
@@ -241,7 +249,6 @@ acs_clean %>%
   labs(x = "Hispan",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
-
 ```
 
 Create the race/ethnicity variable. For race/ethnicity categories that are not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
@@ -252,7 +259,6 @@ Rename the values from number category to race label:
   +Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
   +Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
 ```{r}
-
 acs_clean <- acs_clean %>%
   mutate(subgroup_race = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
                               (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
@@ -283,13 +289,12 @@ acs_clean %>%
 Evaluate the values in the gender variable.
 
 * IPUMS documented values for SEX: 
-  + 1 Male
-  + 2 Female
-  + 9 Missing/blank 
+    + 1 Male
+    + 2 Female
+    + 9 Missing/blank 
 
-Look at the distribution of values for the sex variable. 
+Look at the distribution of values for the sex variable. There are no missing values in the data and the records are reported in an appropriate format.
 ```{r}
-
 acs_clean %>% 
   count(sex) %>% 
   ggplot(mapping = aes(x = sex, y = n)) +
@@ -301,10 +306,9 @@ acs_clean %>%
   labs(x = "Sex",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
-
 ```
 
-Create a variable for subgroup_gender from the sex variable. The titles remain the same but any values outside of Male and Female are mutated to NA character variables. 
+Rename the variable to subgroup_gender. The variable terms remain the same but any values outside of Male and Female are mutated to NA character variables. Though there are no missing values in the current data let's leave this in the case of future ACS surveys including missing values for this variable. 
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
@@ -312,149 +316,142 @@ acs_clean <- acs_clean %>%
                                      TRUE ~ NA_character_))
 ```
 
-Check the variable breakout. This should be approximately 50/50.
-```{r}
-acs_clean %>% 
-  count(subgroup_gender) %>% 
-  ggplot(mapping = aes(x = subgroup_gender, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Subgroup Gender, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Gender",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
-```
-
 ### Create disability variable
 
-The ACS includes 5 variables covering physical and mental disabilitie (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM).
+The ACS includes 5 variables covering physical and mental disabilities (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM). To make these variables more clear, first rename them.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  rename(self_care_difficulty = diffcare,
+         vision_hearing_difficulty = diffsens,
+         independent_living_difficulty = diffmob,
+         ambulatory_difficulty = diffphys,
+         cognitive_difficulty = diffrem)
+```
+
 Evaluate the values in these variables and create an overall subgroup for disability.
 We will count an individual to be disabled if they answer yes or have any of these difficulties. 
 
-* IPUMS documented values for DIFFCARE (Self-care difficulty): 
-  + 0 N/A
-  + 1 No
-  + 2 Yes 
+* IPUMS documented values for self_care_difficulty: 
+    + 0 N/A
+    + 1 No
+    + 2 Yes 
 
-Plot the options for diffcare below.
+Plot the options for self_care_difficulty below.
 ```{r}
 
 acs_clean %>% 
-  count(diffcare) %>% 
-  ggplot(mapping = aes(x = diffcare, y = n)) +
+  count(self_care_difficulty) %>% 
+  ggplot(mapping = aes(x = self_care_difficulty, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Self-care difficulty, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Diffcare",
+  labs(x = "self_care_difficulty",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
 ```
 
-* IPUMS documented values for DIFFSENS (Vision or hearing difficulty): 
-  + 0 N/A
-  + 1 No vision or hearing difficulty
-  + 2 Has vision or hearing difficulty
+* IPUMS documented values for  vision_hearing_difficulty: 
+    + 0 N/A
+    + 1 No vision or hearing difficulty
+    + 2 Has vision or hearing difficulty
 
-Plot the options for diffsens below.
+Plot the options for  vision_hearing_difficulty below.
 ```{r}
 
 acs_clean %>% 
-  count(diffsens) %>% 
-  ggplot(mapping = aes(x = diffsens, y = n)) +
+  count( vision_hearing_difficulty) %>% 
+  ggplot(mapping = aes(x =  vision_hearing_difficulty, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Vision or Hearing difficulty, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Diffsens",
+  labs(x = " vision_hearing_difficulty",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
 ```
 
-* IPUMS documented values for DIFFMOB (Independent living difficulty): 
-  + 0 N/A
-  + 1 No independent living difficulty
-  + 2 Has independent living difficulty
+* IPUMS documented values for independent_living_difficulty: 
+    + 0 N/A
+    + 1 No independent living difficulty
+    + 2 Has independent living difficulty
 
-Plot the options for diffmob below.
+Plot the options for independent_living_difficulty below.
 ```{r}
 
 acs_clean %>% 
-  count(diffmob) %>% 
-  ggplot(mapping = aes(x = diffmob, y = n)) +
+  count(independent_living_difficulty) %>% 
+  ggplot(mapping = aes(x = independent_living_difficulty, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Independent living difficulty, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Diffmob",
+  labs(x = "independent_living_difficulty",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
 ```
 
-* IPUMS documented values for DIFFPHYS (Ambulatory difficulty): 
-  + 0 N/A
-  + 1 No ambulatory difficulty
-  + 2 Has ambulatory difficulty 
+* IPUMS documented values for ambulatory_difficulty: 
+    + 0 N/A
+    + 1 No ambulatory difficulty
+    + 2 Has ambulatory difficulty 
   
-Plot the options for diffphys below.
+Plot the options for ambulatory_difficulty below.
 ```{r}
 
 acs_clean %>% 
-  count(diffphys) %>% 
-  ggplot(mapping = aes(x = diffphys, y = n)) +
+  count(ambulatory_difficulty) %>% 
+  ggplot(mapping = aes(x = ambulatory_difficulty, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Ambulatory difficulty, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Diffphys",
+  labs(x = "ambulatory_difficulty",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
 ```
   
-* IPUMS documented values for DIFFREM  (Cognitive difficulty): 
-  + 0 N/A
-  + 1 No cognitive difficulty
-  + 2 Has cognitive difficulty 
+* IPUMS documented values for cognitive_difficulty: 
+    + 0 N/A
+    + 1 No cognitive difficulty
+    + 2 Has cognitive difficulty 
   
-Plot the options for diffrem below.
+Plot the options for cognitive_difficulty below.
 ```{r}
 acs_clean %>% 
-  count(diffrem) %>% 
-  ggplot(mapping = aes(x = diffrem, y = n)) +
+  count(cognitive_difficulty) %>% 
+  ggplot(mapping = aes(x = cognitive_difficulty, y = n)) +
   geom_col() +
   theme_minimal() +
   ggtitle("Cognitive difficulty, All Records") +
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Diffrem",
+  labs(x = "cognitive_difficulty",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
 ```
 
-
 Create the subgroup for disability. 
 ```{r}
 acs_clean <- acs_clean %>% 
-  mutate(subgroup_disability = case_when(diffrem == "Has cognitive difficulty" |
-                                           diffphys == "Has ambulatory difficulty" |
-                                           diffmob == "Has independent living difficulty" |
-                                           diffsens == "Has vision or hearing difficulty" |
-                                           diffcare == "Yes" ~ "with disabiliy",
+  mutate(subgroup_disability = case_when(cognitive_difficulty == "Has cognitive difficulty" |
+                                           ambulatory_difficulty == "Has ambulatory difficulty" |
+                                           independent_living_difficulty == "Has independent living difficulty" |
+                                            vision_hearing_difficulty == "Has vision or hearing difficulty" |
+                                           self_care_difficulty == "Yes" ~ "with disabiliy",
                                          TRUE ~ "without disability"))
   
 ```
-
 
 Check the variable breakout. 
 ```{r}
@@ -492,11 +489,6 @@ Join the cleaned ACS data onto the crosswalk.
 acs_clean <- left_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"), relationship = "many-to-many")
 ```
 
-Run anti_join to see how many cases did not have a match in the crosswalk. We only select the largest 450 places so this number should be significant.
-```{r}
-anti_join(acs_clean, puma_place_crosswalk, by=c("crosswalk_period", "statefip","puma"))
-```
-
 Drop any observations with NA for afact (i.e. there is no place of interest overlapping this PUMA).
 ```{r}
 acs_clean <- acs_clean %>% 
@@ -509,6 +501,14 @@ acs_clean <- acs_clean %>%
   filter(afact > 0)
 ```
 
+Check that each place has joined to many ACS records. We select the largest 486 places in our crosswalk, all 486 unique places should be connected to multiple records.
+```{r}
+acs_clean %>% 
+  group_by(place, statefip) %>% 
+  count()
+```
+
+## Prepare comuptational variables
 Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
 ```{r}
 
@@ -526,25 +526,25 @@ acs_clean <- acs_clean %>%
 Create a binary hs_degree variable indicating high school degree or not. IPUMS codes  HS graduate (62) and Professional degree (116) (re: educational).
 ```{r}
 acs_clean <- acs_clean %>% 
-  mutate(college_ready = ifelse(educd <= 116 & educd >= 62, 1, 0)) 
+  mutate(college_ready = ifelse(education_detailed <= 116 & education_detailed >= 62, 1, 0)) 
 ```
 
-Check how many records, if any, have NA reported for Educd after filtering (this should be zero).
+Check how many records, if any, have NA reported for education_detailed after filtering (this should be zero).
 ```{r}
 acs_clean %>%
-  filter(is.na(educd)) %>% 
+  filter(is.na(education_detailed)) %>% 
   group_by(pernum) %>% 
   count()
 ```
 
-Check the distribution of the Educd variable one last time - there should be no NA values included. 
+Check the distribution of the education_detailed variable one last time - there should be no NA values included. 
 ```{r}
 acs_clean %>% 
-  count(educd) %>% 
-  ggplot(mapping = aes(x = factor(educd), y = n)) +
+  count(education_detailed) %>% 
+  ggplot(mapping = aes(x = factor(education_detailed), y = n)) +
   geom_col() +
   theme_minimal() +
-  ggtitle("Educd, All Records") +
+  ggtitle("Education Detailed, All Records") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Educational Attainment",
        y = NULL)
