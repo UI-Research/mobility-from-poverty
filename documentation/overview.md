@@ -1002,11 +1002,12 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 ### Overview
 
-* **Analyst & Programmer:** Tina Chelidze
-* **Year(s):** 2021
-* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
-* **Data Source(s):** Census Bureau's American Community Survey 
-* **Notes:**
+* **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
+* **Year(s):** 2016, 2017, 2018, 2019, 2021, 2022
+
+* **Final data name(s):** `digital_access_county_2022.csv`, `digital_access_city_2022.csv`, `digital_access_county_all.csv`, `digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
+* **Data Source(s):** Census Bureau's 1-year ACS for overall and 5-year ACS for subgroups
+* **Notes:** The unit of analysis for the overall and income subgroup is households, whereas the unit of analysis for the race/ethnicity subgroup is people in households. 
 * **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
 * **Limitations:**
 * **Missingness:** There are no missing county or city level observations.
@@ -1015,7 +1016,7 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
 
-This metric is calculated using `digital_access.R' in the 04_education folder.
+This metric is calculated using `digital_access.qmd' in the 04_education folder.
   
 ## Social Capital
   
