@@ -97,6 +97,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
       data_file = here(folder_path, extract_gz_filename)
     )
   
+  #DDI is a codebook that is used by IPUMSR to format the micro data downloaded
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 

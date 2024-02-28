@@ -18,7 +18,7 @@ editor_options:
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
-Primary data derived from the IPUMS API. This program produces the metric only for the 450 places included in the UMF data dashboard (other places are left out).
+Primary data derived from the IPUMS API. This program produces the metric only for the 450 places included in the UMF data dashboard (other places are left out).This metric is the share of 19- and 20-year-olds in a community who have a high school degree.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
@@ -56,14 +56,14 @@ purrr::walk(list.files(here::here("functions", "API")),
 
 ## Read Data
 
-Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
 
 *Note this download is slow and will take some time to finish. The notes on "Checking extract status" are a feature of the IPUMSR package and are to be expected*
 ```{r}
 acs <- extract_ipums(
   extract_name = "umf_data_18_22",
-  extract_description = "Microdata pull for College Readiness Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c"))
+  extract_description = "Microdata pull for College Readiness Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (5-year).",
+  survey = list("us2018c", "us2021c"))
 
 ```
 
@@ -511,22 +511,14 @@ acs_clean %>%
 ## Prepare comuptational variables
 Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
 ```{r}
-
 acs_clean <- acs_clean %>%
   mutate(perwt = perwt*afact) 
-
 ```
 
-Create a binary variable to distinguish between 1 and 5 year ACS data sets. 5-year samples include the term "5-year".
-```{r}
-acs_clean <- acs_clean %>%
-  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
-```
-
-Create a binary hs_degree variable indicating high school degree or not. IPUMS codes  HS graduate (62) and Professional degree (116) (re: educational).
+Create a binary college_ready variable indicating whether the individual has a HS degree or not (including GED as HS degree equivalent). IPUMS codes  HS graduate or GED (62) and above are all considered to meet this requirement.
 ```{r}
 acs_clean <- acs_clean %>% 
-  mutate(college_ready = ifelse(education_detailed <= 116 & education_detailed >= 62, 1, 0)) 
+  mutate(college_ready = ifelse(education_detailed >= 62, 1, 0)) 
 ```
 
 Check how many records, if any, have NA reported for education_detailed after filtering (this should be zero).
@@ -565,8 +557,8 @@ Read in person-level replicate weights for the 19 and 20 year old population. Th
 ```{r}
 repwts_person <- ipums_repwt_college(
   extract_name = "college_replicate_weights",
-  extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+  extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018 and 2022 (5-year).",
+  survey = list("us2018c", "us2021c")
 )  %>% 
   select(-cbserial, -cbpernum)
 ```
@@ -591,31 +583,18 @@ repwts_person <- repwts_person %>%
   select(-sample)
 ```
 
-
 ## Setup Survey Design 
 
 Set up the survey design using instructions from IPUMS. To speed up the srvyr calculation we combine the data by grouping the college ready variable and summing the perwt variable - this limits the number of rows that have to go through the survey_mean function. 
 ```{r}
 acs_survey_all <- acs_clean %>%
-  filter(sample_structure == "1year") %>% 
   left_join(repwts_person, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = perwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "ACS",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
-
-acs_survey_subgroups <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  left_join(repwts_person, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = perwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "ACS",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
-
+  mutate(across(matches('repwtp[0-9]+'),
+                     ~.x * afact)) %>% 
+  as_survey_rep(weights = perwt, 
+                repweights = matches("repwtp[0-9]+"),
+                type = "ACS",
+                mse = TRUE) 
 ```
 
 ## Create college readiness metric
@@ -626,7 +605,7 @@ Objective: get the percent of individuals between 19 and 20 that have a HS degre
 
 Aggregation should be weighted by PERWT (this is a person level statistic).
 
-Check national college readiness ratio. Compute the ratio (share hs degree) for 2018, 2021 and 2022 nationally and show results.
+Check national college readiness ratio. Compute the ratio (share hs degree) for 2018, 2021 and 2022 nationally and show results. This serves as a gut-check, we would expect the results to be above 80% and below 95%.
 ```{r}
 acs_survey_all %>%
   group_by(year) %>%
@@ -638,159 +617,54 @@ acs_survey_all %>%
   reactable()
 ```
 
-### All
+### All and Subgroups
 
-Create share HS degree for all 19 and 20 year-olds at the place-level (1-year data) using the survey_mean function.
-```{r}
-metrics_education_all <- acs_survey_all %>%
-  group_by(year, crosswalk_period, statefip, place) %>% 
-  summarise(
-    share_hs_degree = survey_mean(college_ready, vartype = "ci")
-  ) %>% 
-  ungroup()
-```
-
-Cap upper-bound confidence intervals at 100% (above would be an illogical option). If it is greater than 1, make the share equal to exactly 1.
-```{r}
-metrics_education_all <- metrics_education_all %>% 
-  mutate(share_hs_degree_upp =  ifelse(share_hs_degree_upp > 1, 1, share_hs_degree_upp))
-```
-
-Sort by year, state and place.
-```{r}
-metrics_education_all <- metrics_education_all %>%
-  arrange(year, statefip, place)
-```
-
-*Create an indicator for data quality and suppression*
-
-Calculate the effective sample count for each place, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
-```{r}
-effective_sample <- acs_clean %>%
-  filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, place) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  ungroup()
-```
-
-Merge the data quality flags from place_puma and effective sample onto the college readiness metric to create the final data quality metric. This metric is based on both size of place and the number of samples for that place.
-```{r}
-metrics_education_all <- left_join(metrics_education_all, place_puma, by=c("crosswalk_period", "statefip","place")) 
-
-metrics_education_all <- left_join(metrics_education_all, effective_sample, by=c("year", "crosswalk_period", "statefip","place"))
-```
-
-Tabulate effective sample counts for each place, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. In the 1-year data for all there are no cases of a place with less than 100 observations for 2018, 2021 and 2022.
-```{r}
-reactable_data <- metrics_education_all %>%
-  mutate(
-    effective_sample_cutoffs = case_when(
-      effective_sample < 30 ~ "Less than 30",
-      effective_sample >= 30 &
-        effective_sample <= 100 ~ "Over 30 but 100 or less",
-      effective_sample > 100 &
-        effective_sample <= 300 ~ "Over 100 but 300 or less",
-      TRUE ~ "Greater than 300"
-    ),
-    effective_sample_cutoffs = factor(
-      effective_sample_cutoffs,
-      levels = c(
-        "Less than 30",
-        "Over 30 but 100 or less",
-        "Over 100 but 300 or less",
-        "Greater than 300"
-      )
-    )
-  ) 
-
-# Get suppression factor for each year of data
-suppression_factor <- reactable_data %>%
-  group_by(year) %>%
-  summarize(yearly_total = n()) %>% 
-  select(year, yearly_total)
-
-# Create reactable for further examination
-reactable_data %>%
-  left_join(suppression_factor, by="year") %>% 
-  group_by(year,effective_sample_cutoffs) %>%
-  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
-  reactable()
-
-```
-
-Generate the quality variable for each place.
-```{r}
-metrics_education_all <- metrics_education_all %>% 
-  mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
-         share_hs_degree_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     effective_sample_flag==1 ~ 3)
-  )
-```
-
-We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
-```{r}
-metrics_education_all <- metrics_education_all %>% 
-  mutate_at(c("share_hs_degree", "share_hs_degree_low", "share_hs_degree_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
-```
-
-Keep only relevant variables.
-```{r}
-metrics_education_all <- metrics_education_all %>%
-  select(year,
-         statefip,
-         place,
-         share_hs_degree,
-         share_hs_degree_lb = share_hs_degree_low,
-         share_hs_degree_ub = share_hs_degree_upp,
-         share_hs_degree_quality)
-```
-
-### Subgroups
-
-Create share college ready by race/ethnicity at the place-level (5-year data).
+Create share college ready by race/ethnicity at the place-level (5-year data). Include a calculation of the effective sample count for each place and subgroup, defined as the sum of the afact variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation.
 ```{r}
 metrics_education_subgroup_race <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place, subgroup_race) %>%
  summarise(
-    share_hs_degree = survey_mean(college_ready, vartype = "ci")
+    share_hs_degree = survey_mean(college_ready, vartype = "ci"),
+    effective_sample = unweighted(sum(afact))
   ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
 ```
 
-Create share college ready by gender at the place-level (5-year data).
+Create share college ready by gender at the place-level (5-year data). Include a calculation of the effective sample count.
 ```{r}
 metrics_education_subgroup_gender <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place, subgroup_gender) %>%
  summarise(
-    share_hs_degree = survey_mean(college_ready, vartype = "ci")
+    share_hs_degree = survey_mean(college_ready, vartype = "ci"),
+    effective_sample = unweighted(sum(afact))
   ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "gender") %>% 
   rename(subgroup = subgroup_gender)
 ```
 
-Create share college ready by disability at the place-level (5-year data).
+Create share college ready by disability at the place-level (5-year data). Include a calculation of the effective sample count.
 ```{r}
 metrics_education_subgroup_disability <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place, subgroup_disability) %>%
  summarise(
-    share_hs_degree = survey_mean(college_ready, vartype = "ci")
+    share_hs_degree = survey_mean(college_ready, vartype = "ci"),
+    effective_sample = unweighted(sum(afact))
   ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "disability")%>% 
   rename(subgroup = subgroup_disability)
 ```
 
-Create the share college ready measure for all values in the 5-year data (non-subgroup). This value will be merged onto the subgroup data. 
+Create the share college ready measure for all values in the 5-year data (non-subgroup). This value will be merged onto the subgroup data.Include a calculation of the effective sample count.
 ```{r}
 metrics_education_subgroup_all <- acs_survey_subgroups %>%
   group_by(year, crosswalk_period, statefip, place) %>%
   summarise(
-   share_hs_degree = survey_mean(college_ready, vartype = "ci")
+   share_hs_degree = survey_mean(college_ready, vartype = "ci"),
+    effective_sample = unweighted(sum(afact))
   ) %>% 
   ungroup() %>% 
   mutate(subgroup_type = "all",
@@ -816,57 +690,16 @@ metrics_education_sub <- metrics_education_sub %>%
   mutate(share_hs_degree_upp =  ifelse(share_hs_degree_upp > 1, 1, share_hs_degree_upp))
 ```
 
-Sort by year, state and place.
-```{r}
-metrics_education_sub <- metrics_education_sub %>%
-  arrange(year, statefip, place)
-```
-
 *Create an indicator for data quality and suppression*
-
-Calculate the effective sample count for each subgroup in all places as well as for all samples in every place in the 5-year data.
-```{r}
-effective_sample_sub_all <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "all",
-         subgroup = "All")
-
-effective_sample_race <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place, subgroup_race) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "race-ethnicity") %>% 
-  rename(subgroup = subgroup_race)
-
-effective_sample_gender <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place, subgroup_gender) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "gender") %>% 
-  rename(subgroup = subgroup_gender)
-
-effective_sample_sub <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, place, subgroup_disability) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "disability") %>% 
-  rename(subgroup = subgroup_disability) %>% 
-  bind_rows(effective_sample_sub_all, effective_sample_race, effective_sample_gender) %>% 
-  ungroup()
-```
 
 Merge the data quality flags and create the final data quality metric based on both size and geographic allocation.
 ```{r}
 metrics_education_sub <- left_join(metrics_education_sub, place_puma, by=c("crosswalk_period", "statefip","place"))
-
-metrics_education_sub <- left_join(metrics_education_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","place", "subgroup_type", "subgroup"))
 ```
 
-Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
+Tabulate effective sample counts for each place by sugroup, defined as the sum of the afact for all records in that place and subgroup. Look at the distribution of places by potential cutoffs (30, 100, 300). This is to measure data quality for each place based on the number of records reported. 
 ```{r}
-reactable_data <- metrics_education_sub %>%
+metrics_education_sub %>%
   mutate(
     effective_sample_cutoffs = case_when(
       effective_sample < 30 ~ "Less than 30",
@@ -885,12 +718,11 @@ reactable_data <- metrics_education_sub %>%
         "Greater than 300"
       )
     )
-  )
-
-# Create reactable for further examination using suppression factor defined earlier
-reactable_data %>%
-  left_join(suppression_factor, by="year") %>% 
-  group_by(year,subgroup,effective_sample_cutoffs) %>%
+  ) %>% 
+  group_by(year, subgroup) %>% 
+  mutate(yearly_total = n()) %>% 
+  ungroup() %>% 
+  group_by(year, effective_sample_cutoffs, subgroup) %>%
   summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
   reactable()
 ```
@@ -899,22 +731,22 @@ Generate the quality variable for each place.
 ```{r}
 metrics_education_sub <- metrics_education_sub %>% 
   mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
-         share_hs_degree_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     effective_sample_flag==1 ~ 3)
+         share_hs_degree_quality = case_when(effective_sample_flag == 0 & geographic_allocation_quality == 1 ~ 1,
+                                             effective_sample_flag == 0 & geographic_allocation_quality == 2 ~ 2,
+                                             effective_sample_flag == 0 & geographic_allocation_quality == 3 ~ 3,
+                                             effective_sample_flag == 1 ~ 3)
   )
 ```
 
-We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
+We do not want to show values that are calculated from less than 30 responses in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 responses.
 ```{r}
 metrics_education_sub <- metrics_education_sub %>% 
-  mutate_at(c("share_hs_degree", "share_hs_degree_low", "share_hs_degree_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
+   mutate(across(c(share_hs_degree, share_hs_degree_low, share_hs_degree_upp), ~if_else(effective_sample < 30, NA_integer_, .))) 
 ```
 
-Keep only relevant variables.
+Keep only relevant variables for subgroup data and sort by year, state and place.
 ```{r}
-metrics_education_sub <- metrics_education_sub %>%
+metrics_education_sub_clean <- metrics_education_sub %>%
   select(year,
          statefip,
          place,
@@ -923,49 +755,54 @@ metrics_education_sub <- metrics_education_sub %>%
          share_hs_degree,
          share_hs_degree_lb = share_hs_degree_low,
          share_hs_degree_ub = share_hs_degree_upp,
-         share_hs_degree_quality)
+         share_hs_degree_quality) %>%
+  arrange(year, statefip, place)
+```
+
+Keep only relevant data for all data, and sort by year, state and place.
+```{r}
+metrics_education_all_clean <- metrics_education_sub %>%
+  filter(subgroup == "All") %>% 
+  select(year,
+         statefip,
+         place,
+         share_hs_degree,
+         share_hs_degree_lb = share_hs_degree_low,
+         share_hs_degree_ub = share_hs_degree_upp,
+         share_hs_degree_quality) %>%
+  arrange(year, statefip, place)
 ```
 
 ### Evaluate results
 
-Summarize the predictors for the 1-year and 5-year data.
+Summarize the predictors the all cateogry and categories by subgroups.
 ```{r}
-metrics_education_all %>% 
+metrics_education_all_clean %>% 
   select(share_hs_degree:share_hs_degree_quality) %>% 
   summary()
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   select(share_hs_degree:share_hs_degree_quality) %>% 
   summary()
 ```
 
 Look at distribution of hs_degree share by place.
 ```{r}
-metrics_education_all %>% 
-  filter(year == 2022) %>% 
+metrics_education_all_clean %>% 
+  filter(year == 2021) %>% 
   select(share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Distribution of share hs_degree, by place 2022 (1-year data)") +
+  ggtitle("Distribution by all palces of share hs_degree, 2021 (5-year data)") +
   ylab("Density")
-
-metrics_education_sub %>% 
-  filter(year == 2021, subgroup == "All") %>% 
-  select(share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Distribution of share hs_degree, by place 2022 (5-year data)") +
-  ylab("Density")
-  
 ```
 
 ### Race distribution
 Look at distribution of hs_degree share by place by race.
 ```{r}
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -974,7 +811,7 @@ metrics_education_sub %>%
   ggtitle("hs_degree Share, Black") +
   ylab("Density")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "Hispanic") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -983,7 +820,7 @@ metrics_education_sub %>%
   ggtitle("hs_degree Share, Hispanic") +
   ylab("Density")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "Other Races and Ethnicities") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -992,7 +829,7 @@ metrics_education_sub %>%
   ggtitle("hs_degree Share, Other Races and Ethnicities") +
   ylab("Density")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "White, Non-Hispanic") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -1006,7 +843,7 @@ metrics_education_sub %>%
 ### Gender distribution
 Look at distribution of hs_degree share by place by gender.
 ```{r}
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "Male") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -1015,7 +852,7 @@ metrics_education_sub %>%
   ggtitle("hs_degree Share, males") +
   ylab("Density")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "Female") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -1026,10 +863,11 @@ metrics_education_sub %>%
 ```
 
 ### Disability distribution
+
 Look at distribution of hs_degree share by place by disability status.
 ```{r}
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "with disabiliy") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -1038,7 +876,7 @@ metrics_education_sub %>%
   ggtitle("hs_degree Share, with disabilities") +
   ylab("Density")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   filter(year == 2021, subgroup == "without disability") %>% 
   select(place, share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
@@ -1051,31 +889,31 @@ metrics_education_sub %>%
 
 Look at the counts of the quality flag.
 ```{r}
-metrics_education_all %>% 
+metrics_education_all_clean %>% 
   select(share_hs_degree_quality) %>% 
   ggplot(aes(x = share_hs_degree_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
-  ggtitle("Quality Flag (1-year data)") +
+  ggtitle("Quality Flag (5-year data no subgroups)") +
   ylab("Count")
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   select(share_hs_degree_quality) %>% 
   ggplot(aes(x = share_hs_degree_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
-  ggtitle("Quality Flag (5-year data") +
+  ggtitle("Quality Flag (5-year data with subgroups") +
   ylab("Count")
 ```
 
 Tabulate share of data suppressed by year.
 ```{r}
-metrics_education_all %>% 
+metrics_education_all_clean %>% 
   group_by(year) %>% 
   filter(is.na(share_hs_degree)) %>% 
   count()
 
-metrics_education_sub %>% 
+metrics_education_sub_clean %>% 
   group_by(year) %>% 
   filter(is.na(share_hs_degree)) %>% 
   count()
@@ -1085,20 +923,20 @@ metrics_education_sub %>%
 
 Rename state.
 ```{r}
-metrics_education_all <- metrics_education_all %>% 
+metrics_education_all_clean <- metrics_education_all_clean %>% 
   rename("state" = "statefip")
 
-metrics_education_sub <- metrics_education_sub %>% 
+metrics_education_sub_clean <- metrics_education_sub_clean %>% 
   rename("state" = "statefip")
 ```
 
 Order the variables how we want.
 ```{r}
-metrics_education_all <- metrics_education_all %>% 
+metrics_education_all_clean <- metrics_education_all_clean %>% 
   select(year, state, place, share_hs_degree, 
          share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
 
-metrics_education_sub <- metrics_education_sub %>% 
+metrics_education_sub_clean <- metrics_education_sub_clean %>% 
   select(year, state, place, subgroup_type, subgroup, share_hs_degree,
          share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
 ```
@@ -1106,8 +944,8 @@ metrics_education_sub <- metrics_education_sub %>%
 Export as CSV
 
 ```{r}
-write_csv(metrics_education_all, here::here("08_education", "data", "final", "metrics_college_place_all_longitudinal.csv"))
-write_csv(metrics_education_sub, here::here("08_education", "data", "final", "metrics_college_place_race-ethnicity_longitudinal.csv"))
+write_csv(metrics_education_all_clean, here::here("08_education", "data", "final", "metrics_college_place_all_longitudinal.csv"))
+write_csv(metrics_education_sub_clean, here::here("08_education", "data", "final", "metrics_college_place_sub-groups_longitudinal.csv"))
 ```
 
 

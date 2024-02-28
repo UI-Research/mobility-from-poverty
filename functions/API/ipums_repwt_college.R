@@ -29,6 +29,10 @@ ipums_repwt_college <- function(extract_name, extract_description, survey){
     dir.create(folder_path, recursive = TRUE)
   }
   
+  #Create a list of college ready years for extract specifications
+  highschool_years <- tibble(as.character(19:20)) %>% 
+    pull()
+  
   # Check if extract already exists in your directory. If it does this function will read in the existing data.
   if(!file.exists(here(folder_path, extract_gz_filename))){
     
@@ -39,7 +43,7 @@ ipums_repwt_college <- function(extract_name, extract_description, survey){
         samples = c(survey),
         variables = list(
           var_spec("AGE", 
-                   case_selections = c("19", "20")),
+                   case_selections = highschool_years),
           "REPWTP",
           "CBPERNUM"
         )
