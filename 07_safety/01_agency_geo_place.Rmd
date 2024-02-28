@@ -49,19 +49,21 @@ The rest of this file is organized as follows:
 1. Background and NIBRS Batch Header File download
 2. Load and clean NIBRS Batch Header File
 3. Join place FIPS codes onto agency data
-4. 
-5.
+4. Construct place-level population and demographics using ACS
+5. Create and write out final files
 
-All data used in this file and to create the two safety metrics are available on Box [here]().
+All data used in this file and to create the two safety metrics are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf).
 
 ## 1. Background and NIBRS Batch Header File download
 This program and the safety metrics rely on National Incident-based Reporting System (NIBRS) data. NIBRS is an annual data collection that compiles information on criminal incidents and arrests reported by participating law enforcement agencies. It is a part of the Uniform Crime Reporting Program (UCR) which is administered by the Federal Bureau of Investigation (FBI).
 
 NIBRS data as constructed and formatted by the FBI are stored in a single file. These data are organized by various segment levels (record types). Working with the NIBRS data in its single-file format is difficult. To facilitate use of NIBRS data, ICPSR created extract files. These files are available for download from the National Archive of Criminal Justice Data (NACJD), the criminal justice archive within ICPSR, and can be accessed here [here](https://www.icpsr.umich.edu/web/NACJD/series/128).
 
-The segment of NIBRS data this file is concerned with is called the Batch Header File (also called the Batch Header Segment). Prior to the 2013 data, the Batch Header information was released as three segments. Due to the NIBRS data rapidly growing in size, the FBI released a single file instead. The Batch Header File identifies individual police agencies by originating agency identifier (ORI). An individual police agency (ORI) will appear in the batch header segment once. It also includes variables for each county served by each agency, which is what we are particularly interested in. The data used for both safety metrics (arrests and crimes) are reported at the agency-level. The purpose of using the Batch Header File is to be able to link the agencies to counties for those metrics.
+The segment of NIBRS data this file is concerned with is called the Batch Header File (also called the Batch Header Segment). Prior to the 2013 data, the Batch Header information was released as three segments. Due to the NIBRS data rapidly growing in size, the FBI released a single file instead. The Batch Header File identifies individual police agencies by originating agency identifier (ORI). An individual police agency (ORI) will appear in the batch header segment once. It also includes variables for each county served by each agency, which is what we are particularly interested in. The data used for both safety metrics (arrests and crimes) are reported at the agency-level. The purpose of using the Batch Header File is to be able to link the agencies to places (via counties) for those metrics.
 
-To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 police agencies (covering about 45% of the US population) reported NIBRS data. This represented less than half of the approximately 18,000 police agencies in the United States. Instead, agencies primarily reported [UCR data](https://ucrbook.com/). However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). We do not want to use NIBRS data for some years and UCR data for others. This means that **there will be a lot of missing values prior to 2021**.
+To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Instead, agencies primarily reported [UCR data](https://ucrbook.com/) for 2020 and before. However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)).
+
+We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2016 and should keep this in mind.
 
     Note that we only use the 2022 Batch Header File. Using the Batch Header File from each year might be more accurate, but for the most part it won't matter, especially because so few agencies reported through NIBRS prior to 2021. Additionally, downloading and reading in the Batch Header File for each year takes a lot of time and computing power, and must be done manually for each year which introduces room for error in replication. Future updates may consider using the Batch Header Files for each year, which can be accessed through the following links:
     * [2016](https://www.icpsr.umich.edu/web/ICPSR/studies/37066)
@@ -86,7 +88,7 @@ Accessing these data requires an ICPSR account. Manually downloading these data 
 This section reads in and cleans the reporting agency data contained in the Batch Header File.
 
 ### 2.1 Get universe of agencies from 2022 NIBRS Batch Header File
-Load Batch Header File
+Load 2022 Batch Header File
 ```{r, message=FALSE}
 # Read in the Batch Header File
 batch_header_file <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.tsv"))
@@ -95,6 +97,7 @@ batch_header_file <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.t
 
 Limit file to necessary variables and rename. We use the codebook (`ICPSR_38925\DS0001\38925-0001-Codebook-ICPSR`) to determine what each variable represents.
 ```{r}
+# Note that commented out variables were included in the 2021 code for this metric but not used in the analysis. Will delete them at final step.
 batch_header_file <- batch_header_file %>%
   select(
     ori = BH003, # ori is unique agency identifier used across multiple files
@@ -133,7 +136,7 @@ batch_header_file <- batch_header_file %>%
 
 ```
 
-If an agency is only linked to one county, the other county variables have a value of `-6` for `Not Applicable`. We replace these values with `NA`.
+If an agency is only linked to one county, the other county variables have a value of `-6` for `Not Applicable`. We replace these values with `NA`. Note that in Batch Header Files prior to 2022, these observations simply have a value of `NA`.
 ```{r}
 batch_header_file <- batch_header_file %>%
   mutate(across(c(fips_county_2, fips_county_3, fips_county_4), 
@@ -254,19 +257,23 @@ batch_header_file <- batch_header_file %>%
 
 ## 3. Join place FIPS codes onto agency data
 
-The goal of this section is to match a Census place FIPS code to every agency in the 2022 NIBRS Batch Header File. The Batch Header File has a variable for city name. We could just load the 486 Census places of interest from Urban and attempt to join the files by name. However, (1) this will be imprecise because of differences in naming conventions (city names in one file may have punctuation marks while city names in the other file may not), and (2) it is more complete to first assign a place GEOID to every agency in the data and THEN filter to our places of interest. We accomplish that in the following way:
+The goal of this section is to match a Census place FIPS code to every agency in the 2022 NIBRS Batch Header File. The Batch Header File has a variable for city name. We could just load the 486 Census places of interest from Urban and attempt to join the files by name. However, (1) this will be imprecise because of differences in naming conventions (city names in one file may have punctuation marks while city names in the other file may not), and (2) it is more complete to first assign a place GEOID to **every** agency in the data and **then** filter to agencies that align with our places of interest. We accomplish that in the following way:
 
 1. Use LEAIC
 2. Join by name using Urban’s universe of Census Places
 3. Use county to place crosswalk
 4. Append files
 
+At each step, we split the data into observations that have a place FIPS code matched on and those that do not. We take those observations that still do not have a place code, try a different join, and repeat the process of splitting the observations into those that do and still do not have a place FIPS code. At the end, we append each subset to recreate the full Batch Header File.
+
 ### 3.1 Law Enforcement Agency Identifiers Crosswalk (LEAIC), 2012
 Our 2022 NIBRS Batch Header File contains a list of agencies that each have a unique agency identifier (ORI). The LEAIC also contains a list of agencies with ORI, but it also contains a place FIPS code (and county FIPS) code for every agency. We merge the place FIPS code from LEAIC onto the Batch Header File by agency (ORI).
 
 #### 3.1a Background on LEAIC and manual download
-The Law Enforcement Agency Identifiers Crosswalk (LEAIC) facilitates linking reported crime data with socio-economic data. Note that 2012 is the most recent year for which this crosswalk is available. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR at the following link:
+The Law Enforcement Agency Identifiers Crosswalk (LEAIC) facilitates linking reported crime data with socio-economic data. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR at the following link:
   * [LEAIC](https://www.icpsr.umich.edu/web/NACJD/studies/35158).
+  
+Note that 2012 is the most recent year for which this crosswalk is available. Future updates should check if a more recent crosswalk is available yet.
   
 Accessing these data requires an ICPSR account. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
     1. Create an ICPSR account [here](https://login.icpsr.umich.edu/realms/icpsr/login-actions/registration?client_id=icpsr-web-prod&tab_id=BqotoE6wnqw).
@@ -276,7 +283,6 @@ Accessing these data requires an ICPSR account. Manually downloading these data 
         + Select `Agree` on the `Terms of Use`
     4. Sign into your ICPSR account
     5. This will download a zip file titled `ICPSR_35158-V2`. Unzip the file, navigate to `ICPSR_35158\DS0001\35158-0001-Data.tsv`, and move it to the appropriate directory/folder.
-    todo(): finish download instructions after step 4.  
 
 
 #### 3.1b Load and clean LEAIC
@@ -290,8 +296,10 @@ leaic <- read_tsv(here::here("07_safety", "data", "35158-0001-Data.tsv"))
 Limit file to necessary variables and rename. We use the codebook (`ICPSR_35158\DS0001\35158-0001-Codebook`) to determine what each variable represents.
 ```{r}
 leaic <- leaic %>%
-  mutate(place = str_pad(FPLACE, 5, pad = "0"),
-         GEOID = str_c(FIPS_ST, place)) %>%
+  mutate(
+    place = str_pad(FPLACE, 5, pad = "0"),
+    GEOID = str_c(FIPS_ST, place)
+  ) %>%
   select(
     ori = ORI9, 
     FIPS_COUNTY,
@@ -313,7 +321,7 @@ Join the LEAIC to the 2022 NIBRS Batch Header File by agency.
 joined_ba_leaic <- left_join(
   x = batch_header_file,
   y = leaic,
-  by = "ori"
+  by = c("ori")
 )
 
 ```
@@ -352,9 +360,10 @@ The Urban Institute maintains a list of the 486 Census places that are of intere
 After downloading the places file, read it in. This file contains our 486 places of interest with both their name and place FIPS code.
 ```{r, message=FALSE}
 # Read in Urban places file
-places <- read_csv(file = here::here("07_safety", "data", "place-populations.csv"))
+places <- read_csv(file = here::here("07_safety", "data", "place-populations.csv")) %>%
+  # Note that future updates of the safety metrics may want to include historical NIBRS data back to 2016, and in that case should not filter the places file by year
+  filter(year %in% c(2021, 2022))
 
-# Note that there are only 485 places in 2016 and 2017
 places %>%
   group_by(year) %>%
   count()
@@ -523,7 +532,7 @@ Recall that this file serves as a precursor file to the files that create both o
 * Reported violent crimes per 100,000 people and reported property crimes per 100,000 people
 * Juvenile arrests per 100,000 juveniles
 
-Additionally, for the juvenile arrests metric, we are interested in subgroups by age, race, and sex. To calculate these rates (both total and by subgroup), we need total population and demographic information for our denominators. We pull total population and demographic data from the 5-year ACS files for each year 2016-2022.
+Additionally, for the juvenile arrests metric, we are interested in subgroups by age, race, and sex. To calculate these rates (both total and by subgroup), we need total population and demographic information for our denominators. We pull total population and demographic data from the 5-year ACS files for each year 2021-2022.
 
 This section relies on the `tidycensus` package, which requires a Census API key. You can acquire a key [here](https://api.census.gov/data/key_signup.html) and learn more about installing your key [here](https://walker-data.com/tidycensus/reference/census_api_key.html).
 ```{r}
@@ -535,18 +544,21 @@ This section relies on the `tidycensus` package, which requires a Census API key
 ### 4.1 Check ACS variable names and identify those we need
 Load ACS variables for our first and last years. Manually explore each file and spot check several observations. The naming conventions of ACS variables do not seem to change during our time period.
     Note that if they did we would need to split up the code that reads in the years below.
+    Note that future updates of the safety metrics may want to pull data back to 2016, in which case the first year should be changed below.
 ```{r}
-# Check ACS variables for 2016 and 2022 to see if they change over time
-variables2016 <- tidycensus::load_variables(2016, "acs5")
-variables2022 <- tidycensus::load_variables(2022, "acs5")
+# Check ACS variables for the first and last years to see if they change over time
+variables_fy <- tidycensus::load_variables(2021, "acs5")
+variables_ly <- tidycensus::load_variables(2022, "acs5")
 
 ```
 
 ### 4.2 Create vectors for years and variables of interest
-    todo(): depending on the subgroups desired for the safety metrics, the sex/age group/race variables pulled here may need updated.
+Note that if additional subgroups for either safety metric are desired in future updates, the variables pulled here may need updated.
+Note that future updates of the safety metrics may want to pull data back to 2016, in which case the list of years should be changed below.
 ```{r}
 # Create a list of all our years
-years <- lst(2016, 2017, 2018, 2019, 2020, 2021, 2022)
+# years <- lst(2016, 2017, 2018, 2019, 2020, 2021, 2022)
+years <- lst(2021, 2022)
 
 # Create a vector for our ACS variables of interest
 my_vars <- c(
@@ -595,7 +607,7 @@ my_vars <- c(
 
 ```
 
-### 4.3 Pull 2016-2022 5-year ACS data at the place level 
+### 4.3 Pull 5-year ACS data for all years 2021-2022 at the place level 
 Pull 5-year ACS data at the place level for each year
 ```{r}
 # Pull data
@@ -619,7 +631,7 @@ place_demo <- place_demo_full %>%
   filter(state != "72")
 
 # Remove obsolete files
-rm(variables2016, variables2022, years, my_vars)
+rm(variables_fy, variables_ly, years, my_vars)
 
 ```
 
@@ -632,13 +644,19 @@ place_demo <- place_demo %>%
 
 ```
 
-#### 4.4a Construct subgroups for age, race/ethnicity, and sex
-    todo(): For the rate of juvenile justice arrests metric, we want additional subgroups of sex (male, female) and age groups (age 10-14, age 15-17) for all years.
+#### 4.4a Construct subgroups for race/ethnicity, sex, and age subgroups
+For the rate of juvenile arrests per 100,000 juveniles metric, we want subgroups by race, sex, and age subgroups. These are subgroups of all observations ages 10-17, so the sum of each subgroup should equal the total number of observations ages 10-17.
+    * Race: white, Black, Hispanic, Asian/other
+    * Sex: male, female
+    * Age: ages 10-14, ages 15-17
+
 ```{r}
-# Construct groups
+# Create the total for ages 10-17 and the race, sex, and age subgroups
 place_demo <- place_demo %>%
   mutate(
+    # Total age 10-17
     age_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
+    # Race subgroups
     age_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
     age_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
     age_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
@@ -648,6 +666,12 @@ place_demo <- place_demo %>%
     # age_1017_twom = age_m_1014_twom + age_m_1517_twom + age_f_1014_twom + age_f_1517_twom,
     age_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
     age_1017_white_nh = age_m_1014_white_nh + age_m_1517_white_nh + age_f_1014_white_nh + age_f_1517_white_nh,
+    # Sex subgroups
+    sex_1017_m = age_m_1014 + age_m_1517,
+    sex_1017_f = age_f_1014 + age_f_1517,
+    # Age subgroups
+    age_1014_all = age_m_1014 + age_f_1014,
+    age_1517_all = age_m_1517 + age_f_1517
   )
 
 # Edit race variables
@@ -656,24 +680,28 @@ place_demo <- place_demo %>%
     # Manually create "two or more" race variable
     age_1017_twom = age_1017 - age_1017_white - age_1017_black - 
       age_1017_aian - age_1017_asin - age_1017_nhpi - age_1017_othr,
-    # Combine all asian races, other races. and two or more races
+    # Combine all asian races, other races, and two or more races
     age_1017_asian_other = age_1017_aian + age_1017_asin + age_1017_nhpi +
       age_1017_othr + age_1017_twom
   )
 
 ```
 
-Limit ACS data to relevant variables and to places in the Urban universe of 486 places
+Limit ACS data to relevant variables 
 ```{r}
 # Limit to relevant variables
 place_demo <- place_demo %>%
-  select(year, GEOID, total_people, starts_with("age_1017"))
+  select(year, GEOID, total_people, starts_with("age_1017"), starts_with("sex_1017"), ends_with("_all"))
+```
 
+Limit ACS data to places in the Urban universe of 486 places
+```{r}
 # Limit places to those in the Urban file
 place_demo <- place_demo %>%
   filter(GEOID %in% places$GEOID)
 
 ```
+
 
 
 ## 5. Create and write out final files
@@ -683,8 +711,8 @@ This file contains Urban's universe of 486 places by year with population and de
 
 We've already created it, so we just need to write it out.
 ```{r}
-# This file has 485 places by 2 years and 486 places by 5 years = 3,400 observations
-# write_csv(place_demo, file = "modified data/all_place_demo.csv")
+# This file has 486 places by 2 years = 972 observations
+write_csv(place_demo, file = "modified data/all_place_demo.csv")
 
 ```
 
@@ -692,7 +720,7 @@ We've already created it, so we just need to write it out.
 This file contains Urban's universe of 486 places by year with population and demographic information, and includes the total number of reporting agencies in each place
 
 First, count the number of agencies per place in our universe of places.
-470 places have any agency, and the maximum number of agencies in a place is 37.
+470 places have any agency. This is consistent with the number of places that had any agency in the 2021 safety metrics update. The maximum number of agencies in a place is 37.
 ```{r}
 place_agency <- bhf_place_urb %>%
   # filter(!is.na(place)) %>%
@@ -716,7 +744,7 @@ skim(place_agency)
 
 Join the place-level number of agencies onto the place/year-level population and demographic data
 ```{r}
-# This file has 485 places by 2 years and 486 places by 5 years = 3,400 observations. Only 470/486 places had any agency, so 110 observations (accounting for all years) are only in the demographic file
+# This file has 486 places by 2 years = 972 observations. Only 470/486 places had any agency, so 32 observations (accounting for all years) are only in the demographic file
 place_demo_agency <- left_join(
   x = place_demo,
   y = place_agency,
@@ -725,17 +753,17 @@ place_demo_agency <- left_join(
 
 ```
 
-  todo(): state is missing for some observations but the full state/place GEOID is not
+Note that `state` is missing for some observations that are missing agencies but the full state/place `GEOID` is not
 ```{r}
 place_demo_agency %>%
   filter(is.na(n_agencies)) %>%
-  group_by(year, state) %>%
+  group_by(GEOID) %>%
   count()
 ```
 
 Write out the file
 ```{r}
-# write_csv(place_demo_agency, file = "modified data/all_place_demo_agency.csv")
+write_csv(place_demo_agency, file = "modified data/all_place_demo_agency.csv")
 
 ```
 
@@ -748,7 +776,7 @@ We've already created this file. We limit to the variables we want to keep and t
 bhf_place_urb <- bhf_place_urb %>%
   select(ori, state, place, core_city, agency_type, GEOID)
 
-# write_csv(bhf_place_urb, file = "modified data/all_agency_place.csv")
+write_csv(bhf_place_urb, file = "modified data/all_agency_place.csv")
 
 ```
 
