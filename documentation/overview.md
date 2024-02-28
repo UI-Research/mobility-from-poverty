@@ -1014,9 +1014,11 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 ### Process
 
-This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+This metric shows the ratio of households with the presence of a computer and a 
+type of broadband internet subscription in their household (we calculate the
+overall ratio, as well as by race/ethnicity and income subgroups.)
 
-This metric is calculated using `digital_access.qmd' in the 04_education folder.
+This metric is calculated using `digital_access.qmd` in the 08_education folder.
   
 ## Social Capital
   
