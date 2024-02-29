@@ -311,13 +311,103 @@ county_income
 place_income
 ```
 
+## Calculate Coefficients of Variation and Confidence Intervals
+
+We combine margins of errors for detailed groups using rules from slide 51
+[here](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf).
+We then calculate coefficients of variation:
+
+1.  Convert the MOE into a standard error by dividing by 1.96 because we pulled
+    census using a 95% confidence interval
+
+2.  Divide the standard error by the estimate
+
+```{r}
+#| label: calculate-coefficients-of-variation
+
+calculate_cov <- function(data, zscore = 1.96) {
+  data |>
+    # cur_column() dynamically references current column, simplifying pairwise iteration in across().
+    mutate(across(
+      .cols = ends_with("digital") & !starts_with("moe"),
+      .fns = ~ (get(paste0("moe_", cur_column())) / zscore) / .x,
+      .names = "cv_{.col}"
+    ))
+}
+
+lst(
+  county_overall,
+  place_overall,
+  county_raceeth,
+  place_raceeth,
+  county_income,
+  place_income
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = calculate_cov(.y),
+      envir = .GlobalEnv
+    )
+  )
+```
+
+We then calculate confidence intervals at the 95% level by adding/subtracting
+the MOE estimate from our digital access variables:
+
+```{r}
+#| label: calculate-confidence-intervals
+
+calculate_confidence_intervals <- function(data) {
+  data |>
+    mutate(across(
+      .cols = any_of(c(
+        "total_households_digital",
+        "total_people_in_households_digital",
+        "other_digital",
+        "black_digital",
+        "hispanic_digital",
+        "white_digital",
+        "income_less_than_50k_digital",
+        "income_more_than_50k_digital"
+      )),
+      .fns = list(
+        lb = ~ .x - get(paste0("moe_", cur_column())),
+        ub = ~ .x + get(paste0("moe_", cur_column()))
+      ),
+      .names = "{.col}_{.fn}"
+    ))
+}
+
+
+lst(
+  county_overall,
+  place_overall,
+  county_raceeth,
+  place_raceeth,
+  county_income,
+  place_income
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = calculate_confidence_intervals(.y),
+      envir = .GlobalEnv
+    )
+  )
+```
+
 ## Calculate the digital access metric
 
 ```{r}
 #| label: calculate-digital-access-metric
 
-calculate_digital_access_metric <- function(pop_data, digital_data) {
-  pop_data |>
+calculate_digital_access_metric <- function(data) {
+  data |>
     mutate(across(
       .cols = any_of(c(
         "total_households",
@@ -329,8 +419,12 @@ calculate_digital_access_metric <- function(pop_data, digital_data) {
         "income_less_than_50k",
         "income_more_than_50k"
       )),
-      .fns = ~ get(paste0(cur_column(), "_digital")) / .x,
-      .names = "share_digital_access_{.col}"
+      .fns = list(
+        share_digital_access = ~ get(paste0(cur_column(), "_digital")) / .x,
+        share_digital_access_lb = ~ get(paste0(cur_column(), "_digital_lb")) / .x,
+        share_digital_access_ub = ~ get(paste0(cur_column(), "_digital_ub")) / .x
+      ),
+      .names = "{.fn}_{.col}"
     )) |>
     arrange(geoid, name, year) %>%
     # replace instances with division by zero
@@ -362,47 +456,6 @@ map_dbl(county_raceeth_digital_access, ~ sum(is.nan(.x)))
 map_dbl(place_raceeth_digital_access, ~ sum(is.nan(.x)))
 map_dbl(county_income_digital_access, ~ sum(is.nan(.x)))
 map_dbl(place_income_digital_access, ~ sum(is.nan(.x)))
-```
-
-We combine margins of errors for detailed groups using rules from slide 51
-[here](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf).
-We then calculate coefficients of variation:
-
-1.  Convert the MOE into a standard error by dividing by 1.96 because we pulled
-    census using a 95% confidence interval
-
-2.  Divide the standard error by the estimate
-
-```{r}
-#| label: calculate-coefficients-of-variation
-
-calculate_cov <- function(data, zscore = 1.96) {
-  data |>
-    # cur_column() dynamically references current column, simplifying pairwise iteration in across().
-    mutate(across(
-      .cols = ends_with("digital") & !starts_with("moe"),
-      .fns = ~ (get(paste0("moe_", cur_column())) / zscore) / .x,
-      .names = "cv_{.col}"
-    ))
-}
-
-lst(
-  county_overall_digital_access,
-  place_overall_digital_access,
-  county_raceeth_digital_access,
-  place_raceeth_digital_access,
-  county_income_digital_access,
-  place_income_digital_access
-) %>%
-  map2(
-    .x = names(.),
-    .y = .,
-    .f = ~ assign(
-      x = .x,
-      value = calculate_cov(.y),
-      envir = .GlobalEnv
-    )
-  )
 ```
 
 # Create data quality flags
@@ -599,6 +652,7 @@ reshape_for_export <- function(data, subgroup = "race-ethnicity") {
   geo_var <- ifelse("county" %in% colnames(data), sym("county"), sym("place"))
 
 
+
   data <-
     data %>%
     select(
@@ -608,21 +662,22 @@ reshape_for_export <- function(data, subgroup = "race-ethnicity") {
   if (subgroup == "overall") {
     data <-
       data |>
-      rename(
-        share_digital_access = share_digital_access_total_households,
-        share_digital_access_quality = share_digital_access_total_households_quality
-      )
+      rename_with(~ str_remove(., "_total_households"), starts_with("share_digital_access"))
   } else if (subgroup == "race-ethnicity") {
     data <-
       data |>
       pivot_longer(starts_with("share_digital_access")) |>
       mutate(subgroup = str_remove(name, "share_digital_access_") |>
+        str_remove("lb_") |>
+        str_remove("ub_") |>
         str_remove("_quality") |>
         str_replace_all("_", " ") |>
         str_to_title()) |>
       mutate(
         name = case_when(
           str_detect(name, "quality") ~ "share_digital_access_quality",
+          str_detect(name, "lb_") ~ "share_digital_access_lb",
+          str_detect(name, "ub_") ~ "share_digital_access_ub",
           .default = "share_digital_access"
         ),
         subgroup = case_match(subgroup,
@@ -646,15 +701,18 @@ reshape_for_export <- function(data, subgroup = "race-ethnicity") {
       data |>
       pivot_longer(starts_with("share_digital_access")) |>
       mutate(subgroup = str_remove(name, "share_digital_access_") |>
+        str_remove("lb_") |>
+        str_remove("ub_") |>
         str_remove("_quality") |>
         str_replace_all("_", " ") |>
         str_to_title()) |>
       mutate(
         name = case_when(
           str_detect(name, "quality") ~ "share_digital_access_quality",
+          str_detect(name, "lb_") ~ "share_digital_access_lb",
+          str_detect(name, "ub_") ~ "share_digital_access_ub",
           .default = "share_digital_access"
-        ),
-        subgroup_type = "income"
+        )
       ) |>
       pivot_wider(
         names_from = name,
@@ -723,9 +781,10 @@ We suppress showing metric values for observations with missing CVs
 
 suppress_bad_cvs <- function(data) {
   data %>%
-    mutate(
-      share_digital_access = if_else(is.na(share_digital_access_quality), NA_real_, share_digital_access)
-    )
+    mutate(across(
+      c(share_digital_access, share_digital_access_lb, share_digital_access_ub),
+      ~ if_else(is.na(share_digital_access_quality), NA_real_, .x)
+    ))
 }
 
 lst(
@@ -757,6 +816,44 @@ place_subgroup_digital_access <-
     place_raceeth_digital_access,
     place_income_digital_access
   )
+```
+
+```{r}
+get_summary_stats <- function(data) {
+  data |>
+    summarise(across(c(share_digital_access, share_digital_access_lb, share_digital_access_ub),
+      .fns = list(
+        min = ~ min(.x, na.rm = TRUE),
+        median = ~ median(.x, na.rm = TRUE),
+        max = ~ max(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )) |>
+    pivot_longer(cols = everything()) |>
+    mutate(
+      stat = str_extract(name, "[^_]+$"),
+      name = str_remove(name, "_[^_]+$")
+    ) |>
+    pivot_wider(
+      names_from = stat,
+      values_from = value
+    )
+}
+
+county_overall_digital_access |> get_summary_stats()
+
+place_overall_digital_access |> get_summary_stats()
+
+county_raceeth_digital_access |> get_summary_stats()
+
+place_raceeth_digital_access |> get_summary_stats()
+
+county_income_digital_access |> get_summary_stats()
+
+place_income_digital_access |> get_summary_stats()
+```
+
+```{r}
 ```
 
 ```{r}
