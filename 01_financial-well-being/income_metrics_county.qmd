@@ -1,6 +1,6 @@
 ---
 title: "Opportunity for Income Predictor, county-level"
-author: "JP Walsh"
+author: "JP Walsh and Aaron R. Williams"
 date: today
 format:
   html:
@@ -22,16 +22,6 @@ Primary data derived from the IPUMS API.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
--   [Housekeeping](#housekeeping)
--   [Read Data](#read-data)
--   [Clean Data](#clean-data)
--   [Merge Crosswalk](#merge-crosswalk)
--   [Read replicate weights](#read-replicate-weights)
--   [Setup Survey Design](#setup-survey-design)
--   [Create Income Metric](#create-income-metric)
--   [Evaluate Results](#evaluate-results)
--   [Export](#export)
-
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -43,110 +33,178 @@ library(ipumsr)
 library(reactable)
 library(srvyr)
 library(scales)
+library(tictoc)
 
 options(scipen = 999)
+
+theme_set(theme_minimal())
 
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("INSERT KEY HERE", save = TRUE, overwrite = TRUE)
 
 source(here::here("functions", "API", "extract_ipums.R"))
+source(here::here("functions", "API", "ipums_repwt_household.R"))
+source(here::here("01_financial-well-being", "R", "calc_income_quantiles.R"))
+source(here::here("01_financial-well-being", "R", "calc_income_quantiles_subgroup.R"))
+
 ```
 
+## Load Data
 
-## Read Data
+### Household Data
 
-Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+Read in the ACS extracts using the `extract_ipums()` function. This function only loads the data if it isn't already saved on the computer with the appropriate name. The name is determined by `extract_name`. 
+
+We currently include three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+
 ```{r}
 acs <- extract_ipums(
   extract_name = "umf_data_18_22",
-  extract_description = "Microdata pull for Mobility Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+  extract_description = "Microdata pull for Mobility Metric Predictors. 
+  American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a")#, "us2018c", "us2021c")
 ) 
+
 ```
+
+todo(aaron): split into two programs. One with 5-year data and one with 1-year data
 
 Look at the distribution of samples in the data. The 5-year data sets should comprise a larger share of the total sample.
+
 ```{r}
-acs %>% 
-  count(sample) %>% 
-  ggplot(mapping = aes(x = sample, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Samples, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Samples",
-       y = NULL)
+count(acs, sample)
+
 ```
 
-Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+Isolate data to include each household only once.
+
 ```{r}
-puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+acs <- acs %>%
+  filter(pernum == 1)
+
 ```
 
-Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
+### Household Replicate Weights
+
+Read in the ACS household replicate weights using the `ipums_repwt_household()` function. This function only loads the data if it isn't already saved on the computer with the appropriate name. The name is determined by `extract_name`. The replicate weights are needed to construct confidence intervals. 
+
 ```{r}
-county_puma <- puma_county_crosswalk %>%
-  group_by(crosswalk_period, statefip, county) %>% 
-  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
-  ungroup()
+repwts_household <- ipums_repwt_household(
+  extract_name = "household_replicate_weights",
+  extract_description = "Household level replicate weights for income quantiles 
+  metric. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
+  survey = list("us2018a", "us2021a", "us2022a")#, "us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
+
+```
+
+todo(aaron): split into two programs. One with 5-year data and one with 1-year data
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts_household, sample)
+
+```
+
+Isolate data to include each household only once.
+
+```{r}
+repwts_household <- repwts_household %>%
+  filter(pernum == 1)
+
+```
+
+Remove the sample variable so it isn't duplicated in the join. 
+```{r}
+repwts_household <- repwts_household %>% 
+  select(-sample)
+
+```
+
+Join the replicate weights to the ACS household-level data. This join should be one-to-one based on the unique person identifier. 
+
+```{r}
+length(unique(pull(acs, unique_person_id)))
+
+length(unique(pull(repwts_household, unique_person_id)))
+
+acs_combined <-  
+  left_join(
+    acs,
+    repwts_household, 
+    by = "unique_person_id"
+  )
+
+length(unique(pull(acs_combined, unique_person_id)))
+
+rm(acs)
+rm(repwts_household)
+
 ```
 
 ## Clean Data
 
 Missing data is reported in a variety of ways by IPUMS - listed below:
 
-HHINCOME is missing it is reported as "9999999".
-Vacancy is reported as "0". 
+* `hhincome` is missing it and the missing value is reported as `9999999`. All missing incomes are for individuals in group quarters.
+* `vacancy` is reported as "0". 
 
-There is a large share of records missing HHINCOME. However, note there are no vacancy results by default of the structure of census data read in.
+There is a large share of records missing ``hhincome`. However, note there are no vacancy results by default of the structure of census data read in.
 
 ```{r}
-acs %>% 
+acs_combined %>% 
   ggplot(aes(x = hhincome)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Household Income Variable Results") +
-  ylab("Density")
+  labs(
+    title = "Household Income Variable Results",
+    y = "Density"
+  )
 
-acs %>% 
+acs_combined %>% 
   ggplot(aes(x = vacancy)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Vacancy Variable Results") +
-  ylab("Density")
+  labs(
+    title = "Vacancy Variable Results",
+    y = "Density"
+  )
+
 ```
 
-Turn the missing/"not in universe" values for the hhincome variable into NAs. Remove original data to save space.
+Turn the missing/"not in universe" values for the `hhincome` variable into `NA`s.
 
 ```{r}
+acs_clean <- acs_combined %>%
+  mutate(
+    hhincome = if_else(
+      hhincome == 9999999, 
+      NA_integer_,
+      hhincome
+    )
+  )
 
-acs_clean <- acs %>%
-  mutate(hhincome = ifelse(hhincome == 9999999, NA_integer_,
-                           hhincome)
-         )
-
-rm(acs)
 ```
 
-Look at distribution of HHINCOME after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
+Look at distribution of `hhincome` after adjustment.
 
 ```{r}
 
 acs_clean %>% 
   ggplot(aes(x = hhincome)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Household Income Variable Results") +
-  ylab("Density")
+  labs(
+    title = "Household Income Variable Results",
+    y = "Density"
+  )
 
 ```
 
 Select our group quarters, we want to keep only households including additional households under updated definitions.
 
 ```{r}
-acs_clean %>% 
-  group_by(gq) %>% 
-  count()
+count(acs_clean, gq)
+
 ```
 
 ```{r}
@@ -155,179 +213,132 @@ acs_clean <- acs_clean %>%
                    "Additional households under 1990 definition",
                    "Additional households under 2000 definition"))
 
-
 ```
 
 Check that group quarters fall only into household categories.
+
 ```{r}
 acs_clean %>% 
   count(gq) %>% 
   ggplot(mapping = aes(x = gq, y = n)) +
   geom_col() +
-  theme_minimal() +
-  ggtitle("GQ, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
+  geom_text(mapping = aes(label = n), vjust = -1) +   
+  scale_x_discrete(labels = label_wrap(10)) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "GQ",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
+  labs(
+    title = "GQ, All Records",
+    y = NULL
+  )
+  
 ```
 
 ### Create race variable
 
 Evaluate the values in the RACE and HISPAN variables.
 
-* IPUMS documented values for RACE: 
-  + 1 White
-  + 2 Black/African American/Negro
-  + 3 American Indian or Alaska Native 
-  + 4 Chinese 
-  + 5 Japanese
-  + 6 Other Asian or Pacific Islander 
-  + 7 Other race 
-  + 8 Two major races 
-  + 9 Three or more major races
+IPUMS documented values for RACE: 
 
-* IPUMS documented values for HISPAN: 
-  + 0 Not Hispanic 
-  + 1 Mexican 
-  + 2 Puerto Rican 
-  + 3 Cuban 
-  + 4 Other 
-  + 9 Not Reported 
+* 1 White
+* 2 Black/African American/Negro
+* 3 American Indian or Alaska Native 
+* 4 Chinese 
+* 5 Japanese
+* 6 Other Asian or Pacific Islander 
+* 7 Other race 
+* 8 Two major races 
+* 9 Three or more major races
+
+IPUMS documented values for HISPAN: 
+
+* 0 Not Hispanic 
+* 1 Mexican 
+* 2 Puerto Rican 
+* 3 Cuban 
+* 4 Other 
+* 9 Not Reported 
 
 Check that group quarters fall only into household categories.
-```{r}
 
+```{r}
 acs_clean %>% 
   count(race) %>% 
-  ggplot(mapping = aes(x = race, y = n)) +
+  ggplot(mapping = aes(x = n, y = race)) +
   geom_col() +
-  theme_minimal() +
-  ggtitle("Race, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Race",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
+  geom_text(mapping = aes(label = n), hjust = -0.25) +  
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(labels = label_wrap(15)) +
+  labs(
+    title = "Race, All Records"
+  ) 
 
 acs_clean %>% 
   count(hispan) %>% 
-  ggplot(mapping = aes(x = hispan, y = n)) +
+  ggplot(mapping = aes(x = n, y = hispan)) +
   geom_col() +
-  theme_minimal() +
-  ggtitle("Hispan, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Hispan",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
+  geom_text(mapping = aes(label = n), vjust = -0.1) +  
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(labels = label_wrap(15)) +
+  labs(
+    title = "Hispan, All Records",
+  )
 
 ```
 
 Create the race/ethnicity variable. For other race/ethnicity categories not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
 
 Rename the values from number category to race label: 
-  +Race is 2 and Hispan is 0 = "Black, Non-Hispanic"
-  +Hispan is >=1 and <=4 = "Hispanic"
-  +Race is >=3 and <=9 and Hispan is 0  = "Other Races and Ethnicities" 
-  +Race is 4 and Hispan is 0 = "White, Non-Hispanic" 
-```{r}
 
+* Hispanic heads of households are Hispanic
+* White, Non-Hispanic heads of household are White, Non-Hispanic
+* Black/African American, Non-Hispanic heads of household are Black, Non-Hispanic
+* All other heads of households are Other Races and Ethnicities
+  
+```{r}
 acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
-                              (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
-                              (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
-                               hispan != "Not Hispanic" ~ "Hispanic"
-  ))
+  mutate(
+    subgroup_race_ethnicity = case_when(
+      hispan != "Not Hispanic" ~ "Hispanic",
+      race == "White" ~ "White, Non-Hispanic",
+      race == "Black/African American" ~ "Black, Non-Hispanic",
+      !race %in% c("Black/African American", "White") ~ "Other Races and Ethnicities"
+    )
+  )
 
 ```
 
 Look at subgroup distribution.
 
 ```{r}
-
 acs_clean %>% 
-  count(subgroup) %>% 
-  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
+  count(subgroup_race_ethnicity) %>% 
+  ggplot(mapping = aes(x = subgroup_race_ethnicity, y = n)) +
   geom_col() +
-  theme_minimal() +
-  ggtitle("Subgroup, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
+  geom_text(mapping = aes(label = n), vjust = -1) + 
+  scale_x_discrete(labels = label_wrap(15)) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Subgroup",
-       y = NULL)
-```
-
-## Merge Crosswalk 
-
-Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
-```{r}
-acs_clean <- acs_clean %>% 
-  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+  labs(
+    title = "Subgroup, All Records",
+    x = "Subgroup",
+    y = NULL
+  )
 
 ```
-
-Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
-```{r}
-acs_clean %>% 
-  group_by(crosswalk_period, year) %>% 
-  count()
-```
-
-Join the cleaned ACS data onto the crosswalk. This is a many-to-many join because we are aggregating from PUMA to county.
-```{r}
-
-acs_clean <- left_join(acs_clean, puma_county_crosswalk, 
-                       by=c("crosswalk_period", "statefip","puma"), 
-                       relationship = "many-to-many")
-
-```
-
-Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
-```{r}
-acs_clean <- acs_clean %>% 
-    drop_na(afact)
-
-```
-
-Also filter out cases where AFACT is equal to zero.
-```{r}
-acs_clean <- acs_clean %>% 
-  filter(afact > 0)
-```
-
-Adjust weight to account for PUMA-to-county mapping (those where unique_types do not equal 1).Drop PUMA flag variable from PUMA_county.
-
-Apply the Adjust variable to household income. Adjust converts the dollar amounts to the amount that they would have been had they been earned entirely during the calendar year. This is to deal with households being surveyed at different times during the year.
-```{r}
-
-acs_clean <- acs_clean %>%
-  mutate(hhwt = hhwt*afact, 
-         hhincome = hhincome*adjust
-  ) 
-
-```
-
-Isolate data to include each household only once (PERNUM == 1 counts head of household only).
-
-```{r}
-acs_clean <- acs_clean %>%
-  filter(pernum == 1)
-```
-
 
 Create a binary variable to distinguish between 1 and 5 year ACS datasets. 5-year samples include the term "5-year".
+
 ```{r}
 acs_clean <- acs_clean %>%
-  mutate(sample_structure = ifelse(str_detect(sample, "5-year"), "5year", "1year")) 
+  mutate(sample_structure = if_else(str_detect(sample, "5-year"), "5year", "1year")) 
+
 ```
 
 Confirm there are no missing values remaining in the data set for the household income variable. 
+
 ```{r}
 acs_clean %>%
   filter(is.na(hhincome)) %>% 
   count()
+
 ```
 
 Confirm there are no vacant properties included in the data.
@@ -336,360 +347,278 @@ Confirm there are no vacant properties included in the data.
 acs_clean %>%
   filter(is.na(vacancy)) %>% 
   count()
+
 ```
 
-## Read replicate weights 
-
-Read in household-level replicate weights for all records where pernum is equal to 1. These will be used in creating standard errors for the income calculations. 
 ```{r}
-repwts_household <- ipums_repwt_household(
-  extract_name = "household_replicate_weights",
-  extract_description = "Household level replicate weights for income quantiles metric. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
-)  %>% 
-  select(-cbserial, -cbpernum)
+rm(acs_combined)
+
 ```
 
-Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+## Crosswalk
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+
 ```{r}
-repwts_household %>% 
-  count(sample) %>% 
-  ggplot(mapping = aes(x = sample, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Samples, All Records in Repwt File") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Samples",
-       y = NULL)
+puma_county_crosswalk <- read_csv(
+  here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
+)
+
 ```
 
+Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
 
-Remove the sample variable.
 ```{r}
-repwts_household <- repwts_household %>% 
-  select(-sample)
+county_puma <- puma_county_crosswalk %>%
+  group_by(crosswalk_period, statefip, county) %>% 
+  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
+  ungroup()
+
 ```
 
-## Setup Survey Design 
+## Merge Crosswalk 
 
-Shrink sample for now.
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+
 ```{r}
 acs_clean <- acs_clean %>% 
-  group_by(sample, county) %>% 
-  slice_sample(n = 125) %>% 
-  ungroup() 
-```
-
-Set up the survey design using instructions from IPUMS. Join the replicate weights onto the acs survey data using the unique person ID created for both.
-```{r}
-acs_survey_all <- acs_clean %>%
-  filter(sample_structure == "1year") %>% 
-  left_join(repwts_household, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = hhwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "JK1",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
-
-acs_survey_subgroups <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  left_join(repwts_household, by = c("unique_person_id")) %>% 
-  as_survey_design(weights = hhwt, 
-                   repweights = matches("repwtp[0-9]+"),
-                   type = "JK1",
-                   scale = 4/ 80,
-                   rscales = rep(1, 80 ), mse = TRUE) %>% 
-  ungroup()
+  mutate(crosswalk_period = if_else(year < 2022, "pre-2022", "2022"))
 
 ```
 
-## Create Income Metric
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
 
-Create the income metric for each county overall and for race subgroups.
-
-Objective: Calculate the 20th, 50th and 80th percentile of household income for all  unique state+county combinations in all years.
-
-Aggregation should be weighted by HHWT (this is a household level statistic).
-
-### All
-
-Calculate income quantiles by county.
 ```{r}
-metrics_income_all <- acs_clean %>%
-  filter(sample_structure == "1year") %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
-                                             qrule = c("hf9"))) %>%
-  ungroup() 
+count(acs_clean, crosswalk_period, year)
+
 ```
 
-Sort by year, state and county. 
+Join the cleaned ACS data onto the crosswalk. This is a many-to-many join because we are aggregating from PUMA to county.
 ```{r}
-metrics_income_all <- metrics_income_all %>%
-  arrange(year, statefip, county)
+acs_crosswalked <- left_join(
+  acs_clean, 
+  puma_county_crosswalk, 
+  by = c("crosswalk_period", "statefip","puma"), 
+  relationship = "many-to-many"
+)
+
+rm(acs_clean)
+
 ```
 
-*Create an indicator for data quality and suppression*
+Drop any observations with `NA` for `afact` (i.e. there is no county of interest overlapping this PUMA).
 
-Calculate the effective sample count for each county.
 ```{r}
-effective_sample <- acs_clean %>%
-  filter(sample_structure == "1year") %>% 
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  ungroup()
+acs_crosswalked <- acs_crosswalked %>% 
+  drop_na(afact)
+
 ```
 
-Merge the data quality flag on geographic allocation from the crosswalk on to the metric data.
-```{r}
-metrics_income_all <- left_join(metrics_income_all, county_puma, by=c("crosswalk_period", "statefip","county"))
+Also filter out cases where `afact` is equal to zero.
 
-metrics_income_all <- left_join(metrics_income_all, effective_sample, by=c("year", "crosswalk_period", "statefip","county"))
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  filter(afact > 0)
+
 ```
 
-Tabulate effective sample counts for each county, defined as the sum of the afact for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. In the 1-year data for all there are no cases of a county with less than 100 observations for 2018, 2021 and 2022.
+Adjust weight to account for PUMA-to-county mapping (those where unique_types do not equal 1).Drop PUMA flag variable from PUMA_county.
+
+`adjust` converts the dollar amounts to the amount that they would have been had they been earned entirely during the calendar year. This is to deal with households being surveyed at different times during the year.
+
 ```{r}
-# Generate base data
-reactable_data <- metrics_income_all %>%
+select(acs_crosswalked, hhincome, hhwt, repwt1, repwt80)
+
+acs_crosswalked <- acs_crosswalked %>%
   mutate(
-    effective_sample_cutoffs = case_when(
-      effective_sample < 30 ~ "Less than 30",
-      effective_sample >= 30 &
-        effective_sample <= 100 ~ "Over 30 but 100 or less",
-      effective_sample > 100 &
-        effective_sample <= 300 ~ "Over 100 but 300 or less",
-      TRUE ~ "Greater than 300"
-    ),
-    effective_sample_cutoffs = factor(
-      effective_sample_cutoffs,
-      levels = c(
-        "Less than 30",
-        "Over 30 but 100 or less",
-        "Over 100 but 300 or less",
-        "Greater than 300"
-      )
-    )
-  ) 
-
-# Get suppression factor for each year of data
-suppression_factor <- reactable_data %>%
-  group_by(year) %>%
-  summarize(yearly_total = n()) %>% 
-  select(year, yearly_total)
-
-# Create reactable for further examination
-reactable_data %>%
-  left_join(suppression_factor, by="year") %>% 
-  group_by(year,effective_sample_cutoffs) %>%
-  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
-  reactable()
-```
-
-Generate the quality variable. Mark cases where the effective sample is less than 100, these will be assigned a data quality of 3.
-```{r}
-metrics_income_all <- metrics_income_all %>% 
-  mutate(effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
-         
-         pctl_20_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     effective_sample_flag==1 ~ 3),
-         
-         pctl_50_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     effective_sample_flag==1 ~ 3),
-         
-         pctl_80_quality = case_when(effective_sample_flag==0 & geographic_allocation_quality==1 ~ 1,
-                                     effective_sample_flag==0 & geographic_allocation_quality==2 ~ 2,
-                                     effective_sample_flag==0 & geographic_allocation_quality==3 ~ 3,
-                                     effective_sample_flag==1 ~ 3)
-  )
-```
-
-We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
-```{r}
-metrics_income_all <- metrics_income_all %>% 
-  mutate_at(c("pctl_income_20", "pctl_income_20_low", "pctl_income_20_upp",
-              "pctl_income_50", "pctl_income_50_low", "pctl_income_50_upp",
-              "pctl_income_80", "pctl_income_80_low", "pctl_income_80_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
-```
-
-Keep only relevant variables.
-```{r}
-metrics_income_all <- metrics_income_all %>% 
-  select(year, statefip, county, pctl_income_20, pctl_income_20_lb = pctl_income_20_low, 
-         pctl_income_20_ub = pctl_income_20_upp, pctl_20_quality, 
-         pctl_income_50, pctl_income_50_lb = pctl_income_50_low, 
-         pctl_income_50_ub = pctl_income_50_upp, pctl_50_quality, 
-         pctl_income_80, pctl_income_80_lb = pctl_income_80_low, 
-         pctl_income_80_ub = pctl_income_80_upp,
-         pctl_80_quality)
-```
-
-
-### Subgroups
-
-Calculate income quantiles by race/ethnicity and county (5-year data). 
-```{r}
-metrics_income_subgroup <- acs_clean %>%
-  filter(sample_structure == "5year") %>%
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
-  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
-                                             qrule = c("hf9"))) %>%
-  ungroup() %>%
-  mutate(subgroup_type = "race-ethnicity")
-```
-
-Calculate quantiles for all households with the 5-year data. To be appended onto the subgroup data by race/ethnicity.
-```{r}
-metrics_income_subgroup_all <- acs_clean %>%
-  filter(sample_structure == "5year") %>%
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(pctl_income_20 = survey_quantile(hhincome, quantiles = c(0.2), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_50 = survey_quantile(hhincome, quantiles = c(0.5), vartype = "ci", 
-                                             qrule = c("hf9")),
-            pctl_income_80 = survey_quantile(hhincome, quantiles = c(0.8), vartype = "ci", 
-                                             qrule = c("hf9"))) %>%
-  ungroup() %>%
-  mutate(subgroup_type = "all",
-         subgroup = "All")
-```
-
-Append the "All" version of the data.
-```{r}
-metrics_income_sub <- bind_rows(metrics_income_subgroup, metrics_income_subgroup_all)
-```
-
-Sort by year, state and county.
-```{r}
-metrics_income_sub <- metrics_income_sub %>%
-  arrange(year, statefip, county)
-```
-
-*Create an indicator for data quality and suppression*
-
-Calculate the effective sample count for each county.
-```{r}
-effective_sample_sub_all <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, county) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "all",
-         subgroup = "All")
-
-effective_sample_sub <- acs_clean %>%
-  filter(sample_structure == "5year") %>% 
-  group_by(year, crosswalk_period, statefip, county, subgroup) %>%
-  summarise(effective_sample = sum(afact)) %>% 
-  mutate(subgroup_type = "race-ethnicity") %>% 
-  bind_rows(effective_sample_sub_all) %>% 
-  ungroup()
-```
-
-
-Merge the data quality flag on geographic allocation from the crosswalk on to the metric data.
-```{r}
-metrics_income_sub <- left_join(metrics_income_sub, county_puma, by=c("crosswalk_period", "statefip","county"))
-
-metrics_income_sub <- left_join(metrics_income_sub, effective_sample_sub, by=c("year", "crosswalk_period", "statefip","county", "subgroup_type", "subgroup"))
-```
-
-Tabulate effective sample counts for each subgroup, defined as the sum of the afact for that group in each county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported.
-```{r}
-income_reactable_data <- metrics_income_sub %>%
-  mutate(
-    effective_sample_cutoffs = case_when(
-      effective_sample < 30 ~ "Less than 30",
-      effective_sample >= 30 &
-        effective_sample <= 100 ~ "Over 30 but 100 or less",
-      effective_sample > 100 &
-        effective_sample <= 300 ~ "Over 100 but 300 or less",
-      TRUE ~ "Greater than 300"
-    ),
-    effective_sample_cutoffs = factor(
-      effective_sample_cutoffs,
-      levels = c(
-        "Less than 30",
-        "Over 30 but 100 or less",
-        "Over 100 but 300 or less",
-        "Greater than 300"
-      )
-    )
+    hhwt = hhwt * afact, 
+    across(matches("repwt[0-9]+"), ~.x * afact),
+    hhincome = hhincome * adjust
   )
 
-# Create reactable for further examination using suppression factor defined earlier
-income_reactable_data %>%
-  left_join(suppression_factor, by="year") %>% 
-  group_by(year, subgroup, effective_sample_cutoffs) %>%
-  summarize(n = n(), suppression_share = n()/unique(yearly_total)) %>% # yearly value has one unique value per year
-  reactable()
+select(acs_crosswalked, hhincome, hhwt, repwt1, repwt80)
+
 ```
 
-Generate the quality variable. Mark cases where the effective sample is less than 100, these will be assigned a data quality of 3.
+## Calculate Metric: Overall
+
+### Pre-drop suppressed cells
+
+To save time when processing the metric, calculate the effective sample size in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
 ```{r}
-metrics_income_sub <- metrics_income_sub %>%
+#| label: all-effective-samples
+
+acs_all <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_all %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  summarize(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarize(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+
+```
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-all
+
+acs_all <- acs_all %>% 
+  filter(effective_sample >= 30)
+
+```
+
+### Calculate metric
+
+Calculate the county-level metrics. 
+
+```{r}
+#| label: calc-all
+
+tic()
+results_all <- acs_all %>%
+  calc_income_quantiles()
+toc()
+
+```
+
+We tabulated effective sample counts for each county, defined as the sum of the `afact` for all records in that county. Look at the distribution of counties by potential cutoffs (30, 100, 300). This is to measure data quality for each county based on the number of records reported. 
+
+In the 1-year data for all there are no cases of a county with less than 100 observations for 2018, 2021 and 2022.
+
+Generate the quality variable. Mark cases where the effective sample is less than 100, these will be assigned a data quality of 3.
+
+```{r}
+results_all <- left_join(
+  results_all, 
+  county_puma, 
+  by = c("crosswalk_period", "statefip","county")
+)
+
+results_all <- results_all %>% 
   mutate(
-    effective_sample_flag = ifelse(effective_sample < 100, 1, 0),
     pctl_20_quality = case_when(
-      effective_sample_flag == 0 & geographic_allocation_quality == 1 ~ 1,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 2 ~ 2,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 3 ~ 3,
-      effective_sample_flag == 1 ~ 3
+      effective_sample < 100 ~ 3,
+      geographic_allocation_quality == 1 ~ 1,
+      geographic_allocation_quality == 2 ~ 2,
+      geographic_allocation_quality == 3 ~ 3
     ),
     pctl_50_quality = case_when(
-      effective_sample_flag == 0 & geographic_allocation_quality == 1 ~ 1,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 2 ~ 2,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 3 ~ 3,
-      effective_sample_flag == 1 ~ 3
+      effective_sample < 100 ~ 3,
+      geographic_allocation_quality == 1 ~ 1,
+      geographic_allocation_quality == 2 ~ 2,
+      geographic_allocation_quality == 3 ~ 3
     ),
     pctl_80_quality = case_when(
-      effective_sample_flag == 0 & geographic_allocation_quality == 1 ~ 1,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 2 ~ 2,
-      effective_sample_flag == 0 &
-        geographic_allocation_quality == 3 ~ 3,
-      effective_sample_flag == 1 ~ 3
+      effective_sample < 100 ~ 3,
+      geographic_allocation_quality == 1 ~ 1,
+      geographic_allocation_quality == 2 ~ 2,
+      geographic_allocation_quality == 3 ~ 3
     )
   )
 ```
 
-We do not want to show values that are calculated from less than 30 samples in the data. These points will be suppressed and shown as missing or NA. Suppress the results for values generated from less than 30 samples.
-```{r}
-metrics_income_sub <- metrics_income_sub %>% 
-  mutate_at(c("pctl_income_20", "pctl_income_20_low", "pctl_income_20_upp",
-              "pctl_income_50", "pctl_income_50_low", "pctl_income_50_upp",
-              "pctl_income_80", "pctl_income_80_low", "pctl_income_80_upp"), ~if_else(effective_sample < 30, NA_integer_, .)) 
-```
-
 Keep only relevant variables.
+
 ```{r}
-metrics_income_sub <- metrics_income_sub %>% 
-  select(year, statefip, county, subgroup_type, subgroup, pctl_income_20, pctl_income_20_lb = pctl_income_20_low, 
-         pctl_income_20_ub = pctl_income_20_upp, pctl_20_quality, 
-         pctl_income_50, pctl_income_50_lb = pctl_income_50_low, 
-         pctl_income_50_ub = pctl_income_50_upp, pctl_50_quality, 
-         pctl_income_80, pctl_income_80_lb = pctl_income_80_low, 
-         pctl_income_80_ub = pctl_income_80_upp,
-         pctl_80_quality)
+clean_names <- function(name) {
+  
+  name %>%
+    str_replace_all(pattern = "_q2", "_2") %>%
+    str_replace_all(pattern = "_q5", "_5") %>%
+    str_replace_all(pattern = "_q8", "_8") %>%
+    str_replace_all(pattern = "_low", "_lb") %>%
+    str_replace_all(pattern = "_upp", "_ub")
+    
+}
+
+
+results_all %>% 
+  rename_with(clean_names)
+  
+  
+  
+  # select(year, statefip, county, pctl_income_20, pctl_income_20_lb = pctl_income_20_low, 
+  #        pctl_income_20_ub = pctl_income_20_upp, pctl_20_quality, 
+  #        pctl_income_50, pctl_income_50_lb = pctl_income_50_low, 
+  #        pctl_income_50_ub = pctl_income_50_upp, pctl_50_quality, 
+  #        pctl_income_80, pctl_income_80_lb = pctl_income_80_low, 
+  #        pctl_income_80_ub = pctl_income_80_upp,
+  #        pctl_80_quality)
+
 ```
 
-## Evaluate Results
+
+
+
+
+
+
+
+
+## Calculate Metric: Race/Ethnicity
+
+### Pre-drop suppressed cells
+
+```{r}
+#| label: race-ethnicity-effective-samples
+
+acs_race_ethnicity <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race_ethnicity) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_race_ethnicity %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race_ethnicity) %>%
+  summarize(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarize(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+
+```
+
+```{r}
+#| label: subset-race-ethnicity
+
+acs_race_ethnicity <- acs_race_ethnicity %>% 
+  filter(effective_sample >= 30)
+
+```
+
+### Calculate metric
+
+Calculate the county-level metrics. 
+
+```{r}
+#| label: calc-race-ethnicity
+
+tic()
+results_race_ethnicity <- acs_race_ethnicity %>%
+  calc_income_quantiles_subgroup(.subgroup = subgroup_race_ethnicity)
+toc()
+
+```
+
+## Add Supressed Rows
+
+## Data Quality Flags
+
+## Validation
 
 Summarize the predictors for the 1-year and 5-year data.
 ```{r}
@@ -711,7 +640,6 @@ metrics_income_all %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles (1-year data)") +
   ylab("Density")
 
@@ -721,7 +649,6 @@ metrics_income_sub %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles (5-year data)") +
   ylab("Density")
   
@@ -735,7 +662,6 @@ metrics_income_sub %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles, Black") +
   ylab("Density")
   
@@ -745,7 +671,6 @@ metrics_income_sub %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles, Hispanic") +
   ylab("Density")
   
@@ -755,7 +680,6 @@ metrics_income_sub %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles, Other") +
   ylab("Density")
   
@@ -765,7 +689,6 @@ metrics_income_sub %>%
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
   ggtitle("Income percentiles, white") +
   ylab("Density")
 ```
@@ -776,7 +699,6 @@ metrics_income_all %>%
   select(pctl_20_quality) %>% 
   ggplot(aes(x = pctl_20_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
   ggtitle("Quality Flag (1-year data") +
   ylab("Count")
 
@@ -784,7 +706,6 @@ metrics_income_sub %>%
   select(pctl_20_quality) %>% 
   ggplot(aes(x = pctl_20_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
   ggtitle("Quality Flag (5-year data") +
   ylab("Count")
 ```
@@ -802,7 +723,15 @@ metrics_income_sub %>%
   count()
 ```
 
-## Export 
+
+## Export
+
+Sort by year, state and county.
+
+```{r}
+metrics_income_sub <- metrics_income_sub %>%
+  arrange(year, statefip, county)
+```
 
 Rename state.
 
@@ -842,3 +771,16 @@ Export as CSV
 write_csv(metrics_income_all, here::here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv"))
 write_csv(metrics_income_sub, here::here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv"))
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+

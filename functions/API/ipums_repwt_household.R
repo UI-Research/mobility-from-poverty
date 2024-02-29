@@ -38,11 +38,11 @@ ipums_repwt_household <- function(extract_name, extract_description, survey){
         description = extract_description,
         samples = c(survey),
         variables = list(
-          var_spec("PERNUM", 
-                   case_selections = c("1")),
+          # var_spec("PERNUM",
+          #          case_selections = c("1")),
           var_spec("GQ",
                    case_selections = c("1", "2", "5")),
-          "REPWTP",
+          "REPWT",
           "CBPERNUM"
         )
       )
@@ -88,7 +88,7 @@ ipums_repwt_household <- function(extract_name, extract_description, survey){
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
     select(-serial, -strata, -cluster, -year,
-           -pernum, -perwt, -hhwt, -gq, -age) %>% 
+           -perwt, -hhwt, -gq) %>% 
     mutate(sample = as_factor(sample),
            unique_person_id = paste0(sample, cbserial, cbpernum))
 
