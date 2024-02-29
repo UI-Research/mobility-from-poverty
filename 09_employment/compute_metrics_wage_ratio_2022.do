@@ -6,31 +6,24 @@ Before using this file, download the relevant year of data from QCEW NAICS-Based
 
 Programmed by Kevin Werner + updated by Kassandra Martinchek in 2023
 
-2/7/2024
+2/29/2024
 
-Living wage data is in 2022 dollars, so it is deflated. 
 ****************************/
 
-local raw "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
-local wages "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
+
+/***** update these directories *****/
+global raw "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
+global wages "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
+global crosswalk "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\geographic-crosswalks\data"
 
 /***** save living wage as .dta *****/
 cd `wages'
-import delimited using "mit-living-wage-2022.csv", clear // while in code review, please note that I did not change this, as updated data required a fee and there was a no-scraping notice
+import delimited using "mit-living-wage-2022.csv", clear 
 
 replace year = 2022 // correct to proper year
 
-save "mit_living_wage-2022.dta", replace
+save "mit_living_wage-2022.dta", replace // no need to inflate/deflate this year because aligns with data year
 
-/*
-*inflate 2022 MIT to 2023 using BLS series CUUR0000SA0. Used first half for 2022, annual for 2021 (keeping this note for prior methods)
-*because both 2022 and 2023 have full annual values, i use the annual here for both
-*because QECW is not available annually for 2023 yet, will use 2022 data so likely won't need this inflation
-
-replace wage = wage* 302.702/292.655 // 2023 CPI-U is first, then 2022 CPI-U	
-
-save "mit_living_wage-2023.dta", replace
-*/
 clear
 
 /***** import QCEW data *****/
@@ -57,7 +50,7 @@ merge 1:m state county using mit_living_wage-2022.dta
 
 *tab county state if _merge == 1*/// two AK counties missing from MIT data
 
-/* drop statewide obs */
+/* drop statewide obs because we are calculating metrics at the county level */
 drop if _merge == 1
 
 /* only keep 1 adult, 2 children row */
@@ -70,16 +63,16 @@ duplicates drop
 gen weekly_living_wage = wage * 40
 
 /* get ratio (main metric) */
-gen average_to_living_wage_ratio = annualaverageweeklywage/weekly_living_wage
+gen ratio_living_wage = annualaverageweeklywage/weekly_living_wage
 
 /* create data quality flag 
 per discussion with Greg, >= 30 is 1, <30 is 3 */
-gen wage_ratio_quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
-replace wage_ratio_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
-replace wage_ratio_quality = . if annualaverageestablishmentcount == .
+gen ratio_living_wage_quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
+replace ratio_living_wage_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
+replace ratio_living_wage_quality = . if annualaverageestablishmentcount == .
 
 /* test flag */
-tab wage_ratio_quality, missing
+tab ratio_living_wage_quality, missing
 
 /* put state and county in string with leading 0s */
 gen new_state = string(state,"%02.0f")
@@ -91,39 +84,40 @@ drop county
 rename new_county county
 
 /* check ratio */
-/*sum average_to_living_wage_ratio, det
-hist average_to_living_wage_ratio */
-/*tab county state if average_to_living_wage_ratio == 0 */
+/*sum ratio_living_wage, det
+hist ratio_living_wage */
+/*tab county state if ratio_living_wage == 0 */
 
-gen new_ratio = string(average_to_living_wage_ratio)
-drop average_to_living_wage_ratio
-rename new_ratio average_to_living_wage_ratio
+gen new_ratio = string(ratio_living_wage)
+drop ratio_living_wage
+rename new_ratio ratio_living_wage
+
+
 
 /* replace 0 ratio with missing and replace data quality as missing */
-replace average_to_living_wage_ratio = "NA" if average_to_living_wage_ratio == "."
-replace wage_ratio_quality = 3 if average_to_living_wage_ratio == "NA"
+replace ratio_living_wage = "NA" if ratio_living_wage == "."
+replace ratio_living_wage_quality = 3 if ratio_living_wage == "NA"
+
+gen new_ratio_quality = string(ratio_living_wage_quality)
+drop ratio_living_wage_quality
+rename new_ratio_quality ratio_living_wage_quality
+
+replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "."
 
 save "wage_ratio_final_2022.dta",replace
 
 
-keep state county year average_to_living_wage_ratio wage_ratio_quality
-
-/* rename final variable here */
-
-*rename ratio_average_to_living_wage average_to_living_wage_ratio
-rename wage_ratio_quality ratio_living_wage_quality
+keep state county year ratio_living_wage ratio_living_wage_quality
 
 /* export files */
 
-order year state county average_to_living_wage_ratio ratio_living_wage_quality
+order year state county ratio_living_wage ratio_living_wage_quality
 
 export delimited using metrics_wage_ratio_2022.csv, replace
 
 save "wage_ratio_final_2022.dta", replace
 
 ** add in county name and state name
-global crosswalk "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\geographic-crosswalks\data"
-
 import delimited using "$crosswalk\county-populations.csv", stringcols(2 3 4 5) varnames(1) clear
 
 merge 1:1 year state county using "wage_ratio_final_2022.dta"
@@ -145,24 +139,22 @@ replace county_name = "Valdez-Cordova Census Area" if state == "02" & county == 
 drop if _merge == 1 & state != "09"
 
 *** also want to drop old counties and impute missing values 
-generate flag = 1 if state == "09" & average_to_living_wage_ratio == "NA"
+generate flag = 1 if state == "09" & ratio_living_wage == "NA"
 drop if flag == 1
 
 *** make missing
-replace average_to_living_wage_ratio = "NA" if state == "09"
-replace ratio_living_wage_quality = 3 if state == "09"
+replace ratio_living_wage = "NA" if state == "09"
+replace ratio_living_wage_quality = "3" if state == "09"
 
 
 /* export final dataset */
 
 keep if year == 2022
 
-keep year state county state_name county_name average_to_living_wage_ratio ratio_living_wage_quality
+keep year state county state_name county_name ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name average_to_living_wage_ratio ratio_living_wage_quality
+order year state county state_name county_name ratio_living_wage ratio_living_wage_quality
 
 export delimited using metrics_wage_ratio_2022.csv, replace
-
-
 
 save "wage_ratio_final_2022.dta", replace
