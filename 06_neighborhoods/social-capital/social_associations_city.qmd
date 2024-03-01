@@ -53,7 +53,7 @@ We pull our data from `library(censusapi)`.
 **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below 
 
 ```{r}
-#label: source-census-api-key
+# label: source-census-api-key
 source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
@@ -62,13 +62,17 @@ source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 
 years <- c(2020, 2021)
 cbp_zip <-
-  map(years, 
-      ~getCensus(name = "cbp",
-                 vintage = .x,
-                 vars = c("EMP", "ESTAB", "NAICS2017"),
-                 region = "zipcode:*") %>% 
-        as_tibble() %>% 
-        mutate(year = .x)) %>% 
+  map(
+    years,
+    ~ getCensus(
+      name = "cbp",
+      vintage = .x,
+      vars = c("EMP", "ESTAB", "NAICS2017"),
+      region = "zipcode:*"
+    ) %>%
+      as_tibble() %>%
+      mutate(year = .x)
+  ) %>%
   list_rbind()
 
 head(cbp_zip)
@@ -113,9 +117,8 @@ cbp_zip <-
   drop_na(orgs) %>%
   # no missings (observations still at 28,599)
   # aggregate the total # of orgs per ZIP
-  summarize(count_orgs = sum(orgs), .by = c("year", "zip_code")) 
-  # 28,599 observations to 16,644 observations
-  
+  summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
+# 28,599 observations to 16,644 observations
 ```
 
 ## Merge with the 2010 ZCTA -\> 2021 Census Place crosswalk
@@ -125,8 +128,8 @@ Import and clean the 2010 ZCTA -\> 2021 Census Place crosswalk file to prepare f
 ```{r}
 #| label: import-and-clean-xwalk
 zcta_place_xwalk <- read_csv(here("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")) %>%
-  as_tibble() %>% 
-    rename(
+  as_tibble() %>%
+  rename(
     zip_code = ZCTA5CE10,
     state_fips = STATEFP,
     place = PLACEFP,
@@ -249,7 +252,7 @@ places_pop <-
 #| label: check-number-of-places
 stopifnot(
   count(places_pop, year) %>%
-    pull(n) %>% 
+    pull(n) %>%
     unique() == 486
 )
 ```
@@ -260,7 +263,7 @@ Join `places_pop` with `merged_sa_zip_city` in order to get the final SA (numera
 sa_city_data <-
   places_pop %>%
   left_join(merged_sa_zip_city,
-    by = c("year","place", "state_fips")
+    by = c("year", "place", "state_fips")
   )
 ```
 
@@ -344,13 +347,13 @@ stopifnot(
 ## Save the final file
 
 ```{r}
-sa_city_data %>% 
+sa_city_data %>%
   arrange(year, state, place) %>%
-  write_csv(here("06_neighborhoods/social-capital/data/social_associations_all_city.csv"))
+  write_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv"))
 
-sa_city_data %>% 
-  filter(year == 2021) %>% 
-  select(-year) %>% 
+sa_city_data %>%
+  filter(year == 2021) %>%
+  select(-year) %>%
   arrange(state, place) %>%
-  write_csv(here("06_neighborhoods/social-capital/data/social_associations_2021_city.csv"))
+  write_csv(here("06_neighborhoods/social-capital/final/social_associations_2021_city.csv"))
 ```
