@@ -22,6 +22,7 @@ library(here)
 library(sf)
 library(censusapi)
 library(tigris)
+library(janitor)
 options(tigris_use_cache = TRUE)
 ```
 
@@ -121,35 +122,54 @@ cbp_zip <-
 # 28,599 observations to 16,644 observations
 ```
 
-## Merge with the 2010 ZCTA -\> 2021 Census Place crosswalk
+## Merge with the 2020 ZCTA -\> 2021 Census Place crosswalk
 
-Import and clean the 2010 ZCTA -\> 2021 Census Place crosswalk file to prepare for merge
+Download the 2020 ZCTA -\> 2021 Census Place crosswalk file from [Geocorr 2022](https://mcdc.missouri.edu/applications/geocorr2022.html) as follows:
+
+- Ctrl-click select every state to get the whole country (where is says Select
+the state(s) (including DC and/or PR) to process:)
+
+- Then, choose ZIP/ZCTA from the 2020 Geographies in the left rectangle, and 
+Place (city. town, etc) from the 2020 Geographies in the right one
+
+- Choose population as the weighting variable you're using to do interpolation
+ 
+- In Output Options, pick CSV
+
+- Check select for Generate second allocation factor AFACT2 showing portion of
+target geocodes in source geocodes
+
+- Hit Run Request, and it will generate the crosswalk for you!
+
+
+Now, import and clean the 2020 ZCTA -\> 2021 Census Place crosswalk file to 
+prepare for merging
 
 ```{r}
 #| label: import-and-clean-xwalk
-zcta_place_xwalk <- read_csv(here("geographic-crosswalks/data/2010_ZCTA_2021_Census_Places_Crosswalk.csv")) %>%
+zcta_place_xwalk <- read_csv(here("06_neighborhoods/social-capital/data/2020_ZCTA_2021_Census_Places_Crosswalk.csv"), skip = 1) %>%
   as_tibble() %>%
+  clean_names() |>
   rename(
-    zip_code = ZCTA5CE10,
-    state_fips = STATEFP,
-    place = PLACEFP,
-    place_name = NAMELSAD
+    zip_code = zip_census_tabulation_area,
+    state_fips = state_code,
+    place = place_code
   )
 ```
 
-Make an indicator for ZIPs that fall wholly into a Place vs. partially (`ZCTAinPlace < 1`)
+Make an indicator for ZIPs that fall wholly into a Place vs. partially (`zcta_to_place_allocation_factor < 1`)
 
 ```{r}
 #| label: make-indicator-for-zips-in-place
 zcta_place_xwalk <-
   zcta_place_xwalk %>%
   mutate(portion_in = case_when(
-    ZCTAinPlace == 1 ~ 1,
-    ZCTAinPlace < 1 ~ 0
+    zcta_to_place_allocation_factor == 1 ~ 1,
+    zcta_to_place_allocation_factor < 1 ~ 0
   ))
 ```
 
-**Check:** Do 2079 of these ZCTAs fall fully into a Census Place?
+**Check:** Do 9,669 of these ZCTAs fall fully into a Census Place?
 
 ```{r}
 #| label: check-portions-wholly-in-place
@@ -157,7 +177,7 @@ stopifnot(
   zcta_place_xwalk %>%
     count(portion_in) %>%
     filter(portion_in == 1) %>%
-    pull(n) == 2079
+    pull(n) == 9669
 )
 ```
 
@@ -166,7 +186,7 @@ stopifnot(
 
 zcta_place_xwalk <-
   zcta_place_xwalk %>%
-  select(zip_code, state_fips, place, place_name, IntersectArea, ZCTAinPlace, portion_in)
+  select(zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor, portion_in)
 ```
 
 Merge the ZIP/Places crosswalk into the CBP ZIP-level data file
@@ -213,16 +233,16 @@ merged_sa_zip_city <-
   summarize(
     zip_total = mean(count_zctas_in_place),
     zips_in = sum(portion_in),
-    avg_orgs_per_place_weighted_by_area = weighted.mean(count_orgs, ZCTAinPlace),
+    avg_orgs_per_place_weighted_by_area = weighted.mean(count_orgs, zcta_to_place_allocation_factor),
     .by = c(year, state_fips, place)
   )
 ```
 
-**Check:** Are there exactly 4,565 missing values in the `new_est_zip` variable?
+**Check:** Are there exactly 35 missing values in the `new_est_zip` variable?
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 4565
+  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 35
 )
 ```
 
@@ -303,13 +323,14 @@ sa_city_data <-
 #| label: check-zip-ratio-range
 stopifnot(
   min(sa_city_data$zip_ratio) == 0,
-  median(sa_city_data$zip_ratio) == 0,
-  near(mean(sa_city_data$zip_ratio), 0.09, tol = 0.01),
-  near(max(sa_city_data$zip_ratio), 0.85, tol = 0.01)
+  median(sa_city_data$zip_ratio) == 0.2,
+  near(mean(sa_city_data$zip_ratio), 0.25, tol = 0.01),
+  near(max(sa_city_data$zip_ratio), 1, tol = 0.01)
 )
 ```
 
-We can use this ratio to create a data quality tag for the final file. In particular, these values are:
+We can use this ratio to create a data quality tag for the final file. 
+In particular, these values are:
 
 -    Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place
 
