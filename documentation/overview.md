@@ -153,7 +153,7 @@ This info is imported at the beginning of the program and then combined and made
 * **Data Source(s):** EdDataExpress homelessness data; Common Core of Data (CCD) to identify counties and cities.
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires the ratio of the upper bound (`homeless_count_ub`) to the lower bound (`homeless_count_lb`) to be less or equal to than 1.05. Data quality of "2" requires this ratio to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the largest value of this ratio is 3.5 and those with estimated homeless populations of less than 20 have ratio values at or between 2 to 3.5.
-* **Limitations:** Data suppression
+* **Limitations:**  Overall and race/ethnicity metrics are reported as NA if total homeless students is less than 10. Due to data suppression and quality of underlying data, race/ethnicity shares do not always equal 100 percent of homeless students. If the number of homeless students by race/ethnicity is less than 70 percent or greater than 110 percent of total homeless students, all race/ethnicity metrics are reported as NA. Overall and race/ethnicity metrics are reported as NA if cell sizes are less than or equal to 2.
 * **Missingness:** Counties: 323/3,142 counties in 2014, 312/3,142 counties in 2015, 267/3,142 counties in 2016, 
 305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019, 308/3,143 in 2020, and 296/3,144 in 2022. Cities: 56/486 in 2019, 54/486 in 2020, 53/486 in 2022
 

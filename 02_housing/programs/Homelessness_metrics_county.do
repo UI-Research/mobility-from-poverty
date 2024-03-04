@@ -253,13 +253,45 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 	replace `var'_share=-1 if `var'_share>1 & `var'_share!=.
 	replace `var'_quality=-1 if `var'_share>1 & `var'_share!=.
 	}
+	
+*new as of 3/4/2024
+		*When the subgroup summed total is <70% or >110% of total homeless, replace with -1 or N/A
+		*create a variable set to . instead of -1 so we can sum & find the share of subgroup out of total homeless
+		*we have to do this now bc we want it based on the -1s/NAs we changed in the section above
+		foreach var in black_count white_count hispanic_count other_count {
+		gen `var'_missing = `var'
+		replace `var'_missing=. if `var'==-1
+		}
+		*create variable to tell us the percent of reported race subgroups of total homeless
+		egen total_race = rowtotal(black_count_missing white_count_missing hispanic_count_missing other_count_missing)
+		gen share_race_total = (total_race/homeless_count)*100
+		replace share_race_total =. if black_count_missing==. // because of the code above, black is the same as all other race missings
+		
+		*replace all with -1/NA when they are <70% & >110%
+		foreach var in black white hispanic other {
+		replace `var'_count=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
+		replace `var'_count_lb=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
+		replace `var'_count_ub=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
+		replace `var'_share=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
+		replace `var'_quality=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
+		}
+
+		*for cell sizes <=2, set all variables to N/A
+		foreach var in homeless black white hispanic other {
+		replace `var'_count_lb=-1 if `var'_count<=2
+		replace `var'_count_ub=-1 if `var'_count<=2
+		replace `var'_share=-1 if `var'_count<=2
+		replace `var'_quality=-1 if `var'_count<=2
+		
+		replace `var'_count=-1 if `var'_count<=2
+		}
 
 *check quality	
 sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
 
-drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_*
+drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* total_race *missing
 
 order year state county *homeless* black* hispanic* other* white*
 
@@ -283,6 +315,15 @@ tab year // total of counties possible
 tab year if homeless_count==.
 * 2019: 295/3142, 2020: 308/3143, 2021: 296/3144
 
+
+*check for race/ethnicity 
+		sum share_race_total, detail
+		sum share_race_total if black_count!=-1, detail
+		gen missing = 0
+		replace missing = 1 if share_race_total==.
+		tab year missing, row
+
+drop share_race_total missing		
 order year state county 
 gsort -year state county
 
