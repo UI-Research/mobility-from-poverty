@@ -11,7 +11,7 @@ Programmed by Kevin Werner + updated by Kassandra Martinchek in 2023, adding sub
 
 local raw "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
 local wages "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\09_employment"
-global crosswalk "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\geographic-crosswalks\data"
+local crosswalk "C:\Users\KMartinchek\Documents\umf-2024\mobility-from-poverty\geographic-crosswalks\data"
 
 /***** save living wage as .dta *****/
 cd `wages'
@@ -145,7 +145,7 @@ export delimited using metrics_wage_ratio_2022_subgroup.csv, replace
 save "wage_ratio_final_2022_subgroup.dta",replace
 
 ** add in county name and state name
-import delimited using "$crosswalk\county-populations.csv", stringcols(2 3 4 5) varnames(1) clear
+import delimited using "`crosswalk'\county-populations.csv", stringcols(2 3 4 5) varnames(1) clear
 
 merge 1:m year state county using "wage_ratio_final_2022_subgroup.dta"
 
