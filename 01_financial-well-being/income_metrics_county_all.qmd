@@ -73,146 +73,190 @@ calc_income_quantiles <- function(.data) {
     group_by(year, crosswalk_period, statefip, county) %>% 
     summarise(
       pctl_income = survey_quantile(
-        hhincome, 
+        household_income, 
         quantiles = c(0.2, 0.5, 0.8), 
-        vartype = "ci"
+        vartype = "ci",
+        na.rm = FALSE,
+        qrule = "hf3"
       ),
       n = n()
     ) %>%
     ungroup()
   
 }
-  
-
-calc_income_quantiles_subgroup <- function(.data, .subgroup) {
-  
-  .data %>%
-    as_survey_rep(
-      weights = perwt, 
-      repweights = matches("repwt[0-9]+"),
-      type = "JK1",
-      scale = 4 / 80,
-      rscales = rep(1, 80), 
-      mse = TRUE
-    ) %>% 
-    group_by(year, crosswalk_period, statefip, county, {{ .subgroup }}) %>% 
-    summarise(
-      pctl_income = survey_quantile(
-        hhincome, 
-        quantiles = c(0.2, 0.5, 0.8), 
-        vartype = "ci"
-      ),
-      n = n()
-    ) %>%
-    ungroup()
-  
-}
-  
 
 finalize_metric <- function(.data) {
   
   .data %>%
     arrange(year, statefip, county) %>%
-    mutate(
-      share_employed_lb = pmax(share_employed_low, 0),
-      share_employed_ub = pmin(share_employed_upp, 1)
-    ) %>%
-    select(-share_employed_low, -share_employed_upp, -n)
+    rename(
+      pctl_income_20_lb = pctl_income_q20_low,
+      pctl_income_20_ub = pctl_income_q20_upp,
+      pctl_income_20 = pctl_income_q20,
+      pctl_income_50_lb = pctl_income_q50_low,
+      pctl_income_50_ub = pctl_income_q50_upp,
+      pctl_income_50 = pctl_income_q50,
+      pctl_income_80_lb = pctl_income_q80_low,
+      pctl_income_80_ub = pctl_income_q80_upp,
+      pctl_income_80 = pctl_income_q80,
+    ) 
   
 }
+
 ```
 
 
-## Read Data
+## Read ACS Data
 
-Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a and 2022a) and two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+### Household-Level Data
+
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a, and 2022a) for the overall calculation.
+
 ```{r}
 acs <- extract_ipums(
   extract_name = "umf_data_18_22",
-  extract_description = "Microdata pull for Mobility Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
-) 
+  extract_description = "Microdata pull for Mobility Metric Predictors.
+  American Community Survey, overall, years 2018, 2019 and 2022 (1-year).",
+  survey = list("us2018a", "us2021a", "us2022a")
+)
+
 ```
 
-Look at the distribution of samples in the data. The 5-year data sets should comprise a larger share of the total sample.
+
 ```{r}
-acs %>% 
-  count(sample) %>% 
-  ggplot(mapping = aes(x = sample, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Samples, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Samples",
-       y = NULL)
+# acs <- acs %>%
+#   filter(sample %in% c("2018 ACS", "2021 ACS", "2022 ACS"))
+
+
+acs <- acs %>%
+  filter(sample %in% c("2022 ACS"))
+
 ```
 
-Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
-```{r}
-puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
-```
-
-Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
-```{r}
-county_puma <- puma_county_crosswalk %>%
-  group_by(crosswalk_period, statefip, county) %>% 
-  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
-  ungroup()
-```
-
-## Clean Data
-
-Missing data is reported in a variety of ways by IPUMS - listed below:
-
-HHINCOME is missing it is reported as "9999999".
-Vacancy is reported as "0". 
-
-There is a large share of records missing HHINCOME. However, note there are no vacancy results by default of the structure of census data read in.
+Isolate data to include each household only once (PERNUM == 1 counts head of household only).
 
 ```{r}
-acs %>% 
-  ggplot(aes(x = hhincome)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Household Income Variable Results") +
-  ylab("Density")
-
-acs %>% 
-  ggplot(aes(x = vacancy)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Vacancy Variable Results") +
-  ylab("Density")
-```
-
-Turn the missing/"not in universe" values for the hhincome variable into NAs. Remove original data to save space.
-
-```{r}
-
-acs_clean <- acs %>%
-  mutate(hhincome = ifelse(hhincome == 9999999, NA_integer_,
-                           hhincome)
-         )
+acs_hh <- acs %>%
+  filter(pernum == 1)
 
 rm(acs)
 ```
 
-Look at distribution of HHINCOME after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
+Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
+
+```{r}
+count(acs_hh, sample)
+```
+
+
+### Replicate Weights 
+
+Read in household-level replicate weights for the entire population. These will be used in creating standard errors for the income quantile calculation. 
+```{r}
+repwts_hh <- ipums_repwt_household(
+  extract_name = "household_replicate_weights_1year",
+  extract_description = "Household replicate weights for Income Opportunities 
+  Metric Predictors. American Community Survey, years 2018, 2019 and 2022 
+  (1-year).",
+  survey = list("us2018a", "us2021a", "us2022a")
+)  %>% 
+  select(-cbserial, -cbpernum)
+
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts_hh, sample)
+
+```
+
+Remove the sample variable.
+
+```{r}
+repwts_hh <- repwts_hh %>% 
+  select(-sample)
+
+```
+
+### Merge on repwts
+
+Merge the replicate weights on to the ACS samples.
+```{r}
+length(unique(pull(acs_hh, unique_person_id)))
+
+length(unique(pull(repwts_hh, unique_person_id)))
+
+acs_combined <- 
+  left_join(
+    acs_hh,
+    repwts_hh,
+    by = "unique_person_id"
+  )
+
+length(unique(pull(acs_combined, unique_person_id)))
+
+rm(acs_hh)
+rm(repwts_hh)
+
+```
+
+
+## Clean Data
+
+Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
+
+* **Vacancy:** reported as "0". 
+Note there are no vacancy results by default of the structure of census data read in.
+
+```{r}
+acs_combined %>% 
+  ggplot(aes(x = vacancy)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  labs(
+    title = "Vacancy Variable Results",
+    y = "Density"
+  )
+
+```
+
+* **HHINCOME:** N/As reported as "9999999".
+There is a large share of records missing HHINCOME. However, note there are no vacancy results by default of the structure of census data read in.
+
+```{r}
+acs_combined %>% 
+  ggplot(aes(x = hhincome)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Household Income Variable Results") +
+  ylab("Density")
+```
+
+Turn the missing/"not in universe" values for the `hhincome` variable into NAs. Rename to the more meaningful "household_income". 
+
+```{r}
+
+acs_clean <- acs_combined %>%
+  mutate(household_income = ifelse(hhincome == 9999999, NA_integer_,
+                          hhincome)
+  )
+
+```
+
+Look at distribution of `household_income` after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
 
 ```{r}
 
 acs_clean %>% 
-  ggplot(aes(x = hhincome)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  ggplot(aes(x = household_income)) +
+  geom_density(adjust = 5, color = "blue", fill = alpha("blue", 0.3)) +
   theme_minimal() +
   ggtitle("Household Income Variable Results") +
   ylab("Density")
 
 ```
 
-Select our group quarters, we want to keep only households including additional households under updated definitions.
-
+Select our group quarters, we want to keep only households including additional households under the 2000 definition. With household income we do not consider group quarters.
 ```{r}
 acs_clean %>% 
   group_by(gq) %>% 
@@ -220,15 +264,14 @@ acs_clean %>%
 ```
 
 ```{r}
-acs_clean <- acs_clean %>% 
+acs_clean <- acs_clean %>%
   filter(gq %in% c("Households under 1970 definition", 
                    "Additional households under 1990 definition",
                    "Additional households under 2000 definition"))
-
-
 ```
 
 Check that group quarters fall only into household categories.
+
 ```{r}
 acs_clean %>% 
   count(gq) %>% 
@@ -239,94 +282,9 @@ acs_clean %>%
  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "GQ",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
-```
-
-### Create race variable
-
-Evaluate the values in the RACE and HISPAN variables.
-
-* IPUMS documented values for RACE: 
-  + 1 White
-  + 2 Black/African American/Negro
-  + 3 American Indian or Alaska Native 
-  + 4 Chinese 
-  + 5 Japanese
-  + 6 Other Asian or Pacific Islander 
-  + 7 Other race 
-  + 8 Two major races 
-  + 9 Three or more major races
-
-* IPUMS documented values for HISPAN: 
-  + 0 Not Hispanic 
-  + 1 Mexican 
-  + 2 Puerto Rican 
-  + 3 Cuban 
-  + 4 Other 
-  + 9 Not Reported 
-
-Check that group quarters fall only into household categories.
-```{r}
-
-acs_clean %>% 
-  count(race) %>% 
-  ggplot(mapping = aes(x = race, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Race, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Race",
-       y = NULL)+
+       y = NULL) +
   scale_x_discrete(labels = label_wrap(10))
 
-acs_clean %>% 
-  count(hispan) %>% 
-  ggplot(mapping = aes(x = hispan, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Hispan, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Hispan",
-       y = NULL)+
-  scale_x_discrete(labels = label_wrap(10))
-
-```
-
-Create the race/ethnicity variable. For other race/ethnicity categories not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
-
-Rename the values from number category to race label: 
-  +Race is 2 and Hispan is 0 = "Black, Non-Hispanic"
-  +Hispan is >=1 and <=4 = "Hispanic"
-  +Race is >=3 and <=9 and Hispan is 0  = "Other Races and Ethnicities" 
-  +Race is 4 and Hispan is 0 = "White, Non-Hispanic" 
-```{r}
-
-acs_clean <- acs_clean %>%
-  mutate(subgroup = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
-                              (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
-                              (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
-                               hispan != "Not Hispanic" ~ "Hispanic"
-  ))
-
-```
-
-Look at subgroup distribution.
-
-```{r}
-
-acs_clean %>% 
-  count(subgroup) %>% 
-  ggplot(mapping = aes(x = factor(subgroup), y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Subgroup, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Subgroup",
-       y = NULL)
 ```
 
 ## Merge Crosswalk 
