@@ -113,7 +113,7 @@ rename new_ratio ratio_living_wage
 
 /* replace 0 ratio with missing and replace data quality as missing */
 replace ratio_living_wage = "NA" if ratio_living_wage == "."
-replace ratio_living_wage_quality = 3 if ratio_living_wage == "NA"
+replace ratio_living_wage_quality = . if ratio_living_wage == "NA" /* changed this from data quality 3 */
 
 gen new_ratio_quality = string(ratio_living_wage_quality)
 drop ratio_living_wage_quality
@@ -171,7 +171,10 @@ drop if flag == 1
 
 *** make missing
 replace ratio_living_wage = "NA" if state == "09"
-replace ratio_living_wage_quality = "3" if state == "09"
+replace ratio_living_wage_quality = "NA" if state == "09"
+
+*** assert 
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 
 /* export final dataset */
 

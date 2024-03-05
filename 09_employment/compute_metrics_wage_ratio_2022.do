@@ -69,7 +69,7 @@ gen ratio_living_wage = annualaverageweeklywage/weekly_living_wage
 per discussion with Greg, >= 30 is 1, <30 is 3 */
 gen ratio_living_wage_quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
 replace ratio_living_wage_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
-replace ratio_living_wage_quality = . if annualaverageestablishmentcount == .
+replace ratio_living_wage_quality = 3 if annualaverageestablishmentcount == .
 
 /* test flag */
 tab ratio_living_wage_quality, missing
@@ -96,7 +96,7 @@ rename new_ratio ratio_living_wage
 
 /* replace 0 ratio with missing and replace data quality as missing */
 replace ratio_living_wage = "NA" if ratio_living_wage == "."
-replace ratio_living_wage_quality = 3 if ratio_living_wage == "NA"
+replace ratio_living_wage_quality = . if ratio_living_wage == "NA"
 
 gen new_ratio_quality = string(ratio_living_wage_quality)
 drop ratio_living_wage_quality
@@ -144,8 +144,10 @@ drop if flag == 1
 
 *** make missing
 replace ratio_living_wage = "NA" if state == "09"
-replace ratio_living_wage_quality = "3" if state == "09"
+replace ratio_living_wage_quality = "NA" if state == "09"
 
+*** assert 
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 
 /* export final dataset */
 
