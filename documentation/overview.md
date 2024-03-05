@@ -1005,10 +1005,17 @@ Please note that the denominator we use is the living wage for a single full-tim
 * **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
 * **Year(s):** 2016, 2017, 2018, 2019, 2021, 2022
 
-* **Final data name(s):** `digital_access_county_2022.csv`, `digital_access_city_2022.csv`, `digital_access_county_all.csv`, `digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
-* **Data Source(s):** Census Bureau's 1-year ACS for overall and 5-year ACS for subgroups
-* **Notes:** The unit of analysis for the overall and income subgroup is households, whereas the unit of analysis for the race/ethnicity subgroup is people in households. 
-* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Final data name(s):** `digital_access_county_2022.csv`, 
+`digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
+`digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
+* **Data Source(s):** Census Bureau's 1-year ACS for overall and 5-year ACS for
+subgroups
+* **Notes:** The unit of analysis for the overall and income subgroup is 
+households, whereas the unit of analysis for the race/ethnicity subgroup is
+people in households. 
+* **Data Quality Index:** `1` means the differnence between the estimate and the
+lower bound estimate is less than 0.1, `2` means the difference is between 0.1
+and 0.2, and `3` means the difference is greater than 0.2. 
 * **Limitations:**
 * **Missingness:** There are no missing county or city level observations.
 

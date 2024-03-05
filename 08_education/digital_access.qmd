@@ -465,44 +465,39 @@ denominator. We use 0.1, 0.2, and 0.5 as thresholds because the CV only accounts
 for sampling error in the numerator. This is stricter than for some other
 metrics.
 
+We can use the width of the MOE to determine quality. One suggestion is if the
+value minus the lower bound is \<0.1, then the quality is strong (\_quality=1);
+if it is =\>.1 and \<.2, the quality is marginal (\_quality=2), and if it is
+\>=.2, then the quality is weak (\_quality=3).
+
+Otherwise, if any of the census table values are suppressed, those should have
+the metric value show as "NA" and the data quality should also be "NA."
+
 ```{r}
 #| label: data-quality-flags
-# Generate the quality var
-set_quality <- function(cv, digital_access) {
-  quality <- case_when(
-    cv < 0.1 ~ 1,
-    cv < 0.2 ~ 2,
-    cv < 0.5 ~ 3,
-    TRUE ~ NA_real_
-  )
-
-  quality <- if_else(is.na(digital_access), NA_real_, quality)
-}
 
 add_quality_flag <- function(data) {
   data |>
     mutate(across(
       .cols = any_of(c(
-        "total_households_digital",
-        "total_people_in_households_digital",
-        "income_less_than_50k_digital",
-        "income_more_than_50k_digital",
-        "other_digital",
-        "black_digital",
-        "hispanic_digital",
-        "white_digital"
+        "share_digital_access_lb_total_households",
+        "share_digital_access_lb_total_people_in_households",
+        "share_digital_access_lb_income_less_than_50k",
+        "share_digital_access_lb_income_more_than_50k",
+        "share_digital_access_lb_other",
+        "share_digital_access_lb_black",
+        "share_digital_access_lb_hispanic",
+        "share_digital_access_lb_white"
       )),
-      .fns = ~ set_quality(
-        get(paste0(
-          "cv_",
-          cur_column()
-        )),
-        .x
+      .fns = ~ case_when(
+        get(str_remove(cur_column(), "_lb")) - .x < 0.1 ~ 1,
+        get(str_remove(cur_column(), "_lb")) - .x < 0.2 ~ 2,
+        get(str_remove(cur_column(), "_lb")) - .x >= 0.2 ~ 3,
+        .default = NA_real_
       ),
       .names = "{.col}_quality"
     )) |>
-    rename_with(~ str_replace(., "_digital_quality", "_quality") %>%
-      str_c("share_digital_access_", .), ends_with("_digital_quality"))
+    rename_with(~ str_replace(., "_lb_", "_"), ends_with("_quality"))
 }
 
 lst(
@@ -566,6 +561,44 @@ plot_quality_flags(county_income_digital_access) +
 
 plot_quality_flags(place_income_digital_access) +
   labs(subtitle = "By Income")
+```
+
+We also cap the lower bound at 0 and upper bound at 1
+
+```{r}
+cap_ci <- function(data) {
+  data |>
+    rowwise() |>
+    mutate(
+      across(
+        contains("share_digital_access_lb"),
+        ~ max(.x, 0)
+      ),
+      across(
+        contains("share_digital_access_ub"),
+        ~ min(.x, 1)
+      )
+    ) |>
+    ungroup()
+}
+
+lst(
+  county_overall_digital_access,
+  place_overall_digital_access,
+  county_raceeth_digital_access,
+  place_raceeth_digital_access,
+  county_income_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = cap_ci(.y),
+      envir = .GlobalEnv
+    )
+  )
 ```
 
 # Prepare the data for saving & export final Metrics files
@@ -851,9 +884,6 @@ place_raceeth_digital_access |> get_summary_stats()
 county_income_digital_access |> get_summary_stats()
 
 place_income_digital_access |> get_summary_stats()
-```
-
-```{r}
 ```
 
 ```{r}
