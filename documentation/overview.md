@@ -889,7 +889,7 @@ schools where 20 percent or more of students come from households living below 1
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
+* **Analyst & Programmer:** Erica Blom, Emily Gutierrez, & James Carter
 * **Year(s):** 2014-15 through 2018-19
 * **Final data name(s):** `MEPS_2014-2018_city.csv` `MEPS_2014-2018_county.csv'
 * **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
