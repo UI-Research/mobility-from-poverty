@@ -169,16 +169,18 @@ save "${health_data}nomiss_bw_by_county_`ed'_`y2'.dta", replace
 }
 
 //# Merge Files
-//# merge files: all births
+//# merge files: All births - Merging Non-Missing Births to Low Birthweight Births 
 use "${health_data}lbw_births_by_county_`y2'.dta", clear
 	merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`y2'.dta"
 		tab _merge
 		drop _merge
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
-//# merge files: race/ethnicity
+//# merge files: Race/Ethnicity - Merging Non-Missing Births to Low Birthweight Births 
 foreach sub of global sub {
-use "${health_data}lbw_births_by_county_`sub'_`y2'.dta", clear
+
+	di "`sub'"
+	use "${health_data}lbw_births_by_county_`sub'_`y2'.dta", clear
 	merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`sub'_`y2'.dta"
 		tab _merge
 		drop _merge
@@ -186,7 +188,7 @@ use "${health_data}lbw_births_by_county_`sub'_`y2'.dta", clear
 	save "${health_data}neonatal_health_intermediate_`sub'_`y2'.dta", replace
 }
 
-//# merge files: mother's education
+//# merge files: Mother's Education  - Merging Non-Missing Births to Low Birthweight Births 
 foreach ed of global ed_sub {
 	di "`ed'"
 	use "${health_data}lbw_births_by_county_`ed'_`y2'.dta", clear
@@ -220,6 +222,7 @@ save "${health_data}neonatal_health_intermediate_momed_`y2'.dta", replace
 
 //# all births - all, race/ethnicity, and mother's education
 foreach data_type of global data_types {
+	di "`data_type'"
 	use "${health_data}neonatal_health_intermediate_`data_type'_`y2'.dta", clear
 
 	*year
@@ -405,7 +408,7 @@ forvalues i = 1/255 {
 //repeated 255 times because that is the maximum number of counties in a state
 //end result is a single variable with unidentified counties value for every observation											
 
-replace lbw_births = unidentified_lbw if unidentified_county_flag == 1  //replaces all_birth with value from unidentified counties if an unidentified county
+replace lbw_births = unidentified_lbw if unidentified_county_flag == 1  //replaces lbw_births with value from unidentified counties if an unidentified county
 
 assert !missing(lbw_births) if unidentified_county_flag == 1		//test to confirm no missing values for unidentified counties
 	drop unidentified_lbw
@@ -422,7 +425,7 @@ forvalues i = 1/255 {
 //repeated 255 times because that is the maximum number of counties in a state
 //end result is a single variable with unidentified counties value for every observation											
 
-replace nomiss_births = unidentified_nomiss if unidentified_county_flag == 1  //replaces all_birth with value from unidentified counties if an unidentified county
+replace nomiss_births = unidentified_nomiss if unidentified_county_flag == 1  //replaces nomisss_births with value from unidentified counties if an unidentified county
 
 assert !missing(nomiss_births) if unidentified_county_flag == 1	//test to confirm no missing values for unidentified counties
 	drop unidentified_nomiss
