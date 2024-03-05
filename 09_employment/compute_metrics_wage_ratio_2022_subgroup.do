@@ -184,3 +184,8 @@ order year state county state_name county_name subgroup_type subgroup  ratio_liv
 export delimited using metrics_wage_ratio_2022_subgroup.csv, replace
 
 save "wage_ratio_final_2022_subgroup.dta", replace
+
+/* delete unneeded files */
+
+erase "wage_ratio_final_2022_subgroup.dta"
+erase "mit_living_wage-2022.dta"
