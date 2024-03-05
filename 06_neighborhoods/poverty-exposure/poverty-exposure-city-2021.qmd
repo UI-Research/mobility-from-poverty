@@ -14,18 +14,6 @@ execute:
   message: false
 ---
 
-```{css, echo = FALSE}
-div.main .content {
-  font-size: 10px;
-}
-
-div.column {
-  padding: 0 16px;
-  max-width: 1500px;
-}
-
-```
-
 This metric is the share of people experiencing poverty in a census place who live in census tracts with poverty rates over 40%. If a place's overall poverty rate is 20% but people in poverty are spread out evenly across all census tracts, the index would equal 0; if they were heavily concentrated in certain tracts, the index would approach 1.
 
 ## Process
@@ -113,7 +101,8 @@ tracts <- map_df(state_fips, ~getCensus(name = "acs/acs5",
                                         region = "tract:*",
                                         regionin = .x,
                                         vintage = 2021)) %>%
-  as_tibble()
+  as_tibble() %>%
+  mutate(year = 2021)
 
 # rename the variables
 tracts <- tracts %>%
@@ -244,6 +233,7 @@ tracts <- tracts %>%
     state, 
     county, 
     tract, 
+    year,
     people, 
     poverty,
     poverty_black, 
@@ -411,7 +401,8 @@ We are only interested in places with large populations. We load the crosswalk c
 places_of_interest <- 
   read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
   filter(year == 2020) %>%
-  mutate(state_place = paste0(state, place))
+  mutate(state_place = paste0(state, place)) %>%
+  select(-year)
 
 crosswalk <- crosswalk %>%
   filter(state_place %in% places_of_interest$state_place)
@@ -462,7 +453,7 @@ We calculate the overall poverty and the number of people without a poverty esti
 
 ```{r}
 places_summary <- tracts_joined %>%
-  group_by(state, place, state_place, place_name) %>%
+  group_by(state, place, state_place, place_name, year) %>%
   summarize(
     people = sum(people * afact), 
     tracts = sum(afact),
@@ -725,7 +716,7 @@ places_summary %>%
   geom_histogram() +
   scale_y_continuous(limits = c(0, NA),
                      expand = expansion(mult = c(0, 0.2))) +
-  labs(title = "Most Places in 2018 Have No Poverty Exposure",
+  labs(title = "Most Places in 2021 Have No Poverty Exposure",
        subtitle = "The Distribution of Poverty Exposure")
 
 places_summary %>%
@@ -1030,11 +1021,26 @@ set_quality <- function(cv, exposure) {
 
 places_summary <- places_summary %>%
   mutate(
-    share_poverty_exposure_quality = set_quality(cv = poverty_cv, exposure = poverty_exposure),
-    share_poverty_exposure_black_quality = set_quality(cv = poverty_black_cv, exposure = poverty_exposure_black),
-    share_poverty_exposure_hispanic_quality = set_quality(cv = poverty_hispanic_cv, exposure = poverty_exposure_hispanic),
-    share_poverty_exposure_other_races_quality = set_quality(cv = poverty_other_races_cv, exposure = poverty_exposure_other_races),
-    share_poverty_exposure_white_nonhispanic_quality = set_quality(cv = poverty_white_nonhispanic_cv, exposure = poverty_exposure_white_nonhispanic)
+    share_poverty_exposure_quality = set_quality(
+      cv = poverty_cv, 
+      exposure = share_poverty_exposure
+    ),
+    share_poverty_exposure_black_quality = set_quality(
+      cv = poverty_black_cv,
+      exposure = share_poverty_exposure_black
+    ),
+    share_poverty_exposure_hispanic_quality = set_quality(
+      cv = poverty_hispanic_cv, 
+      exposure = share_poverty_exposure_hispanic
+    ),
+    share_poverty_exposure_other_races_quality = set_quality(
+      cv = poverty_other_races_cv, 
+      exposure = share_poverty_exposure_other_races
+      ),
+    share_poverty_exposure_white_nonhispanic_quality = set_quality(
+      cv = poverty_white_nonhispanic_cv, 
+      exposure = share_poverty_exposure_white_nonhispanic
+    )
   )
 
 count(places_summary, share_poverty_exposure_quality)
@@ -1070,7 +1076,6 @@ We need to include all counties in the published data even if we don't have a me
 
 ```{r save-data}
 final_data <- places_summary %>%
-  mutate(year = 2021) %>%
   select(year,
          state,
          place,
@@ -1087,9 +1092,9 @@ write_csv(final_data,
 ```{r}
 # create a long version of the subgroup data
 places_summary_subgroups <- places_summary %>%
-  select(state, place, contains("exposure")) %>%
+  select(state, place, year, contains("exposure")) %>%
   # pivot to very long
-  pivot_longer(c(-state, -place), names_to = "subgroup", values_to = "share_poverty_exposure") %>%
+  pivot_longer(c(-state, -place, -year), names_to = "subgroup", values_to = "share_poverty_exposure") %>%
   # create new variable names
   mutate(variable = if_else(str_detect(subgroup, "_quality"), 
                             "share_poverty_exposure_quality", 
