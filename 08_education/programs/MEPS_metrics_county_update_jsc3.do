@@ -171,4 +171,4 @@ export delimited using "${final_data}meps_county_2020.csv", replace
 
 destring year state county, replace
 
-save "${built_data}MEPS_2016-2020_county.dta", replace
+save "${built_data}MEPS_2014-2020_county.dta", replace
