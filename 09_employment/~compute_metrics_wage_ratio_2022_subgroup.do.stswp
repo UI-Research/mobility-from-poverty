@@ -52,9 +52,17 @@ label values industry_type industry_labels_mm
 
 drop if industry_type == . // drop super-sections and "unclassified" naics codes 
 
+** because some naics codes are combined into industries, we need to collapse
+** we average the average weekly wage across both
+** but sum the establishment counts 
+collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaverageestablishmentcount, by(st cnty industry_type)
+
+** check for duplicates
+duplicates report st cnty industry_type
+
 ** keep variables pre-merge
 
-keep st cnty annualaverageweeklywage annualaverageestablishmentcount industry_type
+keep st cnty avgwkwage avgestct industry_type
 
 rename st state
 
@@ -77,13 +85,13 @@ duplicates drop
 gen weekly_living_wage = wage * 40
 
 /* get ratio (main metric) */
-gen ratio_living_wage = annualaverageweeklywage/weekly_living_wage
+gen ratio_living_wage = avgwkwage/weekly_living_wage
 
 /* create data quality flag 
 per discussion with Greg, >= 30 is 1, <30 is 3 */
-gen ratio_living_wage_quality = 1 if annualaverageestablishmentcount >= 30 & annualaverageestablishmentcount != .
-replace ratio_living_wage_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
-replace ratio_living_wage_quality = . if annualaverageestablishmentcount == .
+gen ratio_living_wage_quality = 1 if avgestct >= 30 & avgestct != .
+replace ratio_living_wage_quality = 3 if avgestct < 30 & avgestct != .
+replace ratio_living_wage_quality = . if avgestct == .
 
 /* test flag */
 tab ratio_living_wage_quality, missing
@@ -165,6 +173,8 @@ replace county_name = "Valdez-Cordova Census Area" if state == "02" & county == 
 
 drop if _merge == 1 & state != "09"
 
+*** drop old counties that don't match 2022 units-- QCEW data does not use most up to date census units in 2022
+drop if _merge == 2 & state == "09"
 
 *** also want to drop old counties and impute missing values 
 generate flag = 1 if state == "09" & ratio_living_wage == "NA"
@@ -180,6 +190,11 @@ assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 /* export final dataset */
 
 keep if year == 2022
+
+*** assert number of counties
+*** uncomment command below to install package before running subsequent line
+*ssc install distinct
+distinct state county, joint // to confirm there are 3143 counties in the dataset
 
 keep year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
