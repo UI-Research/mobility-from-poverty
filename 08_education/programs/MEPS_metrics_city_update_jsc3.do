@@ -23,7 +23,7 @@ global intermediate_data "${education}\data\intermediate\"
 global built_data "${education}data\built\"
 global final_data "${education}data\final_data\"
 
-*Updated MEPS data is not currently available on the portal, so using the file in Box
+*Updated MEPS data is not currently available on the portal, so using the file in Box - Box is an internal folder at Urban & public does not have access
 *Once it is available on the portal, can comment out lines 28 and 127, and uncomment/run lines 117-118 and 126
 global box "C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\"
 
@@ -220,7 +220,12 @@ tab year if missing(meps20_total)
 order year state place city  meps20_black* meps20_hispanic* meps20_white* meps20_total*
 gsort -year state place city
 
-drop meps20_total meps20_total_quality
+drop meps20_total meps20_total_quality city_name
+
+foreach var in black hispanic white {
+rename meps20_`var' share_meps20_`var'
+rename meps20_`var'_quality share_meps20_`var'_quality
+}
 
 export delimited using "${final_data}meps_city_2020.csv", replace 
 /*

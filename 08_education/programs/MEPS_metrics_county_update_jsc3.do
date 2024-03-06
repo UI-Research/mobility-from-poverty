@@ -22,8 +22,8 @@ global raw_data "${education}\data\raw\"
 global intermediate_data "${education}\data\intermediate\"
 global final_data "${education}\data\final_data\"
 
-*Updated MEPS data is not currently available on the portal, so using the file in Box
-*Once it is available on the portal, can comment out lines 28 and 127, and uncomment/run lines 117-118 and 126
+*Updated MEPS data is not currently available on the portal, so using the file in Box - Box is an internal folder at Urban & public does not have access
+*Once it is available on the portal, can comment out lines 27 and 84, and uncomment/run lines 75-76 and 83
 global box "C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\"
 
 // Files
@@ -173,6 +173,11 @@ order year state county meps20_black* meps20_hispanic* meps20_white* meps20_tota
 gsort -year state county 
 
 drop meps20_total meps20_total_quality
+
+foreach var in black hispanic white {
+rename meps20_`var' share_meps20_`var'
+rename meps20_`var'_quality share_meps20_`var'_quality
+}
 
 export delimited using "${final_data}meps_county_2020.csv", replace
 /*
