@@ -38,7 +38,7 @@ keep if areatype == "County"
 generate industry_type = .
 	replace industry_type = 1 if naics == 10 & own == 0 // all
 	replace industry_type = 2 if naics == 101 // goods producing
-	replace industry_type = 3 if naics == 1028 // public admin
+	replace industry_type = 3 if naics == 10 & (own == 1 | own == 2 | own == 3) // public admin
 	replace industry_type = 4 if naics == 1021 // trade transit utilities
 	replace industry_type = 5 if naics == 1022 // info services
 	replace industry_type = 6 if naics == 1023 | naics == 1024 // financial, prof, biz services
@@ -59,6 +59,13 @@ collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaveragees
 
 ** check for duplicates
 duplicates report st cnty industry_type
+
+/* test whether all counties have needed codes-- answer is no, which means need to do data expansion later on */ 
+egen obs_per_cnty = count(industry_type), by(st cnty)
+tab obs_per_cnty
+
+** count zeros -- will generate this many zeros in final dataset
+count if avgwkwage == 0
 
 ** keep variables pre-merge
 
@@ -86,6 +93,8 @@ gen weekly_living_wage = wage * 40
 
 /* get ratio (main metric) */
 gen ratio_living_wage = avgwkwage/weekly_living_wage
+
+assert avgwkwage == 0 if ratio_living_wage == 0 // assert ratio is missing if avgwkwage is zero in raw dataset
 
 /* create data quality flag 
 per discussion with Greg, >= 30 is 1, <30 is 3 */
@@ -187,14 +196,55 @@ replace ratio_living_wage_quality = "" if state == "09"
 *** assert 
 assert ratio_living_wage_quality == "" if ratio_living_wage == "NA"
 
+*** correct subgroup variables
+replace subgroup_type = 1 if state == "09"
+label values subgroup_type subg_type_lab
+
+replace subgroup = 1 if state == "09"
+label values subgroup industry_labels_mm
+
 /* export final dataset */
 
 keep if year == 2022
+
+*** fill in needed observations so each county has a row for each industry subgroup
+*** including gernating all needed variables for the newly generated rows
+egen fips_code = concat(state county)
+
+drop _merge
+tab subgroup, m
+
+replace subgroup = 1 if subgroup == .
+label values subgroup industry_labels_mm
+
+fillin fips_code subgroup
+
+bysort fips_code: generate state_b = state[1]
+bysort fips_code: generate county_b = county[1]
+bysort fips_code: generate state_name_b = state_name[1]
+bysort fips_code: generate county_name_b = county_name[1]
+
+drop state county state_name county_name
+rename state_b state
+rename county_b county
+rename state_name_b state_name
+rename county_name_b county_name
+
+replace year = 2022
+
+tab subgroup if _fillin == 1, m  // confirm no all values were filled in
+replace subgroup_type = 2 if _fillin == 1
+
+replace ratio_living_wage = "NA" if _fillin == 1
+replace ratio_living_wage_quality = "" if _fillin == 1 
 
 *** assert number of counties
 *** uncomment command below to install package before running subsequent line
 *ssc install distinct
 distinct state county, joint // to confirm there are 3143 counties in the dataset
+distinct state county subgroup, joint // to confirm there are 8 obs for each of the 3143 counties (or 25144)
+
+*count if ratio_living_wage == "0"
 
 keep year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
