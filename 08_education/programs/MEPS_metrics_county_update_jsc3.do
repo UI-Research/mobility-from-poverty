@@ -6,7 +6,7 @@
 ** Produces county data 
 
 /*
-Update County-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024
+Update County-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024 & Emily Gutierrez 3/6/2024
 
 */
 
@@ -15,14 +15,16 @@ clear all
 global year=2020
 
 
-global gitfolder "C:\Users\jcarter\Documents\git_repos\mobility-from-poverty\"
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty\"
 global education "${gitfolder}08_education\"
 
 global raw_data "${education}\data\raw\"
 global intermediate_data "${education}\data\intermediate\"
 global final_data "${education}\data\final_data\"
 
-global box "C:\Users\jcarter\Box\"
+*Updated MEPS data is not currently available on the portal, so using the file in Box
+*Once it is available on the portal, can comment out lines 28 and 127, and uncomment/run lines 117-118 and 126
+global box "C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\"
 
 // Files
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
@@ -73,12 +75,13 @@ save "raw\ccd_dir_2014-${year}.dta", replace
 educationdata using "school meps", sub(year=2014:${year}) csv clear
 save "raw\ccd_meps_2014-${year}.dta", replace
 */
+
 *Merge Data together
 use "raw\ccd_dir_2014-${year}.dta", clear
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 drop _merge
-*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\My Box Notes\Mobility Metrics - MEPS\Abrv Set of Portal Variables
-merge 1:1 year ncessch using "${box}Mobility Metrics - MEPS\Abrv Set of Portal Variables"
+*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\Abrv Set of Portal Variables
+merge 1:1 year ncessch using "${box}Abrv Set of Portal Variables"
 tab year _merge
 drop if year==2013
 drop _merge
@@ -88,7 +91,7 @@ save "intermediate/combined_2014-${year}.dta", replace
 ** county-level rates **
 use "intermediate/combined_2014-${year}.dta", clear
 
-drop if enrollment==. | enrollment==0
+drop if missing(enrollment) | enrollment==0
 
 *Using MEPS
 gen meps_share = meps_poverty_pct/100
@@ -102,14 +105,7 @@ replace numerator = 0 if meps_20 == 0
 forvalues i=1/3 {
 	gen numerator`i' = enrollment`i'
 	replace numerator`i' = 0 if meps_20 == 0
-} 
-
-// Other Ethnicities
-gen enrollment_other = enrollment4 + enrollment5 + enrollment6 + enrollment7 + enrollment9
-gen numerator4 = enrollment_other
-
-replace numerator4 = 0 if meps_20 == 0
- 
+}  
 
 numlabel, add
 replace county_code=. if county_code==-2
@@ -121,11 +117,39 @@ gen county = substr(county_code,3,5)
 drop if county_code=="." // get rid of those missing county information
 assert strlen(county)==3
 
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 enrollment_other numerator*, by(year state county)
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3  numerator*, by(year state county)
 
-rename enrollment enrollment99
-rename numerator numerator99
-rename enrollment_other enrollment4
+gen meps20_total = numerator/enrollment
+gen meps20_white = numerator1/enrollment1
+gen meps20_black = numerator2/enrollment2
+gen meps20_hispanic = numerator3/enrollment3
+
+*Quality Check Variables
+gen meps20_total_quality = 1 if enrollment>=30 & meps20_total!=.
+replace meps20_total_quality = 2 if enrollment>=15 & meps20_total_quality==. & meps20_total!=.
+replace meps20_total_quality = 3 if meps20_total_quality==. & meps20_total!=.
+
+gen meps20_white_quality = 1 if enrollment1>=30 &  meps20_white!=.
+replace meps20_white_quality = 2 if enrollment1>=15 & meps20_white_quality==. & meps20_white!=.
+replace meps20_white_quality = 3 if meps20_white_quality==. & meps20_white!=.
+
+gen meps20_black_quality = 1 if enrollment2>=30 & meps20_black!=.
+replace meps20_black_quality = 2 if enrollment2>=15 & meps20_black_quality==. & meps20_black!=.
+replace meps20_black_quality = 3 if meps20_black_quality==. & meps20_black!=.
+
+gen meps20_hispanic_quality = 1 if enrollment3>=30 & meps20_hispanic!=.
+replace meps20_hispanic_quality = 2 if enrollment3>=15 & meps20_hispanic_quality==. & meps20_hispanic!=.
+replace meps20_hispanic_quality = 3 if meps20_hispanic_quality==. & meps20_hispanic!=.
+
+drop enrollment* numerator* 
+
+
+keep year state county meps20_total meps20_total_quality ///
+meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
+order year state county meps20_total meps20_total_quality ///
+meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
+duplicates drop
+
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
 tab year _merge
@@ -134,41 +158,24 @@ drop if _merge == 1 & year >= 2014 & year <= 2020 // drops territories
 drop if year > $year
 drop _merge
 
-// Reshape Data Wide
-reshape long enrollment numerator, i(year state county) j(gp)
-
-gen subgroup = ""
-replace subgroup = "White, Non-Hispanic" if gp == 1
-replace subgroup = "Black, Non-Hispanic" if gp == 2
-replace subgroup = "Hispanic" if gp == 3
-replace subgroup = "Other Races and Ethnicities" if gp == 4
-replace subgroup = "All" if gp == 99
-
-gen meps20 = 100 * (numerator / enrollment)
-
-* Data Quality Variable
-gen meps20_quality = .
-replace meps20_quality = 1 if enrollment >= 30 & !missing(meps20)
-replace meps20_quality = 2 if enrollment >= 15 & missing(meps20_quality) & !missing(meps20)
-replace meps20_quality = 3 if missing(meps20_quality) & !missing(meps20)
-
-keep year state county subgroup meps20 meps20_quality
-order year state county subgroup meps20 meps20_quality
-
-gsort -year state county
-
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
 *missingness
-tab year, mi
-tab year if missing(meps20)
+tab year
+tab year if missing(meps20_black)
+tab year if missing(meps20_hispanic)
+tab year if missing(meps20_white)
+tab year if missing(meps20_total)
 
-rename meps20* share_meps20*
+order year state county meps20_black* meps20_hispanic* meps20_white* meps20_total*
+gsort -year state county 
+
+drop meps20_total meps20_total_quality
 
 export delimited using "${final_data}meps_county_2020.csv", replace
-
+/*
 destring year state county, replace
 
 save "${built_data}MEPS_2014-2020_county.dta", replace

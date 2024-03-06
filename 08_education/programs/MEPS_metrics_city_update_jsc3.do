@@ -6,7 +6,7 @@
 ** Produces city level data 
 
 /*
-Update City-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024
+Update City-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024 & Emily Gutierrez 3/6/2024
 
 */
 
@@ -15,7 +15,7 @@ clear all
 global year=2020
 
 
-global gitfolder "C:\Users\jcarter\Documents\git_repos\mobility-from-poverty\"
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty\"
 global education "${gitfolder}08_education\"
 
 global raw_data "${education}data\raw\"
@@ -23,7 +23,9 @@ global intermediate_data "${education}\data\intermediate\"
 global built_data "${education}data\built\"
 global final_data "${education}data\final_data\"
 
-global box "C:\Users\jcarter\Box\"
+*Updated MEPS data is not currently available on the portal, so using the file in Box
+*Once it is available on the portal, can comment out lines 28 and 127, and uncomment/run lines 117-118 and 126
+global box "C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\"
 
 
 // Files
@@ -37,7 +39,7 @@ cap n mkdir ${intermediate_data}
 cap n mkdir ${final_data}
 
 
-global rebuild_portal_data = 0
+global rebuild_portal_data = 1
 
 ** install educationdata command **
 cap n ssc install libjson
@@ -121,8 +123,8 @@ use "raw\ccd_dir_2014-${year}.dta", clear
 replace enrollment = 0 if enrollment < 0
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 drop _merge
-*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\My Box Notes\Mobility Metrics - MEPS\Abrv Set of Portal Variables
-merge 1:1 year ncessch using "${box}Mobility Metrics - MEPS\Abrv Set of Portal Variables"
+*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\Abrv Set of Portal Variables
+merge 1:1 year ncessch using "${box}Abrv Set of Portal Variables"
 tab year _merge
 drop if year==2013
 drop _merge
@@ -148,11 +150,6 @@ forvalues i=1/3 {
 	replace numerator`i' = 0 if meps_20 == 0
 } 
 
-gen enrollment_other = enrollment4 + enrollment5 + enrollment6 + enrollment7 + enrollment9
-gen numerator4 = enrollment_other
-
-replace numerator4 = 0 if meps_20 == 0
-
 numlabel, add
 *clean for state variable
 replace county_code = . if county_code == -2
@@ -166,61 +163,67 @@ assert strlen(state)==2
 gen city_name=lower(city_location)
 replace city_name = proper(city_name)
 
-collapse (sum) enrollment enrollment1 enrollment2 enrollment3 enrollment_other numerator*, by(year state city_name)
+collapse (sum) enrollment enrollment1 enrollment2 enrollment3  numerator*, by(year state city_name)
 
-rename enrollment enrollment99
-rename numerator numerator99
-rename enrollment_other enrollment4
+gen meps20_total = numerator/enrollment
+gen meps20_white = numerator1/enrollment1
+gen meps20_black = numerator2/enrollment2
+gen meps20_hispanic = numerator3/enrollment3
+
+
+*Quality Check Variables
+gen meps20_total_quality = 1 if enrollment>=30 & meps20_total!=.
+replace meps20_total_quality = 2 if enrollment>=15 & meps20_total_quality==. & meps20_total!=.
+replace meps20_total_quality = 3 if meps20_total_quality==. & meps20_total!=.
+
+gen meps20_white_quality = 1 if enrollment1>=30 &  meps20_white!=.
+replace meps20_white_quality = 2 if enrollment1>=15 & meps20_white_quality==. & meps20_white!=.
+replace meps20_white_quality = 3 if meps20_white_quality==. & meps20_white!=.
+
+gen meps20_black_quality = 1 if enrollment2>=30 & meps20_black!=.
+replace meps20_black_quality = 2 if enrollment2>=15 & meps20_black_quality==. & meps20_black!=.
+replace meps20_black_quality = 3 if meps20_black_quality==. & meps20_black!=.
+
+gen meps20_hispanic_quality = 1 if enrollment3>=30 & meps20_hispanic!=.
+replace meps20_hispanic_quality = 2 if enrollment3>=15 & meps20_hispanic_quality==. & meps20_hispanic!=.
+replace meps20_hispanic_quality = 3 if meps20_hispanic_quality==. & meps20_hispanic!=.
+
+drop enrollment* numerator* 
+
+keep year state city_name meps20_total meps20_total_quality ///
+meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
+order year state city_name meps20_total meps20_total_quality ///
+meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
+duplicates drop
 
 *city data only available for 2016+ and MEPS only available up to 2020
 keep if year >= 2016 & year <= $year
 merge m:1 year state city_name using "Intermediate/cityfile.dta"
-
 tab year _merge
-
 drop if year > $year
-
 tab _merge if missing(place)
-
 drop if _merge==1 // drop district data that doesn't match 
-
-drop _merge city_name state_name
-
-// Reshape Data Wide
-reshape long enrollment numerator, i(year state place) j(gp)
-
-gen subgroup = ""
-replace subgroup = "White, Non-Hispanic" if gp == 1
-replace subgroup = "Black, Non-Hispanic" if gp == 2
-replace subgroup = "Hispanic" if gp == 3
-replace subgroup = "Other Races and Ethnicities" if gp == 4
-replace subgroup = "All" if gp == 99
-
-gen meps20 = 100 * (numerator / enrollment)
-
-* Data Quality Variable
-gen meps20_quality = .
-replace meps20_quality = 1 if enrollment >= 30 & !missing(meps20)
-replace meps20_quality = 2 if enrollment >= 15 & missing(meps20_quality) & !missing(meps20)
-replace meps20_quality = 3 if missing(meps20_quality) & !missing(meps20)
-
-keep year state place subgroup meps20 meps20_quality
-order year state place subgroup meps20 meps20_quality
-
-gsort -year state place
+	drop _merge state_name 
 
 *summary stats to see possible outliers
 bysort year: sum
 bysort state: sum
 
 *missingness
+*missingness
 tab year
-tab year if missing(meps20)
+tab year if missing(meps20_black)
+tab year if missing(meps20_hispanic)
+tab year if missing(meps20_white)
+tab year if missing(meps20_total)
 
-rename meps20* share_meps20*
+order year state place city  meps20_black* meps20_hispanic* meps20_white* meps20_total*
+gsort -year state place city
+
+drop meps20_total meps20_total_quality
 
 export delimited using "${final_data}meps_city_2020.csv", replace 
-
+/*
 destring year state place, replace
 
 save "${built_data}MEPS_2016-2020_city.dta", replace
