@@ -256,7 +256,9 @@ count if missing(subgroup_type)
 
 keep year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name subgroup_type subgroup  ratio_living_wage ratio_living_wage_quality
+order year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
+
+sort year state county subgroup
 
 export delimited using metrics_wage_ratio_2022_subgroup.csv, replace
 
