@@ -12,7 +12,8 @@ calc_survey_mean <- function(.data, .geo_level) {
     group_by(year, crosswalk_period, statefip, {{ .geo_level }}) %>% 
     summarise(
       share_in_preschool = survey_mean(preschool, vartype = "ci"),
-      n = n()
+      n = n(),
+      geographic_allocation_quality = unweighted(mean(geographic_allocation_quality))
     ) %>%
     ungroup()
   
