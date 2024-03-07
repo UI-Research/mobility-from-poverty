@@ -891,7 +891,7 @@ schools where 20 percent or more of students come from households living below 1
 
 * **Analyst & Programmer:** Erica Blom, Emily Gutierrez, & James Carter
 * **Year(s):** 2014-15 through 2020-21 county, 2016-17 through 2020-21 city
-* **Final data name(s):** `MEPS_2020_city.csv` `MEPS_2022_county.csv'
+* **Final data name(s):** `MEPS_2020_city.csv` `MEPS_2020_county.csv'
 * **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
