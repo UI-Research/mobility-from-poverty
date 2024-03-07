@@ -539,19 +539,26 @@ house_value_place <- house_value_by_race(households_place, place)
 
 
 The metrics for the ACS indices are based on:
-- (1) sample size of each race and ethnic household at the county/place and 
-- (2) the number of observations that comes from the specific county/place calculated from the PUMA-county/place crosswalk.
 
-Therefore, the data quality is poor for counties/places with a extremely small number of households (N). To assess the data quality of counties/places with larger N, we need to consider what percent of data for the county/place actually came from the county/place itself.
+  - (1) sample size of each race and ethnic household at the county/place and
+  - (2) the number of observations that comes from the specific county/place
+    calculated from the PUMA-county/place crosswalk.
+
+Therefore, the data quality is poor for counties/places with a extremely small
+number of households (N). To assess the data quality of counties/places with
+larger N, we need to consider what percent of data for the county/place actually
+came from the county/place itself. We have this information in the `sum_products` column obtained from the crosswalk file. To read more about 
+how it was constructed, see the "Create quality variable" section of the ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd) notebook. 
 
 In particular,
 
--   Data quality is good (`1`): N is greater than 30 and more than 75% of 
-observations are from the county/place.
--   Data quality is marginal (`2`): N is greater than 30 but only 35% to 75% of 
-observations are from the county/place.
--   Data quality is poor (`3`): N is less than or equal to 30 **or** if less 
-than or equal 35% of observations are from the county/place
+  - Data quality is good (`1`): N is greater than 30 and more than 75% of
+    observations are from the county/place.
+  - Data quality is marginal (`2`): N is greater than 30 but only 35% to 75% of
+    observations are from the county/place.
+  - Data quality is poor (`3`): N is less than or equal to 30 **or** if less
+    than or equal 35% of observations are from the county/place
+
 
 ```{r}
 #| label: quality-check-flag-functions
@@ -560,7 +567,8 @@ construct_quality_flag <- function(x, y) {
   case_when(
     x > 30 & y > 0.75 ~ 1,
     x > 30 & (y > 0.35 & y <= 0.75) ~ 2,
-    x <= 30 | y <= 0.35 ~ 3
+    x <= 30 | y <= 0.35 ~ 3,
+    .default = NA_integer_
   )
 }
 ```
@@ -575,8 +583,11 @@ construct_quality_flag <- function(x, y) {
 county_quality <-
   households_county |>
   distinct(year, state, county, .keep_all = TRUE) |>
-  select(year, state, county, sum_products)
+  select(year, state, county, population, sum_products, geographic_allocation_quality)
 
+# Should the population variable that determines quality be the total population or the population of homeowners? Currently, we're basing it off the population of homeowners,
+# which is stricter. This causes more observations to have a data quality flag value of 3
+# compared to the geographic_allocation_quality variable in the puma county crosswalk file.
 house_value_county <-
   house_value_county |>
   left_join(county_quality, by = c("year", "state", "county")) |>
@@ -594,6 +605,8 @@ house_value_county |>
     x = "Quality Flag",
     y = "Count"
   )
+
+janitor::tabyl(house_value_county, ratio_house_value_households_quality)
 ```
 
 
