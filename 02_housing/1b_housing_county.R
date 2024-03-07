@@ -351,7 +351,7 @@ households_2022 <- households_2022 %>%
 write_csv(households_2022, "data/temp/households_2022_county.csv")
 
 # Data is 1/4 renters 3/4 owners 
-skimr::skim(households_2022)
+#skimr::skim(households_2022)
 
 ###################################################################
 
@@ -413,7 +413,7 @@ vacant_2022_new <- vacant_2022 %>%
   mutate(across(matches("Affordable"), ~as.integer(.x)))
 
 # look at results
-skimr::skim(vacant_2022_new)
+#skimr::skim(vacant_2022_new)
 
 ###################################################################
 
@@ -603,7 +603,7 @@ summary(housing_2022_overall)
 # and save in Downloads folder as "mobility_metrics_county.csv"
 username = getwd() %>% str_match("Users/.*?/") %>% str_remove_all("Users|/")
 
-metrics_2021 <- read_csv(paste0("C:/Users/",username,"/Downloads/mobility_metrics_county.csv") %>% 
+metrics_2021 <- read_csv(paste0("C:/Users/",username,"/Downloads/mobility_metrics_county.csv")) %>% 
   filter(year == 2021) %>% 
   select(state, county, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
 
