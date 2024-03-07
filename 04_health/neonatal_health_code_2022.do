@@ -26,7 +26,7 @@ Author: Jay Carter
 Date: Feb 21, 2024
 
 Data from CDC Wonder - Instructions in Readme
-
+	Download data from CDC Wonder into a folder //04_health/data/
 */
 clear all 
 pause on 
@@ -43,6 +43,8 @@ global data_types = "all raceth momed"
 
 cd "${gitfolder}"
 
+// cap n mkdir ${health_data}
+cap n mkdir ${health_data_final}
 
 local y2 = 22
 local y4 = 2000 + `y2'
@@ -505,18 +507,18 @@ use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 generate share_lbw_nomiss = lbw_births / nomiss_births
 	sum share_lbw_nomiss, detail
-	// assert share_lbw_nomiss < 1 // There are 9 zero nomiss_births values that result in missing share_lbw_nomiss values
+	
+	assert share_lbw_nomiss < 1 if nomiss_births > 0 // There are 9 zero nomiss_births values that result in missing share_lbw_nomiss values
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 	
 //# lbw metric -  race/ethnicity
 use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 *share lbw among nonmissing bw births 			// primary measure of lbw limiting the denominator to births with nonmissing birthweight data
 	generate share_lbw_nomiss = lbw_births/nomiss_births
-	replace share_lbw_nomiss = 0 if lbw_births == 0 & nomiss_births == 0	// TODO: Some question here - implication for the last assert statement in this block
 	
 	sum share_lbw_nomiss, detail
 	
-	assert share_lbw_nomiss < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag)
+	assert share_lbw_nomiss < 1 if missing(suppressed_county_flag) & missing(unidentified_county_flag) & !missing(share_lbw_nomiss)
 	assert share_lbw_nomiss >= 0
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
