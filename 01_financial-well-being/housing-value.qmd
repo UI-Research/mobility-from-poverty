@@ -314,7 +314,23 @@ households_county <-
     hhwt = if_else(county.x != "000", hhwt, hhwt * afact),
     sum_products = if_else(county.x != "000", 1, sum_products)
   ) |>
-  select(-c(county.x, county.y))
+  select(-c(county.x, county.y)) |>
+  # Remove old counties from 2022 Conneticut data
+  filter(!(year == 2022 & state == "09" & str_starts(county, "0")))
+
+puma_county_crosswalk |>
+  filter(state == "09", crosswalk_period == "2022") |>
+  distinct(county)
+
+
+acs1yr |>
+  filter(state == "09") |>
+  distinct(county)
+households_county |>
+  filter(year == 2022, state == "09") |>
+  distinct(county) |>
+  mutate(county = as.numeric(county)) |>
+  arrange(desc(county))
 ```
 
 #### Place
@@ -884,43 +900,17 @@ stopifnot(
 ```
 
 
-However, for 2022, the number of counties is 3,146
-```{r}
-#| label: check-number-of-counties-2022
-#| error: true
+There are 3 counties in the county populations file that are
+not present in our metric data. These are the planning regions of Connecticut. We will merge these in by performing as `right_join` using the county population file from the geographic crosswalks directory before exporting. Metric and quality values for these counties will be left as NA. 
 
-stopifnot(
-  ratio_house_value_households_county |>
-    distinct(year, state, county) |>
-    count(year) |>
-    filter(year == 2022) |>
-    pull(n) == 3146
-)
-```
 
-Further examination shows that there are 5 counties in our metric data that
-are not in the county populations file. 
 ```{r}
-#| label: find-extra-counties
+#| label: find-missing-counties
 
 
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
   tidylog::filter(year == 2022) %>%
   select(-year)
-
-(extra_counties <-
-  ratio_house_value_households_county %>%
-  filter(year == 2022) |>
-  distinct(state, county) |>
-  anti_join(all_counties, by = c("state", "county"))
-)
-```
-
-At the same time, there are 3 counties in the county populations file that are
-not present in our metric data:
-
-```{r}
-#| label: find-missing-counties
 
 (
   missing_counties <- ratio_house_value_households_county %>%
@@ -930,8 +920,25 @@ not present in our metric data:
 )
 ```
 
+At this stage, the number of counties in 2022 is 3,141.
+
+```{r}
+#| label: check-number-of-counties-2022
+#| error: true
+
+stopifnot(
+  ratio_house_value_households_county |>
+    distinct(year, state, county) |>
+    count(year) |>
+    filter(year == 2022) |>
+    pull(n) == 3141
+)
+```
+
+
 
 ## Export {#sec-export}
+
 
 
 ```{r}
@@ -943,7 +950,7 @@ export_metric <- function(data, file_type) {
 
   pop_file <-
     read_csv(here::here("geographic-crosswalks", "data", paste0(geo_var, "-populations.csv")))
-  data <- data |> left_join(pop_file, by = c("year", "state", geo_var))
+  data <- data |> right_join(pop_file, by = c("year", "state", geo_var))
 
 
   if (file_type == "recent") {
