@@ -520,7 +520,7 @@ Join the cleaned ACS data onto the crosswalk.
 ```{r}
 
 acs_crosswalked <- left_join(
-  acs_clean, 
+  acs_clean,
   puma_place_crosswalk, 
   by=c("crosswalk_period", "statefip","puma"), 
   relationship = "many-to-many"
@@ -726,14 +726,14 @@ acs_race_ethnicity <- acs_race_ethnicity %>%
 #| label: calc-race-ethnicity
 results_race_ethnicity <- acs_race_ethnicity %>%
   group_split(statefip) %>% 
-  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
                                       .geo_level = place,
                                       .subgroup = subgroup_race))
 ```
 
 ```{r}
 #| label: finalize-race-ethnicity
-results_race_ethnicity <- finalize_metric(results_race_ethnicity)
+results_race_ethnicity <- finalize_metric_college(results_race_ethnicity)
 ```
 
 ```{r}
@@ -799,14 +799,14 @@ acs_gender <- acs_gender %>%
 #| label: calc-gender
 results_gender <- acs_gender %>%
   group_split(statefip) %>% 
-  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
                                       .geo_level = place,
                                       .subgroup = subgroup_gender))
 ```
 
 ```{r}
 #| label: finalize-gender
-results_gender <- finalize_metric(results_gender)
+results_gender <- finalize_metric_college(results_gender)
 ```
 
 ```{r}
@@ -828,7 +828,7 @@ results_gender_expanded <- acs_crosswalked %>%
   expand(year, geoid, subgroup_gender) %>%  
   mutate(statefip = str_sub(geoid, 1, 2),
          place = str_sub(geoid, 3, 7)) %>% 
-  left_join(results_results_gender, by = c("year", "statefip", "place", "subgroup_gender")) %>% 
+  left_join(results_gender, by = c("year", "statefip", "place", "subgroup_gender")) %>% 
   mutate(subgroup_type = "gender") %>% 
   rename(subgroup = subgroup_gender)
 ```
@@ -872,14 +872,14 @@ acs_disability <- acs_disability %>%
 #| label: calc-disability
 results_disability <- acs_disability %>%
   group_split(statefip) %>% 
-  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
                                       .geo_level = place,
                                       .subgroup = subgroup_disability))
 ```
 
 ```{r}
 #| label: finalize-disability
-results_disability <- finalize_metric(results_disability)
+results_disability <- finalize_metric_college(results_disability)
 ```
 
 ```{r}
@@ -912,11 +912,10 @@ Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 r
 
 First combine the subgroup data sets.
 ```{r}
-metrics_education_sub <-results_all_expand %>% 
+metrics_education_sub <- results_all_expand %>% 
   mutate(subgroup = "All",
          subgroup_type = "all") %>% 
   bind_rows(results_race_ethnicity_expanded, results_disability_expanded, results_gender_expanded)
-stopifnot(nrow(metrics_education_sub) == 3143 * 2 * 5)
 ```
 
 Now create the metric quality variable. The `share_hs_degree_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any place with NA for the `share_hs_degree` metric is being suppressed due to sample size and is given a quality flag of 3.  
@@ -932,160 +931,217 @@ metrics_education_sub <- metrics_education_sub %>%
   )
 ```
 
-### Evaluate results
+## Result Validation
 
-Summarize the predictors the all cateogry and categories by subgroups.
+Create summary tables for the values from the results for both all and for subgroups.
 ```{r}
-metrics_education_all_clean %>% 
+metrics_education_all %>% 
   select(share_hs_degree:share_hs_degree_quality) %>% 
   summary()
-
-metrics_education_sub_clean %>% 
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
   select(share_hs_degree:share_hs_degree_quality) %>% 
   summary()
 ```
 
-Look at distribution of hs_degree share by place.
+Look at distribution of college readiness share by place for all and for subgroups.
 ```{r}
-metrics_education_all_clean %>% 
+metrics_education_all %>% 
   filter(year == 2021) %>% 
   select(share_hs_degree) %>% 
   ggplot(aes(x = share_hs_degree)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Distribution by all palces of share hs_degree, 2021 (5-year data)") +
+  ggtitle("Distribution of share college ready, by place 2021 (5-year data)") +
   ylab("Density")
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup != "All") %>% 
+  select(share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share college ready, subgroups, by place 2021 (5-year data)") +
+  ylab("Density")
+  
 ```
 
-### Race distribution
-Look at distribution of hs_degree share by place by race.
+### Race/ethnicity
+
+Look at distribution of college readiness share by place for each individual subgroup.
+
+Race/ethnicity.
 ```{r}
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "Black, Non-Hispanic") %>% 
-  select(place, share_hs_degree) %>% 
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "race-ethnicity") %>% 
   ggplot(aes(x = share_hs_degree)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, Black") +
-  ylab("Density")
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "Hispanic") %>% 
-  select(place, share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, Hispanic") +
-  ylab("Density")
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "Other Races and Ethnicities") %>% 
-  select(place, share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, Other Races and Ethnicities") +
-  ylab("Density")
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "White, Non-Hispanic") %>% 
-  select(place, share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, White, Non-Hispanic") +
-  ylab("Density")
-
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, race/ethnicity, by place 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
 ```
 
-### Gender distribution
-Look at distribution of hs_degree share by place by gender.
+### Gender
+
+Gender.
 ```{r}
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "Male") %>% 
-  select(place, share_hs_degree) %>% 
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "gender") %>% 
   ggplot(aes(x = share_hs_degree)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, males") +
-  ylab("Density")
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "Female") %>% 
-  select(place, share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, females") +
-  ylab("Density")
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, gender, by place 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
 ```
 
-### Disability distribution
+### Disability
 
-Look at distribution of hs_degree share by place by disability status.
+Disability.
 ```{r}
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "with disabiliy") %>% 
-  select(place, share_hs_degree) %>% 
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "disability") %>% 
   ggplot(aes(x = share_hs_degree)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, with disabilities") +
-  ylab("Density")
-
-metrics_education_sub_clean %>% 
-  filter(year == 2021, subgroup == "without disability") %>% 
-  select(place, share_hs_degree) %>% 
-  ggplot(aes(x = share_hs_degree)) +
-  geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("hs_degree Share, without disabilities") +
-  ylab("Density")
-
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, disability, by place 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
 ```
 
+
+### Time trends
+
+Compare trends for the share college ready overtime for all years in the data.
+
+```{r}
+metrics_education_all %>%
+  group_by(geoid) %>%
+  mutate(share_hs_degree_change = share_hs_degree - lag(share_hs_degree)) %>%
+  filter(year == 2021) %>%
+  ggplot(aes(share_hs_degree, share_hs_degree_change)) +
+  geom_point(alpha = 0.2)
+metrics_education_all %>%
+  select(year, geoid, share_hs_degree) %>%
+  pivot_wider(
+    names_from = year, 
+    values_from = share_hs_degree
+  ) %>%
+  ggplot(aes(`2018`, `2021`)) +
+  geom_abline() +
+  geom_point(alpha = 0.1)
+```
+
+### Confidence intervals
+
+Check the missingness pattern for confidence intervals.
+```{r}
+nonmissing <- metrics_education_all |>
+  filter(!is.na(share_hs_degree) & !is.na(share_hs_degree_lb) & !is.na(share_hs_degree_ub))
+missing <- metrics_education_all |>
+  filter(is.na(share_hs_degree) & is.na(share_hs_degree_lb) & is.na(share_hs_degree_ub))
+stopifnot(nrow(nonmissing) + nrow(missing) == nrow(metrics_education_all))
+```
+
+Check the order. There are three variables and we are interested in pairwise comparisons, we can test that these line up. The upper-bound value should always be greater than the value and the lower-bound value. The value should always be greater than the lower-bound value.
+```{r}
+# upper bound is always greater than the estimate
+stopifnot(all(nonmissing$share_hs_degree_ub > nonmissing$share_hs_degree))
+# upper bound is always greater than the lower bound
+stopifnot(all(nonmissing$share_hs_degree_ub > nonmissing$share_hs_degree_lb))
+# estimate is always greater than the lower bound
+stopifnot(all(nonmissing$share_hs_degree > nonmissing$share_hs_degree_lb))
+```
+
+Look at confidence intervals.
+```{r}
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree, share_hs_degree_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the lower bound is sensible")
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree_ub, share_hs_degree)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the upper bound is sensible")
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree_ub, share_hs_degree_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the upper bound and the lower bound is sensible")
+```
+
+Distribution of confidence interval widths.
+```{r}
+metrics_education_all %>%
+  mutate(ci_width = share_hs_degree_ub - share_hs_degree_lb) %>%
+  pull(ci_width) %>%
+  summary(na.rm = TRUE)
+```
+
+### Quality and suppression
 Look at the counts of the quality flag.
 ```{r}
-metrics_education_all_clean %>% 
+metrics_education_all %>% 
   select(share_hs_degree_quality) %>% 
   ggplot(aes(x = share_hs_degree_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
-  ggtitle("Quality Flag (5-year data no subgroups)") +
+  ggtitle("Quality Flag, All (5-year data)") +
   ylab("Count")
 
-metrics_education_sub_clean %>% 
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
   select(share_hs_degree_quality) %>% 
   ggplot(aes(x = share_hs_degree_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
-  ggtitle("Quality Flag (5-year data with subgroups") +
+  ggtitle("Quality Flag, subgroups (5-year data") +
   ylab("Count")
 ```
+
+Look at quality by  each individual subgroup.
+
+```{r}
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  ggplot(aes(x = share_hs_degree_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  facet_wrap(~subgroup) +
+  ggtitle("Quality Flag, subgroups (5-year data)") +
+  ylab("Count")
+```
+
 
 Tabulate share of data suppressed by year.
 ```{r}
-metrics_education_all_clean %>% 
+metrics_education_all %>% 
   group_by(year) %>% 
-  filter(is.na(share_hs_degree)) %>% 
-  count()
+  summarise(suppressed = sum(is.na(share_hs_degree)),
+            total = n(),
+            suppressed_share = suppressed/total)
 
-metrics_education_sub_clean %>% 
-  group_by(year) %>% 
-  filter(is.na(share_hs_degree)) %>% 
-  count()
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  group_by(year, subgroup) %>% 
+  summarise(suppressed = sum(is.na(share_hs_degree)),
+            total = n(),
+            suppressed_share = suppressed/total)
 ```
 
 ## Export 
 
 Rename state.
 ```{r}
-metrics_education_all_clean <- metrics_education_all_clean %>% 
+metrics_education_all_clean <- metrics_education_all %>% 
   rename("state" = "statefip")
 
-metrics_education_sub_clean <- metrics_education_sub_clean %>% 
+metrics_education_sub_clean <- metrics_education_sub %>% 
   rename("state" = "statefip")
 ```
 
