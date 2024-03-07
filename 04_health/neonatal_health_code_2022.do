@@ -52,7 +52,7 @@ local y4 = 2000 + `y2'
 //# *(1) download data from CDC WONDER
 
 * access instructions for completing the CDC WONDER data query in README	
-* data query results are saved as lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder/04_health/data 
+* data query results are saved as lbw_births_by_county.txt, nomiss_bw_by_county.txt should be saved in $gitfolder/04_health/data 
 
 //# *(2) open, clean, and merge CDC WONDER files
 
@@ -355,8 +355,8 @@ use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 	merge 1:1 state county using "${health_data}/clean_county_crosswalk_`y2'.dta"
 	
 	tab _merge		// correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-
-	
+// 	drop if _merge == 1
+		
 
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
@@ -365,7 +365,8 @@ use "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", clear
 	merge 1:1 state county subgroup using "${health_data}clean_county_crosswalk_raceth_`y2'.dta"
 	
 	tab _merge		// correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-
+// 	drop if _merge == 1
+	
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# merge crosswalk - mother's education
@@ -373,7 +374,8 @@ use "${health_data}neonatal_health_intermediate_momed_`y2'.dta", clear
 	merge 1:1 state county subgroup using "${health_data}clean_county_crosswalk_momed_`y2'.dta"
 	
 	tab _merge		// correct to have master only and using only observations because of the pooled "unidentified counties" in the CDC WONDER data
-
+	// drop if _merge == 1
+	
 save "${health_data}neonatal_health_intermediate_momed_`y2'.dta", replace
 
 //# Append Education to Race Ethnicity - Keep the raceeth name the rest of the way
@@ -391,7 +393,9 @@ use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 gen unidentified_county_flag = .
 	replace unidentified_county_flag = 1 if _merge == 2		// observations only in CDC WONDER data and not in crosswalk (unidentified counties)
 	label var unidentified_county_flag "indicator that data represent pooled unidentified counties in state"
-	drop _merge
+	
+// 	drop if _merge == 1			// Keep obervations that merged and obervations that are in the xwalk
+// 	drop _merge
 
 * test flag	
 assert missing(lbw_births) 		if unidentified_county_flag == 1
@@ -526,14 +530,17 @@ save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# *(7) assess data quality
 
-//# Data Quality Flags - all births
+//# Data Quality Flags - all birthsr
+local y2 = 22
 use "${health_data}neonatal_health_intermediate_all_`y2'.dta", clear
 
 *generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
-	replace lbw_quality = 1 if missing(unidentified_county_flag)==.		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
-	replace lbw_quality = 2 if lbw_births < 30					// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	replace lbw_quality = 1 if missing(unidentified_county_flag)		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
+	replace lbw_quality = 2 if lbw_births < 30						// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag == 1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
+	replace lbw_quality = . if missing(share_lbw_nomiss)
+
 		label var lbw_quality "share low birthweight births: quality flag"
 save "${health_data}neonatal_health_intermediate_all_`y2'.dta", replace
 
@@ -546,6 +553,8 @@ gen lbw_quality = .
 	replace lbw_quality = 1 if missing(unidentified_county_flag) & missing(suppressed_county_flag)	// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
 	replace lbw_quality = 2 if lbw_births < 30											// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
 	replace lbw_quality = 3 if unidentified_county_flag == 1 | suppressed_county_flag == 1	// assigning a quality score of 3 to all counties flagged as "unassigned counties" or "suppressed"
+	replace lbw_quality = . if missing(share_lbw_nomiss)
+
 		label var lbw_quality "share low birthweight births: quality flag"
 save "${health_data}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
@@ -647,6 +656,7 @@ keep year state county share_lbw_nomiss lbw_lb lbw_ub lbw_quality	// keep only v
 	format lbw %04.2f									// format to include leading zero and limit to two decimal places per guidance 
 	format lbw_lb  %04.2f								// format to include leading zero and limit to two decimal places per guidance
 	format lbw_ub  %04.2f								// format to include leading zero and limit to two decimal places per guidance
+
 gen str3 new_county = string(county, "%03.0f")			// fix to include leading zeroes in county variables
 	tab county new_county if county < 10					// quick check to confirm leading zeroes
 	drop county
@@ -703,4 +713,3 @@ sort year state county subgroup_type subgroup									// final sort
 
 save "${health_data}neonatal_health_subgroup_`y4'.dta", replace
 export delimited using "${health_data_final}neonatal_health_subgroup_`y4'.csv", replace 
-
