@@ -146,20 +146,20 @@ This info is imported at the beginning of the program and then combined and made
 
 ### Overview
 
-* Brief description: This metric is the total number and share of students experiencing homelessness at some point during the school year from 2014-15 through 2019-20. The total number and the share of students experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, and Asian). Race/ethnicity shares are created as shares of each race/ethnicity’s total enrollment. 
+* Brief description: This metric is the total number and share of students experiencing homelessness at some point during the school year from 2014-15 through 2021-22. The total number and the share of students experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, and Asian). Race/ethnicity shares are created as shares of the total number of homeless students. 
 * **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2014-15 school year through 2019-20 school year
+* **Year(s):** 2014-15 school year through 2021-22 school year
 * **Final data name(s):** `homelessness.csv`
-* **Data Source(s):** EDFacts homelessness data; Common Core of Data (CCD) to identify counties and cities.
+* **Data Source(s):** EdDataExpress homelessness data; Common Core of Data (CCD) to identify counties and cities.
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires the ratio of the upper bound (`homeless_count_ub`) to the lower bound (`homeless_count_lb`) to be less or equal to than 1.05. Data quality of "2" requires this ratio to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the largest value of this ratio is 3.5 and those with estimated homeless populations of less than 20 have ratio values at or between 2 to 3.5.
-* **Limitations:** Data suppression
+* **Limitations:**  Overall and race/ethnicity metrics are reported as NA if total homeless students is less than 10. Due to data suppression and quality of underlying data, race/ethnicity shares do not always equal 100 percent of homeless students. If the number of homeless students by race/ethnicity is less than 70 percent or greater than 110 percent of total homeless students, all race/ethnicity metrics are reported as NA. Overall and race/ethnicity metrics are reported as NA if cell sizes are less than or equal to 2.
 * **Missingness:** Counties: 323/3,142 counties in 2014, 312/3,142 counties in 2015, 267/3,142 counties in 2016, 
-305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019. Cities: 
+305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019, 308/3,143 in 2020, and 296/3,144 in 2022. Cities: 56/486 in 2019, 54/486 in 2020, 53/486 in 2022
 
 ### Process
 
-Counts of students experiencing homelessness are downloaded from the EDFacts website, including by race/ethnicity subgroups for 2019. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state and subgrant status if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. For county level data, districts are assigned to the county where the district office is located (obtained from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
+Counts of students experiencing homelessness are downloaded from the EdDataExpress website, including by race/ethnicity subgroups for 2019-20 through 2021-22. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state (and subgrant status for years prior to 2019) if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. For county level data, districts are assigned to the county where the district office is located (obtained from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
 
 ---
 
