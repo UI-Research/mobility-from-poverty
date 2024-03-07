@@ -295,17 +295,19 @@ households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("
 
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA
+
 households_2022 <- households_2022 %>%
-  mutate(Affordable80AMI_all = 
+  mutate(Affordable80AMI_all =
            case_when(# deal with cases when RENTGRS and OWNCOST are 0
-             # RENTGRS == 0 | OWNCOST == 0 ~ 0,
+             RENTGRS == 0 ~ 0,
              OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
              OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
              OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
              OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
          # create subgroups for renter and owners specifically
          Affordable80AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
-                                            OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0), 
+                                            OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
+                                            OWNERSHP==2 & RENTGRS == 0 ~ 0,), 
          Affordable80AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(l80_4*0.30)) ~ 1,
                                            OWNERSHP==1 & ((OWNCOST*12)>(l80_4*0.30)) ~ 0),
          # overall population below 80 ami
@@ -314,48 +316,62 @@ households_2022 <- households_2022 %>%
          # renter population below 80 ami
          Below80AMI_renter = if_else((HHINCOME<l80_4 & OWNERSHP == 2), 1,0),
          # owner population below 80 ami
-         Below80AMI_owner = if_else((HHINCOME<l80_4 & OWNERSHP == 1), 1,0)
-         
+         Below80AMI_owner = if_else((HHINCOME<l80_4 & OWNERSHP == 1), 1,0),
+         # create for data quality flag
+         Below80AMI_HH = HHWT*Below80AMI
   )
 
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
 # NOTE that we will need to create a Below50AMI_HH (the count of HH) for the Data Quality flag in step 8
-households_2022 <- households_2022 %>%
-  mutate(Affordable50AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
-                                         OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
-                                         OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
-                                         OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
-         # create subgroup categories for renters and owners
-         Affordable50AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
-                                            OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0),
-         Affordable50AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
-                                           OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
-         Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
-                                (HHINCOME>l50_4) ~ 0),
-         # renter population below 80 ami
-         Below50AMI_renter = if_else((HHINCOME<l50_4 & OWNERSHP == 2), 1,0),
-         # owner population below 80 ami
-         Below50AMI_owner = if_else((HHINCOME<l50_4 & OWNERSHP == 1), 1,0)
-         
+households_2022<- households_2022 %>%
+  mutate(
+    Affordable50AMI_all = case_when(# deal with cases when RENTGRS 
+      RENTGRS == 0 ~ 0,
+      OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
+                                    OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0,
+                                    OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
+                                    OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
+    # create subgroup categories for renters and owners
+    Affordable50AMI_renter = case_when(
+      OWNERSHP==2 & RENTGRS == 0 ~ 0,
+      OWNERSHP==2 & ((RENTGRS*12)<=(l50_4*0.30)) ~ 1,
+      OWNERSHP==2 & ((RENTGRS*12)>(l50_4*0.30)) ~ 0),
+    Affordable50AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(l50_4*0.30)) ~ 1,
+                                      OWNERSHP==1 & ((OWNCOST*12)>(l50_4*0.30)) ~ 0),
+    Below50AMI = case_when((HHINCOME<l50_4) ~ 1,
+                           (HHINCOME>l50_4) ~ 0),
+    # renter population below 80 ami
+    Below50AMI_renter = if_else((HHINCOME<l50_4 & OWNERSHP == 2), 1,0),
+    # owner population below 80 ami
+    Below50AMI_owner = if_else((HHINCOME<l50_4 & OWNERSHP == 1), 1,0),
+    # create for data quality flag
+    Below50AMI_HH = HHWT*Below50AMI
   )
 
 # create new variable 'Affordable30AMI' and 'Below80AMI' for HH below 30% of area median income (ELI_4 and OWNERSHP)
 households_2022 <- households_2022 %>%
-  mutate(Affordable30AMI_all = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
-                                         OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0,
-                                         OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
-                                         OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
-         # create subgroup categories for renters and owners
-         Affordable30AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
-                                            OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0), 
-         Affordable30AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
-                                           OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
-         Below30AMI = case_when((HHINCOME<ELI_4) ~ 1,
-                                (HHINCOME>ELI_4) ~ 0),
-         # renter population below 30 ami
-         Below30AMI_renter = if_else((HHINCOME<ELI_4 & OWNERSHP == 2), 1,0),
-         # owner population below 30 ami
-         Below30AMI_owner = if_else((HHINCOME<ELI_4 & OWNERSHP == 1), 1,0)
+  mutate(
+    Affordable30AMI_all = case_when(# deal with cases when RENTGRS 
+      RENTGRS == 0 ~ 0,
+      OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
+                                    OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0,
+                                    OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
+                                    OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
+    # create subgroup categories for renters and owners
+    Affordable30AMI_renter = case_when(
+      OWNERSHP==2 &  RENTGRS == 0 ~ 0,
+      OWNERSHP==2 & ((RENTGRS*12)<=(ELI_4*0.30)) ~ 1,
+      OWNERSHP==2 & ((RENTGRS*12)>(ELI_4*0.30)) ~ 0), 
+    Affordable30AMI_owner = case_when(OWNERSHP==1 & ((OWNCOST*12)<=(ELI_4*0.30)) ~ 1,
+                                      OWNERSHP==1 & ((OWNCOST*12)>(ELI_4*0.30)) ~ 0),
+    Below30AMI = case_when((HHINCOME<ELI_4) ~ 1,
+                           (HHINCOME>ELI_4) ~ 0),
+    # renter population below 30 ami
+    Below30AMI_renter = if_else((HHINCOME<ELI_4 & OWNERSHP == 2), 1,0),
+    # owner population below 30 ami
+    Below30AMI_owner = if_else((HHINCOME<ELI_4 & OWNERSHP == 1), 1,0),
+    # create for data quality flag
+    Below30AMI_HH = HHWT*Below30AMI
   )
 
 # save file to use for affordability measure in 2a_affordable_available_place.R
@@ -521,7 +537,7 @@ housing_2022 <- housing_2022 %>%
                 \(x) case_when(x==0 & puma_flag==1 ~ 1, 
                                x==0 & puma_flag==2 ~ 2, 
                                x==0 & puma_flag==3 ~ 3, 
-                               x==1 ~ 3))) %>% 
+                               x==1 ~ NA))) %>% 
   # rename variables to match data quality naming convention of e.g. "share_affordable_30_ami_quality"
   rename_with(~str_replace(., "HH", "share_affordable"), matches("^HH_.*quality"))
 
@@ -546,7 +562,9 @@ housing_2022_subgroup <- housing_2022 %>%
   # clean subgroup names and add subgroup type column 
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
-         subgroup_type = "tenure" )
+         subgroup_type = "tenure" ,
+         # subpress counties with too small of sample size
+         across(matches("share_.*ami$"), \(x) if_else(is.na(get(cur_column() %>% paste0("_quality"))), NA, x)))
 
 # (9a) overall file
 # keep what we need
