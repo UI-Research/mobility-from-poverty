@@ -134,20 +134,26 @@ save "intermediate/combined_2014-${year}.dta", replace
 ** city-level rates **
 use "intermediate/combined_2014-${year}.dta", clear
 
+replace enrollment = . if enrollment<0
 drop if missing(enrollment) | enrollment==0
+forvalues n = 1/3 {
+replace enrollment`n' = . if enrollment`n'<0
+}
+
 
 *Using MEPS
-gen meps_share = meps_poverty_pct/100
-gen meps_20 = (meps_share>=.20) if !missing(meps_share)
-replace meps_20 = 0 if missing(meps_share)
+gen meps_share = meps_poverty_pct/100 // ./# == . and 0/# == 0
+gen meps_20 = (meps_share>=.20) if !missing(meps_share) // meps_20 is . if meps_share .
 
 gen numerator = enrollment
 replace numerator = 0 if meps_20 == 0
+replace numerator = . if meps_20 == .
 
 // White, Black Hispanic
 forvalues i=1/3 {
 	gen numerator`i' = enrollment`i'
 	replace numerator`i' = 0 if meps_20 == 0
+	replace numerator`i' = . if meps_20 == .
 } 
 
 numlabel, add
@@ -228,7 +234,3 @@ rename meps20_`var'_quality share_meps20_`var'_quality
 }
 
 export delimited using "${final_data}meps_city_2020.csv", replace 
-/*
-destring year state place, replace
-
-save "${built_data}MEPS_2016-2020_city.dta", replace
