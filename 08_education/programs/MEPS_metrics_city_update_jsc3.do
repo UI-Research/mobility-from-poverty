@@ -45,8 +45,8 @@ global rebuild_portal_data = 1
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-** Import city file **
-import delimited "${cityfile}", clear // edited 9_13_23
+** Import city file ** 
+import delimited using "${cityfile}", clear // edited 9_13_23
 
 tostring place, replace
 replace place = "0" + place if strlen(place)==4
