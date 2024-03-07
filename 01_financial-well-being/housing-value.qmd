@@ -22,9 +22,12 @@ execute:
 ```
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
-This program creates the **Housing Value** metric defined as the ratio between the share of a community’s housing wealth held by a racial or ethnic group to the share of households of the same group metric
+This program creates the **Housing Value** metric defined as the ratio between
+the share of a community’s housing wealth held by a racial or ethnic group to
+the share of households of the same group metric
 
-Initially written by Jung Hyun Choi and updated by Manu Alcalá Kovalski in 2023-2024.
+Initially written by Jung Hyun Choi and updated by Manu Alcalá Kovalski
+in 2023-2024.
 
 ## Process
 
@@ -58,11 +61,23 @@ set_urbn_defaults(style = "print")
 
 ### Read Data {#sec-read-data}
 
-We extract the 1 year ACS files from the IPUMS API using `ipumsr`. You will need to have an API key in order to do so. If you don't have one, you can register to the [IPUMS USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu) data collection and create an API key.
+We extract the 1 year ACS files from the IPUMS API using `ipumsr`. You will need
+to have an API key in order to do so. If you don't have one, you can register to
+the [IPUMS
+USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu)
+data collection and create an API key. For more information on how to get an API
+key, see the `ipumsr` [getting started
+vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
 
-By default, `ipumsr` API functions assume that your key is stored in the **IPUMS_API_KEY** environment variable. You can also provide your key directly to these functions, but storing it in an environment variable saves you some typing and helps prevent you from inadvertently sharing your key with others (for instance, on GitHub).
+By default, `ipumsr` API functions assume that your key is stored in the
+**IPUMS\_API\_KEY** environment variable. You can also provide your key directly
+to these functions, but storing it in an environment variable saves you some
+typing and helps prevent you from inadvertently sharing your key with others
+(for instance, on GitHub).
 
-You can save your API key to the IPUMS_API_KEY environment variable with `set_ipums_api_key(api_key = "paste-your-key-here", save = TRUE)`. This will add your API key to your .Renviron file in your user home directory.
+You can save your API key to the IPUMS\_API\_KEY environment variable with
+`set_ipums_api_key(api_key = "paste-your-key-here", save = TRUE)`. This will add
+your API key to your .Renviron file in your user home directory.
 
 ```{r}
 #| label: query-ipums-api
@@ -73,7 +88,12 @@ You can save your API key to the IPUMS_API_KEY environment variable with `set_ip
 # Run this the first time you run this code to avoid requesting the same data
 # multiple times
 
-acs_vars <- c("YEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", "CLUSTER", "STATEFIP", "COUNTYFIP", "MET2013", "CITY", "PUMA", "STRATA", "GQ", "OWNERSHP", "OWNERSHPD", "VALUEH", "PERNUM", "PERWT", "RACE", "RACED", "HISPAN", "HISPAND", "AGE")
+acs_vars <- c(
+  "YEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", "CLUSTER",
+  "STATEFIP", "COUNTYFIP", "MET2013", "CITY", "PUMA", "STRATA",
+  "GQ", "OWNERSHP", "OWNERSHPD", "VALUEH", "PERNUM", "PERWT",
+  "RACE", "RACED", "HISPAN", "HISPAND", "AGE"
+)
 
 years <- 2014:2022
 usa_ext_def <- define_extract_usa(
@@ -98,7 +118,10 @@ usa_ext_def <- define_extract_usa(
 
 ### Clean data {#sec-clean-data}
 
-We load the 2014-2022 1 Year ACS microdata we downloaded from IPUMS above. IPUMS loads the data as a person-level data set with some household variables.Therefore, we can analyze the data at the household level by keeping the first person sampled in the household.
+We load the 2014-2022 1 Year ACS microdata we downloaded from IPUMS above. IPUMS
+loads the data as a person-level data set with some household
+variables.Therefore, we can analyze the data at the household level by keeping
+the first person sampled in the household.
 
 ```{r}
 #| label: load-acs
@@ -125,13 +148,24 @@ acs1yr_raw <-
   )
 ```
 
-The [ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels) documentation says that:
+The
+[ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels)
+documentation says that:
 
-> "labelled vectors are not intended for use throughout the entire analysis process. Instead, they should be used during the initial data preparation process to convert raw data into values that are more meaningful. These can then be converted to other variable types (often factors) for analysis. Unfortunately, this isn’t a process that can typically be automated, as it depends primarily on the research questions the data will be used to address. However, ipumsr provides several functions to manipulate value labels to make this process easier.
+> "labelled vectors are not intended for use throughout the entire analysis
+> process. Instead, they should be used during the initial data preparation
+> process to convert raw data into values that are more meaningful. These can
+> then be converted to other variable types (often factors) for analysis.
+> Unfortunately, this isn’t a process that can typically be automated, as it
+> depends primarily on the research questions the data will be used to address.
+> However, ipumsr provides several functions to manipulate value labels to make
+> this process easier.
 
-A useful way of finding missing value labels is to call `ipums_var_info(acs1yr)` and inspect the `val_labels`.
+A useful way of finding missing value labels is to call `ipums_var_info(acs1yr)`
+and inspect the `val_labels`.
 
-Notice that missing values for "value of housing units" (`valueh`) are labelled as 9999998, and 9999999. We fix this before doing any computations.
+Notice that missing values for "value of housing units" (`valueh`) are labelled
+as 9999998, and 9999999. We fix this before doing any computations.
 
 ```{r}
 #| label: handle-missingness
@@ -147,16 +181,24 @@ acs1yr |>
   assertr::verify(valueh < 9999998 | is.na(valueh))
 ```
 
-Next, we exclude individuals living in group quarters because we only want households for this metric. In particular, we exclude people living in places other than housing units (e.g., correctional facilities, nursing homes, mental hospitals, dorms, barracks, group homes, missions). For more information, see the [variable description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on IPUMS USA.
+Next, we exclude individuals living in group quarters because we only want
+households for this metric. In particular, we exclude people living in places
+other than housing units (e.g., correctional facilities, nursing homes, mental
+hospitals, dorms, barracks, group homes, missions). For more information, see
+the [variable
+description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on
+IPUMS USA.
 
 ```{r}
 #| label: keep-households-only
 acs1yr <-
   acs1yr |>
+  mutate(gq = as_factor(gq)) |>
   filter(!(gq %in% c("Group quarters--Institutions", "Other group quarters")))
 ```
 
-FIPS codes should always contain leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits.
+FIPS codes should always contain leading zeros so that state codes are two
+digits, county codes are three digits, and place codes are five digits.
 
 ```{r}
 #| label: clean-fips-codes
@@ -182,7 +224,8 @@ acs1yr <-
   mutate(subgroup = if_else(age >= 45, "Over or exactly 45 years old", "Under 45 years old"))
 ```
 
-We collapse IPUMS race and ethnicity categories into white non-hispanic, Black non-hispanic, other non-hispanic, and
+We collapse IPUMS race and ethnicity categories into white non-hispanic, Black
+non-hispanic, other non-hispanic, and
 
 ```{r}
 #| label: add-race-ethnicity-subgroup
@@ -215,11 +258,14 @@ acs1yr <-
 
 ## Merge Crosswalk {#sec-merge-crosswalk}
 
-We merge our 1-year ACS data with PUMA-county and PUMA-place geocodes to get county and place boundaries.
+We merge our 1-year ACS data with PUMA-county and PUMA-place geocodes to get
+county and place boundaries.
 
-For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 county. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 county.
+For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 county.
+For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 county.
 
-The weight of each household is adjusted by the area of the PUMA that falls into a given County/Place
+The weight of each household is adjusted by the area of the PUMA that falls into
+a given County/Place
 
 ```{r}
 #| label: define-crosswalk-years
@@ -227,6 +273,15 @@ The weight of each household is adjusted by the area of the PUMA that falls into
 acs1yr <-
   acs1yr |>
   mutate(crosswalk_period = if_else(year < 2022, "pre-2022", "2022"))
+
+# Check that only new planning regions are present in 2022 for CT
+assertthat::assert_that(
+  all.equal(acs1yr |>
+    select(year, state, county) |>
+    filter(state == "09", year == 2022) |>
+    distinct(county) |>
+    pull(), c("190", "000", "180", "170", "130", "140", "120"))
+)
 ```
 
 ::: panel-tabset
@@ -267,7 +322,6 @@ households_county <-
 ```{r}
 #| label: puma-to-place-crosswalk
 
-
 puma_place_crosswalk <-
   read_csv(here::here(
     "geographic-crosswalks",
@@ -289,7 +343,9 @@ households_place <-
 
 ### Housing Share
 
-We will now compute the share of households by race and ethnicity (i.e., total number of households for each race and ethnic group divided by the total number of households)
+We will now compute the share of households by race and ethnicity (i.e., total
+number of households for each race and ethnic group divided by the total number
+of households)
 
 ::: panel-tabset
 ### County
@@ -455,7 +511,9 @@ summary(share_households_place_subgroup)
 
 ### Housing Value Share
 
-We keep observations for homeowners only in order to calculate total aggregated housing wealth for homeowners for each race and ethnic group divided by the total aggregated housing value
+We keep observations for homeowners only in order to calculate total aggregated
+housing wealth for homeowners for each race and ethnic group divided by the
+total aggregated housing value
 
 ```{r}
 #| label: total-house-values-by-race
@@ -786,7 +844,7 @@ ratio_house_value_households_place_subgroup <-
 
 **Check:** Are there 3,143 counties and 486 places in the final output?
 
-Our metric county data has 3,143 counties as expected for all years prior to 
+Our metric county data has 3,143 counties as expected for all years prior to
 2022. The metric places data also has the expected 486 places.
 
 ```{r}
