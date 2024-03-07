@@ -22,17 +22,6 @@ Primary data derived from the IPUMS API. This metric is the share of 19- and 20-
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
--   [Housekeeping](#housekeeping)
--   [Read Data](#read-data)
--   [Clean Data](#clean-data)
--   [Merge Crosswalk](#merge-crosswalk)
--   [Setup Survey Design](#setup-survey-design)
--   [Create College Ready Metric](#create-college-ready-metric)
--   [Evaluate Results](#evaluate-results)
--   [Create standard errors](#create-standard-errors)
--   [Export](#export)
-
-
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -47,10 +36,14 @@ library(scales)
 
 options(scipen = 999)
 
-
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
-purrr::walk(list.files(here::here("functions", "API")), 
-    ~source(here::here("functions", "API", .x)))
+
+source(here::here("functions", "API", "extract_ipums.R"))
+source(here::here("functions", "API", "ipums_repwt_college.R"))
+source(here::here("08_education", "R", "finalize_metric_college.R"))
+source(here::here("08_education", "R", "calc_survey_mean_college.R"))
+source(here::here("08_education", "R", "calc_survey_mean_subgroup_college.R"))
 ```
 
 ## Read Data
@@ -66,31 +59,63 @@ acs <- extract_ipums(
 ```
 
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
 ```{r}
-acs %>% 
-  count(sample) %>% 
-  ggplot(mapping = aes(x = sample, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Samples, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Samples",
-       y = NULL)
+count(acs, sample)
 ```
 
-Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
 ```{r}
-puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+acs <- acs %>%
+  filter(age == 19 | age == 20) 
 ```
 
-Crate a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
+
+### Replicate Weights 
+
+Read in person-level replicate weights for the 19 and 20 year old population. These will be used in creating standard errors for the college ready calculation. 
 ```{r}
-county_puma <- puma_county_crosswalk %>%
-  group_by(crosswalk_period, statefip, county) %>% 
-  summarise(geographic_allocation_quality = mean(geographic_allocation_quality)) %>% 
-  ungroup()
+repwts_person <- ipums_repwt_college(
+  extract_name = "college_replicate_weights",
+  extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018 and 2022 (5-year).",
+  survey = list("us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
 ```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts_person, sample)
+```
+
+Remove the sample variable.
+```{r}
+repwts_person <- repwts_person %>% 
+  select(-sample)
+```
+
+### Merge on repwts
+
+```{r}
+length(unique(pull(acs, unique_person_id)))
+length(unique(pull(repwts_person, unique_person_id)))
+acs_combined <- 
+  left_join(
+    acs,
+    repwts_person,
+    by = "unique_person_id"
+  )
+length(unique(pull(acs_combined, unique_person_id)))
+rm(acs)
+rm(repwts_person)
+```
+
+Check that the merge did not result in any missing values.
+```{r}
+stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
+```
+
 
 ## Clean Data
 
@@ -99,7 +124,7 @@ Missing data is reported in a variety of ways by IPUMS data. This step walks thr
 Age: No missing values reported in variable description. Check the distribution to confirm there are no abnormalities: the distribution of age looks reasonable (no bunching or extreme outliers).
 
 ```{r}
-acs %>% 
+acs_combined %>% 
   ggplot(aes(x = age)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   theme_minimal() +
@@ -114,7 +139,7 @@ Vacancy is reported as "0".
 There is a significant share of records reported as "1" for the education variable. 
 
 ```{r}
-acs %>% 
+acs_combined %>% 
   mutate(educd = zap_labels(educd)) %>% 
   count(educd) %>% 
   ggplot(mapping = aes(x = factor(educd), y = n)) +
@@ -130,13 +155,13 @@ Confirm the missing values from the value labels of the educd variable to ensure
 
 Note that there are no records with values of zero in the bar chart above which eliminates the need to deal with the "no schooling" option.
 ```{r}
-head(ipums_val_labels(acs$educd), 50) %>% 
+head(ipums_val_labels(acs_combined$educd), 50) %>% 
   reactable()
 ```
 
 Turn the missing/"not in universe" value from the educd variable into NAs and remove the labels for the rest of the analysis. Rename to the more meaningful "education_detailed". 
 ```{r}
-acs_educ <- acs %>%
+acs_clean <- acs_combined %>%
   mutate(education_detailed = zap_labels(educd), 
          education_detailed = ifelse(education_detailed %in% c(1, 0, 999), NA_integer_,
                           education_detailed)
@@ -145,7 +170,7 @@ acs_educ <- acs %>%
 
 Look at the distribution of education_detailed after adjustment for NAs. We can see that there are no longer records for "1" but we now see "NA".
 ```{r}
-acs_educ %>% 
+acs_clean %>% 
   count(education_detailed) %>% 
   ggplot(mapping = aes(x = factor(education_detailed), y = n)) +
   geom_col() +
@@ -159,7 +184,7 @@ acs_educ %>%
 Vacancy: Value is reported as "0" according to IPUMs. Note there are no vacancy results by default of the structure of census data read in (confirmed in the distribution of the variable).
 
 ```{r}
-acs_educ %>% 
+acs_clean %>% 
   ggplot(aes(x = vacancy)) +
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   theme_minimal() +
@@ -167,22 +192,23 @@ acs_educ %>%
   ylab("Density")
 ```
 
-Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
-```{r}
-acs_clean <- acs_educ %>%
-  filter(age == 19 | age == 20) 
-```
-
 Examine the group quarters variable, we want to include both households and Group Quarters in this metric as both are relevant to the college readiness of a geography.
 
 IPUMS includes the following categories:
-0: Vacancy
-1: Households under 1970 definition
-2: Additional households under 1990 definition
-3: Institutions
-4: Other group quarters
-5: Additional households under 2000 definition
-6: Fragments
+
+-   0: Vacancy
+
+-   1: Households under 1970 definition
+
+-   2: Additional households under 1990 definition
+
+-   3: Institutions
+
+-   4: Other group quarters
+
+-   5: Additional households under 2000 definition
+
+-   6: Fragments
 
 Check the distribution of GQ categories. Only households and group quarters should be included (no vacancy or fragments).
 ```{r}
@@ -466,6 +492,13 @@ acs_clean %>%
   scale_x_discrete(labels = label_wrap(10))
 ```
 
+## Crosswalk
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+```{r}
+puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+```
+
 ## Merge Crosswalk 
 
 Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
@@ -484,29 +517,42 @@ acs_clean %>%
 
 Join the cleaned ACS data onto the crosswalk.
 ```{r}
-acs_clean <- left_join(acs_clean, puma_county_crosswalk, by=c("crosswalk_period", "statefip","puma"), relationship = "many-to-many")
+acs_crosswalked <- left_join(
+  acs_clean, 
+  puma_county_crosswalk, 
+  by=c("crosswalk_period", "statefip","puma"), 
+  relationship = "many-to-many"
+)
 ```
 
 Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
 ```{r}
-acs_clean <- acs_clean %>% 
+acs_crosswalked <- acs_crosswalked %>% 
   drop_na(afact)
 ```
 
 Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
 ```{r}
-acs_clean <- acs_clean %>% 
+acs_crosswalked <- acs_crosswalked %>% 
   filter(afact > 0)
 ```
 
-## Prepare comuptational variables
-Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
+Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
+
 ```{r}
-acs_clean <- acs_clean %>%
-  mutate(perwt = perwt*afact) 
+
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(perwt = perwt * afact) %>% 
+  mutate(across(matches("repwtp[0-9]+"), ~.x * afact))
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
+
 ```
 
+## Prepare comuptational variables
+
 Create a binary college_ready variable indicating whether the individual has a HS degree or not (including GED as HS degree equivalent). IPUMS codes  HS graduate or GED (62) and above are all considered to meet this requirement.
+
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(college_ready = ifelse(education_detailed >= 62, 1, 0)) 
@@ -539,54 +585,6 @@ acs_clean %>%
   filter(is.na(vacancy)) %>% 
   group_by(pernum) %>% 
   count()
-```
-
-## Read replicate weights 
-
-Read in person-level replicate weights for the 19 and 20 year old population. These will be used in creating standard errors for the college ready calculation. 
-```{r}
-repwts_person <- ipums_repwt_college(
-  extract_name = "college_replicate_weights",
-  extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018 and 2022 (5-year).",
-  survey = list("us2018c", "us2021c")
-)  %>% 
-  select(-cbserial, -cbpernum)
-```
-
-Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
-```{r}
-repwts_person %>% 
-  count(sample) %>% 
-  ggplot(mapping = aes(x = sample, y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("Samples, All Records in Repwt File") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Samples",
-       y = NULL)
-```
-
-
-Remove the sample variable.
-```{r}
-repwts_person <- repwts_person %>% 
-  select(-sample)
-```
-
-
-## Setup Survey Design 
-
-Set up the survey design using instructions from IPUMS. Join the replicate weights onto the acs survey data using the unique person ID created for both.
-```{r}
-acs_survey_all <- acs_clean %>%
-  left_join(repwts_person, by = c("unique_person_id")) %>% 
-  mutate(across(matches('repwtp[0-9]+'),
-                     ~.x * afact)) %>% 
-  as_survey_rep(weights = perwt, 
-                repweights = matches("repwtp[0-9]+"),
-                type = "ACS",
-                mse = TRUE) 
 ```
 
 ## Create college readiness metric
