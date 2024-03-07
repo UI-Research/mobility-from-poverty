@@ -26,6 +26,7 @@ library(tidycensus)
 library(censusapi)
 library(glue)
 library(janitor)
+library(tidylog)
 
 set_urbn_defaults(style = "print")
 ```
@@ -422,15 +423,11 @@ map_dbl(place_income_digital_access, ~ sum(is.nan(.x)))
 
 # Create data quality flags
 
-We only look at the CVs for the numerator, which is less precise than the
-denominator. We use 0.1, 0.2, and 0.5 as thresholds because the CV only accounts
-for sampling error in the numerator. This is stricter than for some other
-metrics.
-
-We can use the width of the MOE to determine quality. One suggestion is if the
-value minus the lower bound is \<0.1, then the quality is strong (\_quality=1);
-if it is =\>.1 and \<.2, the quality is marginal (\_quality=2), and if it is
-\>=.2, then the quality is weak (\_quality=3).
+We can use the width of the MOE to determine quality. If the value minus the
+lower bound is \<0.1, then the quality is strong (\_quality=1); if it is =\>.1
+and \<.2, the quality is marginal (\_quality=2), and if it is \>=.2, then the
+quality is weak (\_quality=3). These thresholds apply to both the 1 year and 5
+year ACS.
 
 Otherwise, if any of the census table values are suppressed, those should have
 the metric value show as "NA" and the data quality should also be "NA."
@@ -769,10 +766,33 @@ lst(
   )
 ```
 
-We suppress showing metric values for observations with missing CVs
+We suppress showing metric values for observations with missing quality flags.
+However, since there aren't any missing quality flag values when the metric
+value is not missing, the code chunk below doesn't actually remove any
+observations currently.
 
 ```{r}
 #| label: suppress-bad-cvs
+
+# Use this to check that there are no missing quality flags
+# when the metric value is not missing
+count_bad_cvs <- function(data) {
+  data |>
+    filter(is.na(share_digital_access_quality) & !is.na(share_digital_access)) |>
+    nrow()
+}
+
+county_overall_digital_access |> count_bad_cvs()
+
+place_overall_digital_access |> count_bad_cvs()
+
+county_raceeth_digital_access |> count_bad_cvs()
+
+place_raceeth_digital_access |> count_bad_cvs()
+
+county_income_digital_access |> count_bad_cvs()
+
+place_income_digital_access |> count_bad_cvs()
 
 suppress_bad_cvs <- function(data) {
   data %>%
@@ -781,6 +801,7 @@ suppress_bad_cvs <- function(data) {
       ~ if_else(is.na(share_digital_access_quality), NA_real_, .x)
     ))
 }
+
 
 lst(
   county_overall_digital_access,
