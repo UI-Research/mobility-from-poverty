@@ -1016,7 +1016,8 @@ people in households.
 lower bound estimate is less than 0.1, `2` means the difference is between 0.1
 and 0.2, and `3` means the difference is greater than 0.2. 
 * **Limitations:**
-* **Missingness:** There are no missing county or city level observations.
+* **Missingness:** For the most recent year, 2022, there are no missing county 
+or city level observations.
 
 ### Process
 
