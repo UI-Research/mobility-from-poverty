@@ -1002,20 +1002,30 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 ### Overview
 
-* **Analyst & Programmer:** Tina Chelidze
-* **Year(s):** 2021
-* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
-* **Data Source(s):** Census Bureau's American Community Survey 
-* **Notes:**
-* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
+* **Year(s):** 2016, 2017, 2018, 2019, 2021, 2022
+
+* **Final data name(s):** `digital_access_county_2022.csv`, 
+`digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
+`digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
+* **Data Source(s):** Census Bureau's 5-year ACS.
+* **Notes:** The unit of analysis for the overall and income subgroup is 
+households, whereas the unit of analysis for the race/ethnicity subgroup is
+people in households. 
+* **Data Quality Index:** `1` means the differnence between the estimate and the
+lower bound estimate is less than 0.1, `2` means the difference is between 0.1
+and 0.2, and `3` means the difference is greater than 0.2. 
 * **Limitations:**
-* **Missingness:** There are no missing county or city level observations.
+* **Missingness:** For the most recent year, 2022, there are no missing county 
+or city level observations.
 
 ### Process
 
-This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+This metric shows the ratio of households with the presence of a computer and a 
+type of broadband internet subscription in their household (we calculate the
+overall ratio, as well as by race/ethnicity and income subgroups.)
 
-This metric is calculated using `digital_access.R' in the 04_education folder.
+This metric is calculated using `digital_access.qmd` in the 08_education folder.
   
 ## Social Capital
   
