@@ -98,6 +98,7 @@ available_2022 <- households_2022 %>%
     at_rent80_owner = if_else(OWNERSHP == 1 & Affordable80AMI_all == 1 & Below80AMI == 1  & VACANCY == 0, 1, 0)) 
 
 
+
 # (3b) Summarize at_rent for each subgroup and number of units/households at each
 #       income threshold by place
 available_2022 <- available_2022 %>% 
@@ -144,7 +145,7 @@ affordable_2022_subgroup <- read_csv("02_housing/data/housing_2022_subgroups_cou
 
 # turn long for subgroup output
 available_2022_subgroup <- available_2022_final %>%
-  select(state, county, starts_with("rate_affordable_"), housing_quality) %>% 
+  select(state, county, starts_with("rate_affordable_")) %>% 
   # create year variable
   mutate(year = 2022) %>% 
   # seperate share_afforadable by AMI and the subgroup
@@ -162,7 +163,15 @@ available_2022_subgroup <- available_2022_final %>%
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
          subgroup_type = "tenure") %>% 
   # join with affordable values for final file
-  left_join(affordable_2022_subgroup)
+  left_join(affordable_2022_subgroup) %>% 
+  # create a rate affordable available quality flag
+  # THIS IS THE SAME AS THE SHARE AFFORDABLE QUALITY FLAG
+  # BECAUSE BOTH ARE BASED ON THE UNDERLYING HOUSEHOLD SAMPLE SIZE AND PUMA CROSSWALK
+  mutate(across(matches("share_.*quality$"),
+                list(rate_affordable_available = ~.), 
+                .names = "rate_affordable_available_{str_remove(.col, 'share_affordable_')}"), 
+         # subpress counties with too small of sample size
+         across(matches("rate_.*ami$"), \(x) if_else(is.na(get(cur_column() %>% paste0("_quality"))), NA, x)))
 
 
 # export our file as a .csv
@@ -176,7 +185,7 @@ affordable_2022_overall <- read_csv("02_housing/data/housing_2022_county.csv")
 # keep what we need
 available_2022_overall <- available_2022_subgroup %>% 
   filter(subgroup == "All") %>% 
-  select(year, state, county, rate_affordable_available_80_ami, rate_affordable_available_50_ami, rate_affordable_available_30_ami, housing_quality) %>% 
+  select(year, state, county, rate_affordable_available_80_ami, rate_affordable_available_50_ami, rate_affordable_available_30_ami) %>% 
   arrange(year, state, county) %>% 
   left_join(affordable_2022_overall)
 
@@ -195,7 +204,7 @@ write_csv(available_2022_overall, "02_housing/data/available_2022_subgroups_coun
 # so I'm using the 2021 report state level numbers to snif test our results
 # the NLIHC report has state level numbers for the number of units that are
 # affordable and available for 30AMI households and the range is 17 to 58
-# our range is 31 to 2966 so something is clearly off but not sure what other than all of the 
+# our range is 31 to 276 so something is clearly off but not sure what other than all of the 
 # top values have poor housing quality flags
 
 state_av <- available_2022_subgroup %>% 
@@ -230,4 +239,5 @@ available_2022_subgroup %>%
   geom_histogram()+
   facet_wrap(~subgroup)
 
-
+# summarize 
+summary(available_2022_subgroup)

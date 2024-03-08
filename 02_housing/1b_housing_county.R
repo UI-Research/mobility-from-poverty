@@ -431,23 +431,24 @@ vacant_2022_new <- vacant_2022 %>%
 # (7) Create the housing metric
 
 # (7a) Summarize households_2021 and vacant both by county
+# need to create a HH count variable for each subgroup to use in step 8 for data quality
 households_summed_2022 <- households_2022 %>% 
   dplyr::group_by(statefip, county) %>%
   # summarize all Below80AMI, Below50AMI, Below30AMI, and 
   # Affordable80AMI, Affordable50AMI, Affordable30AMI (all, renter, owner) variables
   dplyr::summarise(
-    # get unweighted N for households below 30 ami for quality flag
-    HH_30_ami_quality_all = sum(Below30AMI == 1),
-    HH_30_ami_quality_renter = sum(Below30AMI_renter == 1), 
-    HH_30_ami_quality_owner = sum(Below30AMI_owner == 1), 
+    # get unweighted N for households below 30 ami for quality flag (calculated by multiplying the count by afact)
+    HH_30_ami_quality_all = sum(Below30AMI*afact),
+    HH_30_ami_quality_renter = sum(Below30AMI_renter*afact), 
+    HH_30_ami_quality_owner = sum(Below30AMI_owner*afact), 
     # get unweighted N for households below 50 ami for quality flag
-    HH_50_ami_quality_all = sum(Below50AMI == 1),
-    HH_50_ami_quality_renter = sum(Below50AMI_renter == 1), 
-    HH_50_ami_quality_owner = sum(Below50AMI_owner == 1), 
+    HH_50_ami_quality_all = sum(Below50AMI*afact),
+    HH_50_ami_quality_renter = sum(Below50AMI_renter*afact), 
+    HH_50_ami_quality_owner = sum(Below50AMI_owner*afact), 
     # get unweighted N for households below 80 ami for quality flag
-    HH_80_ami_quality_all = sum(Below80AMI == 1),
-    HH_80_ami_quality_renter = sum(Below80AMI_renter == 1), 
-    HH_80_ami_quality_owner = sum(Below80AMI_owner == 1), 
+    HH_80_ami_quality_all = sum(Below80AMI*afact),
+    HH_80_ami_quality_renter = sum(Below80AMI_renter*afact), 
+    HH_80_ami_quality_owner = sum(Below80AMI_owner*afact), 
     across(matches("Below|Affordable"), ~sum(.x*HHWT, na.rm = TRUE))) %>% 
   rename("state" = "statefip") %>% 
   ungroup()
@@ -494,8 +495,9 @@ housing_2022 <- housing_2022 %>%
 
 # (8) Create the Data Quality variable
 
-# (8a) For Housing metric: total number of HH below 50% AMI (need to add HH + vacant units)
-# Create a "Size Flag" for any county-level observations made off of less than 30 observed HH, vacant or otherwise
+# (8a) For Housing metric: total number of HH below 30/50/80% AMI 
+# suppresses if sum(afact) < 30. You can think of this as a sample size accounting for the crosswalk. 
+# For example, one person with afact == 0.75 would count as 3/4ths of an observations.
 housing_2022 <- housing_2022 %>% 
   # This data quality flag is based on if the unqieghted number of observations for household below 30/50/80 ami (overall/renter/owner subgroup)
   # is less than 30 

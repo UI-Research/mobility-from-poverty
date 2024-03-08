@@ -117,18 +117,18 @@ available_2022_final <- available_2022 %>%
   mutate(
     # number of affordable and available at 30 AMI per 100 households
     rate_affordable_available_30_ami_all = (at_rent30_all+Affordable30AMI_all_vacant)/Below30AMI*100, 
-    rate_affordable_available_30_ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI_renter*100, 
-    rate_affordable_available_30_ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI_owner*100, 
+    rate_affordable_available_30_ami_renter = (at_rent30_renter+Affordable30AMI_renter_vacant)/Below30AMI*100, 
+    rate_affordable_available_30_ami_owner = (at_rent30_owner+Affordable30AMI_owner_vacant)/Below30AMI*100, 
     
     # number of affordable and available at 50 AMI per 100 households
     rate_affordable_available_50_ami_all = (at_rent50_all+Affordable50AMI_all_vacant)/Below50AMI*100, 
-    rate_affordable_available_50_ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI_renter*100, 
-    rate_affordable_available_50_ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI_owner*100, 
+    rate_affordable_available_50_ami_renter = (at_rent50_renter+Affordable50AMI_renter_vacant)/Below50AMI*100, 
+    rate_affordable_available_50_ami_owner = (at_rent50_owner+Affordable50AMI_owner_vacant)/Below50AMI*100, 
     
     # number affordable and available at 80 AMI per 100 households
     rate_affordable_available_80_ami_all = (at_rent80_all+Affordable80AMI_all_vacant)/Below80AMI*100, 
-    rate_affordable_available_80_ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI_renter*100, 
-    rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI_owner*100
+    rate_affordable_available_80_ami_renter = (at_rent80_renter+Affordable80AMI_renter_vacant)/Below80AMI*100, 
+    rate_affordable_available_80_ami_owner = (at_rent80_owner+Affordable80AMI_owner_vacant)/Below80AMI*100
   )
 
 
@@ -136,6 +136,7 @@ available_2022_final <- available_2022 %>%
 ###################################################################
 
 # (5) Clean and export
+
 
 # (5a) subgroup file
 # combine with overall share_affordable file 
@@ -159,9 +160,17 @@ available_2022_subgroup <- available_2022_final %>%
   # clean subgroup names and add subgroup type column 
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
-         subgroup_type = "tenure" ) %>% 
+         subgroup_type = "tenure") %>% 
   # join with affordable values for final file
-  left_join(affordable_2022_subgroup)
+  left_join(affordable_2022_subgroup) %>% 
+  # create a rate affordable available quality flag
+  # THIS IS THE SAME AS THE SHARE AFFORDABLE QUALITY FLAG
+  # BECAUSE BOTH ARE BASED ON THE UNDERLYING HOUSEHOLD SAMPLE SIZE AND PUMA CROSSWALK
+  mutate(across(matches("share_.*quality$"),
+                list(rate_affordable_available = ~.), 
+                .names = "rate_affordable_available_{str_remove(.col, 'share_affordable_')}"), 
+         # subpress counties with too small of sample size
+         across(matches("rate_.*ami$"), \(x) if_else(is.na(get(cur_column() %>% paste0("_quality"))), NA, x)))
 
 # export our file as a .csv
 write_csv(available_2022_subgroup, "02_housing/data/available_2022_subgroups_city.csv")  
