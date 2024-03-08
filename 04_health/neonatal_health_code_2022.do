@@ -33,10 +33,13 @@ pause on
 
 global gitfolder "C:\Users\jcarter\Documents\git_repos\mobility-from-poverty\"	// update path as necessary to the local mobility metrics repository folder
 global health "${gitfolder}04_health\"
-global heath_data "${health}data\"
+global health_data "${health}data\"
 global health_data_raw "${health_data}raw\"
 global health_data_intermediate "${health_data}intermediate\"
 global health_data_final "${health_data}final_data\"
+
+global repo_data_final "${health}final_data\"
+
 global geo_xwalk "${gitfolder}geographic-crosswalks\data\"
 
 global sub = "nhblack hisp nhother nhwhite"
@@ -196,7 +199,7 @@ foreach sub of global sub {
 foreach ed of global ed_sub {
 	di "`ed'"
 	use "${health_data_intermediate}lbw_births_by_county_`ed'_`y2'.dta", clear
-		merge 1:1 fips county_name using "${health_data}nomiss_bw_by_county_`ed'_`y2'.dta"
+		merge 1:1 fips county_name using "${health_data_intermediate}nomiss_bw_by_county_`ed'_`y2'.dta"
 		tab _merge
 		drop _merge
 		gen `ed' = 1
@@ -678,8 +681,8 @@ sort year state county									// sort
 rename lbw rate_low_birth_weight					// Rename per Aaron request
 rename lbw_* rate_low_birth_weight_*				// Rename per Aaron request
 
-save "${health_data_intermediate}neonatal_health_`y4'.dta", replace
-export delimited using "${health_data_final}neonatal_health_`y4'.csv", replace
+save "${health_data_final}neonatal_health_`y4'.dta", replace
+export delimited using "${repo_data_final}neonatal_health_`y4'.csv", replace
 
 // race/ethnicity
 use "${health_data_intermediate}neonatal_health_intermediate_raceth_`y2'.dta", clear
@@ -719,5 +722,5 @@ by subgroup: sum rate_low_birth_weight											// checking share lowbirthweigh
 
 sort year state county subgroup_type subgroup									// final sort
 
-save "${health_data_intermediate}neonatal_health_subgroup_`y4'.dta", replace
-export delimited using "${health_data_final}neonatal_health_subgroup_`y4'.csv", replace 
+save "${health_data_final}neonatal_health_subgroup_`y4'.dta", replace
+export delimited using "${repo_data_final}neonatal_health_subgroup_`y4'.csv", replace 
