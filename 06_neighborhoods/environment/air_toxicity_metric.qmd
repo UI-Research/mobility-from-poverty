@@ -246,7 +246,6 @@ enviro_all_clean <- enviro_all %>%
 
 ```
 
-
 The EPA AirToxScreen data uses some census tracts from 2010 that have been changed since then. Adjust these tracts manually first.
 
 ```{r}
@@ -281,7 +280,7 @@ enviro_all_clean <- enviro_all_clean %>%
     ))
 ```
 
-The data contains some results that are not at the tract level. Some of these rows can be identified because the tract ID will be entirely zeros. 
+The data contains some results that are not at the tract level. Some of these rows can be identified because the tract ID will be entirely zeros.
 
 Create a variable with just the tract ID information alone (remove county and state from the GEOID).
 
@@ -291,6 +290,7 @@ enviro_all_clean <- enviro_all_clean %>%
 ```
 
 Count the number of these rows.
+
 ```{r}
 enviro_all_clean %>% 
   filter(tract_id == "000000") %>% 
@@ -309,8 +309,7 @@ enviro_all_tracts <- acs_tracts %>%
   rename(tract = GEOID)
 ```
 
-This leaves us with approximately 72,525 tracts per year (note 2014 has one additional tract).
-Looking at the removed tracts, these are all cases where the EPA did not have tract level information. Many of these have small population counts. 
+This leaves us with approximately 72,525 tracts per year (note 2014 has one additional tract). Looking at the removed tracts, these are all cases where the EPA did not have tract level information. Many of these have small population counts.
 
 ```{r}
 count(enviro_all_clean, year)
@@ -404,7 +403,8 @@ acs_tracts %>%
   summary()
 ```
 
-Use ACS data to create a variable for percent of each tract that are people of color and the percent in poverty. Remove the estimate indicator "E" from value names. The variable `total_pop` will be used for weighting census tracts as it is the most complete indicator of tract population. 
+Use ACS data to create a variable for percent of each tract that are people of color and the percent in poverty. Remove the estimate indicator "E" from value names. The variable `total_pop` will be used for weighting census tracts as it is the most complete indicator of tract population.
+
 ```{r}
 acs_tracts <- acs_tracts %>%
   select(year, geoid = GEOID,
@@ -494,6 +494,20 @@ haz_index_crosswalk <- haz_index_crosswalk %>%
          )
 ```
 
+Read in crosswalk file with all counties.
+```{r}
+county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")) %>% 
+  select(state = statefip, county) %>% 
+  unique() %>% 
+  filter(state != 72) %>% 
+   mutate(year1 = "2019",
+         year2 = "2018",
+         year3 = "2014") %>% 
+  pivot_longer(!c(state, county), values_to = "year", names_to = "value") %>% 
+  select(-value) %>% 
+  mutate(county_id = paste0(state, county))
+```
+
 ## Create AriTox Index Metric: County
 
 ### All
@@ -530,6 +544,19 @@ haz_index_county_all <- haz_index_county_all %>%
 
 ```
 
+Merge on to the county_crosswalk file so all counties are present.
+```{r}
+haz_index_county_all <- left_join(
+  county_crosswalk,
+  haz_index_county_all,
+  by = c("county_id", "state", "county", "year")
+  
+)
+  
+stopifnot(nrow(haz_index_county_all) == 3143 * 3)
+```
+
+
 ### Subgroups
 
 Create an NA indicator counting population of tracts where either index air quality or poverty_type are missing.
@@ -538,7 +565,6 @@ Create an NA indicator counting population of tracts where either index air qual
 haz_index_pov <- haz_index_acs %>% 
   mutate(na_pop = if_else(is.na(index_air_hazard) | is.na(poverty_type), total_pop, 0))
 ```
-
 Calculate county/poverty type index using tract population as the weight. *Note* this is a change from the original version. The previous program weighted each tract by the count of individuals in poverty for high_poverty tracts and the county of individuals not in poverty in not_high_poverty tracts. This version considers the total population of the tracts and weights based on that.
 
 ```{r}
@@ -557,23 +583,29 @@ haz_index_sub_poverty <- haz_index_pov %>%
 Expand data set for every county/poverty_type
 
 ```{r}
-haz_index_county_pov_expand  <- haz_index_acs  %>%
-  expand(year, county_id, poverty_type)
+haz_index_sub_pov_expand <- left_join(
+  county_crosswalk,
+  haz_index_sub_poverty,
+  by = c("year", "county_id", "state", "county")
+) %>%
+  expand(year, county_id, poverty_type) %>% 
+  select(year, county_id, poverty_type) %>% 
+  filter(!is.na(poverty_type))
 ```
 
 Join dataset on expanded dataset, join with geo varibale, and add subgroup type variables
 
 ```{r}
 
-haz_by_poverty <- haz_index_county_pov_expand  %>% 
-  left_join(haz_index_sub_poverty %>%
-                                     select(year, county_id, state, county, poverty_type, index_air_hazard, na_perc),
-                                   by=c("year", 
-                                        "county_id",
-                                        "poverty_type")) %>%
+haz_by_poverty <- haz_index_sub_pov_expand  %>% 
+  left_join(haz_index_sub_poverty %>% 
+  select(year, county_id, state, county, poverty_type, index_air_hazard,
+         na_perc), 
+  by = c("year", "county_id", "poverty_type")) %>% 
   rename(subgroup = poverty_type) %>%
-  mutate(subgroup_type = "poverty") %>%
-  filter(!is.na(subgroup)) 
+  mutate(subgroup_type = "poverty") 
+
+stopifnot(nrow(haz_by_poverty) == 3143 * 3 *2)
 
 ```
 
@@ -603,24 +635,30 @@ haz_index_sub_race <- haz_index_race %>%
 
 ```
 
-Expand dataset for every year, county and race/ethnicity tract designation.
+Expand data set for every year, county and race/ethnicity tract designation.
 
 ```{r}
-haz_index_county_sub_expand_race <- haz_index_acs %>%
-  expand(year, county_id, race_ind)
+haz_index_sub_race_expand <- left_join(
+  county_crosswalk,
+  haz_index_sub_race,
+  by = c("year", "county_id", "state", "county")
+) %>%
+  expand(year, county_id, race_ind) %>% 
+  select(year, county_id, race_ind) %>% 
+  filter(!is.na(race_ind))
 ```
 
 Join to expanded, add geo variables, and add subgroup variables.
 
 ```{r}
-haz_by_race <- haz_index_county_sub_expand_race %>% 
+haz_by_race <- haz_index_sub_race_expand %>% 
   left_join(haz_index_sub_race %>%
               select(year, county_id, state, county, race_ind, index_air_hazard, na_perc),
             by=c("year", "county_id", "race_ind")) %>%
   rename(subgroup = race_ind) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  filter(!is.na(subgroup)) 
+  mutate(subgroup_type = "race-ethnicity")
 
+stopifnot(nrow(haz_by_race) == 3143 * 3 *3)
 ```
 
 ### Clean county data
@@ -669,7 +707,7 @@ Crosswalk the individual years of data onto the UMF geographic tract crosswalk f
 
 ```{r}
 
-crosswalk_place <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2018_tract_to_place.csv")) %>% 
+crosswalk_tract_place <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2018_tract_to_place.csv")) %>% 
   mutate(county = str_sub(county, start = -3L, end = -1L),
          state = str_pad(state, 2, side = "left", pad = "0"),
          tract = tract * 100,
@@ -681,13 +719,11 @@ crosswalk_place <- read_csv(here::here("geographic-crosswalks", "data", "geocorr
   select(place = placefp, tract, afact,  year1:year3) %>% 
   pivot_longer(!c(place, tract, afact), values_to = "year", names_to = "value") %>% 
   select(-value)
-
 ```
-
 Pad the place variable with a leading zero.
 
 ```{r}
-crosswalk_place <- crosswalk_place %>% 
+crosswalk_tract_place <- crosswalk_tract_place %>% 
   mutate(place = str_pad(place, 5, side = "left", pad = "0")) %>% 
   select(year, place, tract, afact)
 ```
@@ -695,13 +731,13 @@ crosswalk_place <- crosswalk_place %>%
 Merge the environmental index ACS data onto the city crosswalk file.
 
 ```{r}
-tract_place_hazard <- crosswalk_place %>% 
+tract_place_hazard <- crosswalk_tract_place %>% 
   left_join(haz_index_all, by = c("year", "tract")) %>%
   mutate(place = as.character(place),
          state = str_sub(tract, 1, 2)) %>% 
   mutate(place_id = str_c(state, place))
 
-anti_join(crosswalk_place, haz_index_all, by = c("year", "tract")) %>% 
+anti_join(crosswalk_tract_place, haz_index_all, by = c("year", "tract")) %>% 
   mutate(state = str_sub(tract, start = 1, end = 2)) %>% 
   group_by(state, year) %>%
   count() %>% 
@@ -715,8 +751,23 @@ haz_index_acs <- tract_place_hazard %>%
   left_join(race_pov, by=c("tract" = "geoid", "year")) %>% 
   mutate(na_pop= if_else(is.na(index_air_hazard), total_pop, 0))
 ```
+Read in file with just places used in UMF data.
+
+```{r}
+place_file <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv")) %>% 
+  select(state = statefip, place) %>% 
+  unique() %>% 
+   mutate(year1 = "2019",
+         year2 = "2018",
+         year3 = "2014") %>% 
+  pivot_longer(!c(state, place), values_to = "year", names_to = "value") %>% 
+  select(-value) %>% 
+  mutate(place_id = paste0(state, place))
+```
 
 ## Create place level index
+
+## All
 
 Import places/pop file and prep to limit to population cutoff places.
 
@@ -747,40 +798,60 @@ all_enviro_place <- all_enviro_place %>%
 select(-c(na_pop, place_pop))
 ```
 
+
+Merge on to the place file so all counties are present.
+
+```{r}
+haz_index_place_all <- left_join(
+  place_file,
+  all_enviro_place,
+  by = c("place_id", "state", "place", "year")
+  
+)
+  
+stopifnot(nrow(haz_index_place_all) == 486 * 3)
+```
+
 ### Poverty level
 
 Create place level weighted index by poverty level.
 
 ```{r}
 hazard_place_pov <- haz_index_acs %>%
-  mutate(na_pop = if_else(is.na(index_air_hazard) | is.na(poverty_type), total_pop, 0)) 
+  mutate(na_pop = if_else(is.na(index_air_hazard) | is.na(poverty_type), total_pop*afact, 0)) 
 ```
 
 Create the index in each place by the poverty type subgroup.
 
 ```{r}
 hazard_place_sub_pov <- hazard_place_pov %>%
+   mutate(tract_pop = (total_pop*afact)) %>%
   group_by(year, place_id, state, place, poverty_type) %>%
-  summarise(index_air_hazard = weighted.mean(index_air_hazard, total_pop*afact, na.rm = TRUE), #Multiplied weight by % in Tract
-            na_pop = sum(na_pop*afact, na.rm = TRUE), 
-            subgroup_pop = sum(total_pop*afact, na.rm=TRUE)
+  summarise(index_air_hazard = weighted.mean(index_air_hazard, tract_pop, na.rm = TRUE), #Multiplied weight by % in Tract
+            na_pop = sum(na_pop, na.rm = TRUE), 
+            subgroup_pop = sum(tract_pop, na.rm=TRUE)
   ) %>%
   ungroup()%>%
   mutate(na_perc = na_pop / subgroup_pop) %>%
   select(-c(na_pop, subgroup_pop))
 ```
 
-Expand poverty/place data set for every place and poverty type
+Expand data set for every place/poverty_type
 
 ```{r}
-hazard_place_pov_expand <- haz_index_acs  %>%
-  expand(year, place_id, poverty_type)
+haz_index_sub_pov_expand <- left_join(
+  place_file,
+  hazard_place_sub_pov,
+  by = c("year", "place_id", "state", "place")
+) %>%
+  expand(year, place_id, poverty_type) %>% 
+  select(year, place_id, poverty_type) %>% 
+  filter(!is.na(poverty_type))
 ```
-
 Join poverty data set.
 
 ```{r}
-hazard_by_pov_sub_place <- hazard_place_pov_expand %>% 
+hazard_by_pov_sub_place <- haz_index_sub_pov_expand %>% 
   left_join(hazard_place_sub_pov %>%
               select(year, place_id, poverty_type, index_air_hazard, na_perc),
                                         by=c("year",
@@ -791,6 +862,8 @@ hazard_by_pov_sub_place <- hazard_place_pov_expand %>%
          state = str_sub(place_id, 1, 2),
          place = str_sub(place_id, 3, 8)) %>%
   filter(!is.na(subgroup))
+
+stopifnot(nrow(hazard_by_pov_sub_place) == 486 * 3 *2)
 ```
 
 ### Neighborhood race status
@@ -814,17 +887,23 @@ hazard_place_sub_race <- hazard_place_race %>%
   select(-c(na_pop, subgroup_pop)) 
 ```
 
-Expand data set for every place/race/ethnicity
+Expand data set for every place/race indicator
 
 ```{r}
-hazard_place_race_expand <- haz_index_acs  %>%
-  expand(year, place_id, race_ind)
+haz_index_sub_race_expand <- left_join(
+  place_file,
+  hazard_place_sub_race,
+  by = c("year", "place_id", "state", "place")
+) %>%
+  expand(year, place_id, race_ind) %>% 
+  select(year, place_id, race_ind) %>% 
+  filter(!is.na(race_ind))
 ```
 
 Join to expanded, add GEO variables, and add subgroup variables
 
 ```{r}
-hazard_by_race_sub_place <- hazard_place_race_expand %>% 
+hazard_by_race_sub_place <- haz_index_sub_race_expand %>% 
   left_join(hazard_place_sub_race %>% 
               select(year, place_id, race_ind, index_air_hazard, na_perc),
                                         by=c("year",
@@ -835,6 +914,8 @@ hazard_by_race_sub_place <- hazard_place_race_expand %>%
          state = str_sub(place_id, 1, 2),
          place = str_sub(place_id, 3, 8)) %>%
   filter(!is.na(subgroup))
+
+stopifnot(nrow(hazard_by_race_sub_place) == 486 * 3 *3)
 ```
 
 ### Clean data
