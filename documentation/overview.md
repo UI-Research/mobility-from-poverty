@@ -1090,7 +1090,7 @@ This metric is a county-level and city-level estimate of population count by rac
 ### Overview
 
 * **Analyst & Programmer:** Manu Alcalá Kovalski, Jung Hyun Choi
-* **Year(s):** 2014-2022 for counties and 2016-2022 for places
+* **Year(s):** 2014, 2015, 2016, 2017, 2018, 2019, 2021, and 2022 for counties and 2016, 2017, 2018, 2019, 2021, 2022 for places
 * **Final data name(s):**`households_house_value_race_ethnicity_2022_city.csv`,`households_house_value_race_ethnicity_2022_county.csv`, `households_house_value_race_ethnicity_all_city.csv`, `households_house_value_race_ethnicity_all_county.csv`
 `households_house_value_race_ethnicity_subgroup_city.csv`,
 `households_house_value_race_ethnicity_subgroup_county.csv`
