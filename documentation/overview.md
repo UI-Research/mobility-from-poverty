@@ -1008,8 +1008,7 @@ Please note that the denominator we use is the living wage for a single full-tim
 * **Final data name(s):** `digital_access_county_2022.csv`, 
 `digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
 `digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
-* **Data Source(s):** Census Bureau's 1-year ACS for overall and 5-year ACS for
-subgroups
+* **Data Source(s):** Census Bureau's 5-year ACS.
 * **Notes:** The unit of analysis for the overall and income subgroup is 
 households, whereas the unit of analysis for the race/ethnicity subgroup is
 people in households. 
