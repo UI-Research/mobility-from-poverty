@@ -738,7 +738,7 @@ sort year state county subgroup_type subgroup
 rename lbw rate_low_birth_weight 				// Rename per Aaron request
 rename lbw_* rate_low_birth_weight_*			// Rename per Aaron request
 
-append using "${health_data_intermediate}neonatal_health_`y4'.dta"				// append aggregate county-level estimates to subgroup file
+append using "${health_data_final}neonatal_health_`y4'.dta"				// append aggregate county-level estimates to subgroup file
 
 replace subgroup_type = "all" if missing(subgroup_type)								// label aggregate county-level estimates as "all" 
 replace subgroup = 0 if missing(subgroup)												// label aggregate county-level estimates as "all"
