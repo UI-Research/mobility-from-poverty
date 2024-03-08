@@ -146,20 +146,20 @@ This info is imported at the beginning of the program and then combined and made
 
 ### Overview
 
-* Brief description: This metric is the total number and share of students experiencing homelessness at some point during the school year from 2014-15 through 2019-20. The total number and the share of students experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, and Asian). Race/ethnicity shares are created as shares of each race/ethnicity’s total enrollment. 
+* Brief description: This metric is the total number and share of students experiencing homelessness at some point during the school year from 2014-15 through 2021-22. The total number and the share of students experiencing homelessness by race/ethnicity is available beginning in 2019-20. Race/ethnicity includes Black, Hispanic, White, and Other: (American Indian/Alaskan Native, two/more, Native Hawaiian/Pacific Islander, and Asian). Race/ethnicity shares are created as shares of the total number of homeless students. 
 * **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2014-15 school year through 2019-20 school year
+* **Year(s):** 2014-15 school year through 2021-22 school year
 * **Final data name(s):** `homelessness.csv`
-* **Data Source(s):** EDFacts homelessness data; Common Core of Data (CCD) to identify counties and cities.
+* **Data Source(s):** EdDataExpress homelessness data; Common Core of Data (CCD) to identify counties and cities.
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires the ratio of the upper bound (`homeless_count_ub`) to the lower bound (`homeless_count_lb`) to be less or equal to than 1.05. Data quality of "2" requires this ratio to be greater than 1.05 and less than or equal to 1.1. Data quality of 3 is the remainder. Note that the largest value of this ratio is 3.5 and those with estimated homeless populations of less than 20 have ratio values at or between 2 to 3.5.
 * **Limitations:** Data suppression
 * **Missingness:** Counties: 323/3,142 counties in 2014, 312/3,142 counties in 2015, 267/3,142 counties in 2016, 
-305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019. Cities: 
+305/3,142 counties in 2017, 286/3,142 counties in 2018, 295/3,142 counties in 2019, 308/3,143 in 2020, and 296/3,144 in 2022. Cities: 56/486 in 2019, 54/486 in 2020, 53/486 in 2022
 
 ### Process
 
-Counts of students experiencing homelessness are downloaded from the EDFacts website, including by race/ethnicity subgroups for 2019. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state and subgrant status if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. For county level data, districts are assigned to the county where the district office is located (obtained from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
+Counts of students experiencing homelessness are downloaded from the EdDataExpress website, including by race/ethnicity subgroups for 2019-20 through 2021-22. Suppressed data are replaced with 1 for the main estimate and 0 for the lower bound. For the upper bound, suppressed data are replaced with the smallest non-suppressed value by state (and subgrant status for years prior to 2019) if there are two or fewer suppressed values by state and subgrant status, per the documentation, and 2 otherwise. For county level data, districts are assigned to the county where the district office is located (obtained from the CCD data). For city level data, districts are assigned to the city where the district offices is located (obtained from the CCD data). Shares are calculated by dividing by total enrollment in the county (again based on) the location of the district office, with enrollment counts also from CCD data). A flag indicates the number of districts with suppressed data that are included in each county's estimate.
 
 ---
 
@@ -889,14 +889,14 @@ schools where 20 percent or more of students come from households living below 1
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2014-15 through 2018-19
-* **Final data name(s):** `MEPS_2014-2018_city.csv` `MEPS_2014-2018_county.csv'
+* **Analyst & Programmer:** Erica Blom, Emily Gutierrez, & James Carter
+* **Year(s):** 2014-15 through 2020-21 county, 2016-17 through 2020-21 city
+* **Final data name(s):** `MEPS_2020_city.csv` `MEPS_2020_county.csv'
 * **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
-* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free and reduced-price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currently available for years 2014-2018.  
-* **Missingness:** 5/3,142 counties in 2014 and 4/3,142 counties for 2015-2018
+* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free and reduced-price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currently available for years 2014-2020.  
+* **Missingness:** Counties Data: Total of 3,142 cities in 2014-2019 and 3,143 cities in 2023. Data missing for Black Students - 2014:88 2015:87 2016:92 2017:106 2018:96 2019:90 2020:89. Hispanic Students - 2014:23 2015:27 2016:24 2017:23 2018:19 2019:16 2020:18 White Studnets - 2014:6 2015-2019:4 2020:5. Cities Data: 3/485 cities in 2016-2017, 3/486 cities in 2018-2019, and 4/486 in 2020 are missing.
 
 ### Process
 
