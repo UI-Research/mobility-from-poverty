@@ -538,19 +538,35 @@ save "${health_data_intermediate}neonatal_health_intermediate_raceth_`y2'.dta", 
 
 
 //# *(7) assess data quality
+/*
+Data Quality notes for documentation - 
+if the denominator is <30, the the value should be NA and quality should be NA. If it is missing, then keep it missing. And, maybe if the denominator is 30-100, it should be data quality=3 and if the value is >100-200, then the data quality is 2.
+*/
 
-//# Data Quality Flags - all birthsr
+//# Data Quality Flags - all births
 local y2 = 22
 use "${health_data_intermediate}neonatal_health_intermediate_all_`y2'.dta", clear
 
 *generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
-	replace lbw_quality = 1 if missing(unidentified_county_flag)		// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties"
-	replace lbw_quality = 2 if lbw_births < 30						// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+
+	replace lbw_quality = 1 if missing(unidentified_county_flag)
+	
+	replace lbw_quality = 2 if nomiss_births < 200	// Denominator [100-200]
+	
+	replace lbw_quality = 3 if nomiss_births < 100 	// Denominator [30-100)
 	replace lbw_quality = 3 if unidentified_county_flag == 1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
+	
+	replace lbw_quality = -1 if nomiss_births < 30	// Denominator < 30 will end up missing quality and metric
+	
 	replace lbw_quality = . if missing(share_lbw_nomiss)
 
-		label var lbw_quality "share low birthweight births: quality flag"
+	
+	replace share_lbw_nomiss = . if lbw_quality == -1	// Supression of small denominators
+	replace lbw_quality = . if lbw_quality == -1		// Quality missing for supressed denominators
+	
+label var lbw_quality "share low birthweight births: quality flag"
+
 save "${health_data_intermediate}neonatal_health_intermediate_all_`y2'.dta", replace
 
 //# Data Quality Flags - race/ethnicity
@@ -559,12 +575,24 @@ use "${health_data_intermediate}neonatal_health_intermediate_raceth_`y2'.dta", c
 
 *generate data quality flag	// based on whether metric is county level (quality score = 1) or pooled across all small counties (quality score = 3). County level estimates based on 10-29 low birthweight births are given a data quality score of 2.
 gen lbw_quality = .
+	
 	replace lbw_quality = 1 if missing(unidentified_county_flag) & missing(suppressed_county_flag)	// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
-	replace lbw_quality = 2 if lbw_births < 30											// assigning a quality score of 2 to all counties with fewer than 30 observed low birthweight births
+	
+	replace lbw_quality = 2 if nomiss_births < 200	// Denominator [100-200]
+	
+	replace lbw_quality = 3 if nomiss_births < 100 	// Denominator [30-100)
 	replace lbw_quality = 3 if unidentified_county_flag == 1 | suppressed_county_flag == 1	// assigning a quality score of 3 to all counties flagged as "unassigned counties" or "suppressed"
+
+	replace lbw_quality = -1 if nomiss_births < 30	// Denominator < 30 will end up missing quality and metric
+
 	replace lbw_quality = . if missing(share_lbw_nomiss)
 
-		label var lbw_quality "share low birthweight births: quality flag"
+	replace share_lbw_nomiss = . if lbw_quality == -1	// Supression of small denominators
+	replace lbw_quality = . if lbw_quality == -1		// Quality missing for supressed denominators
+
+	
+label var lbw_quality "share low birthweight births: quality flag"
+
 save "${health_data_intermediate}neonatal_health_intermediate_raceth_`y2'.dta", replace
 
 //# Confidence Intervals
