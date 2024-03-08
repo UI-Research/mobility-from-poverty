@@ -1,0 +1,765 @@
+---
+title: "Exposure to Trauma"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+```{=html}
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+```
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(urbnthemes)
+library(tidyverse)
+library(tidylog)
+library(testthat)
+
+set_urbn_defaults(style = "print")
+
+```
+
+This metric is a county-level estimate of exposure to trauma, defined as the number of deaths due to injury per 100,000 population.
+
+The rest of this file is organized as follows:
+
+1. Background 
+2. Manually download mortality data from CDC WONDER 
+3. Read in and clean mortality data 
+4. Join mortality data onto universe of Urban counties 
+5. Validation 
+6. Add data quality flags 
+7. Save the data
+
+## 1. Background
+
+This section provides background for the data used to create this metric.
+
+The data for this metric are national mortality and population data produced by the National Center for Health Statistics (NCHS) at the Centers for Disease Control and Prevention (CDC). Mortality information is collected by state registries and provided to the National Vital Statistics System. Data are based on death certificates for U.S. residents, and each death certificate contains a single underlying cause of death. We access these mortality data through [CDC WONDER](https://wonder.cdc.gov/Deaths-by-Underlying-Cause.html), an online system that makes CDC data available to the public.
+
+There are two options for these mortality data on CDC WONDER: 1. 2018-2021: Underlying Cause of Death by Single-Race Categories 2. 1999-2020: Underlying Cause of Death by Bridged-Race Categories
+
+From 1979-2002, states collected race data on death certificates using four single-race categories. Starting in 2003, some states began allowing one or more of five race categories to be reported. To provide uniformity and comparability of mortality data across time, NCHS is "bridging" the race responses of those for whom more than one race is reported to one of the single-race categories ([source](https://wonder.cdc.gov/wonder/help/mcd.html)). The Bridged-Race Population data on WONDER are updated annually to include the most recently available bridged-race population estimates ([source](https://wonder.cdc.gov/wonder/help/bridged-race.html#About%201990-2020)).
+
+Additionally, we can either report age-adjusted mortality rates or crude mortality rates. Age-adjusted death rates are weighted averages of the age-specific death rates, where the weights represent a fixed population by age ([source](https://wonder.cdc.gov/wonder/help/mcd.html)). Age adjustment "removes" the effects of age from crude rates which allows for meaningful comparisons across populations with different age distributions. Because the rates of almost all causes of death vary by age, and a major purpose of this metric is to compare counties against each other and over time, we want to report the age-adjusted rates rather than the crude rates.
+
+Age-adjusted rates are not available through the Single-Race files because the populations are weighted to the 10-year age groups, and county level population estimates are not available for the "\<1 year" and "1-4 years" age categories. Therefore, we use the Bridged-Race categories. Note that this means the most recent year we pull is 2020.
+
+We determine injury deaths based on the International Classification of Diseases 10th Revision (ICD-10) which was implemented for mortality coding and classification from Death certificates in the U.S. in 1999. The following ICD-10 codes represent a death with an underlying cause of injury (Note that these are the same ICD-10 codes used by County Health Rankings to create this metric; we compare our results to theirs later in this file):
+
+-   \*U01 (Terrorism - Assault (homicide) )
+-   \*U02 (Sequelae of terrorism)
+-   \*U03 (Terrorism Intentional (Suicide))
+-   V01-V99 (Transport accidents)
+-   W00-X59 (Other external causes of accidental injury)
+-   X60-X84 (Intentional self-harm)
+-   X85-Y09 (Assault)
+-   Y10-Y34 (Event of undetermined intent)
+-   Y35-Y36 (Legal intervention and operations of war)
+-   Y85 (Sequelae of transport accidents)
+-   Y86 (Sequelae of other accidents)
+-   Y87 (Sequelae of intentional self-harm, assault and events of undetermined intent)
+-   Y89 (Sequelae of other external causes)
+
+For each year of data accessed, we pool the most recent five years (consistent with County Health Rankings). E.g., for 2020, we pool data from 2016, 2017, 2018, 2019, and 2020. The steps taken to create the 2020 extract from CDC WONDER are outlined in the next section. For each year, the user will need to repeat the steps with the correct five-year pool (e.g., for 2019 data, the user should select 2015, 2016, 2017, 2018, and 2019). This is explained in more detail in the next section.
+
+Note that CDC WONDER implements the following changes to the data: 
+* Counties with fewer than ten deaths (for all the ICD-10 codes specified) are suppressed 
+* Population figures are suppressed when the population represents fewer than ten persons 
+* Mortality rates are marked as "unreliable" when the death count is less than 20 
+* Rates are marked as "not applicable" when the population denominator figure is unavailable, such as persons of "not stated" or unknown age or Hispanic origin.
+
+The mortality micro-data files are restricted and require research-proposal review and approval by the [National Center for Health Statistics (NCHS)](https://www.cdc.gov/nchs/nvss/nvss-restricted-data.htm). Therefore we use the data made publicly available via CDC WONDER.
+
+**Note that the National Center for Health Statistics bridged-race population estimates used to calculate death rates ceased with the release of the Vintage 2020 estimates ([source](https://www.cdc.gov/nchs/nvss/bridged_race.htm), [source](https://wonder.cdc.gov/bridged-race-population.html)). This contradicts information from other sources as noted above that appears to have not been updated. It means that future updates will need to use the Single-Race categories, and will either need to report crude rates instead of age-adjusted rates or exclude the "\<1 year" and "1-4 years" age categories from the count. It also means that data may not be comparable before and after 2020. Right now, the data for Single-Race categories are only available for 2018-2021. It is unclear to me whether the next year available will be 2017 or 2022.**
+
+## 2. Manually download mortality data from CDC WONDER
+
+This section explains the manual download process to create data extracts for these data from CDC WONDER.
+
+There is an API available for CDC WONDER data. However, only national data are available for query by the API. Queries for mortality statistics from the National Vital Statistics System cannot limit or group results by any location field such as county. Therefore, we must manually download the data.
+
+### 2.1 Navigate to extract page
+
+1.  Navigate to the Mortality Data homepage on CDC WONDER [here](https://wonder.cdc.gov/Deaths-by-Underlying-Cause.html).
+
+2.  Select [1999-2020: Underlying Cause of Death by Bridged-race Categories](https://wonder.cdc.gov/ucd-icd10.html)
+
+3.  Select "I Agree" at the bottom of the page.
+
+### 2.2 Create extracts for each year
+
+Create your extract for 2020 from [this page](https://wonder.cdc.gov/controller/datarequest/D76) according to the specifications below. Note that the specific extract created by these specifications only creates the data file for 2020. You will need to modify and re-submit the query 6 times to get data files for 2014-2019. Instructions for how to do so are explained after the 2020 extract specifications.
+
+1.  Organize table layout:
+  + Group Results By: County
+  + Measures: 95% Confidence Interval, Standard Error, Age Adjusted Rate, 95% Confidence Interval, Standard Error
+
+2.  Select location:
+  + States
+  + States: *All* (The United States)
+  + 2013 Urbanization: All Categories
+
+3.  Select demographics:
+  + Ten-Year Age Groups: All Ages
+  + Gender: All Genders
+  + Hispanic Origin: All Origins
+  + Single Race 6: All Races
+
+4.  Select year and month:
+  + Year/Month: 2016, 2017, 2018, 2019, 2020
+
+5.  Select weekday, autopsy and place of death:
+  + Weekday: All Weekdays
+  + Autopsy: All Values
+  + Place of Death: All Places
+
+6.  Select cause of death:
+  + ICD-10 Codes
+  + ICD-10 Codes:
+    -   \*U01 (Terrorism - Assault (homicide) )
+    -   \*U02 (Sequelae of terrorism)
+    -   \*U03 (Terrorism Intentional (Suicide))
+    -   V01-V99 (Transport accidents)
+    -   W00-X59 (Other external causes of accidental injury)
+    -   X60-X84 (Intentional self-harm)
+    -   X85-Y09 (Assault)
+    -   Y10-Y34 (Event of undetermined intent)
+    -   Y35-Y36 (Legal intervention and operations of war)
+    -   Y85 (Sequelae of transport accidents)
+    -   Y86 (Sequelae of other accidents)
+    -   Y87 (Sequelae of intentional self-harm, assault and events of undetermined intent)
+    -   Y89 (Sequelae of other external causes)
+
+7.  Other options:
+  + Show Totals
+  + Show Zero Values
+  + Show Suppressed Values
+  + Precision: 1 decimal places
+  + Data Access Timeout: 10 minutes
+
+After creating the extract to the above specifications:
+-   Select `Send` at the bottom of the page to submit the extract.
+
+-   Select `Export` at the top right of the `Results` page. This will automatically download a `.txt` file titled `Underlying Cause of Death, 1999-2020.txt` to your Downloads folder
+
+-   Rename the file `cdcYYYY.txt` where `YYYY` represents the most recent year in the five-year pool (e.g., if the pool includes years 2016, 2017, 2018, 2019, and 2020, name the file `cdc2020.txt`)
+
+-   Move the `.txt` file from your Downloads folder to the `mobility-from-poverty\04_health\exposure-to-trauma\data\bridged-race` directory.
+
+Note that to recreate this metric for all years, the user will need to submit the extract 7 total times. The only thing that changes with each submit is the combination of years chosen. Each data year includes the current year and the previous four years to create a five-year pool. After exporting and renaming your resulting `.txt` file for the first extract, navigate back to the `Request Form` by clicking the `Request Form` tab on the top left of the screen. The only thing you need to change is the combination of years under `Year/Month` in the `4. Select year and month:` section. Select:
+
+* 2016, 2017, 2018, 2019, and 2020 and then click `Send` at the bottom of the screen to create the 2020 data file
+* 2015, 2016, 2017, 2018, and 2019 and then click `Send` at the bottom of the screen to create the 2019 data file
+* 2014, 2015, 2016, 2017, and 2018 and then click `Send` at the bottom of the screen to create the 2018 data file 
+* 2013, 2014, 2015, 2016, and 2017 and then click `Send` at the bottom of the screen to create the 2017 data file
+* 2012, 2013, 2014, 2015, and 2016 and then click `Send` at the bottom of the screen to create the 2016 data file
+* 2011, 2012, 2013, 2014, and 2015 and then click `Send` at the bottom of the screen to create the 2015 data file
+* 2010, 2011, 2012, 2013, and 2014 and then click `Send` at the bottom of the screen to create the 2014 data file
+
+The specifications for the 2020 extract are saved [here](https://wonder.cdc.gov/controller/saved/D76/D377F651).
+
+Note that this project is interested in creating each metric by subgroup (e.g., race/ethnicity, sex, age group, etc.) wherever possible. It is technically possible to disaggregate this metric by these groups, but because the total county-level number of injury deaths are relatively small to begin with, a lot of cells are reported as `Suppressed` or `Unreliable` when disaggregating. Future updates can look at these groups and decide what level of missingness is worthwhile. There are two ways to disaggregate the CDC WONDER data:
+* In the `1. Organize table layout:` section, after selecting `Group Results By County`, select `And By [SUBGROUP]` where `[SUBGROUP]` is `Gender`, `Race`, etc; OR
+* In the `3. Select demographics:` section, instead of selecting `All Genders` under `Gender`, select only `Female` and submit/export the extract, and then return to the request form and select only `Male` and submit/export the extract. Repeat for race/ethnciity, age groups, etc. Note that all files would need to be appended.
+
+## 3. Read in and clean mortality data
+
+This section reads in, appends, and cleans the seven data extracts created in the previous section.
+
+List all the files in the `bridged-race` folder
+
+```{r list-files}
+# List files
+paths <- list.files(here::here("04_health", "exposure-to-trauma", "data", "bridged-race"),
+                    pattern = "[.]txt$", full.names = TRUE)
+
+```
+
+Check that all files have been properly downloaded
+
+```{r check-files}
+# Create list of expected years
+expected_years <- tribble(
+  ~year,
+  "2014",
+  "2015",
+  "2016",
+  "2017",
+  "2018",
+  "2019",
+  "2020"
+) 
+
+# Use years above to create vector of expected files
+expected_files <- c(
+  here::here(paste0("04_health/exposure-to-trauma/data/bridged-race/cdc",
+                    expected_years$year,
+                    ".txt"))
+)
+
+# Ensure expected files are included in the `bridged-race` directory before proceeding
+if(!all(expected_files %in% paths)) {
+  stop("Error: Some expected files are missing. Please refer to the download directions in section 2 above.")
+}
+
+```
+
+Read in all county-level files for 2014-2020 and append them.
+
+```{r read-files}
+# Read in and append files
+deaths_raw <- paths |> 
+  set_names(basename) |> 
+  map(utils::read.delim) |> 
+  list_rbind(names_to = "year") |> 
+  mutate(year = parse_number(year))
+
+```
+
+The raw `.txt` files which we read in from CDC WONDER contains a `Notes` column which we drop. We retain all information for the age-adjusted death rate (rate, confidence interval, and standard error). We retain the crude rate (without confidence interval or standard error) for comparison to another data set later in this file.
+
+```{r clean-data}
+# Rename variables, remove `Notes` column, and remove crude rate confidence interval and standard error
+deaths <- deaths_raw |>
+  select(
+    year,
+    county_name = County,
+    GEOID = County.Code,
+    deaths = Deaths,
+    population = Population,
+    rate_injury_death = Age.Adjusted.Rate,
+    rate_injury_death_lb = Age.Adjusted.Rate.Lower.95..Confidence.Interval,
+    rate_injury_death_ub = Age.Adjusted.Rate.Upper.95..Confidence.Interval,
+    rate_injury_death_se = Age.Adjusted.Rate.Standard.Error,
+    rate_injury_death_crude = Crude.Rate
+  ) |>
+  # Remove empty rows resulting from deleting the `Notes` column, and remove the total row
+  filter(!is.na(GEOID)) |>
+  # Replace "suppressed", "unreliable", and "missing" values with NA
+  mutate(
+    across(
+      .cols = c(deaths, population, starts_with("rate")
+      ),
+      ~ifelse(. %in% c("Suppressed", "Unreliable", "Missing"), NA, .))) |>
+  # Change values from character to numeric
+  mutate(across(.cols = c(deaths, population, starts_with("rate")), .fns = as.numeric)) |>
+  # Edit GEOID
+  mutate(GEOID = str_pad(GEOID, 5, pad = "0"))
+
+```
+
+```{r clean-environment-s3}
+# Clean up environment
+rm(paths, expected_years, expected_files, deaths_raw)
+  
+```
+
+## 4. Join mortality data onto universe of Urban counties
+
+This section reads in the Urban Institute's universe of counties and joins the CDC injury death data to those counties.
+
+### 4.1 Read in Urban county file for 2014-2020
+
+```{r load-counties}
+all_counties <- read.csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) |>
+  filter(!year %in% c(2021, 2022)) |>
+  mutate(state = str_pad(state, 2, pad = "0"),
+         county = str_pad(county, 3, pad = "0"),
+         GEOID = str_c(state, county))
+
+```
+
+### 4.2 Identify counties in Urban universe but not in CDC WONDER
+
+16 observations (4 counties) are in our universe of counties but not in the CDC data. Two counties (Kusilvak Census Area, AK and Oglala Lakota County, SD) are missing for 2014-2020. The other two counties (Chugach Census Area, AK and Copper River Census Area, AK) are only missing for 2020.
+
+```{r check-missing-cdc}
+missing_CDC <- anti_join(
+  x = all_counties, 
+  y = deaths, 
+  by = c("year", "GEOID")
+  )
+
+missing_CDC |>
+  group_by(state_name, county_name) |>
+  count(year)
+
+```
+
+Shannon County, SD was renamed to Oglala Lakota County, SD in 2014 (ratified early 2015) ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518)). We convert Shannon County, SD to Oglala Lakota County, SD in the CDC deaths data to reflect this change.
+
+```{r fix-shannon-county}
+deaths <- deaths |>
+  mutate(
+    county_name = if_else(county_name == "Shannon County, SD", "Oglala Lakota County, SD", county_name),
+    GEOID = if_else(GEOID == "46113", "46102", GEOID)
+  )
+
+```
+
+Wade Hampton Census Area, AK was renamed to Kusilvak Census Area, AK in 2015 ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518)). We convert Wade Hampton Census Area, AK to Kusilvak Census Area, AK in the CDC deaths data to reflect this change.
+
+```{r fix-wade-hampton}
+deaths <- deaths |>
+  mutate(
+    county_name = if_else(county_name == "Wade Hampton Census Area, AK", "Kusilvak Census Area, AK", county_name),
+    GEOID = if_else(GEOID == "02270", "02158", GEOID)
+  )
+
+```
+
+### 4.3 Identify counties in CDC WONDER but not in Urban universe
+
+50 observations (9 counties) are in the CDC data but not our universe of counties. Seven counties (Bedford city, VA, Clifton Forge city, VA, Prince of Wales-Outer Ketchikan Census Area, AK, Shannon County, SD, Skagway-Hoonah-Angoon Census Area, AK, Wade Hampton Census Area, AK, and Wrangell-Petersburg Census Area, AK) are missing for 2014-2020. The other county (Valdez-Cordova Census Area, AK) is only missing for 2020.
+
+```{r check-missing-urban}
+missing_urban <- anti_join(
+  x = deaths, 
+  y = all_counties, 
+  by = c("year", "GEOID")
+  )
+
+missing_urban |>
+  group_by(county_name) |>
+  count()
+
+```
+
+Bedford County, VA (51019) added the former independent city of Bedford (51515) effective 2013-07-01 ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518)). Deaths are population estimates are missing (zero) for Bedford City, Virginia beginning in year 2014 ([source](https://wonder.cdc.gov/wonder/help/ucd.html#)). We drop Bedford City, VA from the CDC deaths data.
+
+Alleghany County, VA (51005) added the former independent city of Clifton Forge (51560) effective 2001-07-01 ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2000.html#list-tab-957819518)). Beginning in 2001, death counts and population estimates for Clifton Forge city, VA have been combined with those for Alleghany county ([source](https://wonder.cdc.gov/wonder/help/ucd.html#)). We drop Clifton Forge city, VA from the CDC deaths data.
+
+Prior to 2013, Prince of Wales-Outer Ketchikan Census Area, AK (02201), Skagway-Hoonah-Angoon Census Area, AK (02232) and Wrangell-Petersburg Census Area, AK (02280) were all split and their parts were used to create new Census Areas ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2000.html#list-tab-957819518)). Beginning in 2014, deaths and population data for these areas are no longer available ([source](https://wonder.cdc.gov/wonder/help/ucd.html#)). Data are only available for these areas for years 1999-2013; deaths and population estimates for years 2014-2020 are missing (zero). We drop these three county equivalents from the CDC deaths data.
+
+```{r fix-missing-urban}
+deaths <- deaths |>
+  filter(!GEOID %in% c("51515", "51560", "02201", "02232", "02280"))
+  
+```
+
+### 4.4 Address the split of Valdez-Cordova Census Area, AK
+
+Effective 2019-01-02, Valdez-Cordova Census Area, AK (02261) split to form Chugach Census Area, AK (02063) and Copper River Census Area, AK (02066). This change is not reflected in the CDC deaths data as of 2020. We can use the `interpolate_pw()` [function](https://rdrr.io/cran/tidycensus/man/interpolate_pw.html) from the `library(tidycensus)` package, which uses block-level population estimates to weight the interpolation of death rates across geographies, to get estimates of the age-adjusted rates for each of the new counties. However, this method likely will not work for the confidence interval and standard error since the population is smaller in the newer counties. This method is imperfect, but we apply it to the age-adjusted rate for Valdez-Cordova Census Area, AK in 2020 to estimate age-adjusted rates for Chugach Census Area, AK and Copper River Census Area, AK in 2020.
+
+Note that the `interpolate_pw()` function can only be applied to one variable at a time.
+
+```{r fix-valdez-cordova, output=FALSE}
+# Create subset of deaths without this one observation
+deaths_no_interpolate <- deaths |>
+  filter(!(GEOID == "02261" & year==2020))
+
+# Subset the single observation for Valdez-Cordova Census Area, AK in 2020
+deaths_vc <- deaths |>
+  filter((GEOID == "02261" & year==2020)) %>%
+  select(GEOID, rate_injury_death)
+
+# Get shapefile for Valdez-Cordova Census Area, AK in 2019
+ak2019 <- tidycensus::get_acs(
+  geography = "county",
+  variables = "B01003_001",
+  year = 2019,
+  state = "AK",
+  geometry = TRUE
+) |>
+  filter(GEOID == "02261") |>
+    left_join(
+      y = deaths_vc,
+      by = "GEOID"
+    ) |>
+  # Note that if you select more than one variable below, the interpolation does not work
+  select(rate_injury_death)
+
+# Get shapefiles for Chugach Census Area, AK and Copper River Census Area, AK in 2020.
+ak2020 <- tidycensus::get_acs(
+  geography = "county",
+  variables = "B01003_001",
+  year = 2020,
+  state = "AK",
+  geometry = TRUE
+) |>
+  filter(GEOID %in% c("02063", "02066"))
+
+# Get population counts for the Census blocks that make up these counties
+ak_blocks <- tigris::blocks(
+  state = "AK",
+  county = c("261", "063", "066"),
+  year = 2020
+)
+
+# Interpolate age-adjusted death rates for Chugach Census Area, AK and Copper River Census Area, AK in 2020
+## Note that this is only interpolating the age-adjusted death rate. We are not interpolating the number of deaths, population count, confidence interval, standard error, or crude rate.
+deaths_c_cr <- tidycensus::interpolate_pw(
+  from = ak2019,
+  to = ak2020,
+  to_id = "GEOID",
+  weights = ak_blocks,
+  weight_column = "POP20",
+  crs = 3338,
+  # For Census data, extensive = TRUE should be used for transferring counts / estimated counts between zones. Derived metrics (e.g. population density, percentages, etc.) should use extensive = FALSE
+  extensive = TRUE
+)
+
+# Check that the interpolated rates are not the same as the original rate; if they are, the interpolation approach did not work properly
+stopifnot(!deaths_c_cr$rate_injury_death %in% deaths_vc$rate_injury_death)
+
+# Append the interpolated counties onto the main file
+## First edit the interpolated counties to remove geometries and add year
+deaths_c_cr <- deaths_c_cr |>
+  sf::st_drop_geometry() |>
+  mutate(year = 2020)
+## Now append
+deaths_all <- bind_rows(
+  deaths_no_interpolate, deaths_c_cr
+)
+
+```
+
+```{r clean-environment-4.4}
+# Remove obsolete objects
+rm(missing_CDC, missing_urban, deaths_no_interpolate, deaths_vc, ak2019, ak2020,
+   ak_blocks, deaths_c_cr, deaths)
+```
+
+### 4.5 Join data
+
+Join county-level age-adjusted death rates from CDC WONDER for 2014-2020 onto Urban's county universe file
+
+```{r join-data}
+joined_data <- left_join(
+  x = all_counties,
+  y = deaths_all |>
+    select(-c("county_name", "population")),
+  by = c("year", "GEOID")
+)
+  
+```
+
+```{r clean-environment-4.5}
+# Remove obsolete objects
+rm(all_counties, deaths_all)
+```
+
+## 5. Validation
+
+Now that we only have valid units of observation, we validate the data by performing several checks and visualizations to ensure that the data are as we expect. We also compare our data to an external source.
+
+### 5.1 Table of injury death rates
+
+We first explore the data with this table that shows the injury death rates in each county. Click on the variable columns to sort the table.
+
+```{r table, echo = FALSE}
+joined_data |>
+  select(
+    county_name, GEOID, year,
+    rate_injury_death
+  ) |>
+  reactable::reactable(
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 10,
+    highlight = TRUE
+  )
+
+```
+
+### 5.2 Distribution of injury death rates and missingness
+
+The county-level rate of injury deaths per 100,000 people ranges from 24.4 to 346.9.
+
+```{r check-distribtuion}
+quantile(
+  joined_data$rate_injury_death,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+
+```
+
+There are roughly the same number of missing injury death rates (between 266 and 281) per year from 2014-2020.
+
+```{r check-missing, message = FALSE}
+joined_data |>
+  group_by(year) |>
+  summarize(
+    missing = sum(is.na(rate_injury_death)),
+    missing_pct = sum(is.na(rate_injury_death)) / n() * 100
+  )
+
+```
+
+All of the injury death rates are positive
+
+```{r test-positive}
+testthat::test_that("Check that all values of rate_injury_death are greater than zero if not missing", {
+  expect_true(all(joined_data$rate_injury_death > 0 | is.na(joined_data$rate_injury_death)))
+})
+
+```
+
+All of the injury death rates are less than 100,000 (the rates are per 100,000 people, so the rates should not be greater than 100,000)
+
+```{r test-lt-100k}
+testthat::test_that("Check that all values of rate_injury_death are less than 100,000 if not missing", {
+  expect_true(all(joined_data$rate_injury_death < 100000 | is.na(joined_data$rate_injury_death)))
+})
+
+```
+
+### 5.3 Visualizations
+
+The distribution of death rates is roughly the same across all years
+
+```{r plot-distribution}
+joined_data |>
+  filter(!is.na(rate_injury_death)) |>
+  ggplot(aes(rate_injury_death)) +
+  geom_histogram(binwidth = 5) +
+  facet_wrap(~ year, scales = "free_x") +
+  labs(title = "")
+
+```
+
+Check where high injury death rates are concentrated
+
+```{r plot-rate-pop}
+joined_data |>
+  # 2014 counties from Urban's universe of counties are missing population data, which creates an `NA` panel. We remove these counties below
+  filter(!is.na(population),
+         !is.na(rate_injury_death)) |>
+  mutate(size = if_else(population < 200000, "1. small population", "2. big population")) |>
+  # Standardize population by denominating in 1000s so the axis labels are more legible
+  mutate(population = population / 1000) |>
+  ggplot(aes(population, rate_injury_death)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size, scales = "free_x") +
+  labs(title = "High Injury Death Rates are Concentrated in Smaller Counties",
+       x = "Population (thousands)",
+       y = "Injury death rate") +
+  scatter_grid()
+
+```
+
+Check relationship between number of injury deaths and injury death rates
+
+```{r plot-rate-count}
+joined_data |>
+  filter(!is.na(rate_injury_death),
+         !is.na(deaths)) |>
+  ggplot(aes(deaths, rate_injury_death)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Injury Death Rates are Concentrated in Counties with Few Injury Deaths") +  
+  scatter_grid()
+
+```
+
+### 5.4 Checking rates against County Health Rankings
+
+The 2022 release of County Health Rankings [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/community-safety/injury-deaths?year=2023) data includes this same metric using the same years of the same data (2016-2020 pooled data from CDC WONDER) ([source](https://www.countyhealthrankings.org/sites/default/files/media/document/2022%20Analytic%20Documentation.pdf)). We check our calculations against theirs.
+
+#### 5.4a Download, read in, and clean the 2022 County Health Rankings Data
+
+The landing page to download these data is [here](https://www.countyhealthrankings.org/health-data/methodology-and-sources/rankings-data-documentation).
+
+```{r load-chr}
+# Download file directly from internet
+download.file(
+  url = "https://www.countyhealthrankings.org/sites/default/files/media/document/2022%20County%20Health%20Rankings%20Data%20-%20v1.xlsx",
+  destfile = here::here("04_health/exposure-to-trauma/data/chr2022.xlsx"),
+  mode = "wb"
+)
+
+# Read in CHR data
+## I set `guess_max = Inf` to forestall a warning when reading columns. Without this parameter specified, `readxl::read_excel()` guesses that column 17 is a logical column (because it's mostly missing) when in fact it's a character column. We don't use this column, but still want to provide clarity about the warning.
+chr2022 <- readxl::read_excel(here::here("04_health", "exposure-to-trauma", "data", "chr2022.xlsx"),
+                              sheet = "Ranked Measure Data",
+                              skip = 1,
+                              col_names = TRUE,
+                              guess_max = Inf
+                              )
+
+# Limit CHR data to relevant variables
+chr2022 <- chr2022 |>
+  select(
+    GEOID = "FIPS",
+    state_name = State,
+    county_name = County,
+    deaths_chr = "# Injury Deaths",
+    rate_injury_death_chr = "Injury Death Rate",
+  ) |>
+  # Delete state-level observations
+  filter(!is.na(county_name))
+
+```
+
+#### 5.4b Join 2016-2020 CDC WONDER data onto 2022 CHR data
+
+```{r join-chr}
+# Join our 2020 data to CHR 2020 data
+chr_test <- full_join(
+  x = chr2022,
+  y = joined_data |>
+    filter(year==2020) |>
+    select(GEOID, deaths, population, rate_injury_death_crude, rate_injury_death),
+  by = "GEOID"
+) |>
+  mutate(rate_injury_death_chr = round(rate_injury_death_chr, 1))
+
+```
+
+The CHR data also has Valdez-Cordova, AK listed for 2020 instead of Chugach and Copper River. We remove all three of these observations from the test.
+
+```{r remove-ak-problems}
+chr_test |>
+  filter(GEOID %in% c("02261", "02063", "02066"))
+
+chr_test <- chr_test |>
+  filter(!GEOID %in% c("02261", "02063", "02066"))
+
+```
+
+#### 5.4c Compare values from CHR and CDC WONDER
+
+There are some observations that do not match because CDC WONDER reports rates as `unreliable` when the death count is less than 20. We changed these rates to `NA` in our data. County Health Rankings recreated the crude rate for these observations by dividing the death count by population and multiplying by 100,000. We are reporting the age-adjusted rate, so this computation does not work for us. Otherwise the rates are the same.
+
+There are 105 counties that are missing rates in both data sets. We remove these observations.
+
+```{r check-chr-1}
+# Check number of counties missing from both data sets
+chr_test |>
+  filter(is.na(rate_injury_death_crude) & is.na(rate_injury_death_chr)) |>
+  count()
+
+# Remove observations missing from both sets
+test <- chr_test |>
+  filter(!(is.na(rate_injury_death_crude) & is.na(rate_injury_death_chr)))
+
+```
+
+There are no more missing rates from CHR, but there are 159 missing rates left in our data
+
+```{r check-chr-2}
+# Check remaining missing from CHR
+test |>
+  filter(is.na(rate_injury_death_chr)) |>
+  count()
+
+# Check remaining missing from our data
+test |>
+  filter(is.na(rate_injury_death_crude)) |>
+  count()
+```
+
+For observations where our rate is not missing, all rates are equal to the County Health Rankings rates. Only the 159 observations missing from our data but not CHR do not match
+
+```{r check-chr-3}
+# Create subset of rates that are NOT missing from our data
+not_missing <- test |>
+    filter(!is.na(rate_injury_death_crude))
+
+# Check that these observations are equal to the CHR observations
+testthat::expect_equal(
+  not_missing$rate_injury_death_chr,
+  not_missing$rate_injury_death_crude
+)
+
+```
+
+These observations that do not match are counties where CDC WONDER reported the death rate as `unreliable` because the death count was less than 20. County Health Rankings produced the crude rate for these counties by dividing the death count by population and multiplying by 100,000. This computation does not work for us because we are reporting age-adjusted rates, not crude rates. Otherwise, the data match.
+
+```{r check-chr-4}
+# Create subset of the 159 rates that are missing from our data
+missing <- test |>
+  filter(is.na(rate_injury_death_crude))
+
+# Visually compare death counts from both data sets 
+head(missing %>% select(deaths_chr, deaths), 10)
+
+# Check that all of these remaining observations have less than 20 deaths
+stopifnot(missing$deaths_chr < 20)
+
+```
+
+```{r clean-environment-5}
+# Remove obsolete objects
+rm(chr2022, chr_test, test, not_missing, missing)
+```
+
+## 6. Add data quality flags
+
+This section creates a variable for the coefficient of variation (CV) for each county and assigns a quality indicator based on that county's CV. Smaller CVs are indicative of high quality data.
+
+```{r add-quality-flags}
+joined_data <- joined_data |>
+  mutate(cv = rate_injury_death_se / rate_injury_death,
+         rate_injury_death_quality = case_when(
+           cv < 0.2 ~ 1,
+           cv < 0.4 ~ 2,
+           cv >= 0.4 ~ 3
+         )
+  )
+
+```
+
+Most estimates have small coefficients of variation and are therefore of high quality.
+
+```{r plot-quality}
+joined_data |>
+  filter(!is.na(rate_injury_death_quality)) |>
+  ggplot(aes(x = rate_injury_death_quality)) +
+  geom_bar()
+  
+```
+
+Most estimates have small standard errors.
+
+```{r plot-se}
+joined_data |>
+  filter(!is.na(rate_injury_death_quality)) |>
+  ggplot(aes(rate_injury_death, rate_injury_death_se)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_abline(aes(slope = 0.4, intercept = 0)) +
+  labs(title = "Most Estimates Have Small SEs",
+       subtitle = "Line represents a CV of 0.4") +
+  coord_equal() +
+  scatter_grid()
+
+```
+
+## 7. Save and write out data
+
+```{r write-data}
+# Remove unnecessary variables and sort by year, state, and county
+final_data <- joined_data |>
+  select(-c(population, GEOID, deaths, cv)) |>
+  arrange(year, state, county)
+
+
+# Write out final data
+write_csv(x = final_data,
+          file = here::here(
+            "04_health",
+            "exposure-to-trauma",
+            "final",
+            "rate_injury_deaths_metric_all_county.csv"
+          )
+)
+
+```
