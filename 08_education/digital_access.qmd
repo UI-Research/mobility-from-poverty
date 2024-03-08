@@ -27,6 +27,7 @@ library(censusapi)
 library(glue)
 library(janitor)
 library(tidylog)
+library(skimr)
 
 set_urbn_defaults(style = "print")
 ```
@@ -102,6 +103,7 @@ We are using the 1-yr ACS for the communities overall (not the subgroups), from
 2016 to 2022. This will be based on table B28003.
 
 ```{r}
+#| label: pull-overall-communities
 # "Population" variables refer to households/people in households in a
 # given category.
 
@@ -140,8 +142,10 @@ map(
   )
 )
 
-county_overall
-place_overall
+# 4,969 rows
+skim(county_overall)
+# 3,763 rows
+skim(place_overall)
 ```
 
 ### Race/ethnicity subgroup
@@ -191,8 +195,8 @@ map(
   )
 )
 
-county_raceeth
-place_raceeth
+skim(county_raceeth)
+skim(place_raceeth)
 ```
 
 We aggregate the race/ethnicity categories into Other races and ethnicities,
@@ -321,8 +325,8 @@ map(
   )
 )
 
-county_income
-place_income
+skim(county_income)
+skim(place_income)
 ```
 
 ## Confidence Intervals
@@ -423,12 +427,39 @@ lst(
     )
   )
 
+
 map_dbl(county_overall_digital_access, ~ sum(is.nan(.x)))
 map_dbl(place_overall_digital_access, ~ sum(is.nan(.x)))
 map_dbl(county_raceeth_digital_access, ~ sum(is.nan(.x)))
 map_dbl(place_raceeth_digital_access, ~ sum(is.nan(.x)))
 map_dbl(county_income_digital_access, ~ sum(is.nan(.x)))
 map_dbl(place_income_digital_access, ~ sum(is.nan(.x)))
+```
+
+Inspect summary statistics and missigness for counties:
+
+```{r}
+map(
+  list(
+    county_overall_digital_access,
+    county_raceeth_digital_access,
+    county_income_digital_access
+  ),
+  skim
+)
+```
+
+and for places:
+
+```{r}
+map(
+  list(
+    place_overall_digital_access,
+    place_raceeth_digital_access,
+    place_income_digital_access
+  ),
+  skim
+)
 ```
 
 # Create data quality flags
@@ -568,6 +599,14 @@ lst(
       envir = .GlobalEnv
     )
   )
+
+skim(county_overall_digital_access)
+skim(county_raceeth_digital_access)
+skim(county_income_digital_access)
+
+skim(place_overall_digital_access)
+skim(place_raceeth_digital_access)
+skim(place_income_digital_access)
 ```
 
 # Prepare the data for saving & export final Metrics files
@@ -849,38 +888,19 @@ place_subgroup_digital_access <-
 ```
 
 ```{r}
-get_summary_stats <- function(data) {
-  data |>
-    summarise(across(c(share_digital_access, share_digital_access_lb, share_digital_access_ub),
-      .fns = list(
-        min = ~ min(.x, na.rm = TRUE),
-        median = ~ median(.x, na.rm = TRUE),
-        max = ~ max(.x, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )) |>
-    pivot_longer(cols = everything()) |>
-    mutate(
-      stat = str_extract(name, "[^_]+$"),
-      name = str_remove(name, "_[^_]+$")
-    ) |>
-    pivot_wider(
-      names_from = stat,
-      values_from = value
-    )
-}
+#| label: skim-before-export
 
-county_overall_digital_access |> get_summary_stats()
+county_overall_digital_access |> skim()
 
-place_overall_digital_access |> get_summary_stats()
+place_overall_digital_access |> skim()
 
-county_raceeth_digital_access |> get_summary_stats()
+county_raceeth_digital_access |> skim()
 
-place_raceeth_digital_access |> get_summary_stats()
+place_raceeth_digital_access |> skim()
 
-county_income_digital_access |> get_summary_stats()
+county_income_digital_access |> skim()
 
-place_income_digital_access |> get_summary_stats()
+place_income_digital_access |> skim()
 ```
 
 ```{r}
