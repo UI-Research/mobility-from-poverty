@@ -65,7 +65,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
       download_extract(
         usa_ext_umf_submitted,
         download_dir = here(folder_path),
-        progress = FALSE
+        progress = TRUE
       )
     
     #Rename extract file
