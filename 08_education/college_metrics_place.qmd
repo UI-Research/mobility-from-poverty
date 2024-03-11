@@ -22,7 +22,7 @@ Primary data derived from the IPUMS API. This program produces the metric only f
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
-*User warning* The acs micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
 
 
 ## Housekeeping
@@ -503,6 +503,15 @@ Read in the PUMA to place crosswalk file. This file is created by the program ge
 puma_place_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv"))
 ```
 
+Create a version with just unique places for creating a version of the data that matches the UMF place list.
+
+```{r}
+place_list <- puma_place_crosswalk %>% 
+  select(statefip, place) %>% 
+  unique()
+```
+
+
 ## Merge Crosswalk 
 
 Create a variable in the ACS data indicating whether the survey year is pre or post-2022. This will be used to join on the correct crosswalk information.
@@ -593,7 +602,7 @@ acs_crosswalked %>%
   count()
 ```
 
-## Create pre-K metric: All
+## Create college readiness metric: All
 
 Create the college ready metric. 
 
@@ -614,11 +623,11 @@ acs_all <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_all %>%
   group_by(year, sample, crosswalk_period, statefip, place) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -656,19 +665,22 @@ rm(acs_all)
 
 ## Add Suppressed Rows to Data
 
-To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
-```{r}
-results_all_expand <- acs_crosswalked %>% 
-  mutate(geoid = paste0(statefip, place)) %>% 
-  group_by(year, geoid) %>% 
-  count() %>% 
-  select(-n) %>% 
-  mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) %>% 
-  left_join(results_all, by = c("year", "statefip", "place")) %>% 
-  ungroup()
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data from the place_list file that includes counties that were suppressed prior to the survey_mean calculation. 
 
-stopifnot(nrow(results_all_expand) == 485 * 2)
+Expand the place_list file so it includes every year in the results. Join the results onto this file and test that the number of records is what we anticipate.
+```{r}
+expanded_place_list <- place_list %>% 
+  left_join(results_all, by = c("statefip", "place"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, place)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         place = str_sub(geoid, 3, 7)) 
+
+results_all_expand <- expanded_place_list %>% 
+  left_join(results_all, by = c("year", "statefip", "place")) %>% 
+  filter(!is.na(year))
+
+stopifnot(nrow(results_all_expand) == 486 * 2)
 ```
 
 ## Data Quality Flags
@@ -703,11 +715,11 @@ acs_race_ethnicity <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_race_ethnicity %>%
   group_by(year, sample, crosswalk_period, statefip, place, subgroup_race) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -749,18 +761,21 @@ To create the metric we suppressed counties that did not meet the threshold for 
 
 Create expanded version for race-ethnicity.
 ```{r}
-results_race_ethnicity_expanded <- acs_crosswalked %>% 
+
+expanded_place_list_race <- place_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "place"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, place)) %>% 
-  group_by(year, geoid, subgroup_race) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_race) %>%  
+  expand(year, geoid, subgroup_race) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) %>% 
+         place = str_sub(geoid, 3, 7)) 
+
+results_race_ethnicity_expanded <- expanded_place_list_race  %>% 
   left_join(results_race_ethnicity, by = c("year", "statefip", "place", "subgroup_race")) %>% 
+  filter(!is.na(year), !is.na(subgroup_race)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
+
+stopifnot(nrow(results_race_ethnicity_expanded) == 486 * 2 * 4)
 ```
 
 ## Gender
@@ -776,11 +791,11 @@ acs_gender <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_gender %>%
   group_by(year, sample, crosswalk_period, statefip, place, subgroup_gender) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -820,20 +835,22 @@ rm(acs_gender)
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
 
-Create expanded version for gender data.
+Create expanded version for gender data and test that the number of records are accurate. 
 ```{r}
-results_gender_expanded <- acs_crosswalked %>% 
+expanded_place_list_gender <- place_list %>% 
+  left_join(results_gender, by = c("statefip", "place"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, place)) %>% 
-  group_by(year, geoid, subgroup_gender) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_gender) %>%  
+  expand(year, geoid, subgroup_gender) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) %>% 
+         place = str_sub(geoid, 3, 7)) 
+
+results_gender_expanded <- expanded_place_list_gender  %>% 
   left_join(results_gender, by = c("year", "statefip", "place", "subgroup_gender")) %>% 
+  filter(!is.na(year), !is.na(subgroup_gender)) %>% 
   mutate(subgroup_type = "gender") %>% 
   rename(subgroup = subgroup_gender)
+
+stopifnot(nrow(results_gender_expanded) == 486 * 2 * 2)
 ```
 
 ## Disability
@@ -849,11 +866,11 @@ acs_disability <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_disability %>%
   group_by(year, sample, crosswalk_period, statefip, place, subgroup_disability) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -895,18 +912,20 @@ To create the metric we suppressed counties that did not meet the threshold for 
 
 Create expanded version for disability data.
 ```{r}
-results_disability_expanded <- acs_crosswalked %>% 
+expanded_place_list_disability <- place_list %>% 
+  left_join(results_disability, by = c("statefip", "place"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, place)) %>% 
-  group_by(year, geoid, subgroup_disability) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_disability) %>%  
+  expand(year, geoid, subgroup_disability) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) %>% 
+         place = str_sub(geoid, 3, 7)) 
+
+results_disability_expanded <- expanded_place_list_disability  %>% 
   left_join(results_disability, by = c("year", "statefip", "place", "subgroup_disability")) %>% 
+  filter(!is.na(year), !is.na(subgroup_disability)) %>% 
   mutate(subgroup_type = "disability") %>% 
   rename(subgroup = subgroup_disability)
+
+stopifnot(nrow(results_disability_expanded) == 486 * 2 * 2)
 ```
 
 ## Data Quality Flags
@@ -1152,18 +1171,32 @@ Order the variables how we want.
 ```{r}
 metrics_education_all_clean <- metrics_education_all_clean %>% 
   select(year, state, place, share_hs_degree, 
-         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
+         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality) 
 
 metrics_education_sub_clean <- metrics_education_sub_clean %>% 
   select(year, state, place, subgroup_type, subgroup, share_hs_degree,
-         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
+         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality) 
 ```
 
 Export as CSV
 
 ```{r}
 write_csv(metrics_education_all_clean, here::here("08_education", "data", "final", "metrics_college_place_all_longitudinal.csv"))
-write_csv(metrics_education_sub_clean, here::here("08_education", "data", "final", "metrics_college_place_sub-groups_longitudinal.csv"))
+
+metrics_education_race <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+write_csv(metrics_education_race, here::here("08_education", "data", "final", "metrics_college_place_race-ethnicity_longitudinal.csv"))
+
+metrics_education_gender <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+write_csv(metrics_education_gender, here::here("08_education", "data", "final", "metrics_college_place_gender_longitudinal.csv"))
+
+metrics_education_disability <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "disability"))
+
+write_csv(metrics_education_disability, here::here("08_education", "data", "final", "metrics_college_place_disability_longitudinal.csv"))
 ```
 
 

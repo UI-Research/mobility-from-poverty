@@ -22,7 +22,7 @@ Primary data derived from the IPUMS API. This metric is the share of 19- and 20-
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
-*User warning* The acs micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
 
 ## Housekeeping
 
@@ -88,12 +88,12 @@ repwts <- ipums_repwt_college(
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
 
 ```{r}
-count(repwts_person, sample)
+count(repwts, sample)
 ```
 
 Remove the sample variable.
 ```{r}
-repwts_person <- repwts_person %>% 
+repwts_person <- repwts %>% 
   select(-sample)
 ```
 
@@ -500,6 +500,15 @@ Read in the PUMA to county crosswalk file. This file is created by the program g
 puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
 ```
 
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+```{r}
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
+```
+
 ## Merge Crosswalk 
 
 Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
@@ -654,15 +663,16 @@ rm(acs_all)
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
 ```{r}
-results_all_expand <- acs_crosswalked %>% 
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  group_by(year, geoid) %>% 
-  count() %>% 
-  select(-n) %>% 
+  expand(year, geoid) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         county = str_sub(geoid, 3, 5)) %>% 
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
   left_join(results_all, by = c("year", "statefip", "county")) %>% 
-  ungroup()
+  filter(!is.na(year))
 
 stopifnot(nrow(results_all_expand) == 3143 * 2)
 ```
@@ -745,16 +755,16 @@ To create the metric we suppressed counties that did not meet the threshold for 
 
 Create expanded version for race-ethnicity.
 ```{r}
-results_race_ethnicity_expanded <- acs_crosswalked %>% 
+expanded_county_list_race <- county_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  group_by(year, geoid, subgroup_race) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_race) %>%  
+  expand(year, geoid, subgroup_race) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         county = str_sub(geoid, 3, 5)) %>% 
+         county = str_sub(geoid, 3, 5)) 
+
+results_race_ethnicity_expanded <- expanded_county_list_race  %>% 
   left_join(results_race_ethnicity, by = c("year", "statefip", "county", "subgroup_race")) %>% 
+  filter(!is.na(year), !is.na(subgroup_race)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
 
@@ -820,16 +830,16 @@ To create the metric we suppressed counties that did not meet the threshold for 
 
 Create expanded version for gender data.
 ```{r}
-results_gender_expanded <- acs_crosswalked %>% 
+expanded_county_list_gender <- county_list %>% 
+  left_join(results_gender, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  group_by(year, geoid, subgroup_gender) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_gender) %>%  
+  expand(year, geoid, subgroup_gender) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         county = str_sub(geoid, 3, 5)) %>% 
+         county = str_sub(geoid, 3, 5)) 
+
+results_gender_expanded <- expanded_county_list_gender  %>% 
   left_join(results_gender, by = c("year", "statefip", "county", "subgroup_gender")) %>% 
+  filter(!is.na(year), !is.na(subgroup_gender)) %>% 
   mutate(subgroup_type = "gender") %>% 
   rename(subgroup = subgroup_gender)
 
@@ -895,16 +905,16 @@ To create the metric we suppressed counties that did not meet the threshold for 
 
 Create expanded version for disability data.
 ```{r}
-results_disability_expanded <- acs_crosswalked %>% 
+expanded_county_list_disability <- county_list %>% 
+  left_join(results_disability, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  group_by(year, geoid, subgroup_disability) %>% 
-  count() %>% 
-  select(-n) %>% 
-  ungroup() %>% 
-  expand(year, geoid, subgroup_disability) %>%  
+  expand(year, geoid, subgroup_disability) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         county = str_sub(geoid, 3, 5)) %>% 
+         county = str_sub(geoid, 3, 5)) 
+
+results_disability_expanded <- expanded_county_list_disability  %>% 
   left_join(results_disability, by = c("year", "statefip", "county", "subgroup_disability")) %>% 
+  filter(!is.na(year), !is.na(subgroup_disability)) %>% 
   mutate(subgroup_type = "disability") %>% 
   rename(subgroup = subgroup_disability)
 
@@ -974,7 +984,7 @@ metrics_education_sub %>%
 
 ### Race/ethnicity
 
-Look at distribution of college readiness share by place for each individual subgroup.
+Look at distribution of college readiness share by county for each individual subgroup.
 
 Race/ethnicity.
 ```{r}
@@ -984,7 +994,7 @@ metrics_education_sub %>%
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of share college ready, race/ethnicity, by place 2021 (5-year data)",
+    title = "Distribution of share college ready, race/ethnicity, by county 2021 (5-year data)",
     y = "Density"
   ) +
   theme_minimal()
@@ -1000,7 +1010,7 @@ metrics_education_sub %>%
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of share college ready, gender, by place 2021 (5-year data)",
+    title = "Distribution of share college ready, gender, by county 2021 (5-year data)",
     y = "Density"
   ) +
   theme_minimal()
@@ -1016,7 +1026,7 @@ metrics_education_sub %>%
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of share college ready, disability, by place 2021 (5-year data)",
+    title = "Distribution of share college ready, disability, by county 2021 (5-year data)",
     y = "Density"
   ) +
   theme_minimal()
@@ -1160,11 +1170,27 @@ metrics_education_sub_clean <- metrics_education_sub_clean %>%
          share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
 ```
 
-Export as CSV
+Export as CSVs.
 
 ```{r}
+
 write_csv(metrics_education_all_clean, here::here("08_education", "data", "final", "metrics_college_county_all_longitudinal.csv"))
-write_csv(metrics_education_sub_clean, here::here("08_education", "data", "final", "metrics_college_county_sub-groups_longitudinal.csv"))
+
+metrics_education_race <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+write_csv(metrics_education_race, here::here("08_education", "data", "final", "metrics_college_county_race-ethnicity_longitudinal.csv"))
+
+metrics_education_gender <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+write_csv(metrics_education_gender, here::here("08_education", "data", "final", "metrics_college_county_gender_longitudinal.csv"))
+
+metrics_education_disability <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "disability"))
+
+write_csv(metrics_education_disability, here::here("08_education", "data", "final", "metrics_college_county_disability_longitudinal.csv"))
+
 ```
 
 
