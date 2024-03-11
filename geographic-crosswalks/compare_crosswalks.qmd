@@ -1,0 +1,200 @@
+---
+title: "Compare Crosswalk Quality"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+Read in packages for use.
+
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(reactable)
+
+options(scipen = 999)
+
+```
+
+Read in the several crosswalks that have been used.
+
+```{r}
+old_cw_pre22 <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2012_PUMA_Places_2020.csv"))
+new_cw_pre22 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_place_2010.csv"))
+```
+
+## Clean crosswalks
+
+Filter out the row containing metadata and select only needed variables.
+
+```{r}
+old_cw_pre22 <- old_cw_pre22 %>%
+  rename_with(tolower) %>%
+  filter(!str_detect(state, "State")) %>%
+  select(state, puma12, place, pop20, afact, afact2)
+
+new_cw_pre22 <- new_cw_pre22 %>%
+  rename_with(tolower) %>%
+  filter(!str_detect(state, "State")) %>%
+  select(state, puma12, placefp14, pop10, afact, afact2)
+```
+
+Rename GeoCorr variables for working purposes. Add leading zeros to state fips, PUMAs and places to make them uniform in length.
+
+```{r}
+old_cw_pre22 <- old_cw_pre22 %>%
+  rename(
+    puma = puma12,
+    statefip = state
+    ) %>%
+  mutate(
+    statefip = sprintf("%0.2d", as.numeric(statefip)),
+    puma = sprintf("%0.5d", as.numeric(puma)),
+    place = sprintf("%0.5d", as.numeric(place))
+  )
+
+new_cw_pre22 <- new_cw_pre22 %>%
+  rename(
+    puma = puma12,
+    statefip = state,
+    place = placefp14
+    ) %>%
+  mutate(
+    statefip = sprintf("%0.2d", as.numeric(statefip)),
+    puma = sprintf("%0.5d", as.numeric(puma)),
+    place = sprintf("%0.5d", as.numeric(place))
+  )
+```
+
+Convert weight variables to be type numeric.
+
+```{r}
+old_cw_pre22 <- old_cw_pre22 %>%
+  mutate(
+    afact = as.double(afact),
+    afact2 = as.double(afact2),
+    pop20 = as.double(pop20)
+  )
+
+new_cw_pre22 <- new_cw_pre22 %>%
+  mutate(
+    afact = as.double(afact),
+    afact2 = as.double(afact2),
+    pop10 = as.double(pop10)
+  )
+```
+
+We want to limit the crosswalk only to Places that will be used in the final mobility metric data - this will help limit the size of future data steps. Bring in the Places population file (place-populations.csv) to select only places included in the UMF data. Keep only one year of place information.
+
+```{r}
+places <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  filter(year == 2021) %>% 
+  select(-population, -year)
+```
+
+Rename the Place population variables to prep for merge.
+
+```{r}
+places <- places %>% 
+  rename(statefip = state)
+```
+
+Left join crosswalk data onto the Place population file to get rid of irrelevant Places in the crosswalk data.
+
+```{r}
+old_cw_pre22 <- left_join(places, old_cw_pre22, by=c("statefip","place"))
+new_cw_pre22 <- left_join(places, new_cw_pre22, by=c("statefip","place"))
+```
+
+Look at summary stats on population weights between old and new.
+
+```{r}
+new_cw_pre22 %>% 
+  select(afact, afact2) %>% 
+  summary()
+
+old_cw_pre22 %>% 
+  select(afact, afact2) %>% 
+  summary()
+```
+
+Compare afact distributions.
+
+```{r}
+new_cw_pre22 %>% 
+  ggplot(aes(x = afact)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  theme_minimal() +
+  ggtitle("2020 AFACT distribution") +
+  ylab("Count")
+
+old_cw_pre22 %>% 
+  ggplot(aes(x = afact)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  theme_minimal() +
+  ggtitle("2010 Afact distribution") +
+  ylab("Count")
+
+
+new_cw_pre22 %>% 
+  ggplot(aes(x = afact2)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  theme_minimal() +
+  ggtitle("2020 Afact2 distribution") +
+  ylab("Count")
+
+old_cw_pre22 %>% 
+  ggplot(aes(x = afact2)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  theme_minimal() +
+  ggtitle("2010 Afact2 distribution") +
+  ylab("Count")
+
+```
+
+Create new variable "products". This is the sum of the share of the place captured in the PUMA (afact2) and the share of the PUMA captured in the place (afact).
+
+```{r}
+puma_place_old <- old_cw_pre22 %>%
+  mutate(products = afact * afact2)
+
+puma_place_new <- new_cw_pre22 %>%
+  mutate(products = afact * afact2)
+```
+
+Calculate the total place population by summing the GeoCorr pop10 and pop20 variables. These pop variables count the population in the PUMA that overlap with the place - note that GeoCorr presents these numbers so that it already accounts for afact (see What is a Correlation List? on the [GeoCorr website](https://mcdc.missouri.edu/applications/docs/geocorr-help.html#weightVar)).
+
+```{r}
+puma_place_old <- puma_place_old %>%
+  group_by(statefip, place) %>%
+  mutate(sum_products = sum(products),
+         place_pop = sum(pop20)) %>% 
+  ungroup() 
+
+puma_place_new <- puma_place_new %>%
+  group_by(statefip, place) %>%
+  mutate(sum_products = sum(products),
+         place_pop = sum(pop10)) %>% 
+  ungroup() 
+```
+
+We also want to know particularly small places, defined by the bottom percentile of population. The table below shows us that the first quartile of place population in 2020 is 111,876 and 99,940 in 2010.
+
+```{r}
+puma_place_old %>% 
+  select(sum_products, place_pop) %>% 
+  summary()
+
+puma_place_new  %>% 
+  select(sum_products, place_pop) %>% 
+  summary()
+```
