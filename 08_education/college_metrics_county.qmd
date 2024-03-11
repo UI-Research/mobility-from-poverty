@@ -1,0 +1,1199 @@
+---
+title: "College Readiness Predictor, County-level"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*Program for the creation of the College Readiness Upward Mobility Predictor at the county-level*
+
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+
+Primary data derived from the IPUMS API. This metric is the share of 19- and 20-year-olds in a community who have a high school degree.
+
+Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+
+## Housekeeping
+
+Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
+
+```{r, results='hide'}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+library(srvyr)
+library(scales)
+
+options(scipen = 999)
+
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
+#set_ipums_api_key("Your KEY", save = TRUE)
+
+source(here::here("functions", "API", "extract_ipums.R"))
+source(here::here("functions", "API", "ipums_repwt_college.R"))
+source(here::here("08_education", "R", "finalize_metric_college.R"))
+source(here::here("08_education", "R", "calc_survey_mean_college.R"))
+source(here::here("08_education", "R", "calc_survey_mean_subgroup_college.R"))
+```
+
+## Read Data
+
+Read in the ACS extracts using the extract_ipums function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+
+*Note this download is slow and will take some time to finish. The notes on "Checking extract status" are a feature of the IPUMSR package and are to be expected*
+```{r}
+acs <- extract_ipums(
+  extract_name = "umf_data_18_21_5yr",
+  extract_description = "Microdata pull for College Readiness Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (5-year).",
+  survey = list("us2018c", "us2021c"))
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(acs, sample)
+```
+
+Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
+```{r}
+acs_age <- acs %>%
+  filter(age == 19 | age == 20) 
+```
+
+
+### Replicate Weights 
+
+Read in person-level replicate weights for the 19 and 20 year old population. These will be used in creating standard errors for the college ready calculation. 
+```{r}
+repwts <- ipums_repwt_college(
+  extract_name = "college_replicate_weights",
+  extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018 and 2022 (5-year).",
+  survey = list("us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts, sample)
+```
+
+Remove the sample variable.
+```{r}
+repwts_person <- repwts %>% 
+  select(-sample)
+```
+
+### Merge on repwts
+
+Merge the replicate weights on to the ACS samples. The length calls let us know the count of records going in and coming out of the join. 
+The number of unique persons in acs_age should be the same as acs_combined. Test that this is the case and throw an error if not.
+```{r}
+
+acs_combined <- 
+  left_join(
+    acs_age,
+    repwts_person,
+    by = "unique_person_id"
+  )
+
+stopifnot(length(unique(pull(acs_combined, unique_person_id))) == length(unique(pull(acs_age, unique_person_id))))
+
+rm(acs_age)
+rm(repwts_person)
+```
+
+Check that the merge did not result in any missing values.
+```{r}
+stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
+```
+
+
+## Clean Data
+
+Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
+
+* **Age:** No missing values reported in variable description. Run the following test to confirm all values are either 19 or 20.
+
+```{r}
+
+stopifnot(all(acs_combined$age %in% c(19, 20)))
+          
+```
+
+EDUCD: N/As reported as "1" in all modern surveys. N/As were "000" in the 1980 and 1950 decennial census surveys (not used here).
+Variable codes explained [here]([https://usa.ipums.org/usa-action/variables/EDUC#codes_section) & see "Detailed codes" at bottom).
+Vacancy is reported as "0". 
+
+There are no records reported as "1" in the `educd` variable for the filtered age range.
+
+```{r}
+acs_combined %>% 
+  mutate(educd = zap_labels(educd)) %>% 
+  count(educd) %>% 
+  ggplot(mapping = aes(x = factor(educd), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Educd, All Records") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Educational Attainment",
+       y = NULL)
+```
+
+Confirm the missing value options from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
+
+```{r}
+head(ipums_val_labels(acs_combined$educd), 50) %>% 
+  reactable()
+```
+
+Turn the missing/"not in universe" value from the educd variable into NAs and remove the labels for the rest of the analysis. Rename to the more meaningful "education_detailed". 
+```{r}
+acs_clean <- acs_combined %>%
+  mutate(education_detailed = zap_labels(educd), 
+         education_detailed = ifelse(education_detailed %in% c(1, 0, 999), NA_integer_,
+                          education_detailed)
+  )
+```
+
+Look at the distribution of education_detailed after adjustment for NAs.
+```{r}
+acs_clean %>% 
+  count(education_detailed) %>% 
+  ggplot(mapping = aes(x = factor(education_detailed), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Education Detailed, All Records") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Educational Attainment",
+       y = NULL)
+```
+
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
+
+```{r}
+stopifnot(all(acs_combined$vacancy == "0"))
+```
+
+Examine the group quarters, `gq`, variable, we want to include both households and Group Quarters in this metric as both are relevant to the college readiness predictor in a geography.
+
+IPUMS includes the following categories:
+
+-   0: Vacancy
+
+-   1: Households under 1970 definition
+
+-   2: Additional households under 1990 definition
+
+-   3: Institutions
+
+-   4: Other group quarters
+
+-   5: Additional households under 2000 definition
+
+-   6: Fragments
+
+Check the distribution of GQ categories. Only households and group quarters should be included (no vacancy or fragments).
+
+```{r}
+acs_clean %>%  
+  count(gq) %>% 
+  ggplot(mapping = aes(x = gq, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("GQ, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "GQ",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create race variable
+
+Evaluate the values in the RACE and HISPAN variables.
+
+* IPUMS documented values for RACE: 
+    + 1 White
+    + 2 Black/African American/Negro
+    + 3 American Indian or Alaska Native 
+    + 4 Chinese 
+    + 5 Japanese
+    + 6 Other Asian or Pacific Islander 
+    + 7 Other race 
+    + 8 Two major races 
+    + 9 Three or more major races
+
+* IPUMS documented values for HISPAN: 
+    + 0 Not Hispanic 
+    + 1 Mexican 
+    + 2 Puerto Rican 
+    + 3 Cuban 
+    + 4 Other 
+    + 9 Not Reported 
+
+Look at the distribution of values for the race and hispan variables.
+```{r}
+acs_clean %>% 
+  count(race) %>% 
+  ggplot(mapping = aes(x = race, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+acs_clean %>% 
+  count(hispan) %>% 
+  ggplot(mapping = aes(x = hispan, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Hispan, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Hispan",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+Create the race/ethnicity variable. For race/ethnicity categories that are not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
+
+Rename the values from number category to race label: 
+  +Race is Black/African American and Hispan is Not Hispanic = "Black, Non-Hispanic"
+  +Hispan is not equal to Not Hispanic = "Hispanic"
+  +Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
+  +Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(
+    subgroup_race = case_when(
+      hispan != "Not Hispanic" ~ "Hispanic",
+      race == "White" ~ "White, Non-Hispanic",
+      race == "Black/African American" ~ "Black, Non-Hispanic",
+      !race %in% c("Black/African American", "White") ~ "Other Races and Ethnicities"
+    )
+  )
+
+```
+
+Look at the race/ethnicity subgroup distribution.
+```{r}
+
+acs_clean %>% 
+  count(subgroup_race) %>% 
+  ggplot(mapping = aes(x = factor(subgroup_race), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race/ethnicity, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race/ethnicity",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create gender variable
+
+Evaluate the values in the gender variable.
+
+* IPUMS documented values for SEX: 
+    + 1 Male
+    + 2 Female
+    + 9 Missing/blank 
+
+Look at the distribution of values for the sex variable. There are no missing values in the data and the records are reported in an appropriate format.
+```{r}
+acs_clean %>% 
+  count(sex) %>% 
+  ggplot(mapping = aes(x = sex, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("sex, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Sex",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+Rename the variable to subgroup_gender. The variable terms remain the same but any values outside of Male and Female are mutated to NA character variables. Though there are no missing values in the current data let's leave this in the case of future ACS surveys including missing values for this variable. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
+                                     sex == "Female" ~ "Female",
+                                     TRUE ~ NA_character_))
+```
+
+### Create disability variable
+
+The ACS includes 5 variables covering physical and mental disabilities (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM). To make these variables more clear, first rename them.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  rename(self_care_difficulty = diffcare,
+         vision_hearing_difficulty = diffsens,
+         independent_living_difficulty = diffmob,
+         ambulatory_difficulty = diffphys,
+         cognitive_difficulty = diffrem)
+```
+
+Evaluate the values in these variables and create an overall subgroup for disability.
+We will count an individual to be disabled if they answer yes or have any of these difficulties. 
+
+* IPUMS documented values for self_care_difficulty: 
+    + 0 N/A
+    + 1 No
+    + 2 Yes 
+
+Plot the options for self_care_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(self_care_difficulty) %>% 
+  ggplot(mapping = aes(x = self_care_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Self-care difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "self_care_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for  vision_hearing_difficulty: 
+    + 0 N/A
+    + 1 No vision or hearing difficulty
+    + 2 Has vision or hearing difficulty
+
+Plot the options for  vision_hearing_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count( vision_hearing_difficulty) %>% 
+  ggplot(mapping = aes(x =  vision_hearing_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Vision or Hearing difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = " vision_hearing_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for independent_living_difficulty: 
+    + 0 N/A
+    + 1 No independent living difficulty
+    + 2 Has independent living difficulty
+
+Plot the options for independent_living_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(independent_living_difficulty) %>% 
+  ggplot(mapping = aes(x = independent_living_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Independent living difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "independent_living_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for ambulatory_difficulty: 
+    + 0 N/A
+    + 1 No ambulatory difficulty
+    + 2 Has ambulatory difficulty 
+  
+Plot the options for ambulatory_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(ambulatory_difficulty) %>% 
+  ggplot(mapping = aes(x = ambulatory_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Ambulatory difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "ambulatory_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+  
+* IPUMS documented values for cognitive_difficulty: 
+    + 0 N/A
+    + 1 No cognitive difficulty
+    + 2 Has cognitive difficulty 
+  
+Plot the options for cognitive_difficulty below.
+```{r}
+acs_clean %>% 
+  count(cognitive_difficulty) %>% 
+  ggplot(mapping = aes(x = cognitive_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Cognitive difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "cognitive_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+Create the subgroup for disability. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_disability = case_when(cognitive_difficulty == "Has cognitive difficulty" |
+                                           ambulatory_difficulty == "Has ambulatory difficulty" |
+                                           independent_living_difficulty == "Has independent living difficulty" |
+                                            vision_hearing_difficulty == "Has vision or hearing difficulty" |
+                                           self_care_difficulty == "Yes" ~ "with disability",
+                                         TRUE ~ "without disability"))
+  
+```
+
+Check the variable breakout. 
+```{r}
+acs_clean %>% 
+  count(subgroup_disability) %>% 
+  ggplot(mapping = aes(x = subgroup_disability, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Disability, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Disability",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+## Crosswalk
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+```{r}
+puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
+```
+
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+```{r}
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
+```
+
+## Merge Crosswalk 
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
+```
+
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
+```{r}
+acs_clean %>% 
+  group_by(crosswalk_period, year) %>% 
+  count()
+```
+
+Join the cleaned ACS data onto the crosswalk.
+```{r}
+acs_crosswalked <- left_join(
+    acs_clean, 
+  puma_county_crosswalk,
+  by=c("crosswalk_period", "statefip","puma"), 
+  relationship = "many-to-many"
+)
+```
+
+Drop any observations with NA for afact (i.e. there is no county of interest overlapping this PUMA).
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  drop_na(afact)
+```
+
+Also filter out cases where AFACT is equal to zero. These cases will not be counted in the metric calculation.
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  filter(afact > 0)
+```
+
+Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
+
+```{r}
+
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(perwt = perwt * afact) %>% 
+  mutate(across(matches("repwtp[0-9]+"), ~.x * afact))
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
+
+```
+
+## Prepare comuptational variables
+
+Create a binary college_ready variable indicating whether the individual has a HS degree or not (including GED as HS degree equivalent). IPUMS codes  HS graduate or GED (62) and above are all considered to meet this requirement.
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  mutate(college_ready = ifelse(education_detailed >= 62, 1, 0)) 
+```
+
+Check how many records, if any, have NA reported for education_detailed after filtering (this should be zero).
+```{r}
+acs_crosswalked %>%
+  filter(is.na(education_detailed)) %>% 
+  group_by(pernum) %>% 
+  count()
+```
+
+Check the distribution of the education_detailed variable one last time - there should be no NA values included. 
+```{r}
+acs_crosswalked %>% 
+  count(education_detailed) %>% 
+  ggplot(mapping = aes(x = factor(education_detailed), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Education Detailed, All Records") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Educational Attainment",
+       y = NULL)
+```
+
+Confirm there are no vacant properties included in the data.
+```{r}
+acs_crosswalked %>%
+  filter(is.na(vacancy)) %>% 
+  group_by(pernum) %>% 
+  count()
+```
+
+## Create college readiness metric: All
+
+Create the college ready metric. 
+
+Objective: get the percent of individuals between 19 and 20 that have a HS degree.
+
+Aggregation should be weighted by PERWT (this is a person level statistic).
+
+### Pre-drop suppressed cells
+
+First, to save time when processing the metric, calculate the effective sample count for each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: all-effective-samples
+acs_all <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_all %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-all
+acs_all <- acs_all %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+Calculate the county-level metrics. 
+
+```{r}
+#| label: calc-all
+results_all <- acs_all %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_college(.data = .x, .geo_level = county))
+```
+
+Clean up the confidence interval bounds and sort the data.
+
+```{r}
+#| label: finalize-all
+results_all <- finalize_metric_college(results_all)
+```
+
+```{r}
+rm(acs_all)
+```
+
+## Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+```{r}
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
+
+stopifnot(nrow(results_all_expand) == 3143 * 2)
+```
+
+## Data Quality Flags
+
+Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
+
+The `share_hs_degree_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_hs_degree` metric is being suppressed due to sample size and is given a quality flag of 3.  
+
+```{r}
+metrics_education_all <- results_all_expand %>% 
+  mutate(
+    share_hs_degree_quality = if_else(
+      is.na(share_hs_degree), 
+      NA_real_,
+      geographic_allocation_quality
+    )
+  )
+```
+
+## Create college metric: subgroups
+
+## Race/Ethnicity
+
+To save time when processing the metric, calculate the effective sample count for each race-ethnicity group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: race-ethnicity-effective-samples
+acs_race_ethnicity <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_race_ethnicity %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the college readiness metric for the race/ethnicity subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-race-ethnicity
+acs_race_ethnicity <- acs_race_ethnicity %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-race-ethnicity
+results_race_ethnicity <- acs_race_ethnicity %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_race))
+```
+
+```{r}
+#| label: finalize-race-ethnicity
+results_race_ethnicity <- finalize_metric_college(results_race_ethnicity)
+```
+
+```{r}
+rm(acs_race_ethnicity)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for race-ethnicity.
+```{r}
+expanded_county_list_race <- county_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_race) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_race_ethnicity_expanded <- expanded_county_list_race  %>% 
+  left_join(results_race_ethnicity, by = c("year", "statefip", "county", "subgroup_race")) %>% 
+  filter(!is.na(year), !is.na(subgroup_race)) %>% 
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  rename(subgroup = subgroup_race)
+
+stopifnot(nrow(results_race_ethnicity_expanded) == 3143 * 2 * 4)
+```
+
+## Gender
+
+To save time when processing the metric, calculate the effective sample count for each gender group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: gender-effective-samples
+acs_gender <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_gender) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_gender %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the college readiness metric for the gender subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-gender
+acs_gender <- acs_gender %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-gender
+results_gender <- acs_gender %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_gender))
+```
+
+```{r}
+#| label: finalize-gender
+results_gender <- finalize_metric_college(results_gender)
+```
+
+```{r}
+rm(acs_gender)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for gender data.
+```{r}
+expanded_county_list_gender <- county_list %>% 
+  left_join(results_gender, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_gender) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_gender_expanded <- expanded_county_list_gender  %>% 
+  left_join(results_gender, by = c("year", "statefip", "county", "subgroup_gender")) %>% 
+  filter(!is.na(year), !is.na(subgroup_gender)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+stopifnot(nrow(results_gender_expanded) == 3143 * 2 * 2)
+```
+
+## Disability
+
+To save time when processing the metric, calculate the effective sample count for each disability group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: disability-effective-samples
+acs_disability <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_disability) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_disability %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the college readiness metric for the disability subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-disability
+acs_disability <- acs_disability %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-disability
+results_disability <- acs_disability %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup_college(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_disability))
+```
+
+```{r}
+#| label: finalize-disability
+results_disability <- finalize_metric_college(results_disability)
+```
+
+```{r}
+rm(acs_disability)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for disability data.
+```{r}
+expanded_county_list_disability <- county_list %>% 
+  left_join(results_disability, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_disability) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_disability_expanded <- expanded_county_list_disability  %>% 
+  left_join(results_disability, by = c("year", "statefip", "county", "subgroup_disability")) %>% 
+  filter(!is.na(year), !is.na(subgroup_disability)) %>% 
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability)
+
+stopifnot(nrow(results_disability_expanded) == 3143 * 2 * 2)
+```
+
+## Data Quality Flags
+
+Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
+
+First combine the subgroup data sets.
+```{r}
+metrics_education_sub <- results_all_expand %>% 
+  mutate(subgroup = "All",
+         subgroup_type = "all") %>% 
+  bind_rows(results_race_ethnicity_expanded, results_disability_expanded, results_gender_expanded)
+```
+
+Now create the metric quality variable. The `share_hs_degree_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_hs_degree` metric is being suppressed due to sample size and is given a quality flag of 3.  
+
+```{r}
+metrics_education_sub <- metrics_education_sub %>% 
+  mutate(
+    share_hs_degree_quality = if_else(
+      is.na(share_hs_degree), 
+      NA_real_,
+      geographic_allocation_quality
+    )
+  )
+```
+
+
+## Result Validation
+
+Create summary tables for the values from the results for both all and for subgroups.
+```{r}
+metrics_education_all %>% 
+  select(share_hs_degree:share_hs_degree_quality) %>% 
+  summary()
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  select(share_hs_degree:share_hs_degree_quality) %>% 
+  summary()
+```
+
+Look at distribution of college readiness attendance share by county for all and for subgroups.
+```{r}
+metrics_education_all %>% 
+  filter(year == 2021) %>% 
+  select(share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share college ready, by county 2021 (5-year data)") +
+  ylab("Density")
+
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup != "All") %>% 
+  select(share_hs_degree) %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share college ready, subgroups, by county 2021 (5-year data)") +
+  ylab("Density")
+  
+```
+
+### Race/ethnicity
+
+Look at distribution of college readiness share by county for each individual subgroup.
+
+Race/ethnicity.
+```{r}
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "race-ethnicity") %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, race/ethnicity, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+### Gender
+
+Gender.
+```{r}
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "gender") %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, gender, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+### Disability
+
+Disability.
+```{r}
+metrics_education_sub %>% 
+  filter(year == 2021, subgroup_type == "disability") %>% 
+  ggplot(aes(x = share_hs_degree)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share college ready, disability, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+
+### Time trends
+
+Compare trends for the share college ready overtime for all years in the data.
+
+```{r}
+metrics_education_all %>%
+  group_by(geoid) %>%
+  mutate(share_hs_degree_change = share_hs_degree - lag(share_hs_degree)) %>%
+  filter(year == 2021) %>%
+  ggplot(aes(share_hs_degree, share_hs_degree_change)) +
+  geom_point(alpha = 0.2)
+metrics_education_all %>%
+  select(year, geoid, share_hs_degree) %>%
+  pivot_wider(
+    names_from = year, 
+    values_from = share_hs_degree
+  ) %>%
+  ggplot(aes(`2018`, `2021`)) +
+  geom_abline() +
+  geom_point(alpha = 0.1)
+```
+
+### Confidence intervals
+
+Check the missingness pattern for confidence intervals.
+```{r}
+nonmissing <- metrics_education_all |>
+  filter(!is.na(share_hs_degree) & !is.na(share_hs_degree_lb) & !is.na(share_hs_degree_ub))
+missing <- metrics_education_all |>
+  filter(is.na(share_hs_degree) & is.na(share_hs_degree_lb) & is.na(share_hs_degree_ub))
+stopifnot(nrow(nonmissing) + nrow(missing) == nrow(metrics_education_all))
+```
+
+Check the order. There are three variables and we are interested in pairwise comparisons, we can test that these line up. The upper-bound value should always be greater than the value and the lower-bound value. The value should always be greater than the lower-bound value.
+```{r}
+# upper bound is always greater than the estimate
+stopifnot(all(nonmissing$share_hs_degree_ub > nonmissing$share_hs_degree))
+# upper bound is always greater than the lower bound
+stopifnot(all(nonmissing$share_hs_degree_ub > nonmissing$share_hs_degree_lb))
+# estimate is always greater than the lower bound
+stopifnot(all(nonmissing$share_hs_degree > nonmissing$share_hs_degree_lb))
+```
+
+Look at confidence intervals.
+```{r}
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree, share_hs_degree_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the lower bound is sensible")
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree_ub, share_hs_degree)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the upper bound is sensible")
+metrics_education_all %>%
+  ggplot(aes(share_hs_degree_ub, share_hs_degree_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the upper bound and the lower bound is sensible")
+```
+
+Distribution of confidence interval widths.
+```{r}
+metrics_education_all %>%
+  mutate(ci_width = share_hs_degree_ub - share_hs_degree_lb) %>%
+  pull(ci_width) %>%
+  summary(na.rm = TRUE)
+```
+
+### Quality and suppression
+Look at the counts of the quality flag.
+```{r}
+metrics_education_all %>% 
+  select(share_hs_degree_quality) %>% 
+  ggplot(aes(x = share_hs_degree_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag, All (5-year data)") +
+  ylab("Count")
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  select(share_hs_degree_quality) %>% 
+  ggplot(aes(x = share_hs_degree_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag, subgroups (5-year data") +
+  ylab("Count")
+```
+
+Look at quality by  each individual subgroup.
+
+```{r}
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  ggplot(aes(x = share_hs_degree_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  facet_wrap(~subgroup) +
+  ggtitle("Quality Flag, subgroups (5-year data)") +
+  ylab("Count")
+```
+
+
+Tabulate share of data suppressed by year.
+```{r}
+metrics_education_all %>% 
+  group_by(year) %>% 
+  summarise(suppressed = sum(is.na(share_hs_degree)),
+            total = n(),
+            suppressed_share = suppressed/total)
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  group_by(year, subgroup) %>% 
+  summarise(suppressed = sum(is.na(share_hs_degree)),
+            total = n(),
+            suppressed_share = suppressed/total)
+```
+
+## Export 
+
+Rename state.
+```{r}
+metrics_education_all_clean <- metrics_education_all %>% 
+  rename("state" = "statefip")
+
+metrics_education_sub_clean <- metrics_education_sub %>% 
+  rename("state" = "statefip")
+```
+
+Order the variables how we want.
+```{r}
+metrics_education_all_clean <- metrics_education_all_clean %>% 
+  select(year, state, county, share_hs_degree, 
+         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
+
+metrics_education_sub_clean <- metrics_education_sub_clean %>% 
+  select(year, state, county, subgroup_type, subgroup, share_hs_degree,
+         share_hs_degree_lb, share_hs_degree_ub, share_hs_degree_quality)
+```
+
+Export as CSVs.
+
+```{r}
+
+write_csv(metrics_education_all_clean, here::here("08_education", "data", "final", "metrics_college_county_all_longitudinal.csv"))
+
+metrics_education_race <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+write_csv(metrics_education_race, here::here("08_education", "data", "final", "metrics_college_county_race-ethnicity_longitudinal.csv"))
+
+metrics_education_gender <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+write_csv(metrics_education_gender, here::here("08_education", "data", "final", "metrics_college_county_gender_longitudinal.csv"))
+
+metrics_education_disability <- metrics_education_sub_clean %>% 
+  filter(subgroup_type %in% c("all", "disability"))
+
+write_csv(metrics_education_disability, here::here("08_education", "data", "final", "metrics_college_county_disability_longitudinal.csv"))
+
+```
+
+
+
+
+

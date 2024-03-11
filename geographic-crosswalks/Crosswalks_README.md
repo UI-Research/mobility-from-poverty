@@ -1,0 +1,5 @@
+# Using Geographic Crosswalks
+
+The crosswalks files found in the geographic crosswalks folder are resources available to you as you aggregate or disaggregate your data in service of calculating a given metric at larger or smaller geographic units than the original data sources provide. The main files, county-populations.csv & place-populations.csv, have the name, FIPS, and population data up to 2022 for the 3142 counties and 480 places that ought to be represented in all final datasets.
+When choosing a crosswalk for a specific dataset, it is important to note the year of the geographies used in the crosswalk, and make sure that it is aligned with the year of data you are working with. This is because, definitions such as "tract", "county", "ZIP", and more, change over time as populations shift and new methodologies are implemented.
+If you find that you need a crosswalk that does not already exist in this folder, or have questions about implementation, please reach out to team leadership and we will be happy to help.
