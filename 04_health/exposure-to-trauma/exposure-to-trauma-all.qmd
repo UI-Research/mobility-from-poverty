@@ -249,7 +249,7 @@ deaths <- deaths_raw |>
     rate_injury_death_lb = Age.Adjusted.Rate.Lower.95..Confidence.Interval,
     rate_injury_death_ub = Age.Adjusted.Rate.Upper.95..Confidence.Interval,
     rate_injury_death_se = Age.Adjusted.Rate.Standard.Error,
-    rate_injury_death_crude = Crude.Rate
+    rate_injury_death_crude = Crude.Rate,
   ) |>
   # Remove empty rows resulting from deleting the `Notes` column, and remove the total row
   filter(!is.na(GEOID)) |>
@@ -328,7 +328,7 @@ deaths <- deaths |>
 
 ### 4.3 Identify counties in CDC WONDER but not in Urban universe
 
-50 observations (9 counties) are in the CDC data but not our universe of counties. Seven counties (Bedford city, VA, Clifton Forge city, VA, Prince of Wales-Outer Ketchikan Census Area, AK, Shannon County, SD, Skagway-Hoonah-Angoon Census Area, AK, Wade Hampton Census Area, AK, and Wrangell-Petersburg Census Area, AK) are missing for 2014-2020. The other county (Valdez-Cordova Census Area, AK) is only missing for 2020.
+After addressing the counties above, 36 observations (6 counties) are in the CDC data but not our universe of counties. Seven counties (Bedford city, VA, Clifton Forge city, VA, Prince of Wales-Outer Ketchikan Census Area, AK, Shannon County, SD, Skagway-Hoonah-Angoon Census Area, AK, Wade Hampton Census Area, AK, and Wrangell-Petersburg Census Area, AK) are missing for 2014-2020. The other county (Valdez-Cordova Census Area, AK) is only missing for 2020.
 
 ```{r check-missing-urban}
 missing_urban <- anti_join(
@@ -350,6 +350,7 @@ Alleghany County, VA (51005) added the former independent city of Clifton Forge 
 Prior to 2013, Prince of Wales-Outer Ketchikan Census Area, AK (02201), Skagway-Hoonah-Angoon Census Area, AK (02232) and Wrangell-Petersburg Census Area, AK (02280) were all split and their parts were used to create new Census Areas ([source](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2000.html#list-tab-957819518)). Beginning in 2014, deaths and population data for these areas are no longer available ([source](https://wonder.cdc.gov/wonder/help/ucd.html#)). Data are only available for these areas for years 1999-2013; deaths and population estimates for years 2014-2020 are missing (zero). We drop these three county equivalents from the CDC deaths data.
 
 ```{r fix-missing-urban}
+# It appears these counties are only included in the CDC WONDER data for consistency even though they no longer exist in our years of interest
 deaths <- deaths |>
   filter(!GEOID %in% c("51515", "51560", "02201", "02232", "02280"))
   
@@ -357,104 +358,67 @@ deaths <- deaths |>
 
 ### 4.4 Address the split of Valdez-Cordova Census Area, AK
 
-Effective 2019-01-02, Valdez-Cordova Census Area, AK (02261) split to form Chugach Census Area, AK (02063) and Copper River Census Area, AK (02066). This change is not reflected in the CDC deaths data as of 2020. We can use the `interpolate_pw()` [function](https://rdrr.io/cran/tidycensus/man/interpolate_pw.html) from the `library(tidycensus)` package, which uses block-level population estimates to weight the interpolation of death rates across geographies, to get estimates of the age-adjusted rates for each of the new counties. However, this method likely will not work for the confidence interval and standard error since the population is smaller in the newer counties. This method is imperfect, but we apply it to the age-adjusted rate for Valdez-Cordova Census Area, AK in 2020 to estimate age-adjusted rates for Chugach Census Area, AK and Copper River Census Area, AK in 2020.
+Effective 2019-01-02, Valdez-Cordova Census Area, AK (02261) split to form Chugach Census Area, AK (02063) and Copper River Census Area, AK (02066). This change is not reflected in the CDC deaths data as of 2020. We looked into using the `interpolate_pw()` [function](https://rdrr.io/cran/tidycensus/man/interpolate_pw.html) from the `library(tidycensus)` package, which uses block-level population estimates to weight the interpolation of death rates across geographies, to get estimates of the age-adjusted rates for each of the new counties. However, because the measure we want to interpolate is population-standardized, we just end up with the original rate we started with for both of the interpolated geometries. Instead, we apply the same death rate for both of these new county equivalents and later set the data quality flag to low for these two observations.
 
-Note that the `interpolate_pw()` function can only be applied to one variable at a time.
+Assign the Valdez-Cordova 2020 death rate to an object. Later, we apply this same death rate to the two new county equivalents. We also set the quality indicator to low for these county equivalents later in the file.
+```{r save-death-rate}
+death_rate_vc <- deaths |>
+  filter((GEOID == "02261" & year==2020)) |>
+  pull(rate_injury_death)
 
-```{r fix-valdez-cordova, output=FALSE}
-# Create subset of deaths without this one observation
-deaths_no_interpolate <- deaths |>
-  filter(!(GEOID == "02261" & year==2020))
+```
 
-# Subset the single observation for Valdez-Cordova Census Area, AK in 2020
-deaths_vc <- deaths |>
-  filter((GEOID == "02261" & year==2020)) %>%
-  select(GEOID, rate_injury_death)
-
-# Get shapefile for Valdez-Cordova Census Area, AK in 2019
-ak2019 <- tidycensus::get_acs(
-  geography = "county",
-  variables = "B01003_001",
-  year = 2019,
-  state = "AK",
-  geometry = TRUE
-) |>
-  filter(GEOID == "02261") |>
-    left_join(
-      y = deaths_vc,
-      by = "GEOID"
-    ) |>
-  # Note that if you select more than one variable below, the interpolation does not work
-  select(rate_injury_death)
-
-# Get shapefiles for Chugach Census Area, AK and Copper River Census Area, AK in 2020.
-ak2020 <- tidycensus::get_acs(
-  geography = "county",
-  variables = "B01003_001",
-  year = 2020,
-  state = "AK",
-  geometry = TRUE
-) |>
-  filter(GEOID %in% c("02063", "02066"))
-
-# Get population counts for the Census blocks that make up these counties
-ak_blocks <- tigris::blocks(
-  state = "AK",
-  county = c("261", "063", "066"),
-  year = 2020
-)
-
-# Interpolate age-adjusted death rates for Chugach Census Area, AK and Copper River Census Area, AK in 2020
-## Note that this is only interpolating the age-adjusted death rate. We are not interpolating the number of deaths, population count, confidence interval, standard error, or crude rate.
-deaths_c_cr <- tidycensus::interpolate_pw(
-  from = ak2019,
-  to = ak2020,
-  to_id = "GEOID",
-  weights = ak_blocks,
-  weight_column = "POP20",
-  crs = 3338,
-  # For Census data, extensive = TRUE should be used for transferring counts / estimated counts between zones. Derived metrics (e.g. population density, percentages, etc.) should use extensive = FALSE
-  extensive = TRUE
-)
-
-# Check that the interpolated rates are not the same as the original rate; if they are, the interpolation approach did not work properly
-stopifnot(!deaths_c_cr$rate_injury_death %in% deaths_vc$rate_injury_death)
-
-# Append the interpolated counties onto the main file
-## First edit the interpolated counties to remove geometries and add year
-deaths_c_cr <- deaths_c_cr |>
-  sf::st_drop_geometry() |>
-  mutate(year = 2020)
-## Now append
-deaths_all <- bind_rows(
-  deaths_no_interpolate, deaths_c_cr
-)
+Remove Valdez-Cordova Census Area, AK in 2020 because it is not in the Urban universe of counties
+```{r remove-vc}
+deaths <- deaths |>
+  filter(!(GEOID == "02261" & year == 2020))
 
 ```
 
 ```{r clean-environment-4.4}
 # Remove obsolete objects
-rm(missing_CDC, missing_urban, deaths_no_interpolate, deaths_vc, ak2019, ak2020,
-   ak_blocks, deaths_c_cr, deaths)
+rm(missing_CDC, missing_urban)
 ```
 
 ### 4.5 Join data
 
 Join county-level age-adjusted death rates from CDC WONDER for 2014-2020 onto Urban's county universe file
 
+There are still 2 unmatched observations from Urban's universe of counties (Chugach Census Area, AK and Copper River Census Area, AK in 2020). After joining, we apply the CDC WONDER death rate from Valdez-Cordova Census Area to these two new county equivalents.
 ```{r join-data}
-joined_data <- left_join(
+joined_data <- full_join(
   x = all_counties,
-  y = deaths_all |>
+  y = deaths |>
     select(-c("county_name", "population")),
   by = c("year", "GEOID")
 )
+
+# Show that the unmatched observations from Urban universe of counties are those we expect
+anti_join(
+  x = all_counties,
+  y = deaths |>
+    select(-c("county_name", "population")),
+  by = c("year", "GEOID")
+) |> 
+  count(county_name, GEOID, year)
   
 ```
 
+Apply the CDC WONDER death rate from Valdez-Cordova Census Area in 2020 to these two new county equivalents.
+```{r assign-vc-death-rate}
+joined_data <- joined_data |>
+  mutate(rate_injury_death = if_else(
+    GEOID %in% c("02063", "02066"),
+    death_rate_vc,
+    rate_injury_death 
+  ))
+
+```
+
+
 ```{r clean-environment-4.5}
 # Remove obsolete objects
-rm(all_counties, deaths_all)
+rm(all_counties, deaths, death_rate_vc)
 ```
 
 ## 5. Validation
@@ -493,7 +457,7 @@ quantile(
 
 ```
 
-There are roughly the same number of missing injury death rates (between 266 and 281) per year from 2014-2020.
+There are roughly the same number of missing injury death rates (between 264 and 281) per year from 2014-2020.
 
 ```{r check-missing, message = FALSE}
 joined_data |>
@@ -572,7 +536,7 @@ joined_data |>
 
 ### 5.4 Checking rates against County Health Rankings
 
-The 2022 release of County Health Rankings [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/community-safety/injury-deaths?year=2023) data includes this same metric using the same years of the same data (2016-2020 pooled data from CDC WONDER) ([source](https://www.countyhealthrankings.org/sites/default/files/media/document/2022%20Analytic%20Documentation.pdf)). We check our calculations against theirs.
+The 2022 release of County Health Rankings [County Health Rankings](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/community-safety/injury-deaths?year=2023) data includes this same metric using the same years of the same data (2016-2020 pooled data from CDC WONDER) for the 2020 metric ([source](https://www.countyhealthrankings.org/sites/default/files/media/document/2022%20Analytic%20Documentation.pdf)). We check our calculations against theirs.
 
 #### 5.4a Download, read in, and clean the 2022 County Health Rankings Data
 
@@ -624,7 +588,7 @@ chr_test <- full_join(
 
 ```
 
-The CHR data also has Valdez-Cordova, AK listed for 2020 instead of Chugach and Copper River. We remove all three of these observations from the test.
+The CHR data also has Valdez-Cordova, AK listed for 2020 instead of Chugach and Copper River. We remove all three of these observations for this exercise.
 
 ```{r remove-ak-problems}
 chr_test |>
@@ -637,9 +601,9 @@ chr_test <- chr_test |>
 
 #### 5.4c Compare values from CHR and CDC WONDER
 
-There are some observations that do not match because CDC WONDER reports rates as `unreliable` when the death count is less than 20. We changed these rates to `NA` in our data. County Health Rankings recreated the crude rate for these observations by dividing the death count by population and multiplying by 100,000. We are reporting the age-adjusted rate, so this computation does not work for us. Otherwise the rates are the same.
+There are some observations that do not match because CDC WONDER reports rates as `unreliable` when the death count is less than 20. We changed these rates to `NA` in our data. County Health Rankings recreated the crude rate for these observations by dividing the death count by population and multiplying by 100,000. We are reporting the age-adjusted rate, so this computation does not work for us. Otherwise, the rates are the same.
 
-There are 105 counties that are missing rates in both data sets. We remove these observations.
+There are 105 counties that are missing rates in both data sets. We remove these observations for this exercise.
 
 ```{r check-chr-1}
 # Check number of counties missing from both data sets
@@ -665,9 +629,10 @@ test |>
 test |>
   filter(is.na(rate_injury_death_crude)) |>
   count()
+
 ```
 
-For observations where our rate is not missing, all rates are equal to the County Health Rankings rates. Only the 159 observations missing from our data but not CHR do not match
+For observations where our rate is not missing, all rates are equal to the County Health Rankings rates. Only the 159 observations missing from our data but not CHR do not match.
 
 ```{r check-chr-3}
 # Create subset of rates that are NOT missing from our data
@@ -706,13 +671,15 @@ rm(chr2022, chr_test, test, not_missing, missing)
 
 This section creates a variable for the coefficient of variation (CV) for each county and assigns a quality indicator based on that county's CV. Smaller CVs are indicative of high quality data.
 
+Note that we manually assign a low quality value to Chugach Census Area, AK and Copper River Census Area, AK in 2020. We copied the age-adjusted rate of injury deaths reported by CDC WONDER for Valdez-Cordova Census Area, AK for these observations, but we did not copy other values (confidence interval, standard error, etc.). We want users to know to interpret estimates for these two geographies with caution because of the underlying data challenges. If we left the data quality values as missing for these two observations, they would be the only counties with a missing quality value but a non-missing rate. 
+
 ```{r add-quality-flags}
 joined_data <- joined_data |>
   mutate(cv = rate_injury_death_se / rate_injury_death,
          rate_injury_death_quality = case_when(
            cv < 0.2 ~ 1,
            cv < 0.4 ~ 2,
-           cv >= 0.4 ~ 3
+           cv >= 0.4 | GEOID %in% c("02063", "02066") ~ 3
          )
   )
 
@@ -727,6 +694,14 @@ joined_data |>
   geom_bar()
   
 ```
+
+Note that the 1,885 counties with missing quality values are those that CDC WONDER suppressed due to fewer than 10 deaths, marked as "unreliable" due to fewer than 20 deaths, or marked as "not applicable" because the population denominator figure was unavailable.
+```{r}
+joined_data %>%
+  count(rate_injury_death_quality)
+
+```
+
 
 Most estimates have small standard errors.
 
