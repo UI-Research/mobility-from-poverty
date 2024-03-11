@@ -90,18 +90,26 @@ zip_url_23 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_SAS_2022-2023.zip"
 # Destination file path where we want to save the zip file
 zip_dest_23 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2022-2023.zip")
 
-# Download the zip file to the above path
-download.file(zip_url_23, zip_dest_23, mode = "wb")
-
-# Unzip the file
-unzip(zip_dest_23, exdir = here::here("04_health", "access-health-services", "data"))
+# If the file has not already been downloaded, download/unzip/read it in
+if (
+  !file.exists(here::here("04_health", "access-health-services", "data",
+                          "AHRF_SAS_2022-2023"))
+  ){
+    
+    # Download the zip file to the above path
+    download.file(zip_url_23, zip_dest_23, mode = "wb")
+    
+    # Unzip the file
+    unzip(zip_dest_23, exdir = here::here("04_health", "access-health-services", "data"))
+    
+    # Remove zip file
+    unlink(zip_dest_23)
+    
+  }
 
 # Read in the SAS file containing the latest AHRF data
 ahrf23 <- haven::read_sas(here::here("04_health", "access-health-services", "data",
                                 "AHRF_SAS_2022-2023", "ahrf2023.sas7bdat"))
-
-# Remove zip file
-unlink(zip_dest_23)
 
 # Clean up environment
 rm(zip_url_23, zip_dest_23)
@@ -116,18 +124,26 @@ zip_url_22 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_2021-2022_SAS.zip"
 # Destination file path where we want to save the zip file
 zip_dest_22 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2021-2022.zip")
 
-# Download the zip file to the above path
-download.file(zip_url_22, zip_dest_22, mode = "wb")
-
-# Unzip the file
-unzip(zip_dest_22, exdir = here::here("04_health", "access-health-services", "data"))
+# If the file has not already been downloaded, download/unzip/read it in
+if (
+  !file.exists(here::here("04_health", "access-health-services", "data",
+                          "ahrf2022.sas7bdat"))
+){
+  
+  # Download the zip file to the above path
+  download.file(zip_url_22, zip_dest_22, mode = "wb")
+  
+  # Unzip the file
+  unzip(zip_dest_22, exdir = here::here("04_health", "access-health-services", "data"))
+  
+  # Remove zip file and irrelevant contents
+  unlink(zip_dest_22)
+  unlink(here::here("04_health", "access-health-services", "data", "2021-2022_AHRFDUA.doc"))
+  
+}
 
 # Read in the SAS file containing the 2021-2022 AHRF data
 ahrf22 <- haven::read_sas(here::here("04_health", "access-health-services", "data", "ahrf2022.sas7bdat"))
-
-# Remove zip file and irrelevant contents
-unlink(zip_dest_22)
-unlink(here::here("04_health", "access-health-services", "data", "2021-2022_AHRFDUA.doc"))
 
 # Clean up environment
 rm(zip_url_22, zip_dest_22)
@@ -230,6 +246,14 @@ all_counties <- read.csv(here::here("geographic-crosswalks", "data", "county-pop
   filter(!year %in% c(2022)) |>
   mutate(state = str_pad(state, 2, pad = "0"),
          county = str_pad(county, 3, pad = "0"))
+
+# Make sure that all years are included in the file
+testthat::test_that("Check that all years are included in both files", {
+  expect_equal(
+    unique(all_counties$year),
+    unique(ahrf_long$year)
+  )
+})
 
 ```
 
@@ -388,7 +412,7 @@ joined_data |>
 
 ### 6.2 Distribution of ratio and missingness
 
-The county-level ratio of population to primary care physicians ranges from 0 to 46,784. 6.8% of observations do not have a primary care physician.
+The county-level ratio of population to primary care physicians ranges from 0 to 46,784. 6.7 percent of observations do not have a primary care physician.
 
 ```{r check-distribution-ratio}
 quantile(
@@ -397,10 +421,11 @@ quantile(
   na.rm = TRUE
 )
 ```
+
 ```{r check-distribution-count}
 quantile(
   joined_data$pc_physicians,
-  probs = c(0, .068, .069, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  probs = c(0, .067, .069, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
   na.rm = TRUE
 )
 
@@ -458,12 +483,16 @@ The CHR documentation indicates that they used 2021 Census Population Estimates 
 The landing page to download these data is [here](https://www.countyhealthrankings.org/explore-health-rankings/rankings-data-documentation).
 
 ```{r load-chr}
-# Download file directly from internet
-download.file(
+# Download file directly from internet if haven't already
+if (
+  !file.exists(here::here("04_health", "access-health-services", "data", "chr2023.xlsx"))
+){
+  download.file(
   url = "https://www.countyhealthrankings.org/sites/default/files/media/document/2023%20County%20Health%20Rankings%20Data%20-%20v2.xlsx",
-  destfile = "04_health/access-health-services/data/chr2023.xlsx",
+  destfile = here::here("04_health", "access-health-services", "data", "chr2023.xlsx"),
   mode = "wb"
 )
+}
 
 # Read in CHR data
 ## I set `guess_max = Inf` to forestall a warning when reading columns. Without this parameter specified, `readxl::read_excel()` guesses that column 17 is a logical column (because it's mostly missing) when in fact it's a character column. We don't use this column, but still want to provide clarity about the warning.
@@ -617,12 +646,18 @@ County Health Rankings documentation indicates that they use 2021 Census Populat
 
 We download the Vintage 2020 population estimates and are able to recreate their ratio.
 ```{r load-vintage-2020-pop}
-# Download the Vintage 2020 population estimates 
-download.file(
-  url = "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv",
-  destfile = "04_health/access-health-services/data/chr_pop.csv",
-  mode = "wb"
-)
+# Download the Vintage 2020 population estimates directly from internet if haven't already
+if (
+  !file.exists(here::here("04_health", "access-health-services", "data", "chr_pop.csv"))
+){
+  
+  download.file(
+    url = "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv",
+    destfile = here::here("04_health", "access-health-services", "data", "chr_pop.csv"),
+    mode = "wb"
+  )
+  
+}
 
 # Read in and clean the Vintage 2020 population estimates
 chr_pop <- read_csv(here::here("04_health", "access-health-services", "data", "chr_pop.csv")) |>
@@ -679,6 +714,7 @@ testthat::test_that("Check that reconstructed CHR ratio matches reported CHR rat
 })
 
 ```
+
 ```{r clean-environment-6.4}
 # Remove obsolete files
 rm(chr2023, chr_test, chr_test_suppressed, chr_pop, chr_test_2, ahrf_test)
@@ -689,7 +725,11 @@ rm(chr2023, chr_test, chr_test_suppressed, chr_pop, chr_test_2, ahrf_test)
 ## 7. Add data quality flags
 This section adds a flag for counties with less than 2,000 people to indicate low population, and assigns a data quality flag based on the ratio's sensitivity to an extra primary care physician in the county.
 
-Note that County Health Rankings suppresses data for counties with population greater than 2,000 and 0 primary care physicians. They report a missing value for these observations. It is not entirely clear to me why they suppress these data. One potential explanation is that they assume "0 PCPs" could be a reporting error for counties with a decent-sized population. We do not apply this suppression rule, and any county with 0 reported PCPs is assigned a quality value of `NA`. Future updates may want to think more about how to handle the quality indicator for counties that actually have 0 PCPs and those that have 0 reported PCPs due to a reporting error in the data.
+Note that County Health Rankings suppresses data for counties with population greater than 2,000 and 0 primary care physicians. They report a missing value for these observations. It is not entirely clear to me why they suppress these data. One potential explanation is that they assume "0 PCPs" could be a reporting error for counties with a decent-sized population. 
+
+In the last update to this metric when we used data directly from County Health Rankings, their suppression made it so that counties with population greater than 2,000 and 0 PCPs had a ratio of `0` and a quality of `NA`, while Counties with population less than 2,000 and 0 PCPs had a ratio of `0` and a quality of `1`. We do not apply this suppression rule, and any county with 0 reported PCPs is assigned a quality value of `NA`. 
+
+Future updates may want to think more about how to handle the quality indicator for counties that actually have 0 PCPs and those that have 0 reported PCPs due to a reporting error in the data.
     
 Create a flag for counties with low population    
 ```{r flag-low-pop}
@@ -705,7 +745,7 @@ joined_data <- joined_data |>
 
 We calculate the sensitivity of the ratio as measured by percent change in the ratio when adding 1 PCP to each county. E.g., if there are 2,000 people in a county with 1 physician, the addition of 1 more physician changes the ratio drastically.
 
-Note that the quality indicator, which is based on the value of `sensitivity`, will be `NA` when there are 0 primary care physicians in a county. Some counties may actually have 0 PCPs, while others may only have 0 reported due to an error in the data (lack of reporting, etc.). We assign `NA` to all of these counties, but future updates may want to consider how to differentiate these cases. One potential solution would be to assume that counties with population greater than 2,000 but 0 reported PCPs are a reporitng error, while counties with population less than 2,000 and 0 reported PCPs actually do not have any PCPs.
+Note that the quality indicator, which is based on the value of `sensitivity`, will be `NA` when there are 0 primary care physicians in a county. Some counties may actually have 0 PCPs, while others may only have 0 reported due to an error in the data (lack of reporting, etc.). We assign `NA` to all of these counties, but future updates may want to consider how to differentiate these cases. One potential solution would be to assume that counties with population greater than 2,000 but 0 reported PCPs are a reporting error, while counties with population less than 2,000 and 0 reported PCPs actually do not have any PCPs.
 ```{r calculate-sensitivity}
 joined_data <- joined_data |>
   mutate(
