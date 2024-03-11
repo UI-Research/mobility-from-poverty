@@ -22,6 +22,8 @@ Primary data derived from the IPUMS API. This metric is the share of 19- and 20-
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
+*User warning* The acs micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -53,7 +55,7 @@ Read in the ACS extracts using the extract_ipums function. Make sure to change t
 *Note this download is slow and will take some time to finish. The notes on "Checking extract status" are a feature of the IPUMSR package and are to be expected*
 ```{r}
 acs <- extract_ipums(
-  extract_name = "umf_data_18_22",
+  extract_name = "umf_data_18_21_5yr",
   extract_description = "Microdata pull for College Readiness Metric Predictors. American Community Survey, years 2018, 2019 and 2022 (5-year).",
   survey = list("us2018c", "us2021c"))
 ```
@@ -66,7 +68,7 @@ count(acs, sample)
 
 Isolate the data to 19 and 20 year-olds. This is the age-range included in the college readiness calculation.
 ```{r}
-acs <- acs %>%
+acs_age <- acs %>%
   filter(age == 19 | age == 20) 
 ```
 
@@ -75,7 +77,7 @@ acs <- acs %>%
 
 Read in person-level replicate weights for the 19 and 20 year old population. These will be used in creating standard errors for the college ready calculation. 
 ```{r}
-repwts_person <- ipums_repwt_college(
+repwts <- ipums_repwt_college(
   extract_name = "college_replicate_weights",
   extract_description = "Person replicate weights for College Readiness Metric Predictors. American Community Survey, years 2018 and 2022 (5-year).",
   survey = list("us2018c", "us2021c")
@@ -97,17 +99,20 @@ repwts_person <- repwts_person %>%
 
 ### Merge on repwts
 
+Merge the replicate weights on to the ACS samples. The length calls let us know the count of records going in and coming out of the join. 
+The number of unique persons in acs_age should be the same as acs_combined. Test that this is the case and throw an error if not.
 ```{r}
-length(unique(pull(acs, unique_person_id)))
-length(unique(pull(repwts_person, unique_person_id)))
+
 acs_combined <- 
   left_join(
-    acs,
+    acs_age,
     repwts_person,
     by = "unique_person_id"
   )
-length(unique(pull(acs_combined, unique_person_id)))
-rm(acs)
+
+stopifnot(length(unique(pull(acs_combined, unique_person_id))) == length(unique(pull(acs_age, unique_person_id))))
+
+rm(acs_age)
 rm(repwts_person)
 ```
 
@@ -121,22 +126,19 @@ stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
 
 Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
 
-Age: No missing values reported in variable description. Check the distribution to confirm there are no abnormalities: the distribution of age looks reasonable (no bunching or extreme outliers).
+* **Age:** No missing values reported in variable description. Run the following test to confirm all values are either 19 or 20.
 
 ```{r}
-acs_combined %>% 
-  ggplot(aes(x = age)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Age Variable Results") +
-  ylab("Density")
+
+stopifnot(all(acs_combined$age %in% c(19, 20)))
+          
 ```
 
 EDUCD: N/As reported as "1" in all modern surveys. N/As were "000" in the 1980 and 1950 decennial census surveys (not used here).
 Variable codes explained [here]([https://usa.ipums.org/usa-action/variables/EDUC#codes_section) & see "Detailed codes" at bottom).
 Vacancy is reported as "0". 
 
-There is a significant share of records reported as "1" for the education variable. 
+There are no records reported as "1" in the `educd` variable for the filtered age range.
 
 ```{r}
 acs_combined %>% 
@@ -151,9 +153,8 @@ acs_combined %>%
        y = NULL)
 ```
 
-Confirm the missing values from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
+Confirm the missing value options from the value labels of the educd variable to ensure we are eliminating the correct values. "0", "1" and "999" are N/A or missing and should be turned into NA values that R recognizes. 
 
-Note that there are no records with values of zero in the bar chart above which eliminates the need to deal with the "no schooling" option.
 ```{r}
 head(ipums_val_labels(acs_combined$educd), 50) %>% 
   reactable()
@@ -168,7 +169,7 @@ acs_clean <- acs_combined %>%
   )
 ```
 
-Look at the distribution of education_detailed after adjustment for NAs. We can see that there are no longer records for "1" but we now see "NA".
+Look at the distribution of education_detailed after adjustment for NAs.
 ```{r}
 acs_clean %>% 
   count(education_detailed) %>% 
@@ -181,18 +182,13 @@ acs_clean %>%
        y = NULL)
 ```
 
-Vacancy: Value is reported as "0" according to IPUMs. Note there are no vacancy results by default of the structure of census data read in (confirmed in the distribution of the variable).
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
 
 ```{r}
-acs_clean %>% 
-  ggplot(aes(x = vacancy)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("Vacancy Variable Results") +
-  ylab("Density")
+stopifnot(all(acs_combined$vacancy == "0"))
 ```
 
-Examine the group quarters variable, we want to include both households and Group Quarters in this metric as both are relevant to the college readiness of a geography.
+Examine the group quarters, `gq`, variable, we want to include both households and Group Quarters in this metric as both are relevant to the college readiness predictor in a geography.
 
 IPUMS includes the following categories:
 
@@ -211,6 +207,7 @@ IPUMS includes the following categories:
 -   6: Fragments
 
 Check the distribution of GQ categories. Only households and group quarters should be included (no vacancy or fragments).
+
 ```{r}
 acs_clean %>%  
   count(gq) %>% 
@@ -283,12 +280,16 @@ Rename the values from number category to race label:
   +Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
   +Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
 ```{r}
+
 acs_clean <- acs_clean %>%
-  mutate(subgroup_race = case_when((hispan == "Not Hispanic" & race == "White") ~ "White, Non-Hispanic",
-                              (hispan == "Not Hispanic" & race == "Black/African American") ~ "Black, Non-Hispanic",
-                              (hispan == "Not Hispanic" & !race %in% c("Black/African American", "White")) ~ "Other Races and Ethnicities",
-                               hispan != "Not Hispanic" ~ "Hispanic"
-  ))
+  mutate(
+    subgroup_race = case_when(
+      hispan != "Not Hispanic" ~ "Hispanic",
+      race == "White" ~ "White, Non-Hispanic",
+      race == "Black/African American" ~ "Black, Non-Hispanic",
+      !race %in% c("Black/African American", "White") ~ "Other Races and Ethnicities"
+    )
+  )
 
 ```
 
@@ -587,7 +588,7 @@ acs_crosswalked %>%
   count()
 ```
 
-## Create pre-K metric: All
+## Create college readiness metric: All
 
 Create the college ready metric. 
 
@@ -605,14 +606,15 @@ acs_all <- acs_crosswalked %>%
   group_by(year, sample, crosswalk_period, statefip, county) %>%
   mutate(effective_sample = sum(afact)) %>% 
   ungroup()
+
 # calculate the number of statistics after suppressing values
 acs_all %>%
   group_by(year, sample, crosswalk_period, statefip, county) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -697,11 +699,11 @@ acs_race_ethnicity <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_race_ethnicity %>%
   group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -772,11 +774,11 @@ acs_gender <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_gender %>%
   group_by(year, sample, crosswalk_period, statefip, county, subgroup_gender) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -847,11 +849,11 @@ acs_disability <- acs_crosswalked %>%
 # calculate the number of statistics after suppressing values
 acs_disability %>%
   group_by(year, sample, crosswalk_period, statefip, county, subgroup_disability) %>%
-  summarize(
+  summarise(
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarize(
+  summarise(
     original_stats = n(),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
@@ -948,7 +950,7 @@ metrics_education_sub %>%
   summary()
 ```
 
-Look at distribution of pre-K attendance share by county for all and for subgroups.
+Look at distribution of college readiness attendance share by county for all and for subgroups.
 ```{r}
 metrics_education_all %>% 
   filter(year == 2021) %>% 
