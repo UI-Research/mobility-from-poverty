@@ -1,3 +1,11 @@
+//# TO DO
+/* 
+
+1) Unidentified counties (0, 5] -> Quality == 2
+2) Number of counties <= 15 & ratio of unidentified counties to total counties < .5
+//
+
+*/
 ************************************************************************
 * Ancestor program: $gitfolder/neonatal_health_code_2018.do 				   
 * Original data: all_births_by_county.txt, lbw_births_by_county.txt, nomiss_bw_by_county.txt available in $gitfolder/04_health/data      				   
@@ -355,6 +363,8 @@ preserve
 restore
 
 //# merge crosswalk and analytic file
+// Unidentified Counties Explanation here: https://wonder.cdc.gov/wonder/help/natality.html
+
 //# merge crosswalk - all births
 use "${health_data_intermediate}neonatal_health_intermediate_all_`y2'.dta", clear
 	merge 1:1 state county using "${health_data_intermediate}clean_county_crosswalk_`y2'.dta"
@@ -541,6 +551,11 @@ save "${health_data_intermediate}neonatal_health_intermediate_raceth_`y2'.dta", 
 /*
 Data Quality notes for documentation - 
 if the denominator is <30, the the value should be NA and quality should be NA. If it is missing, then keep it missing. And, maybe if the denominator is 30-100, it should be data quality=3 and if the value is >100-200, then the data quality is 2.
+
+1) Unidentified counties (0, 5] -> Quality == 2
+2) Number of counties <= 15 & ratio of unidentified counties to total counties < .5
+//
+
 */
 
 //# Data Quality Flags - all births
@@ -552,15 +567,22 @@ gen lbw_quality = .
 
 	replace lbw_quality = 1 if missing(unidentified_county_flag)
 	
-	replace lbw_quality = 2 if nomiss_births < 200	// Denominator [100-200]
+	replace lbw_quality = 2 if lbw_births < 30 | nomiss_births < 200	// Numerator (0, 30] and Denominator [100-200] New this year 
 	
 	replace lbw_quality = 3 if nomiss_births < 100 	// Denominator [30-100)
-	replace lbw_quality = 3 if unidentified_county_flag == 1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
+ 	replace lbw_quality = 3 if unidentified_county_flag == 1		// assigning a quality score of 3 to all counties flagged as "unassigned counties"
 	
 	replace lbw_quality = -1 if nomiss_births < 30	// Denominator < 30 will end up missing quality and metric
 	
 	replace lbw_quality = . if missing(share_lbw_nomiss)
 
+	// Checking numbers and proportions of unidentified counties
+	bys state: egen num_unidentified_counties = total(unidentified_county_flag)
+	bys state: egen num_counties = count(county)
+	gen ratio = num_unidentified_counties / num_counties
+
+	replace lbw_quality = 2 if num_unidentified_counties > 0 & num_unidentified_counties < 5
+	replace lbw_quality = 2 if num_counties <= 15 & ratio < 0.5
 	
 	replace share_lbw_nomiss = . if lbw_quality == -1	// Supression of small denominators
 	replace lbw_quality = . if lbw_quality == -1		// Quality missing for supressed denominators
@@ -578,7 +600,7 @@ gen lbw_quality = .
 	
 	replace lbw_quality = 1 if missing(unidentified_county_flag) & missing(suppressed_county_flag)	// assigning a quality score of 1 to all counties *not* flagged as "unassigned counties" or "suppressed"
 	
-	replace lbw_quality = 2 if nomiss_births < 200	// Denominator [100-200]
+	replace lbw_quality = 2 if lbw_births < 30 | nomiss_births < 200	// Numerator < 30 or Denominator [100-200] New this year 
 	
 	replace lbw_quality = 3 if nomiss_births < 100 	// Denominator [30-100)
 	replace lbw_quality = 3 if unidentified_county_flag == 1 | suppressed_county_flag == 1	// assigning a quality score of 3 to all counties flagged as "unassigned counties" or "suppressed"
@@ -586,6 +608,14 @@ gen lbw_quality = .
 	replace lbw_quality = -1 if nomiss_births < 30	// Denominator < 30 will end up missing quality and metric
 
 	replace lbw_quality = . if missing(share_lbw_nomiss)
+
+	// Checking numbers and proportions of unidentified counties
+	bys state: egen num_unidentified_counties = total(unidentified_county_flag)
+	bys state: egen num_counties = count(county)
+	gen ratio = num_unidentified_counties / num_counties
+
+	replace lbw_quality = 2 if num_unidentified_counties > 0 & num_unidentified_counties < 5
+	replace lbw_quality = 2 if num_counties <= 15 & ratio < 0.5
 
 	replace share_lbw_nomiss = . if lbw_quality == -1	// Supression of small denominators
 	replace lbw_quality = . if lbw_quality == -1		// Quality missing for supressed denominators
