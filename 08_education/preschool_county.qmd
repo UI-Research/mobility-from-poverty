@@ -22,6 +22,8 @@ Primary data derived from the IPUMS API.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with significant computing power to run this.
+
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -53,7 +55,7 @@ source(here::here("08_education", "R", "calc_survey_mean_subgroup.R"))
 
 ### Person-Level Data
 
-Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two sets of 5-year data ("2018c" and "2021c"). 5-year 2022 data will be added pending its release.
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two sets of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
 
 ```{r}
 acs <- extract_ipums(
@@ -70,18 +72,16 @@ count(acs, sample)
 ```
 
 Isolate the data to 3 and 4 year-olds. This is the age-range included in the pre-K calculation. Note: the replicate weights are limited to these ages during the data pull. 
-
 ```{r}
-acs <- acs %>% 
+acs_age <- acs %>% 
   filter(age == 3 | age == 4) 
 ```
 
 ### Replicate Weights 
 
 Read in person-level replicate weights for the 3 and 4 year old population. These will be used in creating standard errors for the preschool access calculation. 
-
 ```{r}
-repwts_person <- ipums_repwt_pre_k(
+repwts <- ipums_repwt_pre_k(
   extract_name = "preschool_replicate_weights",
   extract_description = "Person replicate weights for Access to Preschool Metric Predictors. American Community Survey, years 2018 and 2021 (5-year).",
   survey = list("us2018c", "us2021c")
@@ -89,38 +89,39 @@ repwts_person <- ipums_repwt_pre_k(
   select(-cbserial, -cbpernum)
 ```
 
+
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
 
 ```{r}
-count(repwts_person, sample)
+count(repwts, sample)
 ```
 
 Remove the sample variable.
 ```{r}
-repwts_person <- repwts_person %>% 
+repwts_person <- repwts %>% 
   select(-sample)
 ```
 
 ### Merge on repwts
 
 ```{r}
-length(unique(pull(acs, unique_person_id)))
+length(unique(pull(acs_age, unique_person_id)))
 
 length(unique(pull(repwts_person, unique_person_id)))
 
 acs_combined <- 
   full_join(
-    acs,
+    acs_age,
     repwts_person,
     by = "unique_person_id"
   )
 
 length(unique(pull(acs_combined, unique_person_id)))
 
-stopifnot(nrow(acs_combined) == nrow(acs))
+stopifnot(nrow(acs_combined) == nrow(acs_age))
 stopifnot(nrow(acs_combined) == nrow(repwts_person))
 
-rm(acs)
+rm(acs_age)
 rm(repwts_person)
 ```
 
@@ -128,7 +129,6 @@ Check that the merge did not result in any missing values.
 
 ```{r}
 stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
-
 ```
 
 ## Clean Data
@@ -302,6 +302,15 @@ Read in the PUMA to county crosswalk file. This file is created by the program g
 puma_county_crosswalk <- read_csv(
   here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
   )
+```
+
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+```{r}
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
 ```
 
 ## Merge Crosswalk 
@@ -494,11 +503,19 @@ rm(acs_all)
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
 
+Expand the place_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of counties we anticipate.
+
 ```{r}
-results_all_expand <- acs_crosswalked %>% 
-  distinct(year, statefip, county) %>% 
-  left_join(results_all, by = c("year", "statefip", "county")) %>%
-  arrange(year, statefip, county)
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
 
 stopifnot(nrow(results_all_expand) == 3143 * 2)
 ```
@@ -595,20 +612,19 @@ To create the metric we suppressed counties that did not meet the threshold for 
 Create expanded version for race-ethnicity.
 
 ```{r}
-results_race_ethnicity_expanded <- acs_crosswalked %>% 
+
+expanded_county_list_race_ethnicity <- county_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  expand(year, geoid, subgroup_race) %>%
-  mutate(
-    statefip = str_sub(geoid, 1, 2),
-    county = str_sub(geoid, 3, 5)
-  ) %>% 
-  left_join(
-    results_race_ethnicity, 
-    by = c("year", "statefip", "county", "subgroup_race")
-  ) %>% 
+  expand(year, geoid, subgroup_race) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_race_ethnicity_expanded <- expanded_county_list_race_ethnicity  %>% 
+  left_join(results_race_ethnicity, by = c("year", "statefip", "county", "subgroup_race")) %>% 
+  filter(!is.na(year), !is.na(subgroup_race)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
-  rename(subgroup = subgroup_race) %>%
-  arrange(year, statefip, county, subgroup)
+  rename(subgroup = subgroup_race)
 
 ```
 
@@ -867,8 +883,7 @@ write_csv(
 metrics_education_sub %>% 
   head(10)
 
-write_csv(
-  metrics_education_sub, 
-  file = here::here("08_education", "data", "final", "metrics_preschool_county_race-ethnicity_longitudinal.csv")
-)
+write_csv(metrics_education_sub, here::here("08_education", "data", "final", "metrics_preschool_county_race-ethnicity_longitudinal.csv"))
+
+
 ```
