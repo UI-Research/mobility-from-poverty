@@ -64,7 +64,7 @@ transit_trips_county_2019 <- transport_county_2019 %>%
 
 # Compare to our official county file to make sure we have all counties accounted for
 # Bring in the official county file
-counties <- read_csv("C:/Users/USERNAME/Documents/GitHub/mobility-from-poverty/geographic-crosswalks/data/county-populations.csv")
+counties <- read_csv("geographic-crosswalks/data/county-populations.csv")
 counties_2015 <- counties %>%
   filter(year == 2015)
 counties_2019 <- counties %>%
@@ -115,7 +115,8 @@ ggplot(transit_trips_county_2019, aes(x=transit_trips_80ami)) + geom_histogram(b
 summary(transit_trips_county_2019$transit_trips_80ami)  
 # examine outliers
 transit_trips_county_2019_outliers <- transit_trips_county_2019 %>% 
-  filter(transit_trips_80ami>250) 
+  filter(transit_trips_80ami>250) %>%
+  arrange(desc(transit_trips_80ami))
 # 1160 trips in 42101 county - Bowling Green, Kentucky. GObg, Bowling Green's public transit system, provides para-transit service throughout the City of Bowling Green
 # 2105 trips in 25025 county - Suffolk County, MA - Boston metro area, makes sense
 # 1150 trips in 11001 county - Washington DC, makes sense
@@ -139,19 +140,16 @@ if (length(missing_indices) > 0) {
 #####################################################################
 
 # Create national percentile ranking for 'transit_trips_80ami'
-transit_trips_county_2015$rank <- rank(transit_trips_county_2015$transit_trips_80ami)
-transit_trips_county_2019$rank <- rank(transit_trips_county_2019$transit_trips_80ami)
-# Calculate percentile ranks
-transit_trips_county_2015$percentile_rank <- (transit_trips_county_2015$rank - 1) / (nrow(transit_trips_county_2015) - 1) * 100
-transit_trips_county_2019$percentile_rank <- (transit_trips_county_2019$rank - 1) / (nrow(transit_trips_county_2019) - 1) * 100
-# round to 2 decimals
-transit_trips_county_2015$percentile_rank <- round(transit_trips_county_2015$percentile_rank, 2)
-transit_trips_county_2019$percentile_rank <- round(transit_trips_county_2019$percentile_rank, 2)
-
-# rename to index_transit_trips
 transit_trips_county_2015 <- transit_trips_county_2015 %>%
+  mutate(rank = rank(transit_trips_80ami),
+         percentile_rank = (rank - 1) / (n() - 1) * 100,
+         percentile_rank = round(percentile_rank, 2)) %>%
   rename(index_transit_trips = percentile_rank)
+
 transit_trips_county_2019 <- transit_trips_county_2019 %>%
+  mutate(rank = rank(transit_trips_80ami),
+         percentile_rank = (rank - 1) / (n() - 1) * 100,
+         percentile_rank = round(percentile_rank, 2)) %>%
   rename(index_transit_trips = percentile_rank)
 
 ###################################################################
@@ -193,7 +191,7 @@ transit_trips_county <- rbind(transit_trips_county_2015, transit_trips_county_20
 # Keep variables of interest and order them appropriately
 transit_trips_county <- transit_trips_county %>%
   select(year, state, county, index_transit_trips, index_transit_trips_quality) %>%
-  select(year, state, county, index_transit_trips, index_transit_trips_quality)
+  arrange(year, state, county, index_transit_trips, index_transit_trips_quality)
   
 
 # Save as non-subgroup all-year files
