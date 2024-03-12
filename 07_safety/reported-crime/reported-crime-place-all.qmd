@@ -1,0 +1,557 @@
+---
+title: "Reported Violent Crime and Property Crime - Place"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(tidylog)
+library(urbnthemes)
+
+set_urbn_defaults(style = "print")
+
+```
+
+This metric represents the place-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2021-2022.
+
+This file relies on data created in `01_agency_geo_place.Rmd`. You must run `01_agency_geo_place.Rmd` before running this file.
+
+The rest of this file is organized as follows:
+
+1. Background
+2. Manually download NIBRS offense data from openICPSR
+3. Read in and clean NIBRS offense data
+4. Aggregate agency-level offenses to the place level
+5. Calculate rates of reported property crimes per 100,000 people and reported violent crimes per 100,000 people
+6. Construct quality indicators
+7. Validation
+8. Save and write out data
+
+All data used in this file are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf).
+
+This file assumes that you have cloned the GitHub repository for this project to your local computer. You can find the project repository [here](https://github.com/UI-Research/mobility-from-poverty) and learn how to clone a repository [here](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
+## 1. Background
+This section provides background information for the data used to create this metric.
+
+The data for this metric come from the FBI's [National Incident-Based Reporting System (NIBRS)](https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs). This is the national standard for law enforcement crime data reporting in the United States. Processing the raw NIBRS data would take a lot of work.
+
+Instead of downloading the raw data directly, we use criminologist Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022. We use the latest version, Version 9. These data are available for download via [openICPSR](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+
+The NIBRS data are separated into segments. For this metric, we use the following segment:
+
+* Offense segment
+
+Note that data for a single year may change with each version release (e.g., 2021 NIBRS data included in Version 8 may not match 2021 NIBRS data released in Version 9). I think this is because as more agencies switch from reporting through UCR to NIBRS, they also provide historical information. Future updates should make sure to run past years with the most recent version as well.
+
+To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Instead, agencies primarily reported [UCR data](https://ucrbook.com/) for 2020 and before. However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). 
+
+We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2016 and should keep this in mind.
+
+
+## 2. Manually download NIBRS offense data from openICPSR
+This section describes the steps for manually downloading the NIBRS offense segment.
+
+Accessing these data requires an ICPSR account. Therefore, we do not directly download the data in the code. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+
+  1. Create an ICPSR account [here](https://www.icpsr.umich.edu/cgi-bin/newacct).
+  2. Navigate to Jacob Kaplan's project page for his NIBRS Concatenated Files [here](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+  3. Select `nibrs_1991_2022_offense_segment_rds.zip`
+      + Select `Download this file`
+      + Select `I Agree` on the `Terms of Use`
+      + Move the zip file from your `Downloads` folder to the `mobility-from-poverty\07_safety\data` directory after you have cloned the repository for this project from GitHub.
+
+
+## 3. Read in and clean NIBRS offense data
+This section extracts the necessary files from the zip file downloaded in the previous step and reads the files into the R environment. The zip file contains data files for 1991-2022. However, we only want 2021-2022. Note that future updates of this metric may want to include historical NIBRS data back to 2016 and should update this section to include all years.
+
+### 3.1 Extract files for 2021-2022 from the zip file
+Extract each file for the years 2021-2022 from the `offense` segment.
+```{r, eval=FALSE}
+# Specify range of years
+start_year <- 2021
+end_year <- 2022
+
+# Create a vector of years between start_year and end_year
+my_years <- seq(start_year, end_year)
+
+# Extract years 2021-2022 for the offense segment
+for (year in my_years) {
+  unzip(
+  zipfile = here::here("07_safety", "reported-crime", "data", "nibrs_1991_2022_offense_segment_rds.zip"),
+  files = paste0("nibrs_offense_segment_", year, ".rds"),
+  exdir = here::here("07_safety", "reported-crime", "data", "nibrs_1991_2022_offense_segment_rds")
+)
+}
+
+# Clean up environment
+rm(start_year, end_year, my_years)
+
+```
+
+### 3.2 Prepare data to be read and cleaned
+Note that the offense segment files are very large. They were too large to read in and append in one step (at least with the code that I was using) for years 2016-2022. Because future updates may want to include historical data back to 2016, I create a function that reads in the offense segment for each year and cleans it. This makes each file smaller and more manageable, and we are then able to append those smaller files for each year.
+
+#### 3.2a Identify violent crimes and property crimes
+Each observation in the offense segment is a single offense/crime, and includes a variable for the offense code. Offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. We are interested in property crimes and violent crimes. Using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf), we create a data frame of all offense and crime type combinations. We then use this data to identify property crimes and violent crimes in our data. 
+
+Create a data frame that lists all offense, crime type, and group combinations using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf). Note that the full frame includes crimes against society, but these are not used in our analysis.
+```{r}
+# Create data frame for all offense, type, and group combinations.
+codes <- tribble(
+  ~offense,	~crime_against,
+  "animal cruelty",	                                                    "society",	
+  "arson",	                                                            "property",		
+  "assault offenses - aggravated assault",	                            "person",		
+  "assault offenses - simple assault",	                                "person",		
+  "assault offenses - intimidation",	                                  "person",		
+  "bribery",	                                                          "property",		
+  "burglary/breaking and entering",	                                    "property",		
+  "commerce violations - import violations",	                          "society",		
+  "commerce violations - export violations",	                          "society",		
+  "commerce violations - federal liquor offenses",	                    "society",		
+  "commerce violations - federal tobacco offenses",	                    "society",		
+  "commerce violations - wildlife trafficking",	                        "society",		
+  "counterfeiting/forgery",	                                            "property",		
+  "destruction/damage/vandalism of property",	                          "property",		
+  "drug/narcotic offenses - drug/narcotic violations",	                "society",		
+  "drug/narcotic offenses - drug equipment violations",	                "society",		
+  "embezzlement",	                                                      "property",		
+  "espionage",	                                                        "society",		
+  "extortion/blackmail",	                                              "property",		
+  "fraud offenses - false pretenses/swindle/confidence game",	          "property",		
+  "fraud offenses - credit card/atm fraud",	                            "property",		
+  "fraud offenses - impersonation",	                                    "property",		
+  "fraud offenses - welfare fraud",	                                    "property",		
+  "fraud offenses - wire fraud",	                                      "property",		
+  "fraud offenses - identity theft",	                                  "property",		
+  "fraud offenses - hacking/computer invasion",	                        "property",		
+  "fraud offenses - money laundering",	                                "society",		
+  "fugitive offenses - harboring escapee/concealing from arrest",	      "society",		
+  "fugitive offenses - flight to avoid prosecution",	                  "society",		
+  "fugitive offenses - flight to avoid deportation",	                  "society",		
+  "gambling offenses - betting/wagering",	                              "society",		
+  "gambling offenses - operating/promoting/assisting gambling",	        "society",		
+  "gambling offenses - gambling equipment violations",	                "society",		
+  "gambling offenses - sports tampering",	                              "society",		
+  "murder/nonnegligent manslaughter",	                                  "person",		
+  "negligent manslaughter",	                                            "person",		
+  "homicide offenses - justifiable homicide",	                          "not a crime",		
+  "human trafficking - commercial sex acts",	                          "person",		
+  "human trafficking - involuntary servitude",	                        "person",		
+  "immigration violations - illegal entry into the united states",	    "society",		
+  "immigration violations - false citizenship",	                        "society",		
+  "immigration violations - smuggling aliens",	                        "society",		
+  "immigration violations - reentry after deportation",               	"society",		
+  "kidnapping/abduction",	                                              "person",		
+  "larceny/theft offenses - pocket-picking",	                          "property",		
+  "larceny/theft offenses - purse-snatching",	                          "property",		
+  "larceny/theft offenses - shoplifting",	                              "property",		
+  "larceny/theft offenses - theft from building",	                      "property",		
+  "larceny/theft offenses - theft from coin-operated machine or device", "property",		
+  "larceny/theft offenses - theft from motor vehicle",	                "property",		
+  "larceny/theft offenses - theft of motor vehicle parts/accessories",	"property",		
+  "larceny/theft offenses - all other larceny",	                        "property",		
+  "motor vehicle theft",	                                              "property",		
+  "pornography/obscene material",	                                      "society",		
+  "prostitution offenses - prostitution",	                              "society",		
+  "prostitution offenses - assisting or promoting prostitution",	      "society",		
+  "prostitution offenses - purchasing prostitution",	                  "society",		
+  "robbery",	                                                          "property",		
+  "sex offenses - rape",	                                              "person",		
+  "sex offenses - sodomy",	                                            "person",		
+  "sex offenses - sexual assault with an object",	                      "person",		
+  "sex offenses - fondling (incident liberties/child molest)",	        "person",		
+  "sex offenses - incest",	                                            "person",		
+  "sex offenses - statutory rape",	                                    "person",		
+  "sex offenses - failure to register as a sex offender",	              "society",		
+  "stolen property offenses (receiving, selling, etc.)",	              "property",		
+  "treason",	                                                          "society",		
+  "weapon law violations - weapon law violations",	                    "society",		
+  "weapon law violations - violation of national firearm act of 1934",	"society",		
+  "weapon law violations - weapons of mass destruction",	              "society",		
+  "weapon law violations - explosives",	                                "society",		
+  "failure to appear",	                                                 "",		
+  "curfew/loitering/vagrancy violations",	                               "",		
+  "disorderly conduct",	                                                 "",		
+  "driving under the influence",	                                       "",		
+  "family offenses, nonviolent",	                                       "",		
+  "federal resource violations",	                                       "",		
+  "liquor law violations",	                                             "",		
+  "perjury",	                                                           "",		
+  "trespass of real property",	                                         "",		
+  "all other offenses",	                                                 "",		
+  # The following three codes were removed in 2021
+  "bad checks",	                                                         "",	
+  "drunkenness",                                                      	 "",	
+  "peeping tom",	                                                       "",	
+  # The following code was removed in 2008
+  "runaway",                                                             "",	
+)
+
+```
+
+Using the data frame above, group offenses into violent crimes and property crimes.
+```{r}
+# Extract offenses into vectors for property crimes and violent crimes
+property <- subset(codes, crime_against=="property")$offense
+violent <- subset(codes, crime_against=="person")$offense
+
+```
+
+### 3.2 Write function to read in NIBRS offense data for each year
+```{r, eval=FALSE}
+clean_offense_data <- function(year) {
+  # Construct the file name based on year
+  file_name <- here::here("07_safety", "reported-crime", "data", "nibrs_1991_2022_offense_segment_rds", paste0("nibrs_offense_segment_", year, ".rds"))
+  
+  # Check if the file exists
+  if (!file.exists(file_name)) {
+    stop(paste("Data file for year", year, "not found."))
+  }
+  
+  # Read the data file
+  readRDS(file_name) %>%
+    # Limit to variables of interest
+    select(ori, # unique agency identifier
+           ucr_offense_code
+    ) %>%
+    # Create indicator variables for property 
+    mutate(
+      property = ifelse(ucr_offense_code %in% property, 1, 0),
+      violent = ifelse(ucr_offense_code %in% violent, 1, 0)
+    ) %>%
+    # Aggregate property and violent crimes by agency
+    group_by(ori) %>%
+    summarize(all = n(),
+              violent = sum(violent),
+              property = sum(property)) %>%
+    ungroup() %>%
+    # Create variable for year
+    mutate(year = as.character(year))
+}
+
+```
+
+### 3.3 Read in (and clean) NIBRS offense data
+```{r, eval=FALSE}
+# Note that future updates may want to include historical data and should un-comment the lines for 2020 and before
+offenses_2022 <- clean_offense_data(year=2022)
+offenses_2021 <- clean_offense_data(year=2021)
+# offenses_2020 <- clean_offense_data(year=2020)
+# offenses_2019 <- clean_offense_data(year=2019)
+# offenses_2018 <- clean_offense_data(year=2018)
+# offenses_2017 <- clean_offense_data(year=2017)
+# offenses_2016 <- clean_offense_data(year=2016)
+
+```
+
+### 3.4 Append NIBRS offense data for all years
+```{r, eval=FALSE}
+# Note that future updates may want to include historical data and should use the lines that are currently commented out
+offenses_agency <- bind_rows(
+  offenses_2021, offenses_2022
+)
+
+rm(codes, violent, property, clean_offense_data,
+   offenses_2021, offenses_2022)
+
+# offenses <- bind_rows(
+#   offenses_2014, offenses_2015, offenses_2016, offenses_2017, offenses_2018,
+#   offenses_2019, offenses_2020, offenses_2021, offenses_2022
+# )
+# 
+# rm(codes, violent, property, clean_offense_data,
+#    offenses_2014, offenses_2015, offenses_2016, offenses_2017, offenses_2018, 
+#    offenses_2019, offenses_2020, offenses_2021, offenses_2022)
+
+```
+
+Note that because the process of extracting and reading in these files takes so long, I write out the appended all arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
+```{r}
+# Write out agency-level offense data
+# write_csv(offenses_agency, file = here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
+
+# Read agency-level offense data back in for ease of future use
+offenses_agency <- read.csv(here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
+
+```
+
+
+## 4. Aggregate agency-level offenses to the place-level
+This section aggregates the agency-level offense counts (all, violent, and property) from the agency-level to the place-level.
+
+Our data are currently long by year/agency. However, we want to know the arrest counts at the place level, not the agency level. In the `01_agency_geo_place.Rmd` program, we constructed a file that linked reporting agencies to places. We can use that file to aggregate counts from agencies to places.
+
+### 4.1 Load universe of place/agency pairs
+First load the universe of agencies linked to places. This file was created in `01_agency_geo_place.Rmd` and is long by unique agency/place pairs.
+```{r}
+bhf_place_urb <- read_csv(here::here("07_safety", "modified data", "all_agency_place.csv"))
+
+```
+
+### 4.2 Join agency-level offenses for all years onto the place agency file
+Join offenses onto the full universe of place-agencies.
+```{r}
+offenses_agency_place <- left_join(
+  x = bhf_place_urb,
+  y = offenses_agency,
+  by = c("ori", "year")
+) %>%
+  mutate(
+    # Create variables for reporting
+    reporting_all = ifelse(is.na(all), 0, 1),
+    reporting_violent = ifelse(is.na(violent), 0, 1),
+    reporting_property = ifelse(is.na(property), 0, 1)
+  )
+
+```
+
+A very small percentage of crime is reported by special agencies (agency_type == 5) 
+```{r}
+offenses_agency_place %>%
+  group_by(agency_type) %>%
+  summarize(
+    n = n(),
+    n_rpt = sum(!is.na(all)),
+    crime = sum(all, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    pct = crime / sum(crime),
+    pct_report = n_rpt / n
+  )
+  
+```
+
+### 4.3 Summarize by place
+Count number of crimes and number of reporting agencies at the place-level.
+
+Note that this section calculates the percent of agencies reporting violent crimes and property crimes separately from all crimes because the 2022 update requires separate quality measures for each rate. However, all agencies either report both types of crime or no crime, so the numbers are identical.
+```{r}
+offenses_place <- offenses_agency_place %>%
+  group_by(year, state, place) %>%
+  summarize(
+    n = n(),
+    n_reporting_all = sum(reporting_all),
+    n_reporting_violent = sum(reporting_violent),
+    n_reporting_property = sum(reporting_property),
+    n_core_city = sum(core_city),
+    n_core_city_rpt = sum(core_city==1 & reporting_all==1),
+    across(all:property, ~sum(.x, na.rm=TRUE))
+  ) %>%
+  mutate(
+    agencies_reporting_all = n_reporting_all / n,
+    agencies_reporting_violent = n_reporting_violent / n,
+    agencies_reporting_property = n_reporting_property / n,
+    core_reporting = n_core_city_rpt / n_core_city,
+    GEOID = str_c(state, place)
+  ) %>%
+  ungroup()
+
+```
+
+
+## 5. Calculate rates of reported property crimes per 100,000 people and reported violent crimes per 100,000 people
+This section calculates the violent crime rate and property crime rate. Rates are calculated as the number of crimes per 100,000 people using ACS place populations.
+
+Crime Rate = (Crime Count / Population) * 100,000
+
+### 5.1 Load demographic information
+First load the demographic information for each place and for each year 2016-2022. This file was created using 5 year ACS data in `01_agency_geo_place.Rmd`.
+```{r}
+place_demo <- read_csv(here::here("07_safety", "modified data", "all_place_demo.csv"))
+
+```
+
+### 5.2 Join place-level offense data onto place-level population data
+```{r}
+offense_place_demo <- left_join(
+  x = place_demo %>%
+    select(c(year, GEOID, total_people)),
+  y = offenses_place,
+  by = c("year", "GEOID")
+)
+  
+```
+
+
+### 5.3 Calculate crime rates
+Calculate place-level rates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people.
+```{r}
+rates_place <- offense_place_demo %>%
+  mutate(
+    rate_crime_violent = violent / total_people * 100000,
+    rate_crime_property = property / total_people * 100000
+  )
+
+```
+
+Suppress rates for places that have population less than 30 people.
+Note that no places have a population of less than 30. Future updates may consider changing the population threshold for suppression.
+```{r}
+rates_place <- rates_place %>%
+  mutate(
+    rate_crime_violent = ifelse(total_people < 30, NA, rate_crime_violent),
+    rate_crime_property = ifelse(total_people < 30, NA, rate_crime_property)
+  )
+
+```
+
+
+## 6. Construct quality indicators
+This section constructs an indicator used to assess the quality of data for each place. Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
+
+The quality indicator is constructed separately for agencies reporting violent crimes and agencies reporting property crimes, though the values are identical.
+
+Construct the quality indicator.
+```{r}
+rates_place <- rates_place %>%
+  mutate(
+    rate_crime_violent_quality = case_when(
+      agencies_reporting_violent == 1 ~ 1,
+      agencies_reporting_violent >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting_violent > 0 ~ 3,
+      agencies_reporting_violent == 0 ~ NA_real_),
+    rate_crime_property_quality = case_when(
+      agencies_reporting_property == 1 ~ 1,
+      agencies_reporting_property >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting_property > 0 ~ 3,
+      agencies_reporting_property == 0 ~ NA_real_),
+  )
+
+```
+
+Most places that had any agencies reporting had all agencies reporting. The quality values are identical for `property` crime rates and `violent` crime rates.
+```{r}
+rates_place %>%
+  group_by(year) %>%
+  ggplot(aes(x = rate_crime_property_quality)) +
+  geom_bar()
+
+```
+
+```{r}
+rates_place %>%
+  group_by(year) %>%
+  ggplot(aes(x = rate_crime_violent_quality)) +
+  geom_bar()
+
+```
+
+
+## 7. Validation
+This section performs several checks on the calculated rates of violent and property crimes.
+
+Check the distribution of rates of property crimes for 2021-2022.
+```{r}
+quantile(
+  rates_place$rate_crime_property,
+  probs = c(0, 0.2, 0.25, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+
+```
+
+There are a few outliers, but these still seem plausible.
+```{r}
+rates_place %>%
+  filter(rate_crime_property > 10000)
+
+```
+
+Check the distribution of rates of violent crimes for 2021-2022.
+```{r}
+quantile(
+  rates_place$rate_crime_violent,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+
+```
+
+There are is one large outlier in Mobile City, Alabama.
+Note [this article](https://www.al.com/news/mobile/2023/06/mobile-no-longer-listed-as-second-most-dangerous-city-in-the-us-after-fbi-corrects-data.html) indicates the data for Mobile City, Alabama was bad, so we change the data quality flag. 
+```{r}
+rates_place %>%
+  filter(rate_crime_violent > 10000)
+
+rates_place <- rates_place %>%
+  mutate(
+    rate_crime_violent_quality = if_else(
+      GEOID == "015000" , 3, rate_crime_violent_quality),
+    rate_crime_property_quality = case_when(
+      GEOID == "015000" , 3, rate_crime_property_quality),
+  )
+
+```
+
+
+Rates of reported violent crime and reported property crime are roughly correlated, though there are some outliers.
+```{r}
+rates_place %>%
+  ggplot(aes(rate_crime_property, rate_crime_violent)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Rates of reported violent crime and reported property crime are roughly correlated",
+       subtitle = "") +
+  scatter_grid()
+
+```
+
+
+## 8. Save and write out data
+This section saves and write out the final data file. This file is long by place and year (2021-2022). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
+
+Construct the final file.
+```{r}
+rates_crime_place_all <- rates_place %>%
+  mutate(
+    rate_crime_property = ifelse(is.na(rate_crime_property_quality), NA, rate_crime_property),
+    rate_crime_violent = ifelse(is.na(rate_crime_violent_quality), NA, rate_crime_violent),
+    state = ifelse(is.na(state), str_sub(GEOID, 1, 2), state),
+    place = ifelse(is.na(place), str_sub(GEOID, 3, 7), place)
+  ) %>%
+  select(
+    year,
+    state,
+    place,
+    starts_with("rate")
+  )
+  
+```
+
+Write out the final file in `.csv` format.
+```{r}
+write_csv(
+  rates_crime_place_all,
+  file = here::here("07_safety", "modified data", "rates_crime_place_all.csv")
+)
+
+```
+
+
+
