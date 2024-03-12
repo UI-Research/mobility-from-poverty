@@ -13,6 +13,13 @@
 # 6. Export
 ###################################################################
 
+# Libraries you'll need
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(purrr)
 
 ###################################################################
 
@@ -25,7 +32,8 @@ tracts15files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upwar
 print(tracts15files)
 tractpath15 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
 print(tractpath15)
-transport_tracts_2015 <- do.call("rbind",lapply(tractpath15,FUN=function(files){ read.csv(files)}))
+transport_tracts_2015 <- map_df(tractpath15, read_csv)
+
 
 # create correct FIPS columns
 transport_tracts_2015 <- transport_tracts_2015 %>%
@@ -51,7 +59,7 @@ tracts19files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upwar
 print(tracts19files)
 tractpath19 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
 print(tractpath19)
-transport_tracts_2019 <- do.call("rbind",lapply(tractpath19,FUN=function(files){ read.csv(files)}))
+transport_tracts_2019 <- map_df(tractpath19, read_csv)
 
 # create correct FIPS columns
 transport_tracts_2019 <- transport_tracts_2019 %>%
@@ -221,20 +229,60 @@ cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
 # For each tract, ID the race category
 # Calculate the percentage of total population for White & POC for each tract
 cost_data_2015 <- cost_data_2015 %>%
-  mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+  mutate(
+    perc_white = if_else(
+      complete.cases(total_population, white_population),
+      if_else(population > 0, white_population / total_population, 0),
+      NA_real_
+    ), 
+    perc_POC = if_else(
+      complete.cases(total_population, black_population, asian_population, aian_population, nhpi_population, other_population),
+      if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+      NA_real_
+    )
+  )
 
 cost_data_2019 <- cost_data_2019 %>%
-  mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+  mutate(
+    perc_white = if_else(
+      complete.cases(total_population, white_population),
+      if_else(population > 0, white_population / total_population, 0),
+      NA_real_
+    ), 
+    perc_POC = if_else(
+      complete.cases(total_population, black_population, asian_population, aian_population, nhpi_population, other_population),
+      if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+      NA_real_
+    )
+  )
 
 trips_data_2015 <- trips_data_2015 %>%
-  mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+  mutate(
+    perc_white = if_else(
+      complete.cases(total_population, white_population),
+      if_else(population > 0, white_population / total_population, 0),
+      NA_real_
+    ), 
+    perc_POC = if_else(
+      complete.cases(total_population, black_population, asian_population, aian_population, nhpi_population, other_population),
+      if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+      NA_real_
+    )
+  )
 
 trips_data_2019 <- trips_data_2019 %>%
-  mutate(perc_white = if_else(population > 0, white_population / total_population, 0), 
-         perc_POC = if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0))
+  mutate(
+    perc_white = if_else(
+      complete.cases(total_population, white_population),
+      if_else(population > 0, white_population / total_population, 0),
+      NA_real_
+    ), 
+    perc_POC = if_else(
+      complete.cases(total_population, black_population, asian_population, aian_population, nhpi_population, other_population),
+      if_else(population > 0, ((black_population + asian_population + aian_population + nhpi_population + other_population) / total_population), 0),
+      NA_real_
+    )
+  )
 
 
 # Assign race-category for each tract
@@ -316,9 +364,22 @@ trips_all_19 <- trips_data_2019 %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
+
 # Now make sure to change the trips to national percentile ranks
-trips_all_15$rank <- rank(trips_all_15$index_transit_trips)
-trips_all_19$rank <- rank(trips_all_19$index_transit_trips)
+
+# Create a new column 'rank' and initialize it with NA
+trips_all_15$rank <- NA
+# Calculate ranks for non-NA values
+non_na_rows <- !is.na(trips_all_15$index_transit_trips)
+trips_all_15$rank[non_na_rows] <- rank(trips_all_15$index_transit_trips[non_na_rows])
+
+# Create a new column 'rank' and initialize it with NA
+trips_all_19$rank <- NA
+# Calculate ranks for non-NA values
+non_na_rows <- !is.na(trips_all_19$index_transit_trips)
+trips_all_19$rank[non_na_rows] <- rank(trips_all_19$index_transit_trips[non_na_rows])
+
+
 # Calculate percentile ranks
 trips_all_15$percentile_rank <- (trips_all_15$rank - 1) / (nrow(trips_all_15) - 1) * 100
 trips_all_19$percentile_rank <- (trips_all_19$rank - 1) / (nrow(trips_all_19) - 1) * 100
@@ -334,9 +395,15 @@ trips_all_19 <- trips_all_19 %>%
 
 # 3b. Collapse accordingly -- to counties and race categories, weighting the measure by HH count per tract
 
+# checking if unnecessary missings are being created
+na_count <- sum(is.na(cost_data_2015$t_80ami))
+
 cost_by_race_15 <- cost_data_2015 %>%
   group_by(state, county, race_category) %>%
   summarize(transit_cost = weighted.mean(x = t_80ami, w = households, na.rm = TRUE))
+
+na_count <- sum(is.na(cost_by_race_15$transit_cost))
+# went from 810 missings to 196 and the values look consistent
 
 cost_by_race_19 <- cost_data_2019 %>%
   group_by(state, county, race_category) %>%
@@ -385,21 +452,38 @@ rm(county_expander)
 # For 2015 data
 trips_by_race_15 <- trips_by_race_15 %>%
   group_by(subgroup) %>%
-  mutate(rank = rank(transit_trips),
-         percentile_rank = (rank - 1) / (n() - 1) * 100,
-         percentile_rank = round(percentile_rank, 2))
+  mutate(
+    rank = if_else(!is.na(transit_trips), 
+                   rank(transit_trips),
+                   NA_real_),
+    percentile_rank = if_else(!is.na(rank),
+                              (rank - 1) / (sum(!is.na(rank)) - 1) * 100,
+                              NA_real_),
+    percentile_rank = if_else(!is.na(percentile_rank),
+                              round(percentile_rank, 2),
+                              NA_real_)
+  )
 
 trips_by_race_15 <- trips_by_race_15 %>%
          rename(index_transit_trips = percentile_rank) %>%
          select(state, county, subgroup, subgroup_type, index_transit_trips)
-         
+
+
 
 # For 2019 data
 trips_by_race_19 <- trips_by_race_19 %>%
   group_by(subgroup) %>%
-  mutate(rank = rank(transit_trips),
-         percentile_rank = (rank - 1) / (n() - 1) * 100,
-         percentile_rank = round(percentile_rank, 2))
+  mutate(
+    rank = if_else(!is.na(transit_trips), 
+                   rank(transit_trips),
+                   NA_real_),
+    percentile_rank = if_else(!is.na(rank),
+                              (rank - 1) / (sum(!is.na(rank)) - 1) * 100,
+                              NA_real_),
+    percentile_rank = if_else(!is.na(percentile_rank),
+                              round(percentile_rank, 2),
+                              NA_real_)
+  )
 
 trips_by_race_19 <- trips_by_race_19 %>%
          rename(index_transit_trips = percentile_rank) %>%
@@ -571,25 +655,25 @@ stopifnot(min(trips_by_race_19$index_transit_trips, na.rm = TRUE) >= 0)
 # the only "manipulation/calculation" we have done is the national percentile ranking
 # so these can all be Data Qual 1
 trips_by_race_15 <- trips_by_race_15 %>% 
-  mutate(index_transit_trips_quality = 1)
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
 trips_by_race_19 <- trips_by_race_19 %>% 
-  mutate(index_transit_trips_quality = 1)
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
+
 
 trips_all_15 <- trips_all_15 %>% 
-  mutate(index_transit_trips_quality = 1)
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
 trips_all_19 <- trips_all_19 %>% 
-  mutate(index_transit_trips_quality = 1)
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
 
 cost_by_race_15 <- cost_by_race_15 %>% 
-  mutate(index_transportation_cost_quality = 1)
+  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
 cost_by_race_19 <- cost_by_race_19 %>% 
-  mutate(index_transportation_cost_quality = 1)
-
+  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
 
 cost_all_15 <- cost_all_15 %>% 
-  mutate(index_transportation_cost_quality = 1)
+  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
 cost_all_19 <- cost_all_19 %>% 
-  mutate(index_transportation_cost_quality = 1)
+  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
 
 
 ###################################################################
