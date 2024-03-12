@@ -1,13 +1,13 @@
 ############################################################
 
-# SUBGROUP FILE - COUNTIES
+# SUBGROUP FILE - CITIES
 
 # Process for SUBGROUP-level:
 # 1. Import all the tract-level files and combine into one mega-file with only the relevant variables and years
 # 2. Race-Ethnicity work: 
 # 2a. Pull in that year's population by race via ACS (tract-level)
 # 2b. for all tracts that are 60%+ of one race (or mixed) -- the buckets are: neighborhoods of color, white, and mixed
-# 3. Collapse accordingly (by county)
+# 3. Collapse accordingly (by)
 # 4. QC checks
 # 5. Data Quality marker
 # 6. Export
@@ -338,29 +338,55 @@ trips_data_2019 <- trips_data_2019 %>%
 ##########################################################################
 ###################################################################
 
-# 3a. Collapse to the county level to create ALL values (to be appended later)
+# 3a. Collapse to the CITY level to create ALL values (to be appended later)
 
+# FIRST: Bring in the needed crosswalks 
+# 2015 place-tract, 2019 place-tract are both covered by our 2018 tract to place crosswalk, since tract designations are only updated on the decade (e.g., 2010, 2020)
+tract_place <- read_csv("geographic-crosswalks/data/geocorr2018_tract_to_place.csv")
+# remove the decimal from the tract variable
+tract_place <- tract_place %>%
+  mutate(tract = tract*100)
+# add in leading zeroes as needed
+tract_place <- tract_place %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)),
+         tract = sprintf("%0.6d", as.integer(as.character(tract))),
+         placefp = sprintf("%0.5d", as.numeric(placefp)),
+         county = substr(county, nchar(county) - 2, nchar(county))
+  ) %>%
+  rename(place = placefp) %>%
+  select(state, county, tract, place, afact)
+
+# merge it into each of our four data files so that we have what we need for the city-level collapse
+cost_data_2015 <- left_join(cost_data_2015, tract_place, by=c("state", "county", "tract"))
+cost_data_2019 <- left_join(cost_data_2019, tract_place, by=c("state", "county", "tract"))
+trips_data_2015 <- left_join(trips_data_2015, tract_place, by=c("state", "county", "tract"))
+trips_data_2019 <- left_join(trips_data_2019, tract_place, by=c("state", "county", "tract"))
+# 73056 obs to 124139 obs - makes sense as tracts and places don't match up perfectly, so there's multiplicity
+
+
+# NOW, collapse by place(s) for each of our four data files
+# weight the collapse by households*afact (the amount of each tract that falls into the place x the number of households represented by the estimate)
 cost_all_15 <- cost_data_2015 %>%
-  group_by(state, county) %>%
-  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households, na.rm = TRUE)) %>%
+  group_by(state, place) %>%
+  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
 cost_all_19 <- cost_data_2019 %>%
-  group_by(state, county) %>%
-  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households, na.rm = TRUE)) %>%
+  group_by(state, place) %>%
+  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
 trips_all_15 <- trips_data_2015 %>%
-  group_by(state, county) %>%
-  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE)) %>%
+  group_by(state, place) %>%
+  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
 trips_all_19 <- trips_data_2019 %>%
-  group_by(state, county) %>%
-  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE)) %>%
+  group_by(state, place) %>%
+  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
@@ -388,67 +414,67 @@ trips_all_15$index_transit_trips <- round(trips_all_15$percentile_rank, 2)
 trips_all_19$index_transit_trips <- round(trips_all_19$percentile_rank, 2)
 # keep only what we need
 trips_all_15 <- trips_all_15 %>%
-  select(state, county, index_transit_trips, subgroup_type, subgroup)
+  select(state, place, index_transit_trips, subgroup_type, subgroup)
 trips_all_19 <- trips_all_19 %>%
-  select(state, county, index_transit_trips, subgroup_type, subgroup)
+  select(state, place, index_transit_trips, subgroup_type, subgroup)
 
 
-# 3b. Collapse accordingly -- to counties and race categories, weighting the measure by HH count per tract
+# 3b. Collapse accordingly -- to places and race categories, weighting the measure by HH count per tract
 
 # checking if unnecessary missings are being created
 na_count <- sum(is.na(cost_data_2015$t_80ami))
 
 cost_by_race_15 <- cost_data_2015 %>%
-  group_by(state, county, race_category) %>%
-  summarize(transit_cost = weighted.mean(x = t_80ami, w = households, na.rm = TRUE))
+  group_by(state, place, race_category) %>%
+  summarize(transit_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE))
 
 na_count <- sum(is.na(cost_by_race_15$transit_cost))
-# went from 810 missings to 196 and the values look consistent
+# went from 831 missings to 148 and the values look consistent
 
 cost_by_race_19 <- cost_data_2019 %>%
-  group_by(state, county, race_category) %>%
-  summarize(transit_cost = weighted.mean(x = t_80ami, w = households, na.rm = TRUE))
+  group_by(state, place, race_category) %>%
+  summarize(transit_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE))
 
 trips_by_race_15 <- trips_data_2015 %>%
-  group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
+  group_by(state, place, race_category) %>%
+  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE))
 
 trips_by_race_19 <- trips_data_2019 %>%
-  group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE))
+  group_by(state, place, race_category) %>%
+  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE))
 
-# Make sure we have 3 race vars accounted for each county - create dummy df for merging purposes
-county_expander <- expand_grid(
-  count(cost_by_race_15, state, county) %>% select(-n),
+
+# Make sure we have 3 race vars accounted for each place - create dummy df for merging purposes
+place_expander <- expand_grid(
+  count(cost_by_race_15, state, place) %>% select(-n),
   race_category = c("Majority White-NH Tracts", "Majority Non-White Tracts", "Mixed Race and Ethnicity Tracts")
 )
 
 # merge all four datasets into this dummy to account for all race categories
-cost_by_race_15 <- left_join(county_expander, cost_by_race_15, by = c("state", "county", "race_category")) %>%
-  mutate(subgroup_type = "race-ethnicity") %>%
-  rename(subgroup = race_category,
-         index_transportation_cost = transit_cost)
-# 9429 obs = 3*3143 counties -> good to go
-
-cost_by_race_19 <- left_join(county_expander, cost_by_race_19, by = c("state", "county", "race_category")) %>%
+cost_by_race_15 <- left_join(place_expander, cost_by_race_15, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category,
          index_transportation_cost = transit_cost)
 
-trips_by_race_15 <- left_join(county_expander, trips_by_race_15, by = c("state", "county", "race_category")) %>%
+cost_by_race_19 <- left_join(place_expander, cost_by_race_19, by = c("state", "place", "race_category")) %>%
+  mutate(subgroup_type = "race-ethnicity") %>%
+  rename(subgroup = race_category,
+         index_transportation_cost = transit_cost)
+
+trips_by_race_15 <- left_join(place_expander, trips_by_race_15, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category)
 
-trips_by_race_19 <- left_join(county_expander, trips_by_race_19, by = c("state", "county", "race_category")) %>%
+trips_by_race_19 <- left_join(place_expander, trips_by_race_19, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category)
 
 # remove dummy df
-rm(county_expander)
+rm(place_expander)
 
 
 
-# CHANGE THE TRIPS VALUES TO NATIONAL PERCENTILE RANKS FOR EACH
+# CHANGE THE TRIPS VALUES TO NATIONAL PERCENTILE RANKS FOR EACH PLACE
 # For 2015 data
 trips_by_race_15 <- trips_by_race_15 %>%
   group_by(subgroup) %>%
@@ -465,8 +491,8 @@ trips_by_race_15 <- trips_by_race_15 %>%
   )
 
 trips_by_race_15 <- trips_by_race_15 %>%
-         rename(index_transit_trips = percentile_rank) %>%
-         select(state, county, subgroup, subgroup_type, index_transit_trips)
+  rename(index_transit_trips = percentile_rank) %>%
+  select(state, place, subgroup, subgroup_type, index_transit_trips)
 
 
 
@@ -486,9 +512,12 @@ trips_by_race_19 <- trips_by_race_19 %>%
   )
 
 trips_by_race_19 <- trips_by_race_19 %>%
-         rename(index_transit_trips = percentile_rank) %>%
-         select(state, county, subgroup, subgroup_type, index_transit_trips)
-         
+  rename(index_transit_trips = percentile_rank) %>%
+  select(state, place, subgroup, subgroup_type, index_transit_trips)
+
+
+
+
 
 
 
@@ -652,8 +681,7 @@ stopifnot(min(trips_by_race_19$index_transit_trips, na.rm = TRUE) >= 0)
 
 # 5. Data Quality marker
 # none of these values are coming from estimates with less than 30 observations
-# the only "manipulation/calculation" we have done is the national percentile ranking
-# so these can all be Data Qual 1
+# so these can all be Data Quality 1
 trips_by_race_15 <- trips_by_race_15 %>% 
   mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
 trips_by_race_19 <- trips_by_race_19 %>% 
@@ -679,6 +707,7 @@ cost_all_19 <- cost_all_19 %>%
 ###################################################################
 
 # 6. Export
+
 
 # Combine the All values with the Subgroup values by appending
 cost_race_15 <- bind_rows(cost_all_15, cost_by_race_15)
@@ -706,22 +735,36 @@ trips_race_19 <- trips_race_19 %>%
   )
 
 # Combine the two years into one overall files for both variables
-transit_cost_subgroup_county <- rbind(cost_race_15, cost_race_19)
-transit_trips_subgroup_county <- rbind(trips_race_15, trips_race_19)
+transit_cost_subgroup_city <- rbind(cost_race_15, cost_race_19)
+transit_trips_subgroup_city <- rbind(trips_race_15, trips_race_19)
 
 
 # Keep variables of interest and order them appropriately
-transit_trips_subgroup_county <- transit_trips_subgroup_county %>%
-  select(year, state, county, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality) %>%
-  arrange(year, state, county, subgroup_type, subgroup)
-transit_cost_subgroup_county <- transit_cost_subgroup_county %>%
-  select(year, state, county, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality) %>%
-  arrange(year, state, county, subgroup_type, subgroup)
+transit_trips_subgroup_city <- transit_trips_subgroup_city %>%
+  select(year, state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality) %>%
+  arrange(year, state, place, subgroup_type, subgroup)
+transit_cost_subgroup_city <- transit_cost_subgroup_city %>%
+  select(year, state, place, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality) %>%
+  arrange(year, state, place, subgroup_type, subgroup)
 
+
+# Keep only our cities of interest (486 of them from the places crosswalk)
+places <- read_csv("geographic-crosswalks/data/place-populations.csv")
+# keep the most recent year
+places <- places %>%
+  filter(year == 2019) %>%
+  select(state, place)
+
+# left join to limit to places of interest
+transit_trips_subgroup_city <- left_join(places, transit_trips_subgroup_city, by = c("state", "place"))
+# 234,544 obs to 3867 obs
+
+transit_cost_subgroup_city <- left_join(places, transit_cost_subgroup_city, by = c("state", "place"))
+# 234,544 obs to 3867 obs
 
 # Save as non-subgroup all-year files
-write_csv(transit_trips_subgroup_county, "06_neighborhoods/Transportation/final/transit_trips_all_subgroups_county.csv")
-write_csv(transit_cost_subgroup_county, "06_neighborhoods/Transportation/final/transit_cost_all_subgroups_county.csv")  
+write_csv(transit_trips_subgroup_city, "06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv")
+write_csv(transit_cost_subgroup_city, "06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv")  
 
 
 
