@@ -1,4 +1,4 @@
-calc_survey_mean_subgroup <- function(.data, .subgroup) {
+calc_survey_mean_subgroup <- function(.data, .geo_level, .subgroup) {
   
   .data %>%
     as_survey_rep(
@@ -9,7 +9,7 @@ calc_survey_mean_subgroup <- function(.data, .subgroup) {
       rscales = rep(1, 80), 
       mse = TRUE
     ) %>% 
-    group_by(year, crosswalk_period, statefip, county, {{ .subgroup }}) %>% 
+    group_by(year, crosswalk_period, statefip, {{ .geo_level }}, {{ .subgroup }}) %>% 
     summarise(
       share_employed = survey_mean(employed, vartype = "ci"),
       weighted_n = n(),

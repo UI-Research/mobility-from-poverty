@@ -22,6 +22,8 @@ Primary data derived from the IPUMS API.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -55,21 +57,15 @@ source(here::here("09_employment", "R", "calc_survey_mean_subgroup.R"))
 
 ### Person-Level Data
 
-Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three years of 1-year data (2018a, 2021a, and 2022a) for the overall calculation.
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including three sets of 1-year data (2018a, 2021a, and 2022a) for the overall calculation.
 
 ```{r}
 acs <- extract_ipums(
-  extract_name = "umf_data_18_22",
+  extract_name = "umf_data_18_22_1year",
   extract_description = "Microdata pull for Mobility Metric Predictors.
-  American Community Survey, overall, years 2018, 2019 and 2022 (1-year).",
+  American Community Survey, overall, years 2018, 2021 and 2022 (1-year).",
   survey = list("us2018a", "us2021a", "us2022a")
 )
-
-```
-
-```{r}
-acs <- acs %>%
-  filter(sample %in% c("2018 ACS", "2021 ACS", "2022 ACS"))
 
 ```
 
@@ -93,11 +89,11 @@ Read in person-level replicate weights for the 25 to 54 year old population. The
 *Warning* This is a large data pull and will take time to finish (likely between 15-20 minutes). It is highly recommended you run this program on a server with large computing power.
 ```{r}
 repwts <- ipums_repwt_employment(
-  extract_name = "employment_replicate_weights",
+  extract_name = "employment_replicate_weights_1year",
   extract_description = "Person replicate weights for Employment Opportunities 
-  Metric Predictors. American Community Survey, years 2018, 2019 and 2022 
-  (1 and 5-year).",
-  survey = list("us2018a", "us2021a", "us2022a", "us2018c", "us2021c")
+  Metric Predictors. American Community Survey, years 2018, 2021 and 2022 
+  (1-year).",
+  survey = list("us2018a", "us2021a", "us2022a")
 )  %>% 
   select(-cbserial, -cbpernum)
 ```
@@ -112,7 +108,7 @@ Remove the sample variable.
 
 ```{r}
 repwts_person <- repwts %>% 
-  select(-sample, -multyear)
+  select(-sample)
 
 ```
 
@@ -145,30 +141,18 @@ stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
 
 Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
 
-* **Age:** No missing values reported in variable description. Check the distribution to confirm there are no abnormalities: the distribution of age looks reasonable (no bunching and all values are between 25 and 54).
+* **Age:** No missing values reported in variable description. Run the following test to confirm all values are between 25 and 54.
 
 ```{r}
-acs_combined %>% 
-  ggplot(aes(x = age)) +
-  geom_density(adjust = 5, color = "blue", fill = alpha("blue", 0.3)) +
-  labs(
-    title = "Age Variable Results",
-    y = "Density"
-  )
+
+stopifnot(all(acs_combined$age %in% c(25:54)))
+          
 ```
 
-* **Vacancy:** reported as "0". 
-Note there are no vacancy results by default of the structure of census data read in.
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
 
 ```{r}
-acs_combined %>% 
-  ggplot(aes(x = vacancy)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  labs(
-    title = "Vacancy Variable Results",
-    y = "Density"
-  )
-
+stopifnot(all(acs_combined$vacancy == "0"))
 ```
 
 * **Empstat:** N/As reported as "0".
@@ -250,6 +234,11 @@ acs_clean %>%
 
 ```
 
+```{r}
+rm(acs_combined)
+
+```
+
 ## Crosswalk
 
 Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
@@ -258,6 +247,15 @@ Read in the PUMA to county crosswalk file. This file is created by the program g
 puma_county_crosswalk <- read_csv(
   here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
 )
+```
+
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+```{r}
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
 ```
 
 ## Merge Crosswalk 
@@ -298,7 +296,6 @@ anti_join(acs_clean,
 )
 ```
 
-
 Drop any observations with NA for `afact` (i.e. there is no county of interest overlapping this PUMA).
 
 Create a count of how many observations this applies to.
@@ -334,6 +331,7 @@ acs_crosswalked <- acs_crosswalked %>%
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
 ```
 
+## Prepare computational variables
 
 Create a binary employed variable for calculating the share employed. IPUMS data codes "Employed" as equal to 1.
 
@@ -344,20 +342,16 @@ acs_crosswalked <- acs_crosswalked %>%
 
 ```
 
-Check how many records, if any, have NA reported for `employment_status` after filtering (this should be zero).
+Check if `employment_status` is ever `NA`.
 
 ```{r}
-count(acs_crosswalked, is.na(employment_status))
-
+stopifnot(sum(is.na(acs_crosswalked$employment_status)) == 0)
 ```
 
 Confirm there are no vacant properties included in the data.
 
 ```{r}
-acs_crosswalked %>%
-  filter(is.na(vacancy)) %>% 
-  count(pernum)
-
+stopifnot(sum(is.na(acs_crosswalked$vacancy)) == 0)
 ```
 
 ## Create employment metric: All
@@ -413,7 +407,7 @@ Calculate the county-level metrics. We use `group_split` by statefips so that th
 
 results_all <- acs_all %>% 
   group_split(statefip) %>% 
-  map_dfr(~ calc_survey_mean(.data = .x))
+  map_dfr(~ calc_survey_mean(.data = .x, .geo_level = county))
 
 ```
 
@@ -434,16 +428,19 @@ rm(acs_all)
 ## Add Suppressed Rows to Data
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
-Include a test that we have all of the records anticipated.
+
+Expand the county_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of counties we anticipate.
 ```{r}
-results_all_expand <- acs_crosswalked %>% 
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
   mutate(geoid = paste0(statefip, county)) %>% 
-  group_by(year, geoid) %>% 
-  count() %>% 
-   expand_grid() %>%  
-   mutate(statefip = str_sub(geoid, 1, 2),
-         county = str_sub(geoid, 3, 5)) %>% 
-  left_join(results_all, by = c("year", "statefip", "county"))
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
 
 stopifnot(nrow(results_all_expand) == 3143 * 3)
 ```
@@ -475,13 +472,14 @@ metrics_employment_all %>%
 ```
 
 Calculate the coefficient of variation for each year for the `share_employed` variable.
-The higher this number the greater variability in the data. 
+The higher this number the greater variability in the data. Create a table descending by CV to see counties with the largest variability.
 ```{r}
 metrics_employment_all %>% 
   group_by(statefip, county) %>% 
   summarise(sd_employ = sd(share_employed, na.rm = TRUE),
          mean_employ = mean(share_employed, na.rm = TRUE),
          cv = sd_employ/mean_employ) %>% 
+   arrange(desc(cv)) %>% 
   reactable()
 ```
 

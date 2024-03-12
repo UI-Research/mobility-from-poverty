@@ -1,7 +1,7 @@
-finalize_metric <- function(.data) {
+finalize_metric <- function(.data, .geo_level) {
   
   .data %>%
-    arrange(year, statefip, county) %>%
+    arrange(year, statefip, {{ .geo_level }}) %>%
     mutate(
       share_employed_lb = pmax(share_employed_low, 0),
       share_employed_ub = pmin(share_employed_upp, 1)
