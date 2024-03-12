@@ -130,9 +130,9 @@ the first person sampled in the household.
 #| include: false
 
 # Manually set the microdata object equal to whatever the file you downloaded in
-# the previous chunk is called. In my case it is, "usa_00013.xml" but that will
+# the previous chunk is called. In my case it is, "usa_00014.xml" but that will
 # be different for you.
-microdata <- "usa_00012.xml"
+microdata <- "usa_00014.xml"
 
 acs1yr_raw <-
   read_ipums_micro(here(glue("01_financial-well-being/data/{microdata}"))) |>
@@ -977,11 +977,68 @@ export_metric <- function(data, file_type) {
   }
 
   if (file_type == "subgroup") {
-    data
+    if (geo_var == "county") {
+      missing_geo <- tribble(
+        ~state, ~county, ~state_name, ~county_name, ~subgroup_type, ~subgroup,
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "All", "age",
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "Over or exactly 45 years old", "age",
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "Under 45 years old", "age"
+      ) |> expand(nesting(state, county, state_name, county_name, subgroup_type, subgroup),
+        year = c(2014, 2015, 2016, 2017, 2018, 2019)
+      )
+
+      data <-
+        data |>
+        filter(county_name != "Valdez-Cordova Census Area") |>
+        full_join(missing_geo, by = c(
+          "year", "state", "county", "state_name", "county_name",
+          "subgroup"
+        )) |>
+        mutate(subgroup_type = "age", .before = "subgroup") |>
+        bind_rows(ratio_house_value_households_county |>
+          mutate(
+            subgroup_type = "age",
+            subgroup = "All"
+          )) |>
+        arrange(year, state, county, subgroup_type, subgroup) |>
+        relocate("subgroup_type", .before = subgroup)
+    } else if (geo_var == "place") {
+      missing_geo <- tribble(
+        ~state, ~place, ~state_name, ~place_name, ~subgroup_type, ~subgroup,
+        "13", "72122", "Georgia", "South Fulton city", "All", "age",
+        "13", "72122", "Georgia", "South Fulton city", "Over or exactly 45 years old", "age",
+        "13", "72122", "Georgia", "South Fulton city", "Under 45 years old", "age"
+      ) |>
+        expand(nesting(state, place, state_name, place_name, subgroup_type, subgroup),
+          year = c(2016, 2017, 2018, 2019)
+        )
+
+      data <-
+        data |>
+        # Filter out South Fulton city, which is NA for all years for this metric
+        # and then add the table with complete year-state-county-subgroup
+        # combinations
+        filter(place_name != "South Fulton city") |>
+        full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup")) |>
+        mutate(subgroup_type = "age", .before = "subgroup") |>
+        bind_rows(ratio_house_value_households_place |>
+          mutate(
+            subgroup_type = "age",
+            subgroup = "All"
+          )) |>
+        arrange(year, state, place, subgroup_type, subgroup) |>
+        relocate("subgroup_type", .before = subgroup) |>
+        filter(year >= 2016)
+    }
+
+    data <-
+      data |>
+      group_by(year, state, {{ geo_var }}) %>%
+      fill(state_name, str_glue(geo_var, "_name"), .direction = "downup") %>%
+      ungroup()
   }
 
   output_path <- here(glue("01_financial-well-being/final/households_house_value_race_ethnicity_{file_type}_{geography}.csv"))
-
 
   data |>
     relocate(c(state_name, rlang::sym(paste0(geo_var, "_name"))), .after = {{ geo_var }}) |>
@@ -991,30 +1048,12 @@ export_metric <- function(data, file_type) {
 
 export_metric(ratio_house_value_households_county, file_type = "recent")
 export_metric(ratio_house_value_households_county, file_type = "all")
-
-ratio_house_value_households_county_subgroup |>
-  mutate(subgroup_type = "age", .before = "subgroup") |>
-  bind_rows(ratio_house_value_households_county |>
-    mutate(
-      subgroup_type = "age",
-      subgroup = "All"
-    )) |>
-  arrange(year, state, county, subgroup_type, subgroup) |>
-  export_metric(file_type = "subgroup")
+export_metric(ratio_house_value_households_county_subgroup, file_type = "subgroup")
 
 
 export_metric(ratio_house_value_households_place, file_type = "recent")
 export_metric(ratio_house_value_households_place, file_type = "all")
-
-ratio_house_value_households_place_subgroup |>
-  mutate(subgroup_type = "age", .before = "subgroup") |>
-  bind_rows(ratio_house_value_households_place |>
-    mutate(
-      subgroup_type = "age",
-      subgroup = "All"
-    )) |>
-  arrange(year, state, place, subgroup_type, subgroup) |>
-  export_metric(file_type = "subgroup")
+export_metric(ratio_house_value_households_place_subgroup, file_type = "subgroup")
 ```
 
 Check that final files have the expected number of observations per year
@@ -1129,4 +1168,12 @@ assertthat::assert_that(
     distinct(county) |>
     nrow() == 9
 )
+```
+
+```{r}
+place_all <- read_csv(here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_all_city.csv"))
+place_subgroup <- read_csv(here::here(
+  "01_financial-well-being", "final",
+  "households_house_value_race_ethnicity_subgroup_city.csv"
+))
 ```
