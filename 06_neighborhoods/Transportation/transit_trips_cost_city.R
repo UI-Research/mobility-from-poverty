@@ -16,6 +16,14 @@
 # Raw data pulled from https://htaindex.cnt.org/download/
 # the Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT)
 
+# Libraries you'll need
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(purrr)
+
 ###################################################################
 ###################################################################
 
@@ -29,7 +37,8 @@ tracts15files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upwar
 print(tracts15files)
 tractpath15 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
 print(tractpath15)
-transport_tracts_2015 <- do.call("rbind",lapply(tractpath15,FUN=function(files){ read.csv(files)}))
+transport_tracts_2015 <- map_df(tractpath15, read_csv)
+
 
 # create correct FIPS columns
 transport_tracts_2015 <- transport_tracts_2015 %>%
@@ -55,7 +64,7 @@ tracts19files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upwar
 print(tracts19files)
 tractpath19 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
 print(tractpath19)
-transport_tracts_2019 <- do.call("rbind",lapply(tractpath19,FUN=function(files){ read.csv(files)}))
+transport_tracts_2019 <- map_df(tractpath19, read_csv)
 
 # create correct FIPS columns
 transport_tracts_2019 <- transport_tracts_2019 %>%
@@ -103,7 +112,7 @@ places <- places %>%
 
 
 # TRANSPORTATION COST 2015
-transit_cost_city_2015 <- left_join(transit_cost_tracts_2015, tract_place, by=c("state", "tract"))
+transit_cost_city_2015 <- left_join(transit_cost_tracts_2015, tract_place, by=c("state", "county", "tract"))
 # collapse to places and also create data quality marker
 # data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) 
 # have most of their area falling in the place (e.g., >50% of the tract's area is in the place)
@@ -119,7 +128,7 @@ transit_cost_city_2015 <- transit_cost_city_2015 %>%
 
 # left join with places file to get rid of irrelevant places data
 transit_cost_city_2015 <- left_join(places, transit_cost_city_2015, by=c("state","place"))
-# 28313 obs to 486 obs
+# 29317 obs to 486 obs
 
 # keep only the variables we will need & replace NA qual vars where there is NA metric value
 transit_cost_city_2015 <- transit_cost_city_2015 %>% 
@@ -130,7 +139,7 @@ transit_cost_city_2015 <- transit_cost_city_2015 %>%
 
 
 # TRANSPORTATION COST 2019
-transit_cost_city_2019 <- left_join(transit_cost_tracts_2019, tract_place, by=c("state", "tract"))
+transit_cost_city_2019 <- left_join(transit_cost_tracts_2019, tract_place, by=c("state", "county","tract"))
 # collapse to places and also create data quality marker
 transit_cost_city_2019 <- transit_cost_city_2019 %>% 
   dplyr::group_by(state, place) %>% 
@@ -142,7 +151,7 @@ transit_cost_city_2019 <- transit_cost_city_2019 %>%
 
 # left join with places file to get rid of irrelevant places data
 transit_cost_city_2019 <- left_join(places, transit_cost_city_2019, by=c("state","place"))
-# 28313 obs to 486 obs
+# 29317 obs to 486 obs
 # keep only the variables we will need & replace NA qual vars where there is NA metric value
 transit_cost_city_2019 <- transit_cost_city_2019 %>% 
   mutate(year=2019)%>%
@@ -152,7 +161,7 @@ transit_cost_city_2019 <- transit_cost_city_2019 %>%
 
 
 # TRANSIT TRIPS 2015
-transit_trips_city_2015 <- left_join(transit_trips_tracts_2015, tract_place, by=c("state", "tract"))
+transit_trips_city_2015 <- left_join(transit_trips_tracts_2015, tract_place, by=c("state", "county","tract"))
 # collapse to places and also create data quality marker
 # data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) 
 # have most of their area falling in the place (e.g., >50% of the tract's area is in the place)
@@ -176,7 +185,7 @@ transit_trips_city_2015 <- transit_trips_city_2015 %>%
 
 # left join with places file to get rid of irrelevant places data
 transit_trips_city_2015 <- left_join(places, transit_trips_city_2015, by=c("state","place"))
-# 28313 obs to 486 obs
+# 29317 obs to 486 obs
 
 # keep only the variables we will need & replace NA qual vars where there is NA metric value
 transit_trips_city_2015 <- transit_trips_city_2015 %>% 
@@ -187,7 +196,7 @@ transit_trips_city_2015 <- transit_trips_city_2015 %>%
 
 
 # TRANSIT TRIPS 2019
-transit_trips_city_2019 <- left_join(transit_trips_tracts_2019, tract_place, by=c("state", "tract"))
+transit_trips_city_2019 <- left_join(transit_trips_tracts_2019, tract_place, by=c("state", "county","tract"))
 # collapse to places and also create data quality marker
 # data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) 
 # have most of their area falling in the place (e.g., >50% of the tract's area is in the place)
@@ -211,7 +220,7 @@ transit_trips_city_2019 <- transit_trips_city_2019 %>%
 
 # left join with places file to get rid of irrelevant places data
 transit_trips_city_2019 <- left_join(places, transit_trips_city_2019, by=c("state","place"))
-# 28313 obs to 486 obs
+# 29317 obs to 486 obs
 
 # keep only the variables we will need & replace NA qual vars where there is NA metric value
 transit_trips_city_2019 <- transit_trips_city_2019 %>% 
@@ -255,7 +264,7 @@ if (length(missing_indices15) > 0) {
 } else {
   cat("No missing values for transportation_cost_county_2015\n")
 }
-# 120 missing values
+# 77 missing values
 
 if (length(missing_indices19) > 0) {
   cat("Observations with missing values for index_transportation_cost:\n")
@@ -263,7 +272,7 @@ if (length(missing_indices19) > 0) {
 } else {
   cat("No missing values for transportation_cost_county_2019\n")
 }
-# 120 missing values
+# 75 missing values
 
 
 ###################################################################
