@@ -1,8 +1,17 @@
 ---
 title: "Air Quality Index Program"
 author: "JP Walsh"
-format: html
-editor: visual
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
 ---
 
 *Program for the creation of the Air Quality index metric under the Environemntal quality predictor*
@@ -115,7 +124,7 @@ Check the distribution of the cancer metric by year.There are some significant o
 cancer_data %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_cancer_risk_per_million, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion") +
   ylab("Density")
@@ -124,7 +133,7 @@ cancer_data %>%
   filter(total_cancer_risk_per_million < 100) %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_cancer_risk_per_million, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion (no outliers)") +
   ylab("Density")
@@ -146,7 +155,7 @@ Check the distribution of the nuero metric by year.There are some significant ou
 nuero_data %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_neurological_hazard_quotient, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion") +
   ylab("Density")
@@ -155,7 +164,7 @@ nuero_data %>%
   filter(total_neurological_hazard_quotient < 0.15) %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_neurological_hazard_quotient, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion (no outliers)") +
   ylab("Density")
@@ -177,7 +186,7 @@ Check the distribution of the nuero metric by year. Graph 1 again shows there ar
 resp_data %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_respiratory_hazard_quotient, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by resp risk hazard, distriubtion") +
   ylab("Density")
@@ -186,7 +195,7 @@ resp_data %>%
   filter(total_respiratory_hazard_quotient < 1) %>% 
   mutate(year = factor(year)) %>% 
   ggplot(aes(x = total_respiratory_hazard_quotient, color = year, fill = year)) +
-  geom_density(alpha = 0.15) +
+  geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by resp risk hazard, distriubtion (no outliers)") +
   ylab("Density")
@@ -495,6 +504,7 @@ haz_index_crosswalk <- haz_index_crosswalk %>%
 ```
 
 Read in crosswalk file with all counties.
+
 ```{r}
 county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")) %>% 
   select(state = statefip, county) %>% 
@@ -545,6 +555,7 @@ haz_index_county_all <- haz_index_county_all %>%
 ```
 
 Merge on to the county_crosswalk file so all counties are present.
+
 ```{r}
 haz_index_county_all <- left_join(
   county_crosswalk,
@@ -556,7 +567,6 @@ haz_index_county_all <- left_join(
 stopifnot(nrow(haz_index_county_all) == 3143 * 3)
 ```
 
-
 ### Subgroups
 
 Create an NA indicator counting population of tracts where either index air quality or poverty_type are missing.
@@ -565,6 +575,7 @@ Create an NA indicator counting population of tracts where either index air qual
 haz_index_pov <- haz_index_acs %>% 
   mutate(na_pop = if_else(is.na(index_air_hazard) | is.na(poverty_type), total_pop, 0))
 ```
+
 Calculate county/poverty type index using tract population as the weight. *Note* this is a change from the original version. The previous program weighted each tract by the count of individuals in poverty for high_poverty tracts and the county of individuals not in poverty in not_high_poverty tracts. This version considers the total population of the tracts and weights based on that.
 
 ```{r}
@@ -720,6 +731,7 @@ crosswalk_tract_place <- read_csv(here::here("geographic-crosswalks", "data", "g
   pivot_longer(!c(place, tract, afact), values_to = "year", names_to = "value") %>% 
   select(-value)
 ```
+
 Pad the place variable with a leading zero.
 
 ```{r}
@@ -751,6 +763,7 @@ haz_index_acs <- tract_place_hazard %>%
   left_join(race_pov, by=c("tract" = "geoid", "year")) %>% 
   mutate(na_pop= if_else(is.na(index_air_hazard), total_pop, 0))
 ```
+
 Read in file with just places used in UMF data.
 
 ```{r}
@@ -784,7 +797,7 @@ all_enviro_place <- haz_index_acs %>%
   group_by(year, place_id, state, place) %>%
   summarise(index_air_hazard = weighted.mean(index_air_hazard, tract_pop, na.rm = TRUE),
         na_pop = sum(na_pop * afact),
-        place_pop = sum(tract_pop * afact)) %>% 
+        place_pop = sum(tract_pop)) %>% 
         ungroup()
 ```
 
@@ -797,7 +810,6 @@ all_enviro_place <- all_enviro_place %>%
       subgroup_type = "all") %>%
 select(-c(na_pop, place_pop))
 ```
-
 
 Merge on to the place file so all counties are present.
 
@@ -848,6 +860,7 @@ haz_index_sub_pov_expand <- left_join(
   select(year, place_id, poverty_type) %>% 
   filter(!is.na(poverty_type))
 ```
+
 Join poverty data set.
 
 ```{r}
