@@ -51,6 +51,12 @@ extract_ipums <- function(extract_name, extract_description, survey){
           "HISPAN",
           "EDUCD",
           "GRADEATT",
+          "SEX",
+          "DIFFCARE",
+          "DIFFSENS",
+          "DIFFMOB",
+          "DIFFPHYS",
+          "DIFFREM",
           "CBPERNUM"
         )
       )
@@ -91,7 +97,8 @@ extract_ipums <- function(extract_name, extract_description, survey){
       ddi,
       data_file = here(folder_path, extract_gz_filename)
     )
-  
+
+  #DDI is a codebook that is used by IPUMSR to format the micro data downloaded
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
@@ -101,6 +108,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
   acs_imported <- acs_imported %>%
     mutate(  
       across(c(sample, gq, race, hispan), ~as_factor(.x)),
+      across(c(sample, gq, race, hispan, sex, diffcare, diffsens, diffmob, diffphys, diffrem), ~as_factor(.x)),
       across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
       statefip = sprintf("%0.2d", as.numeric(statefip)),
       puma = sprintf("%0.5d", as.numeric(puma)),
