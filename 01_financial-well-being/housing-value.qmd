@@ -990,18 +990,21 @@ export_metric <- function(data, file_type) {
       data <-
         data |>
         filter(county_name != "Valdez-Cordova Census Area") |>
-        full_join(missing_geo, by = c(
-          "year", "state", "county", "state_name", "county_name",
-          "subgroup"
-        )) |>
         mutate(subgroup_type = "age", .before = "subgroup") |>
         bind_rows(ratio_house_value_households_county |>
           mutate(
             subgroup_type = "age",
             subgroup = "All"
           )) |>
+        full_join(missing_geo, by = c(
+          "year", "state", "county", "state_name", "county_name",
+          "subgroup", "subgroup_type"
+        )) |>
         arrange(year, state, county, subgroup_type, subgroup) |>
-        relocate("subgroup_type", .before = subgroup)
+        relocate("subgroup_type", .before = subgroup) |>
+        group_by(year, state, county) |>
+        fill(c(state_name, county_name), .direction = "downup") |>
+        ungroup()
     } else if (geo_var == "place") {
       missing_geo <- tribble(
         ~state, ~place, ~state_name, ~place_name, ~subgroup_type, ~subgroup,
@@ -1019,23 +1022,20 @@ export_metric <- function(data, file_type) {
         # and then add the table with complete year-state-county-subgroup
         # combinations
         filter(place_name != "South Fulton city") |>
-        full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup")) |>
         mutate(subgroup_type = "age", .before = "subgroup") |>
         bind_rows(ratio_house_value_households_place |>
           mutate(
             subgroup_type = "age",
             subgroup = "All"
           )) |>
+        full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup", "subgroup_type")) |>
         arrange(year, state, place, subgroup_type, subgroup) |>
         relocate("subgroup_type", .before = subgroup) |>
-        filter(year >= 2016)
+        filter(year >= 2016) |>
+        group_by(year, state, place) |>
+        fill(c(state_name, place_name), .direction = "downup") |>
+        ungroup()
     }
-
-    data <-
-      data |>
-      group_by(year, state, {{ geo_var }}) %>%
-      fill(state_name, str_glue(geo_var, "_name"), .direction = "downup") %>%
-      ungroup()
   }
 
   output_path <- here(glue("01_financial-well-being/final/households_house_value_race_ethnicity_{file_type}_{geography}.csv"))
@@ -1176,4 +1176,15 @@ place_subgroup <- read_csv(here::here(
   "01_financial-well-being", "final",
   "households_house_value_race_ethnicity_subgroup_city.csv"
 ))
+```
+
+**Check**: How many observations for Valdez-Cordova and South Fulton city?
+
+```{r}
+county_subgroup |>
+  filter(county_name == "Valdez-Cordova Census Area") |>
+  count(year)
+place_subgroup |>
+  filter(place_name == "South Fulton city") |>
+  count(year)
 ```
