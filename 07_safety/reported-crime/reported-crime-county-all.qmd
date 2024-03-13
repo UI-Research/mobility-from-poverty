@@ -416,14 +416,35 @@ Calculate rates of reported violent crimes per 100,000 people and reported prope
 ```{r}
 rates_county <- offense_county_demo |>
   mutate(
-    rate_crime_violent = violent / total_people * 100000,
-    rate_crime_property = property / total_people * 100000
+    rate_crime_violent = if_else(
+      agencies_reporting_violent !=0, violent / total_people * 100000, NA
+    ),
+    rate_crime_property = if_else(
+      agencies_reporting_property !=0, property / total_people * 100000, NA
+    )
   )
 
 ```
 
+Check numbers of zeros and missings for both crime types in each year. More counties had rates of missing in 2021 than 2022 for both crime types. This makes sense, because more agencies reported data to NIBRS in 2022 than in 2021.
+```{r}
+rates_county |>
+  filter(rate_crime_violent==0 | is.na(rate_crime_violent)) |>
+  group_by(year) |>
+  count(rate_crime_violent)
+
+```
+
+```{r}
+rates_county |>
+  filter(rate_crime_property==0 | is.na(rate_crime_property)) |>
+  group_by(year) |>
+  count(rate_crime_property)
+
+```
+
 Suppress rates for counties that have population less than 30 people.
-  Note that no counties have a population of less than 30, but some counties have small populations with high crime rates (e.g., 21,000 crimes per 100,000 people with only 83 people in the county). Future updates should consider changing the population threshold for suppression.
+  Note that no counties have a population of less than 30, but some counties have small populations with high crime rates (e.g., 21,000 crimes per 100,000 people with only 83 people in the county). Future updates should consider changing the population threshold for suppression, but we address the outlier described in this example next.
 ```{r}
 rates_county <- rates_county |>
   mutate(
@@ -432,16 +453,31 @@ rates_county <- rates_county |>
   )
 ```
 
-Loving County, TX has a population between 30 and 100 in both years with really high property crime rates and relatively high violent crime rates.
+Loving County, TX has a population less than 100 100 in both years with really high property crime rates and relatively high violent crime rates in both years. We change the rates for this county to missing in both years.
 ```{r}
 rates_county |>
   filter(total_people < 100) |>
-  count(GEOID, total_people, rate_crime_property)
+  count(year, GEOID, total_people, rate_crime_property)
+
 ```
+
 ```{r}
 rates_county |>
   filter(total_people < 100) |>
-  count(GEOID, total_people, rate_crime_violent)
+  count(year, GEOID, total_people, rate_crime_violent)
+
+```
+
+```{r}
+rates_county <- rates_county |>
+  mutate(
+    rate_crime_violent = if_else(
+      GEOID == "48301", NA, rate_crime_violent
+    ),
+    rate_crime_property = if_else(
+      GEOID == "48301", NA, rate_crime_property
+    )
+  )
 
 ```
 
@@ -468,6 +504,35 @@ rates_county <- rates_county |>
   )
 
 ```
+We change the quality indicators for Loving County, TX to missing as well due to data quality concerns from the large rates.
+```{r}
+rates_county |>
+  filter(GEOID == "48103") |>
+  count(rate_crime_violent_quality, rate_crime_property_quality)
+```
+
+```{r}
+rates_county <- rates_county |>
+  mutate(
+    rate_crime_violent_quality = if_else(
+      GEOID == "48301", NA, rate_crime_violent_quality
+    ),
+    rate_crime_property_quality = if_else(
+      GEOID == "48301", NA, rate_crime_property_quality
+    )
+  )
+
+```
+
+The number of missing values in the quality variables is the same as for the rate variables.
+```{r}
+rates_county |>
+  filter(is.na(rate_crime_violent_quality) | is.na(rate_crime_property_quality)) |>
+  group_by(year) |>
+  count(rate_crime_violent_quality, rate_crime_property_quality)
+
+```
+
 
 The plurality of counties had less than 80 percent of agencies reporting. The reporting rates are the same for both property and violent crimes.
 ```{r}
@@ -499,12 +564,6 @@ quantile(
 )
 ```
 
-There is one large outlier in Loving County, TX, which has a very small population.
-```{r}
-rates_county |>
-  filter(rate_crime_property > 20000)
-```
-
 Check the distribution of rates of violent crimes for 2021-2022.
 ```{r}
 quantile(
@@ -514,10 +573,11 @@ quantile(
 )
 ```
 
-There are two large outliers in Buffalo County, SD, and Todd County, SD.
+There are two large outliers in Buffalo County, SD, and Todd County, SD. Their population sizes are decent so we do not change them to missing, but they have quality indicators of `3` to indicate poor quality.
 ```{r}
 rates_county |>
   filter(rate_crime_violent > 10000)
+
 ```
 
 
@@ -529,6 +589,117 @@ rates_county |>
   labs(title = "Rates of reported violent crime and reported property crime are roughly correlated",
        subtitle = "") +
   scatter_grid()
+
+```
+
+There are no major discrepancies in the rates of violent crime across years.
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_violent)) |>
+  ggplot(aes(rate_crime_violent)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ year, scales = "free_x") +
+  labs(title = "")
+
+```
+
+There are no major discrepancies in the rates of property crime across years.
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_property)) |>
+  ggplot(aes(rate_crime_property)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ year, scales = "free_x") +
+  labs(title = "")
+
+```
+
+Check where violent crime rates are concentrated
+```{r}
+rates_county |>
+  filter(
+    !is.na(total_people),
+    !is.na(rate_crime_violent)
+  ) |>
+  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
+  # Standardize population by denominating in 1000s so the axis labels are more legible
+  mutate(total_people = total_people/1000) |>
+  ggplot(aes(total_people, rate_crime_violent)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size + year, scales = "free_x") +
+  labs(title = "The Highest Violent Crime Rates are Concentrated in Smaller Counties",
+       x = "Population (thousands)",
+       y = "Violent crime rate") +
+  scatter_grid()
+  
+```
+
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_violent),
+         !is.na(violent)) |>
+  ggplot(aes(violent, rate_crime_violent)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Violent Crime Rates are Concentrated in Counties with Few Violent Crimes",
+       x = "Number of Violent Crimes",
+       y = "Violent Crime Rate") +  
+  scatter_grid()
+
+```
+
+
+Check where property crime rates are concentrated
+```{r}
+rates_county |>
+  filter(!is.na(total_people),
+         !is.na(rate_crime_property)) |>
+  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
+  # Standardize population by denominating in 1000s so the axis labels are more legible
+  mutate(total_people = total_people / 1000) |>
+  ggplot(aes(total_people, rate_crime_property)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size + year, scales = "free_x") +
+  labs(title = "No Real Relationship Between Property Crime Rates and County Population",
+       x = "Population (thousands)",
+       y = "Property crime rate") +
+  scatter_grid()
+
+```
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_property),
+         !is.na(property)) |>
+  ggplot(aes(property, rate_crime_property)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Property Crime Rates are Concentrated in Counties with Few Property Crimes",
+       x = "Number of Property Crimes",
+       y = "Property Crime Rate") +  
+  scatter_grid()
+
+```
+
+
+
+The quality indicators have similar distributions of property crime rates, with poor quality observations corresponding to more counties with small rates 
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_property)) |>
+  ggplot(aes(rate_crime_property)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ rate_crime_property_quality, scales = "free_x") +
+  labs(title = "")
+
+```
+
+
+The quality indicators have similar distributions of violent crime rates, with poor quality observations corresponding to more counties with small rates 
+```{r}
+rates_county |>
+  filter(!is.na(rate_crime_violent)) |>
+  ggplot(aes(rate_crime_violent)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ rate_crime_violent_quality, scales = "free_x") +
+  labs(title = "")
 
 ```
 
@@ -549,11 +720,9 @@ rates_crime_county_all <- rates_county |>
     year,
     state,
     county,
-    total_people,
     starts_with("rate")
-    # agencies_reporting_all,
-    # core_reporting
-  )
+  ) |>
+  arrange(year, state, county)
   
 ```
 

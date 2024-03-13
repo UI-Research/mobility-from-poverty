@@ -417,6 +417,23 @@ rates_place <- offense_place_demo %>%
 
 ```
 
+Check numbers of zeros and missings for both crime types in each year. More counties had rates of missing in 2021 than 2022 for both crime types. This makes sense, because more agencies reported data to NIBRS in 2022 than in 2021.
+```{r}
+rates_place |>
+  filter(rate_crime_violent==0 | is.na(rate_crime_violent)) |>
+  group_by(year) |>
+  count(rate_crime_violent)
+
+```
+
+```{r}
+rates_place |>
+  filter(rate_crime_property==0 | is.na(rate_crime_property)) |>
+  group_by(year) |>
+  count(rate_crime_property)
+
+```
+
 Suppress rates for places that have population less than 30 people.
 Note that no places have a population of less than 30. Future updates may consider changing the population threshold for suppression.
 ```{r}
@@ -483,10 +500,11 @@ quantile(
 
 ```
 
-There are a few outliers, but these still seem plausible.
+There are a few outliers, but these still seem plausible. Mobile City, Alabama (0150000), is a huge outlier in 2021. [This article](https://www.fox10tv.com/2023/02/02/discrepancy-discovered-between-mobile-fbi-crime-stats-city/) indicates some offenses may have been counted more than once in the NIBRS data for this city. It already has a weak data quality, but we set it to missing after checking the violent crime rates.
 ```{r}
 rates_place %>%
-  filter(rate_crime_property > 10000)
+  filter(rate_crime_property > 10000) %>%
+  select(year, GEOID, total_people, rate_crime_property, rate_crime_property_quality)
 
 ```
 
@@ -500,19 +518,29 @@ quantile(
 
 ```
 
-There are is one large outlier in Mobile City, Alabama.
-Note [this article](https://www.al.com/news/mobile/2023/06/mobile-no-longer-listed-as-second-most-dangerous-city-in-the-us-after-fbi-corrects-data.html) indicates the data for Mobile City, Alabama was bad. The data quality flag for both crime types for this place was already the lowest, but future updates may want to consider changing the value of the rates to missing. 
+Mobile City, Alabama (0150000), is a huge outlier in 2021 for violent crime rates as well. We set the rates and quality indicators to missing for this place in 2021. 
 ```{r}
 rates_place %>%
-  filter(rate_crime_violent > 10000)
+  filter(rate_crime_violent > 10000) %>%
+  select(year, GEOID, total_people, rate_crime_violent, rate_crime_violent_quality)
 
+```
+
+
+```{r}
 rates_place <- rates_place %>%
   mutate(
+    rate_crime_violent = if_else(
+      GEOID == "0150000" & year == 2021 , NA, rate_crime_violent
+    ),
+    rate_crime_property = if_else(
+      GEOID == "0150000" & year == 2021, NA, rate_crime_property
+    ),
     rate_crime_violent_quality = if_else(
-      GEOID == "015000" , 3, rate_crime_violent_quality
+      GEOID == "0150000" & year == 2021, NA, rate_crime_violent_quality
     ),
     rate_crime_property_quality = if_else(
-      GEOID == "015000" , 3, rate_crime_property_quality
+      GEOID == "0150000" & year == 2021, NA, rate_crime_property_quality
     ),
   )
 
@@ -529,6 +557,118 @@ rates_place %>%
   scatter_grid()
 
 ```
+
+There are no major discrepancies in the rates of violent crime across years.
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_violent)) |>
+  ggplot(aes(rate_crime_violent)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ year, scales = "free_x") +
+  labs(title = "")
+
+```
+
+There are no major discrepancies in the rates of property crime across years.
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_property)) |>
+  ggplot(aes(rate_crime_property)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ year, scales = "free_x") +
+  labs(title = "")
+
+```
+
+Check where violent crime rates are concentrated
+```{r}
+rates_place |>
+  filter(
+    !is.na(total_people),
+    !is.na(rate_crime_violent)
+  ) |>
+  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
+  # Standardize population by denominating in 1000s so the axis labels are more legible
+  mutate(total_people = total_people/1000) |>
+  ggplot(aes(total_people, rate_crime_violent)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size + year, scales = "free_x") +
+  labs(title = "The Highest Violent Crime Rates are Concentrated in Larger Places",
+       x = "Population (thousands)",
+       y = "Violent crime rate") +
+  scatter_grid()
+  
+```
+
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_violent),
+         !is.na(violent)) |>
+  ggplot(aes(violent, rate_crime_violent)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Violent Crime Rates Exist in Places with Many Violent Crimes",
+       x = "Number of Violent Crimes",
+       y = "Violent Crime Rate") +  
+  scatter_grid()
+
+```
+
+
+Check where property crime rates are concentrated
+```{r}
+rates_place |>
+  filter(!is.na(total_people),
+         !is.na(rate_crime_property)) |>
+  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
+  # Standardize population by denominating in 1000s so the axis labels are more legible
+  mutate(total_people = total_people / 1000) |>
+  ggplot(aes(total_people, rate_crime_property)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size + year, scales = "free_x") +
+  labs(title = "No Real Relationship Between Property Crime Rates and Place Population",
+       x = "Population (thousands)",
+       y = "Property crime rate") +
+  scatter_grid()
+
+```
+
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_property),
+         !is.na(property)) |>
+  ggplot(aes(property, rate_crime_property)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "High Property Crime Rates Exist in Places with Different Numbers of Crimes",
+       x = "Number of Property Crimes",
+       y = "Property Crime Rate") +  
+  scatter_grid()
+
+```
+
+
+The quality indicators have similar distributions of property crime rates, with poor quality observations corresponding to more places with small rates 
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_property)) |>
+  ggplot(aes(rate_crime_property)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ rate_crime_property_quality, scales = "free_x") +
+  labs(title = "")
+
+```
+
+
+The quality indicators have similar distributions of violent crime rates, with poor quality observations corresponding to more places with small rates 
+```{r}
+rates_place |>
+  filter(!is.na(rate_crime_violent)) |>
+  ggplot(aes(rate_crime_violent)) +
+  geom_histogram(binwidth = 20) +
+  facet_wrap(~ rate_crime_violent_quality, scales = "free_x") +
+  labs(title = "")
+
+```
+
 
 
 ## 8. Save and write out data
@@ -548,7 +688,8 @@ rates_crime_place_all <- rates_place %>%
     state,
     place,
     starts_with("rate")
-  )
+  ) %>%
+  arrange(year, state, place)
   
 ```
 
