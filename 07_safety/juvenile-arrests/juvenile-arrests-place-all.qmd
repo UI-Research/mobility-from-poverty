@@ -51,6 +51,10 @@ The rest of this file is organized as follows:
 8. Validation
 9. Save and write out data
 
+All data used in this file are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf). Data stored on Box are only available to Urban Institute researchers.
+
+This file assumes that you have cloned the GitHub repository for this project to your local computer. You can find the project repository [here](https://github.com/UI-Research/mobility-from-poverty) and learn how to clone a repository [here](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
 
 ## 1. Background
 This section provides background for the data used to create this metric.
@@ -472,7 +476,7 @@ arrests_agency <- arrests %>%
     # Age subgroups
     age_10_14 = sum(age >= 10 & age <= 14),
     age_15_17 = sum(age >= 15 & age <= 17),
-    # Aggregating group as well
+    # Creating indicators for whether the agency has any group A arrests or any group B arrests
     group_a = max(group=="A"),
     group_b = max(group=="B")
   ) %>%
@@ -498,12 +502,11 @@ bhf_place_urb <- read_csv(here::here("07_safety", "modified data", "all_agency_p
 
 ### 4.2 Join agency-level arrests for all years onto the place-agency file
 Join arrests onto the full universe of place-agencies.
-    Note that the place-agency file does not contain `year`.
 ```{r}
 arrests_agency_place <- left_join(
   x = bhf_place_urb,
   y = arrests_agency,
-  by = c("ori")
+  by = c("ori", "year")
 )
   
 ```
@@ -513,7 +516,7 @@ Now that we have joined our agency-level juvenile arrests data onto the full uni
 ```{r}
 # Count number of arrests from reporting agencies in each place
 arrests_place <- arrests_agency_place %>%
-  group_by(state, place) %>%
+  group_by(year, state, place) %>%
   summarize(across(arr_total:race_asian_other, ~sum(.x, na.rm=TRUE))) %>%
   mutate(GEOID = str_c(state, place)) %>%
   ungroup()
@@ -556,15 +559,15 @@ arrests_all_agency <- arrests_all %>%
 
 ```
 
-Join total number of arrests for each agency onto the place/agency file. Note that these files are not joined by year, as there is not year in `bhf_place_urb`. 
+Join total number of arrests for each agency onto the place/agency file.
 ```{r}
 arrests_all_agency_place <- left_join(
    x = bhf_place_urb,
    y = arrests_all_agency,
-   by = c("ori")
+   by = c("ori", "year")
  ) %>%
   mutate(
-    # Indicate reporting by place-agency
+    # Create variables for reporting by place-agency. If the count of total arrests (any, not just juvenile) is missing, we indicate that the agency did not report in that year 
     reporting = ifelse(is.na(arr_total_any), 0, 1)
     )
 
@@ -598,7 +601,7 @@ Join total arrests back to juvenile arrest file
 arrests_place <- left_join(
   x = arrests_place,
   y = arrests_all_place,
-  by = c("GEOID", "state", "place")
+  by = c("year", "GEOID", "state", "place")
 )
 
 ```
@@ -635,27 +638,47 @@ arrests_place_demo <- left_join(
 
 ```
 
-Calculate arrest rates per 100,000 juveniles. We also calculate rates for the following subgroups:
-    * Race: white, Black, Hispanic, Asian/other
-    * Sex: male, female
-    * Age: ages 10-14, ages 15-17
+Calculate arrest rates per 100,000 juveniles. If no agencies in a place reported (out of all agencies, including those with only non-juvenile arrests), the value is set to `NA`. We also calculate rates for the following subgroups:
+
+  * Race: white, Black, Hispanic, Asian/other
+  * Sex: male, female
+  * Age: ages 10-14, ages 15-17
+    
 ```{r}
-# Calculate arrest rates (per 100,000 people) and subgroups
+# Calculate arrest rates (per 100,000 people) and subgroups for agencies that reported
 arrest_rates_place <- arrests_place_demo %>%
   mutate(
     # Total ages 10-17
-    rate_juv_arrest = arr_total / age_1017 * 100000,
+    rate_juv_arrest = if_else(
+      n_reporting != 0, arr_total / age_1017 * 100000, NA
+    ),
     # Race/ethnicity subgroups
-    rate_juv_arrest_white = race_white / age_1017_white * 100000,
-    rate_juv_arrest_black = race_black / age_1017_black * 100000,
-    rate_juv_arrest_hispanic  = ethn_hispanic / age_1017_hispanic * 100000,
-    rate_juv_arrest_asian_other = race_asian_other / age_1017_asian_other * 100000,
+    rate_juv_arrest_white = if_else(
+      n_reporting != 0, race_white / age_1017_white * 100000, NA
+    ),
+    rate_juv_arrest_black = if_else(
+      n_reporting != 0, race_black / age_1017_black * 100000, NA
+    ),
+    rate_juv_arrest_hispanic  = if_else(
+      n_reporting != 0, ethn_hispanic / age_1017_hispanic * 100000, NA
+    ),
+    rate_juv_arrest_asian_other = if_else(
+      n_reporting != 0, race_asian_other / age_1017_asian_other * 100000, NA
+    ),
     # Sex subgroups
-    rate_juv_arrest_male = sex_male / age_1017_male * 100000,
-    rate_juv_arrest_female = sex_female / age_1017_female * 100000,
+    rate_juv_arrest_male = if_else(
+      n_reporting != 0, sex_male / age_1017_male * 100000, NA
+    ),
+    rate_juv_arrest_female = if_else(
+      n_reporting != 0, sex_female / age_1017_female * 100000, NA
+    ),
     # Age subgroups
-    rate_juv_arrest_1014 = age_10_14 / age_1017_1014 * 100000,
-    rate_juv_arrest_1517 = age_15_17 / age_1017_1517 * 100000
+    rate_juv_arrest_1014 = if_else(
+      n_reporting != 0, age_10_14 / age_1017_1014 * 100000, NA
+    ),
+    rate_juv_arrest_1517 = if_else(
+      n_reporting != 0, age_15_17 / age_1017_1517 * 100000, NA
+    )
   )
 
 ```
@@ -706,7 +729,7 @@ arrest_rates_place <- arrest_rates_place %>%
 
 ```
 
-All places (in our universe) had 100 percent of agencies reporting.
+Most places (in our universe) had 100 percent of agencies reporting.
 ```{r}
 arrest_rates_place %>%
   group_by(year) %>%
@@ -738,7 +761,7 @@ quantile(
 )
 ```
 
-Checking arrest rates for Black juveniles. The maximum for all years is 101,562.5. Rates are of arrests, not persons arrested, so this value is plausible and indicates some people were arrested more than once.
+Checking arrest rates for Black juveniles. The maximum for all years is 60,095.6. Rates are of arrests, not persons arrested, so this value is plausible and indicates some people were arrested more than once.
 ```{r}
 quantile(
   arrest_rates_place$rate_juv_arrest_black,
@@ -833,17 +856,17 @@ Create a subset without subgroup rates and write out this data set
 juv_arrest_place <- arrest_rates_place_all %>%
   select(
     year,
-         state,
-         place,
-         rate_juv_arrest,
-         rate_juv_arrest_quality
-    )
+    state,
+    place,
+    rate_juv_arrest,
+    rate_juv_arrest_quality
+  )
 
 # Write out this data set
 juv_arrest_place %>%
   write_csv(here::here("07_safety",
-                       "modified data",
-                       "ja_metric_all_place.csv"))
+                       "final",
+                       "rate_arrests_place_all.csv"))
 
 ```
 
@@ -920,8 +943,8 @@ juv_arrest_place_all_subgroup <- left_join(
 # Write out this data set
 juv_arrest_place_all_subgroup %>%
   write_csv(here::here("07_safety",
-                       "modified data",
-                       "ja_metric_all_place_subgroup.csv"))
+                       "final",
+                       "rate_arrests_place_all_subgroup.csv"))
 ```
 
 
