@@ -1095,13 +1095,15 @@ This metric is a county-level and city-level estimate of population count by rac
 5. Save the data  
 
 
-## Housing wealth
+## Housing value
 
 ### Overview
 
-* **Analyst & Programmer:** Jung Hyun Choi
-* **Year(s):** 2014-2021
-* **Final data name(s):** `county_hh_hw_raceeth_2014_2021.csv`,`place_hh_hw_raceeth_2014_2021.csv`
+* **Analyst & Programmer:** Manu Alcalá Kovalski, Jung Hyun Choi
+* **Year(s):** 2014, 2015, 2016, 2017, 2018, 2019, 2021, and 2022 for counties and 2016, 2017, 2018, 2019, 2021, 2022 for places
+* **Final data name(s):**`households_house_value_race_ethnicity_2022_city.csv`,`households_house_value_race_ethnicity_2022_county.csv`, `households_house_value_race_ethnicity_all_city.csv`, `households_house_value_race_ethnicity_all_county.csv`
+`households_house_value_race_ethnicity_subgroup_city.csv`,
+`households_house_value_race_ethnicity_subgroup_county.csv`
 * **Data Source(s):** ACS 1-yr, PUMA-County, PUMA-Place crosswalks
 * **Notes:** PUMA-County and PUMA-Place crosswalk data are the boundaries in 2012. Census will use the updated boundaries from the 2022 ACS. 
 * **Data Quality Index:** The metrics for the ACS indices are based on the (1) sample size of each race and ethnic household at the county/place and (2) the number of observations that comes from the specific county/place calculated from the  PUMA-county/place crosswalk. First, if the number of households (N) for a race group at a county/place is less than 30 then the data quality always equals `3`. If N is 30 or above, we look at what percent of data for the county actually came from the county/place itself, and the sample size in each county/place. `1` means more than 75% of observations are from the county/place, `2` means more than 35% of observations are from the county/place, and `3` means less than 35% of observations are from the county/place. 
