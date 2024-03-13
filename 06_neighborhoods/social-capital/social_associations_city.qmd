@@ -197,7 +197,10 @@ stopifnot(
 
 zcta_place_xwalk <-
   zcta_place_xwalk %>%
-  select(zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor, portion_in)
+  select(
+    zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    place_to_zcta_allocation_factor, portion_in
+  )
 ```
 
 Merge the ZIP/Places crosswalk into the CBP ZIP-level data file
@@ -325,48 +328,49 @@ sa_city_data <-
 
 ## Add data quality tag, final file cleaning and export to .csv file
 
-We create a ratio value to see how many of the ZIPs we aggregated fell fully 
-into a Census Place boundary
+
+## Create quality variable
+
+Add the necessary components to the crosswalk for producing a data quality flag.
+The methodology is borrowed from the [Puma to County Crosswalk notebook](geographic-crosswalks/generate_puma_county_crosswalks.qmd)
+
+Create flags in the ZCTA-place crosswalk for places where a high percentage of the data comes from outside of the places Per agreed upon guidance, 75% or more from the place is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of ZCTA in the place and percentage of place in the ZCTA for each ZCTA-place pairing, and summing across the place
+
+We then create new variable "products". This is the sum of the share of the place captured in the ZCTA and the share of the ZCTA captured in the place.
 
 ```{r}
-#| label: create-zip-ratio
-sa_city_data <-
-  sa_city_data %>%
-  mutate(zip_ratio = zips_in / zip_total)
+crosswalk_data_quality <-
+  zcta_place_xwalk |>
+  mutate(products = place_to_zcta_allocation_factor * zcta_to_place_allocation_factor) |>
+  mutate(
+    sum_products = sum(products),
+    .by = c("state_fips", "place")
+  ) |>
+  mutate(
+    count_membership_associations_per_10k_quality =
+      case_when(
+        sum_products >= 0.75 ~ 1,
+        sum_products >= 0.35 ~ 2,
+        sum_products < 0.35 ~ 3
+      )
+  ) |>
+  select(state_fips, place, count_membership_associations_per_10k_quality)
+
+crosswalk_data_quality |>
+  ggplot(aes(x = count_membership_associations_per_10k_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag 2020") +
+  ylab("Count")
 ```
 
-**Check:** What is the range of this `zip_ratio` variable?
-
-```{r}
-#| label: check-zip-ratio-range
-stopifnot(
-  min(sa_city_data$zip_ratio) == 0,
-  median(sa_city_data$zip_ratio) == 0.2,
-  near(mean(sa_city_data$zip_ratio), 0.25, tol = 0.01),
-  near(max(sa_city_data$zip_ratio), 1, tol = 0.01)
-)
-```
-
-We can use this ratio to create a data quality tag for the final file. 
-In particular, these values are:
-
--    Data Quality 1 = 10% or more of the ZIPs fall mostly in the census place
-
--    Data Quality 2 = less than 10% of the ZIPs fall mostly in the census place
 
 ```{r}
 #| label: create-data-quality-flag
 
 sa_city_data <-
   sa_city_data %>%
-  mutate(
-    count_membership_associations_per_10k_quality =
-      case_when(
-        zip_ratio >= 0.1 ~ 1,
-        zip_ratio < 0.1 ~ 2
-      )
-  ) %>%
-  # keep what we need
+  left_join(crosswalk_data_quality, by = c("state_fips", "place")) |>
   select(year, state = state_fips, place, count_membership_associations_per_10k, count_membership_associations_per_10k_quality) %>%
   arrange(
     year, state, place,

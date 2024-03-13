@@ -1024,7 +1024,7 @@ This metric is calculated using `digital_access.R' in the 04_education folder.
 * **Final data name(s):** `social_associations_2021_geography.csv`, `social_associations_all_geography.csv`
 * **Data Source(s):** Census County Business Patterns (CBP) Survey 
 * **Notes:**
-* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means that 10% or more of the ZIP codes fall mostly in the Census Place boundary,  `2` means less than 10% do.
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 75% or more of the data come from the place which is good, `3` below 35% is bad, and `2` in between is marginal.
 * **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
 * **Missingness:** 163 missing observations for county-level data. No missing observations for city-level data.
 
