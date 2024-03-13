@@ -119,7 +119,7 @@ transit_cost_city_2015 <- left_join(transit_cost_tracts_2015, tract_place, by=c(
 # otherwise, data quality is 2
 transit_cost_city_2015 <- transit_cost_city_2015 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transportation_cost = round(mean(t_80ami), 2),
+  dplyr::summarize(index_transportation_cost = round(weighted.mean(t_80ami, w = afact, na.rm = TRUE), 2),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )%>%
@@ -143,7 +143,7 @@ transit_cost_city_2019 <- left_join(transit_cost_tracts_2019, tract_place, by=c(
 # collapse to places and also create data quality marker
 transit_cost_city_2019 <- transit_cost_city_2019 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transportation_cost = round(mean(t_80ami), 2),
+  dplyr::summarize(index_transportation_cost = round(weighted.mean(t_80ami, w = afact, na.rm = TRUE), 2),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )%>%
@@ -168,7 +168,7 @@ transit_trips_city_2015 <- left_join(transit_trips_tracts_2015, tract_place, by=
 # otherwise, data quality is 2
 transit_trips_city_2015 <- transit_trips_city_2015 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami),
+  dplyr::summarize(index_transit_trips = weighted.sum(transit_trips_80ami, w = afact, na.rm = TRUE),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )
@@ -203,7 +203,7 @@ transit_trips_city_2019 <- left_join(transit_trips_tracts_2019, tract_place, by=
 # otherwise, data quality is 2
 transit_trips_city_2019 <- transit_trips_city_2019 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami),
+  dplyr::summarize(index_transit_trips = weighted.sum(transit_trips_80ami, w = afact, na.rm = TRUE),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )
