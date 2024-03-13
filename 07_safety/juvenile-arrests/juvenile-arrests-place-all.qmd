@@ -1,0 +1,952 @@
+---
+title: "Juvenile Arrests - Place"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(tidylog)
+library(urbnthemes)
+
+set_urbn_defaults(style = "print")
+
+```
+
+This file creates the place-level metric for juvenile arrests per 100,000 juveniles (age 10-17) for years 2021-2022.
+
+This file relies on data created in `01_agency_geo_place.Rmd`. You must run `01_agency_geo_place.Rmd` before running this file.
+
+The rest of this file is organized as follows:
+
+1. Background
+2. Manually download NIBRS arrest data from openICPSR
+3. Read in and clean NIBRS arrest data
+4. Aggregate agency-level arrests to the place level
+5. Calculate reporting rate for all agencies
+6. Calculate rates of juvenile arrests per 100,000 juveniles
+7. Construct quality indicators
+8. Validation
+9. Save and write out data
+
+All data used in this file are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf). Data stored on Box are only available to Urban Institute researchers.
+
+This file assumes that you have cloned the GitHub repository for this project to your local computer. You can find the project repository [here](https://github.com/UI-Research/mobility-from-poverty) and learn how to clone a repository [here](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
+
+## 1. Background
+This section provides background for the data used to create this metric.
+
+The data for this metric come from the FBI's [National Incident-Based Reporting System (NIBRS)](https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs). This is the national standard for law enforcement crime data reporting in the United States. Processing the raw NIBRS data would take a lot of work.
+
+Instead of downloading the raw data directly, we use criminologist Jacob Kaplan's Concatenated Files: National Incident-Based Reporting System (NIBRS) Data, 1991-2022. We use the latest version, Version 9. These data are available for download via [openICPSR](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+
+The NIBRS data are separated into segments. For this metric, we use the following two segments:
+
+* Arrestee segment
+* Group B Arrest Report segment
+
+Note that data for a single year may change with each version release (e.g., 2021 NIBRS data included in Version 8 may not match 2021 NIBRS data released in Version 9). I think this is because as more agencies switch from reporting through UCR to NIBRS, they also provide historical information. Future updates should make sure to run past years with the most recent version as well.
+
+To learn more about NIBRS data, consult Jacob Kaplan's book titled [National Incident-Based Reporting System (NIBRS) Data: A Practitioner's Guide](https://nibrsbook.com/). For these metrics, the most important thing to know about these data is that most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Instead, agencies primarily reported [UCR data](https://ucrbook.com/) for 2020 and before. However, the FBI has moved entirely to NIBRS data starting in 2021 and no longer collects UCR data, which is why we use NIBRS data instead ([source](https://nibrsbook.com/overview-of-the-data.html)). 
+
+We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2016 and should keep this in mind.
+
+Note that the age bracket of ages 10 to 17 was chosen for this metric because the majority of states have an age of adult criminal liability of 18, at least one state has a minimum age of criminal liability of 12, and arrests of very young children are unlikely.
+
+Each instance of an arrest, citation, or summons for an offense is counted as an arrest. An individual can be arrested more than once, and therefore rates constructed are of *arrests* and not of persons arrested. Arrest rates are calculated for all offense types available in NIBRS data, including offenses against property, persons, and society.
+
+
+## 2. Manually download NIBRS arrest data from openICPSR
+This section describes the steps for manually downloading the NIBRS data segments necessary for this metric.
+
+Accessing these data requires an ICPSR account. Therefore, we do not directly download the data in the code. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+
+  1. Create an ICPSR account [here](https://www.icpsr.umich.edu/cgi-bin/newacct).
+  2. Navigate to Jacob Kaplan's project page for his NIBRS Concatenated Files [here](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view).
+  3. Select `nibrs_1991_2022_arrestee_segment_rds.zip`
+      + Select `Download this file`
+      + Select `I Agree` on the `Terms of Use`
+      + Move the zip file from your `Downloads` folder to the appropriate directory
+  4. Navigate back to the [project page](https://www.openicpsr.org/openicpsr/project/118281/version/V9/view)
+  5. Select `nibrs_group_b_arrest_report_segment_2022_rds.zip`
+      + Select `Download this file`
+      + Select `I Agree` on the `Terms of Use`
+      + Move the zip file from your `Downloads` folder to the appropriate directory
+
+
+## 3. Read in and clean NIBRS arrest data
+This section extracts the necessary files from each zip file downloaded in the previous step and reads the files into the R environment. Each zip file contains data files for 1991-2022. However, we only want 2021-2022. Note that future updates of this metric may want to include historical NIBRS data back to 2016 and should update this section to include all years.
+
+### 3.1 Read in NIBRS data
+
+#### 3.1a Extract files for 2021-2022 from the zip files for both segments
+Extract each file for the years 2021-2022 from the Group A `arrestee` segment and from the Group B `arrest_report` segment.
+```{r, eval=FALSE}
+# Specify range of years
+start_year <- 2021
+end_year <- 2022
+
+# Create a vector of years between start_year and end_year
+my_years <- seq(start_year, end_year)
+
+# Extract years 2016-2022 for the arrestee segment
+for (year in my_years) {
+  unzip(
+  zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds.zip"),
+  files = paste0("nibrs_arrestee_segment_", year, ".rds"),
+  exdir = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds")
+)
+}
+
+# Extract years 2016-2022 for the Group B arrest report segment
+for (year in my_years) {
+  unzip(
+  zipfile = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds.zip"),
+  files = paste0("nibrs_group_b_arrest_report_segment_", year, ".rds"),
+  exdir = here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds")
+)
+}
+
+# Remove zip files
+unlink(here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds.zip"))
+
+unlink(here::here("07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds.zip"))
+
+# Clean up environment
+rm(start_year, end_year, my_years)
+
+```
+
+#### 3.1b Read in and append 2021-2022 NIBRS data for both groups
+For each segment, read in the files for years 2021-2022 and append them. We also limit the appended files to relevant variables. 
+Note that when including historical data back to 2014, this section has a very long run time. The reviewer or future updates may want to consider writing a more efficient approach if possible.  
+```{r, eval=FALSE}
+# List all files in the Arrestee segment folder (Group A)
+file_list <- list.files(here::here(
+  "07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_arrestee_segment_rds"),
+  pattern = "[.]rds$", full.names = TRUE)
+
+# Read in Group A files and append them
+arrests_a <- file_list %>%
+  set_names(basename) %>%
+  purrr::map_df(readRDS)
+
+# Select only necessary variables from Group A
+arrests_a <- arrests_a %>%
+  select(year, 
+         ori, # ORI is a unique agency identifier
+         ucr_arrest_offense_code, 
+         age_of_arrestee, 
+         sex_of_arrestee, 
+         race_of_arrestee, 
+         ethnicity_of_arrestee) %>%
+  mutate(group = "A",
+         age = as.numeric(age_of_arrestee))
+  
+
+# List all files in the Arrest Report Segment folder (Group B)
+file_list <- list.files(here::here(
+  "07_safety", "juvenile-arrests", "data", "nibrs_1991_2022_group_b_arrest_report_segment_rds"),
+  pattern = "[.]rds$", full.names = TRUE)
+
+# Read in Group B files and append them
+arrests_b <- file_list %>%
+  set_names(basename) %>%
+  purrr::map_df(readRDS)
+
+# Select only necessary variables from Group B
+arrests_b <- arrests_b %>%
+  rename(incident_number = arrest_transaction_incident_num) %>%
+  select(year, 
+         ori, # ORI is a unique agency identifier
+         ucr_arrest_offense_code, 
+         age_of_arrestee, 
+         sex_of_arrestee, 
+         race_of_arrestee, 
+         ethnicity_of_arrestee) %>%
+  mutate(group = "B",
+         age = as.numeric(age_of_arrestee))
+
+```
+
+
+#### 3.1c Append the 2021-2022 Group A file and the 2016-2022 Group B file.
+Append Group A and Group B files for all arrests
+```{r, eval=FALSE}
+# Append files
+arrests_all <- bind_rows(arrests_a, arrests_b)
+
+```
+
+Note that because the process of extracting and reading in these files takes so long, I write out the appended all arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
+```{r, eval=FALSE}
+# Write out all arrests data
+write_csv(arrests_all, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_all_21_22.csv"))
+```
+
+```{r}
+# Read all arrests data back in for ease of future use
+arrests_all <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_all_21_22.csv"))
+
+```
+
+#### 3.1d Create subset of data for just juveniles
+Subset the arrests data to just those under the age of 18
+```{r, eval=FALSE}
+# Create a subset of just juvenile arrests
+arrests_juv <- arrests_all %>%
+  filter(age < 18)
+
+```
+
+Note that because the process of extracting and reading in these files takes so long, I write out appended juvenile arrests data here. Then I read this file back in when returning to this program so that I don't have to constantly re-run the previous steps.
+```{r, eval=FALSE}
+# Write out juvenile arrests data
+write_csv(arrests_juv, file = here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_21_22.csv"))
+```
+
+```{r}
+# Read juvenile arrests data back in for ease of future use
+arrests <- read.csv(here::here("07_safety", "juvenile-arrests", "data", "arrests_juv_21_22.csv"))
+```
+
+```{r, eval=FALSE}
+# Remove obsolete files
+rm(arrests_a, arrests_b)
+gc()
+
+```
+
+
+### 3.2 Identify violent crimes and property crimes
+Group A offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. Group B offense codes do not receive any of these categorizations. We are interested in property crimes and violent crimes. Using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf), we create a data frame of all offense, crime type, and group combinations. We then use this data to identify property crimes and violent crimes in our data. 
+    
+There are 65 distinct offense codes across all years.
+```{r}
+# Count number of observations in each offense code
+arrests %>%
+  count(ucr_arrest_offense_code)
+
+```
+
+
+Create a data frame that lists all offense, crime type, and group combinations using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf). Note that the full frame includes crimes against society, but these are not used in our analysis.
+```{r}
+# Create data frame for all offense, type, and group combinations.
+codes <- tribble(
+  ~offense,	~crime_against,	~group,
+  "animal cruelty",	                                                    "society",	"A",	
+  "arson",	                                                            "property",	"A",	
+  "assault offenses - aggravated assault",	                            "person",	"A",	
+  "assault offenses - simple assault",	                                "person",	"A",	
+  "assault offenses - intimidation",	                                  "person",	"A",	
+  "bribery",	                                                          "property",	"A",	
+  "burglary/breaking and entering",	                                    "property",	"A",	
+  "commerce violations - import violations",	                          "society",	"A",	
+  "commerce violations - export violations",	                          "society",	"A",	
+  "commerce violations - federal liquor offenses",	                    "society",	"A",	
+  "commerce violations - federal tobacco offenses",	                    "society",	"A",	
+  "commerce violations - wildlife trafficking",	                        "society",	"A",	
+  "counterfeiting/forgery",	                                            "property",	"A",	
+  "destruction/damage/vandalism of property",	                          "property",	"A",	
+  "drug/narcotic offenses - drug/narcotic violations",	                "society",	"A",	
+  "drug/narcotic offenses - drug equipment violations",	                "society",	"A",	
+  "embezzlement",	                                                      "property",	"A",	
+  "espionage",	                                                        "society",	"A",	
+  "extortion/blackmail",	                                              "property",	"A",	
+  "fraud offenses - false pretenses/swindle/confidence game",	          "property",	"A",	
+  "fraud offenses - credit card/atm fraud",	                            "property",	"A",	
+  "fraud offenses - impersonation",	                                    "property",	"A",	
+  "fraud offenses - welfare fraud",	                                    "property",	"A",	
+  "fraud offenses - wire fraud",	                                      "property",	"A",	
+  "fraud offenses - identity theft",	                                  "property",	"A",	
+  "fraud offenses - hacking/computer invasion",	                        "property",	"A",	
+  "fraud offenses - money laundering",	                                "society",	"A",	
+  "fugitive offenses - harboring escapee/concealing from arrest",	      "society",	"A",	
+  "fugitive offenses - flight to avoid prosecution",	                  "society",	"A",	
+  "fugitive offenses - flight to avoid deportation",	                  "society",	"A",	
+  "gambling offenses - betting/wagering",	                              "society",	"A",	
+  "gambling offenses - operating/promoting/assisting gambling",	        "society",	"A",	
+  "gambling offenses - gambling equipment violations",	                "society",	"A",	
+  "gambling offenses - sports tampering",	                              "society",	"A",	
+  "murder/nonnegligent manslaughter",	                                  "person",	"A",	
+  "negligent manslaughter",	                                            "person",	"A",	
+  "homicide offenses - justifiable homicide",	                          "not a crime",	"A",	
+  "human trafficking - commercial sex acts",	                          "person",	"A",	
+  "human trafficking - involuntary servitude",	                        "person",	"A",	
+  "immigration violations - illegal entry into the united states",	    "society",	"A",	
+  "immigration violations - false citizenship",	                        "society",	"A",	
+  "immigration violations - smuggling aliens",	                        "society",	"A",	
+  "immigration violations - reentry after deportation",               	"society",	"A",	
+  "kidnapping/abduction",	                                              "person",	"A",	
+  "larceny/theft offenses - pocket-picking",	                          "property",	"A",	
+  "larceny/theft offenses - purse-snatching",	                          "property",	"A",	
+  "larceny/theft offenses - shoplifting",	                              "property",	"A",	
+  "larceny/theft offenses - theft from building",	                      "property",	"A",	
+  "larceny/theft offenses - theft from coin-operated machine or device", "property",	"A",	
+  "larceny/theft offenses - theft from motor vehicle",	                "property",	"A",	
+  "larceny/theft offenses - theft of motor vehicle parts/accessories",	"property",	"A",	
+  "larceny/theft offenses - all other larceny",	                        "property",	"A",	
+  "motor vehicle theft",	                                              "property",	"A",	
+  "pornography/obscene material",	                                      "society",	"A",	
+  "prostitution offenses - prostitution",	                              "society",	"A",	
+  "prostitution offenses - assisting or promoting prostitution",	      "society",	"A",	
+  "prostitution offenses - purchasing prostitution",	                  "society",	"A",	
+  "robbery",	                                                          "property",	"A",	
+  "sex offenses - rape",	                                              "person",	"A",	
+  "sex offenses - sodomy",	                                            "person",	"A",	
+  "sex offenses - sexual assault with an object",	                      "person",	"A",	
+  "sex offenses - fondling (incident liberties/child molest)",	        "person",	"A",	
+  "sex offenses - incest",	                                            "person",	"A",	
+  "sex offenses - statutory rape",	                                    "person",	"A",	
+  "sex offenses - failure to register as a sex offender",	              "society",	"A",	
+  "stolen property offenses (receiving, selling, etc.)",	              "property",	"A",	
+  "treason",	                                                          "society",	"A",	
+  "weapon law violations - weapon law violations",	                    "society",	"A",	
+  "weapon law violations - violation of national firearm act of 1934",	"society",	"A",	
+  "weapon law violations - weapons of mass destruction",	              "society",	"A",	
+  "weapon law violations - explosives",	                                "society",	"A",	
+  "failure to appear",	                                                 "",	"B",	
+  "curfew/loitering/vagrancy violations",	                               "",	"B",	
+  "disorderly conduct",	                                                 "",	"B",	
+  "driving under the influence",	                                       "",	"B",	
+  "family offenses, nonviolent",	                                       "",	"B",	
+  "federal resource violations",	                                       "",	"B",	
+  "liquor law violations",	                                             "",	"B",	
+  "perjury",	                                                           "",	"B",	
+  "trespass of real property",	                                         "",	"B",	
+  "all other offenses",	                                                 "",	"B",	
+  # The following three codes were removed in 2021
+  "bad checks",	                                                         "",	"",
+  "drunkenness",                                                      	 "",	"",	
+  "peeping tom",	                                                       "",	"",	
+  # The following code was removed in 2008
+  "runaway",                                                             "",	"",	
+)
+
+```
+
+Using the data frame above, group offenses into violent crimes and property crimes.
+```{r}
+# Extract offenses into vectors for property crimes and violent crimes
+property <- subset(codes, crime_against=="property")$offense
+violent <- subset(codes, crime_against=="person")$offense
+
+# Create indicator variables for property and violent crimes
+arrests <- arrests %>%
+  mutate(property = ifelse(ucr_arrest_offense_code %in% property, 1, 0),
+         violent = ifelse(ucr_arrest_offense_code %in% violent, 1, 0)
+  )
+
+# Remove obsolete objects
+rm(codes, property, violent)
+
+```
+
+Roughly half of observations are not in either category of arrests. These are all crimes against society or Group B offenses.
+```{r}
+arrests %>%
+  group_by(property, violent) %>%
+  count()
+
+arrests %>%
+  filter(property==0 & violent==0) %>%
+  count(ucr_arrest_offense_code)
+
+```
+
+
+### 3.3 Recode race, ethnicity, and sex for Group B
+The values for `race_of_arrestee` and `ethnicity_of_arrestee` are different between the Group A and Group B files. The races and ethnicities for Group B observations are coded using single letters and are therefore not very clear. I can't find a codebook anywhere for these variables, so I make my best guess at recoding them to match the codes used for Group A. Note that this step was not included in the 2021 update.
+
+Note that if there is a codebook available, we should confirm this is correct. It shouldn't matter for the violent crime or property crime arrests because Group B arrests are excluded from those categories, but it would matter for total arrests.
+    
+Recode race and ethnicity for Group B observations.
+```{r}
+# Group B codes for race and ethnicity do not match those used for Group A
+arrests %>%
+  group_by(group, race_of_arrestee, ethnicity_of_arrestee) %>%
+  count()
+
+# No arrests for Group B are classified as violent or property crimes
+arrests %>%
+  group_by(group, property, violent) %>%
+  count()
+
+
+# Making my best guess to match Group B race/ethnicity codes to Group A codes
+
+## Recode race
+arrests <- arrests %>%
+  mutate(
+    race_of_arrestee = if_else(race_of_arrestee=="w", "white", race_of_arrestee),
+    race_of_arrestee = if_else(race_of_arrestee=="b", "black", race_of_arrestee),
+    race_of_arrestee = if_else(race_of_arrestee=="i", "american indian/alaskan native", race_of_arrestee),
+    race_of_arrestee = if_else(race_of_arrestee=="a", "asian", race_of_arrestee),
+    race_of_arrestee = if_else(race_of_arrestee=="p", "native hawaiian or other pacific islander", race_of_arrestee),
+    race_of_arrestee = if_else(race_of_arrestee=="u", "unknown", race_of_arrestee)
+  )
+
+## Recode ethnicity
+arrests <- arrests %>%
+  mutate(
+    ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="h", "hispanic origin", ethnicity_of_arrestee),
+    ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="n", "not of hispanic origin", ethnicity_of_arrestee),
+    ethnicity_of_arrestee = if_else(ethnicity_of_arrestee=="u", "unknown", ethnicity_of_arrestee)
+  )
+
+```
+
+58,052 observations have `unknown` ethnicity and 75,253 have missing ethnicity
+```{r}
+arrests %>% 
+  group_by(race_of_arrestee, ethnicity_of_arrestee) %>% 
+  count()
+
+arrests %>% 
+  group_by(ethnicity_of_arrestee) %>% 
+  count()
+
+```
+
+Recode sex for Group B observations
+```{r}
+arrests %>%
+  group_by(group, sex_of_arrestee) %>%
+  count()
+
+arrests <- arrests %>%
+  mutate(
+    sex_of_arrestee = if_else(sex_of_arrestee=="f", "female", sex_of_arrestee)
+  )
+
+```
+
+
+### 3.4 Aggregate arrest counts to the reporting agency level
+Aggregate arrests by agency and finish race construction
+
+Note that this metric includes the following subgroups by race, sex, and age subgroups, so those subgroups are also aggregated in this section:
+    * Race: white, Black, Hispanic, Asian/other
+    * Sex: male, female
+    * Age: ages 10-14, ages 15-17
+```{r}
+arrests_agency <- arrests %>%
+  filter(age >= 10) %>%
+  group_by(year, ori) %>%
+  summarize(
+    arr_total = n(),
+    # arr_prop = sum(property==1),
+    # arr_viol = sum(violent==1),
+    # Race subgroups
+    race_aian = sum(race_of_arrestee == "american indian/alaskan native"),
+    race_asian = sum(race_of_arrestee == "asian"),
+    race_black = sum(race_of_arrestee == "black"),
+    race_nhpi = sum(race_of_arrestee == "native hawaiian or other pacific islander"),
+    race_unkno = sum(race_of_arrestee == "unknown"),
+    race_white = sum(race_of_arrestee == "white"),
+    ethn_hispanic = sum(ethnicity_of_arrestee == "hispanic origin"),
+    ethn_nonhisp = sum(ethnicity_of_arrestee == "not of hispanic origin"),
+    # Sex subgroups
+    sex_male = sum(sex_of_arrestee == "male"),
+    sex_female = sum(sex_of_arrestee == "female"),
+    # Age subgroups
+    age_10_14 = sum(age >= 10 & age <= 14),
+    age_15_17 = sum(age >= 15 & age <= 17),
+    # Creating indicators for whether the agency has any group A arrests or any group B arrests
+    group_a = max(group=="A"),
+    group_b = max(group=="B")
+  ) %>%
+  ungroup() %>%
+  # Construct last race/ethnicity subgroup
+  mutate(race_asian_other = race_aian + race_asian + race_nhpi)
+
+```
+
+
+## 4. Aggregate agency-level arrests to the place level
+This section aggregates the agency-level arrest counts from the agency-level to the place-level.
+
+Our data are currently long by year/agency. However, we want to know the arrest counts at the place level, not the agency level. In the `01_agency_geo_place.Rmd` program, we constructed a file that linked reporting agencies to places. We can use that file to aggregate counts from agencies to places.
+
+### 4.1 Load universe of place/agency pairs
+First load the universe of agencies linked to places. This file was created in `01_agency_geo_place.Rmd` and is long by unique agency/place pairs.
+```{r}
+bhf_place_urb <- read_csv(here::here("07_safety", "modified data", "all_agency_place.csv"))
+
+```
+
+
+### 4.2 Join agency-level arrests for all years onto the place-agency file
+Join arrests onto the full universe of place-agencies.
+```{r}
+arrests_agency_place <- left_join(
+  x = bhf_place_urb,
+  y = arrests_agency,
+  by = c("ori", "year")
+)
+  
+```
+
+### 4.3 Summarize agency-level arrests to the place level
+Now that we have joined our agency-level juvenile arrests data onto the full universe of place-agencies, we can aggregate the counts from the agency to the place level.
+```{r}
+# Count number of arrests from reporting agencies in each place
+arrests_place <- arrests_agency_place %>%
+  group_by(year, state, place) %>%
+  summarize(across(arr_total:race_asian_other, ~sum(.x, na.rm=TRUE))) %>%
+  mutate(GEOID = str_c(state, place)) %>%
+  ungroup()
+
+```
+
+Test that subgroups equal total
+```{r}
+# Test that sex subgroups equal total
+stopifnot(
+  near(rowSums(select(arrests_place, sex_female, sex_male)), arrests_place$arr_total, tol = 0.01)
+)
+
+```
+
+```{r}
+# Test that age subgroups equal total
+stopifnot(
+  near(rowSums(select(arrests_place, age_10_14, age_15_17)), arrests_place$arr_total, tol = 0.01)
+)
+
+```
+
+```{r}
+# Test that race subgroups equal total
+stopifnot(
+  near(rowSums(select(arrests_place, matches("race_asian_other|race_black|race_white|race_unkno"))), arrests_place$arr_total, tol = 0.01)
+)
+
+```
+
+
+## 5. Calculate reporting rate for all agencies
+The quality indicator for this metric is based on the number of agencies reporting. We can't use the agency-level juvenile arrests data for this, because agencies may have zero juvenile arrests and thus be excluded but still have reported arrests for other ages. Instead, we use the full arrests file (i.e., all arrests and not just juvenile arrests) to calculate agency reporting rates.
+```{r}
+arrests_all_agency <- arrests_all %>%
+  group_by(year, ori) %>%
+  summarize(arr_total_any = n()) %>%
+  ungroup()
+
+```
+
+Join total number of arrests for each agency onto the place/agency file.
+```{r}
+arrests_all_agency_place <- left_join(
+   x = bhf_place_urb,
+   y = arrests_all_agency,
+   by = c("ori", "year")
+ ) %>%
+  mutate(
+    # Create variables for reporting by place-agency. If the count of total arrests (any, not just juvenile) is missing, we indicate that the agency did not report in that year 
+    reporting = ifelse(is.na(arr_total_any), 0, 1)
+    )
+
+```
+
+Aggregate variables to the place level.
+```{r}
+# Summarize by place
+arrests_all_place <- arrests_all_agency_place %>%
+  group_by(year, state, place) %>%
+  summarize(
+    n = n(), 
+    n_reporting = sum(reporting),
+    n_core_city = sum(core_city),
+    n_core_city_rpt = sum(core_city==1 & reporting==1),
+    across(arr_total_any, ~sum(.x, na.rm=TRUE))
+  ) %>%
+  mutate(
+    agencies_reporting = n_reporting / n,
+    core_reporting = n_core_city_rpt / n_core_city,
+    core_reporting = ifelse(is.nan(core_reporting), NA, core_reporting),
+    GEOID = str_c(state, place)
+  ) %>%
+  ungroup()
+
+```
+
+Join total arrests back to juvenile arrest file
+```{r}
+# Join all arrests and juvenile arrests
+arrests_place <- left_join(
+  x = arrests_place,
+  y = arrests_all_place,
+  by = c("year", "GEOID", "state", "place")
+)
+
+```
+
+
+
+## 6. Calculate rates of juvenile arrests per 100,000 juveniles
+Each instance of an arrest, citation, or summons for an offense is counted as an arrest. Note that an individual can be arrested more than once and therefore the rates constructed are of arrests, not of persons arrested. Arrest rates are calculated for all offense types available in NIBRS data, including offenses against property, persons, and society.
+
+First load the demographic information for each place and for each year 2016-2022. This file was created using 5 year ACS data in `01_agency_geo_place.Rmd`.
+```{r}
+place_demo <- read_csv(here::here("07_safety", "modified data", "all_place_demo.csv"))
+
+# Rename variables for sex and age subgroups to match existing naming conventions of this file.
+# Note that future updates could consider renaming these variables when pulled form the ACS in `01_agency_geo_place.Rmd` but I didn't have the foresight so I'm just renaming them now
+
+place_demo <- place_demo %>%
+  rename(
+    age_1017_male = sex_1017_m,
+    age_1017_female = sex_1017_f,
+    age_1017_1014 = age_1014_all,
+    age_1017_1517 = age_1517_all
+  )
+
+```
+
+Join the place-level juvenile arrests data onto place-level population and demographic information from ACS.
+```{r}
+arrests_place_demo <- left_join(
+  x = place_demo,
+  y = arrests_place,
+  by = c("year", "GEOID")
+)
+
+```
+
+Calculate arrest rates per 100,000 juveniles. If no agencies in a place reported (out of all agencies, including those with only non-juvenile arrests), the value is set to `NA`. We also calculate rates for the following subgroups:
+
+  * Race: white, Black, Hispanic, Asian/other
+  * Sex: male, female
+  * Age: ages 10-14, ages 15-17
+    
+```{r}
+# Calculate arrest rates (per 100,000 people) and subgroups for agencies that reported
+arrest_rates_place <- arrests_place_demo %>%
+  mutate(
+    # Total ages 10-17
+    rate_juv_arrest = if_else(
+      n_reporting != 0, arr_total / age_1017 * 100000, NA
+    ),
+    # Race/ethnicity subgroups
+    rate_juv_arrest_white = if_else(
+      n_reporting != 0, race_white / age_1017_white * 100000, NA
+    ),
+    rate_juv_arrest_black = if_else(
+      n_reporting != 0, race_black / age_1017_black * 100000, NA
+    ),
+    rate_juv_arrest_hispanic  = if_else(
+      n_reporting != 0, ethn_hispanic / age_1017_hispanic * 100000, NA
+    ),
+    rate_juv_arrest_asian_other = if_else(
+      n_reporting != 0, race_asian_other / age_1017_asian_other * 100000, NA
+    ),
+    # Sex subgroups
+    rate_juv_arrest_male = if_else(
+      n_reporting != 0, sex_male / age_1017_male * 100000, NA
+    ),
+    rate_juv_arrest_female = if_else(
+      n_reporting != 0, sex_female / age_1017_female * 100000, NA
+    ),
+    # Age subgroups
+    rate_juv_arrest_1014 = if_else(
+      n_reporting != 0, age_10_14 / age_1017_1014 * 100000, NA
+    ),
+    rate_juv_arrest_1517 = if_else(
+      n_reporting != 0, age_15_17 / age_1017_1517 * 100000, NA
+    )
+  )
+
+```
+
+Replace the rates of observations with a population less than 30 with `NA`.
+```{r}
+# Suppress data using populations < 30 people
+arrest_rates_place <- arrest_rates_place %>%
+  mutate(
+    rate_juv_arrest = ifelse(age_1017 < 30, NA, rate_juv_arrest),
+    rate_juv_arrest_white = ifelse(age_1017_white < 30, NA, rate_juv_arrest_white),
+    rate_juv_arrest_black = ifelse(age_1017_black < 30, NA, rate_juv_arrest_black),
+    rate_juv_arrest_hispanic = ifelse(age_1017_hispanic < 30, NA, rate_juv_arrest_hispanic),
+    rate_juv_arrest_asian_other = ifelse(age_1017_asian_other < 30, NA, rate_juv_arrest_asian_other),
+    rate_juv_arrest_male = ifelse(age_1017_male < 30, NA, rate_juv_arrest_male),
+    rate_juv_arrest_female = ifelse(age_1017_female < 30, NA, rate_juv_arrest_female),
+    rate_juv_arrest_1014 = ifelse(age_1017_1014 < 30, NA, rate_juv_arrest_1014),
+    rate_juv_arrest_1517 = ifelse(age_1017_1517 < 30, NA, rate_juv_arrest_1517)
+  )
+
+```
+
+
+## 7. Construct quality indicators
+This section constructs an indicator used to assess the quality of data for each place. Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
+
+Construct the quality indicator.
+```{r}
+# Construct quality with core reporting
+arrest_rates_place <- arrest_rates_place %>%
+  mutate(
+    rate_juv_arrest_quality = case_when(
+      agencies_reporting == 1 ~ 1,
+      agencies_reporting >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting > 0 ~ 3,
+      agencies_reporting == 0 ~ NA_real_
+      ),
+    rate_juv_arrest_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_quality)
+  )
+
+```
+
+```{r}
+arrest_rates_place <- arrest_rates_place %>%
+  mutate(across(starts_with("rate"), 
+                ~ifelse(is.na(rate_juv_arrest_quality), NA, .x)),
+         )
+
+```
+
+Most places (in our universe) had 100 percent of agencies reporting.
+```{r}
+arrest_rates_place %>%
+  group_by(year) %>%
+  ggplot(aes(x = rate_juv_arrest_quality)) +
+  geom_bar()
+
+```
+
+## 8. Validation
+This section performs several checks on the calculated rates of juvenile arrests.
+
+Check the distribution of rates of juvenile arrests for 2021-2022, both overall and by subgroup. All rates are plausible.
+
+Checking arrest rates for all juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for white juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_white,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for Black juveniles. The maximum for all years is 60,095.6. Rates are of arrests, not persons arrested, so this value is plausible and indicates some people were arrested more than once.
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_black,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for Hispanic juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_hispanic,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for Asian/other race juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_asian_other,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for male juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_male,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for female juveniles
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_female,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for juveniles aged 10-14
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_1014,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+Checking arrest rates for juveniles aged 15-17
+```{r}
+quantile(
+  arrest_rates_place$rate_juv_arrest_1517,
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  na.rm = TRUE
+)
+```
+
+There is more missingness in 2021 than 2022. This makes sense, because more agencies report to NIBRS over time.
+```{r}
+arrest_rates_place %>%
+  filter(is.na(rate_juv_arrest)) %>%
+  group_by(year) %>%
+  count()
+  
+```
+
+The rate of missingness is the same for the quality variable.
+```{r}
+arrest_rates_place %>%
+  filter(is.na(rate_juv_arrest_quality)) %>%
+  group_by(year) %>%
+  count()
+
+```
+
+
+## 8. Save and write out data
+```{r}
+arrest_rates_place_all <- arrest_rates_place %>%
+  select(c(year, state, place, starts_with("rate"), starts_with("age_1017")))
+
+```
+
+Create a subset without subgroup rates and write out this data set
+```{r}
+# File with only total juvenile arrest rates
+juv_arrest_place <- arrest_rates_place_all %>%
+  select(
+    year,
+    state,
+    place,
+    rate_juv_arrest,
+    rate_juv_arrest_quality
+  )
+
+# Write out this data set
+juv_arrest_place %>%
+  write_csv(here::here("07_safety",
+                       "final",
+                       "rate_arrests_place_all.csv"))
+
+```
+
+Create a file that is long by subgroup and write it out
+```{r}
+# long form file with juvenile arrest rates by subgroup
+# pivot longer subgroup populations
+# create all row with overall juvenile population and arrest rate
+juv_pop_all_subgroup <- arrest_rates_place_all %>%
+  mutate(
+    age_1017_all = age_1017
+    ) %>%
+  select(
+    year, 
+    state,
+    place, 
+    age_1017_all, 
+    age_1017_white, 
+    age_1017_black, 
+    age_1017_asian_other,
+    age_1017_hispanic,
+    age_1017_male,
+    age_1017_female,
+    age_1017_1014,
+    age_1017_1517,
+    rate_juv_arrest_quality
+  ) %>%
+  pivot_longer(cols = contains("age_1017"),
+               names_to = "subgroup",
+               values_to = "age_1017",
+               values_drop_na = TRUE,
+               names_pattern = "age_1017_(.*)")
+
+# pivot longer subgroup arrest rates
+juv_arrest_all_subgroup <- arrest_rates_place_all %>%
+  mutate(rate_juv_arrest_all = rate_juv_arrest) %>%
+  select(
+    year, 
+    state, 
+    place, 
+    rate_juv_arrest_all, 
+    rate_juv_arrest_white, 
+    rate_juv_arrest_black,
+    rate_juv_arrest_asian_other,
+    rate_juv_arrest_hispanic,
+    rate_juv_arrest_male,
+    rate_juv_arrest_female,
+    rate_juv_arrest_1014,
+    rate_juv_arrest_1517
+  ) %>%
+  pivot_longer(cols = contains("rate_juv_arrest_"), 
+               names_to = "subgroup",
+               values_to = "rate_juv_arrest",
+               values_drop_na = TRUE,
+               names_pattern = "rate_juv_arrest_(.*)")
+
+# combine into one file
+# replace quality indicators with missing if subgroup population < 30
+juv_arrest_place_all_subgroup <- left_join(
+  x = juv_pop_all_subgroup,
+  y = juv_arrest_all_subgroup,
+  by = c("year", "state", "place", "subgroup")
+) %>%
+  mutate(
+    subgroup_type = case_when(
+      subgroup %in% c("white", "black", "asian_other", "hispanic") ~ "race-ethnicity",
+      subgroup %in% c("male", "female") ~ "sex",
+      subgroup %in% c("1014", "1517") ~ "age"
+    ),
+    rate_juv_arrest_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_quality)) %>%
+  select(-age_1017)
+
+
+# Write out this data set
+juv_arrest_place_all_subgroup %>%
+  write_csv(here::here("07_safety",
+                       "final",
+                       "rate_arrests_place_all_subgroup.csv"))
+```
+
+
+
+
