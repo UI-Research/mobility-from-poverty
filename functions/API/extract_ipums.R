@@ -16,9 +16,11 @@
 #   acs_imported (tibble) containing the extract required for analysis
 
 extract_ipums <- function(extract_name, extract_description, survey){
+  # Add library here for filepath
+  library(here)
   
   # Set folder path, .gz, and .xml variables
-  folder_path <- here::here("data", "temp", "raw")
+  folder_path <- here("data", "temp", "raw")
   extract_gz_filename <- paste0(extract_name, "_umf.dat.gz")
   extract_xml_filename <- paste0(extract_name, "_umf.xml")
   
@@ -28,7 +30,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
   }
   
   # Check if extract already exists in your directory. If it does this function will read in the existing data.
-  if(!file.exists(here::here(folder_path, extract_gz_filename))){
+  if(!file.exists(here(folder_path, extract_gz_filename))){
     
     #If extract does not exist, create the extract using the IPUMS API
     usa_ext_umf <-
@@ -48,6 +50,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
           "RACE",
           "HISPAN",
           "EDUCD",
+          "GRADEATT",
           "SEX",
           "DIFFCARE",
           "DIFFSENS",
@@ -67,34 +70,35 @@ extract_ipums <- function(extract_name, extract_description, survey){
     filepath <-
       download_extract(
         usa_ext_umf_submitted,
-        download_dir = here::here(folder_path),
-        progress = FALSE
+        download_dir = here(folder_path),
+        progress = TRUE
       )
     
     #Rename extract file
     ipums_files <-
-      list.files(paste0(here::here(folder_path)), full.names = TRUE) %>%
+      list.files(paste0(here(folder_path)), full.names = TRUE) %>%
       as_tibble() %>%
       filter(str_detect(value, "dat.gz|xml"), !str_detect(value, "umf")) %>%
       pull()
     
     file.rename(ipums_files, c(
-      here::here(folder_path, extract_gz_filename),
-      here::here(folder_path, extract_xml_filename)
+      here(folder_path, extract_gz_filename),
+      here(folder_path, extract_xml_filename)
     ))
     
   }
   
   # Read extract file
   ddi <-
-    read_ipums_ddi(here::here(folder_path, extract_xml_filename))
+    read_ipums_ddi(here(folder_path, extract_xml_filename))
   
   micro_data <-
     read_ipums_micro(
       ddi,
-      data_file = here::here(folder_path, extract_gz_filename)
+      data_file = here(folder_path, extract_gz_filename)
     )
-  
+
+  #DDI is a codebook that is used by IPUMSR to format the micro data downloaded
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
@@ -103,6 +107,7 @@ extract_ipums <- function(extract_name, extract_description, survey){
   #Zap labels and reformat State and PUMA variable
   acs_imported <- acs_imported %>%
     mutate(  
+      across(c(sample, gq, race, hispan), ~as_factor(.x)),
       across(c(sample, gq, race, hispan, sex, diffcare, diffsens, diffmob, diffphys, diffrem), ~as_factor(.x)),
       across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
       statefip = sprintf("%0.2d", as.numeric(statefip)),
