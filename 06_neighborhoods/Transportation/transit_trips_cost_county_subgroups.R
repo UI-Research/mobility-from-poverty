@@ -417,12 +417,12 @@ cost_by_race_19 <- cost_data_2019 %>%
 
 trips_by_race_15 <- trips_data_2015 %>%
   group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE),
+  summarize(transit_trips = sum(transit_trips_80ami * households, na.rm = TRUE),
             households = sum(households))
 
 trips_by_race_19 <- trips_data_2019 %>%
   group_by(state, county, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households, na.rm = TRUE),
+  summarize(transit_trips = sum(transit_trips_80ami * households, na.rm = TRUE),
             households = sum(households))
 
 # Make sure we have 3 race vars accounted for each county - create dummy df for merging purposes
