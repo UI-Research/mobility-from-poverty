@@ -19,6 +19,7 @@ library(readr)
 library(ggplot2)
 library(tidyverse)
 library(purrr)
+library(tidycensus)
 
 # SUMMARY-LEVEL VALUES
 # Raw data pulled from https://htaindex.cnt.org/download/
@@ -162,11 +163,11 @@ summary(transit_trips_county_2019$households)
 
 # we use a 30 HH cutoff for Data Quality 3 for the ACS variables, so for the sake of consistency, since none of 
 # these are less than 30 (all minimum values are at least 30 HHs), Data Quality can be 1 for all these observations
-transit_trips_county_2015 <- transit_trips_county_2015 %>% 
-  mutate(index_transit_trips_quality = 1)
+transit_trips_county_2015 <- transit_trips_county_2015 %>%
+  mutate(index_transit_trips_quality = ifelse(households > 30, 1, 3))
 
-transit_trips_county_2019 <- transit_trips_county_2019 %>% 
-  mutate(index_transit_trips_quality = 1)
+transit_trips_county_2019 <- transit_trips_county_2019 %>%
+  mutate(index_transit_trips_quality = ifelse(households > 30, 1, 3))
 
 
 ###################################################################
