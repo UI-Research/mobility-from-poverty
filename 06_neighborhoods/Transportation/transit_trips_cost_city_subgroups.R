@@ -381,13 +381,13 @@ cost_all_19 <- cost_data_2019 %>%
 
 trips_all_15 <- trips_data_2015 %>%
   group_by(state, place) %>%
-  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE)) %>%
+  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
 trips_all_19 <- trips_data_2019 %>%
   group_by(state, place) %>%
-  summarize(index_transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE)) %>%
+  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE)) %>%
   mutate(subgroup_type = "race-ethnicity",
          subgroup = "All")
 
@@ -438,11 +438,11 @@ cost_by_race_19 <- cost_data_2019 %>%
 
 trips_by_race_15 <- trips_data_2015 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE))
+  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE))
 
 trips_by_race_19 <- trips_data_2019 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_trips = weighted.mean(x = transit_trips_80ami, w = households*afact, na.rm = TRUE))
+  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE))
 
 
 # Make sure we have 3 race vars accounted for each place - create dummy df for merging purposes
