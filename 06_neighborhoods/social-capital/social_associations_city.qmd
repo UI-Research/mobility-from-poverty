@@ -1,0 +1,402 @@
+---
+title: "Number of membership associations per 10,000 people — City"
+author: "Manuel Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+    css: ../../06_neighborhoods/www/web_report.css
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+
+library(tidyverse)
+library(here)
+library(sf)
+library(censusapi)
+library(tigris)
+library(janitor)
+library(tidylog)
+options(tigris_use_cache = TRUE)
+```
+
+## Process:
+
+This notebook creates city-level `Number of membership associations per 10,000 people` 
+(one of two Social Capital Gates Mobility Metrics)
+
+Data downloaded from: Census County Business Patterns 2021
+
+1.  download social organization data from https://www.census.gov/data/datasets/2021/econ/cbp/2021-cbp.html (this is the numerator)
+
+2.  import and clean the data file (collapse to unique ZIPs)
+
+3.  merge with the 2010 ZCTA -\> 2021 Census Place crosswalk
+
+4.  collapse estimates to unique Places
+
+5.  check against official Census Place file & limit to population cutoff Places
+
+6.  use crosswalk population data to construct the ratio (Numerator/Denominator)
+
+7.  add data quality tag, final file cleaning and export to .csv file
+
+## Download social organization data
+
+
+We pull our data from `library(censusapi)`.
+
+**Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html).
+Add the key to `census_api_key-template.R` and then delete then delete "template". 
+It is sourced below 
+
+```{r}
+# label: source-census-api-key
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+```
+
+```{r}
+#| label: get-social-organization-data
+
+years <- c(2020, 2021)
+cbp_zip <-
+  map(
+    years,
+    ~ getCensus(
+      name = "cbp",
+      vintage = .x,
+      vars = c("EMP", "ESTAB", "NAICS2017"),
+      region = "zipcode:*"
+    ) %>%
+      as_tibble() %>%
+      mutate(year = .x)
+  ) %>%
+  list_rbind()
+
+head(cbp_zip)
+```
+
+## Import and clean the CBP data file
+
+This means:
+
+-   fill in fips missing zeroes,
+
+-   isolate to only the following NAICS,
+
+-   collapse & keep only relevant variables, and
+
+-   add the year of these data.
+
+Below are the codes/associations included in the County Health Rankings metric.
+See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) 
+for more
+
+Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, 
+and 813920.
+
+**Check:** Are all ZCTA codes 5 digits?
+
+```{r}
+#| label: assert-zip-code-length
+stopifnot(
+  all(str_length(cbp_zip$zip_code) == 5)
+)
+```
+
+```{r}
+#| label: import-and-clean-cbp
+naics_codes_to_keep <- c(
+  813410, 713950, 713910, 713940, 711211, 813110, 813940,
+  813930, 813910, 813920
+)
+
+cbp_zip <-
+  cbp_zip %>%
+  mutate(naics = as.numeric(NAICS2017)) %>%
+  filter(naics %in% naics_codes_to_keep) %>%
+  # 5,812,778 to 57,297 rows
+  select(zip_code, year, orgs = ESTAB) %>%
+  # remove observations with missing data for our orgs variable
+  drop_na(orgs) %>%
+  # no missings (observations still at 57,297)
+  # aggregate the total # of orgs per ZIP
+  summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
+# 57,297 observations to 33,238 observations
+```
+
+## Merge with the 2020 ZCTA -\> 2021 Census Place crosswalk
+
+Download the 2020 ZCTA -\> 2021 Census Place crosswalk file from [Geocorr 2022](https://mcdc.missouri.edu/applications/geocorr2022.html) as follows:
+
+- Ctrl-click select every state to get the whole country (where is says Select
+the state(s) (including DC and/or PR) to process:)
+
+- Then, choose ZIP/ZCTA from the 2020 Geographies in the left rectangle, and 
+Place (city. town, etc) from the 2020 Geographies in the right one
+
+- Choose population as the weighting variable you're using to do interpolation
+ 
+- In Output Options, pick CSV
+
+- Check select for Generate second allocation factor AFACT2 showing portion of
+target geocodes in source geocodes
+
+- Hit Run Request, and it will generate the crosswalk for you!
+
+
+Now, import and clean the 2020 ZCTA -\> 2021 Census Place crosswalk file to 
+prepare for merging
+
+```{r}
+#| label: import-and-clean-xwalk
+zcta_place_xwalk <-
+  read_csv(here("06_neighborhoods/social-capital/data/2020_ZCTA_2021_Census_Places_Crosswalk.csv"), skip = 1) %>%
+  as_tibble() %>%
+  clean_names() |>
+  rename(
+    zip_code = zip_census_tabulation_area,
+    state_fips = state_code,
+    place = place_code
+  )
+```
+
+Make an indicator for ZIPs that fall wholly into a Place vs. partially (`zcta_to_place_allocation_factor < 1`)
+
+```{r}
+#| label: make-indicator-for-zips-in-place
+zcta_place_xwalk <-
+  zcta_place_xwalk %>%
+  mutate(portion_in = case_when(
+    zcta_to_place_allocation_factor == 1 ~ 1,
+    zcta_to_place_allocation_factor < 1 ~ 0
+  ))
+```
+
+**Check:** Do 9,669 of these ZCTAs fall fully into a Census Place?
+
+```{r}
+#| label: check-portions-wholly-in-place
+stopifnot(
+  zcta_place_xwalk %>%
+    count(portion_in) %>%
+    filter(portion_in == 1) %>%
+    pull(n) == 9669
+)
+```
+
+```{r}
+#| label: select-crosswalk-variables
+
+zcta_place_xwalk <-
+  zcta_place_xwalk %>%
+  select(
+    zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    place_to_zcta_allocation_factor, portion_in
+  )
+```
+
+Merge the ZIP/Places crosswalk into the CBP ZIP-level data file
+
+```{r}
+#| label: merge-cbp-zip-with-crosswalk
+
+merged_sa_zip_city <-
+  cbp_zip %>%
+  left_join(zcta_place_xwalk, by = c("zip_code"))
+```
+
+**Check:** Are there any missing values in the merged data for `est_total`?
+
+```{r}
+#| label: check-join-missingness
+stopifnot(
+  sum(is.na(merged_sa_zip_city$count_orgs)) == 0
+)
+```
+
+## Collapse estimates to unique Places
+
+First, as a data quality marker we create a new variable that tracks the number 
+of ZCTAs falling in each Place (duplicates)
+
+```{r}
+#| label: count-zip-codes-in-place
+
+merged_sa_zip_city <-
+  merged_sa_zip_city %>%
+  mutate(
+    count_zctas_in_place = n(),
+    .by = c(year, place, place_name)
+  )
+```
+
+Create the merged file where the SA numerator (`count_orgs`) is averaged per 
+Place, weighted by the % area of the ZCTA in that Place (`avg_orgs_per_place_weighted_by_area`) 
+and also include total ZCTAs in Place (`zip_total`) & how many of those fully 
+fall within the Place (`zips_in`)
+
+```{r}
+#| label: average-numerator-per-place-and-by-area
+
+merged_sa_zip_city <-
+  merged_sa_zip_city %>%
+  summarize(
+    zip_total = mean(count_zctas_in_place),
+    zips_in = sum(portion_in),
+    avg_orgs_per_place_weighted_by_area = weighted.mean(count_orgs, zcta_to_place_allocation_factor),
+    .by = c(year, state_fips, place)
+  )
+```
+
+**Check:** Are there exactly 35 missing values in the `new_est_zip` variable?
+
+```{r}
+stopifnot(
+  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 35
+)
+```
+
+We drop these missing values
+
+```{r}
+#| label: drop-missing-estimate
+merged_sa_zip_city <-
+  merged_sa_zip_city %>%
+  drop_na(avg_orgs_per_place_weighted_by_area)
+```
+
+## Check against Census Place file & limit to population cutoff Places
+
+Import the updated population-cutoff Places file for the relevant years
+
+```{r}
+places_pop <-
+  read_csv(here("geographic-crosswalks/data/place-populations.csv")) %>%
+  rename(state_fips = state) %>%
+  filter(year %in% years)
+```
+
+**Check:** Are there 486 Places in the population-cutoff file?
+
+```{r}
+#| label: check-number-of-places
+stopifnot(
+  count(places_pop, year) %>%
+    pull(n) %>%
+    unique() == 486
+)
+```
+
+Join `places_pop` with `merged_sa_zip_city` in order to get the final SA (numerator) city data
+
+```{r}
+sa_city_data <-
+  places_pop %>%
+  left_join(merged_sa_zip_city,
+    by = c("year", "place", "state_fips")
+  )
+```
+
+## Use crosswalk population data to construct the ratio (Numerator/Denominator)
+
+## Create the social associations per 10,000 people metric
+
+Now, we create the social associations metric by dividing the population by
+10,000 and then dividing the numerator by that value.
+
+We also round the ratio metric to one decimal point as they do in County Health
+Rankings.
+
+```{r}
+#| label: create-number-of-membership-associations-metric
+
+sa_city_data <-
+  sa_city_data %>%
+  mutate(
+    pop_ratio = population / 1e4,
+    count_membership_associations_per_10k = round(avg_orgs_per_place_weighted_by_area / pop_ratio, digits = 1)
+  )
+```
+
+## Add data quality tag, final file cleaning and export to .csv file
+
+
+## Create quality variable
+
+Add the necessary components to the crosswalk for producing a data quality flag.
+The methodology is borrowed from the [Puma to County Crosswalk notebook](geographic-crosswalks/generate_puma_county_crosswalks.qmd)
+
+Create flags in the ZCTA-place crosswalk for places where a high percentage of the data comes from outside of the places Per agreed upon guidance, 75% or more from the place is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of ZCTA in the place and percentage of place in the ZCTA for each ZCTA-place pairing, and summing across the place
+
+We then create new variable "products". This is the sum of the share of the place captured in the ZCTA and the share of the ZCTA captured in the place.
+
+```{r}
+crosswalk_data_quality <-
+  zcta_place_xwalk |>
+  mutate(products = place_to_zcta_allocation_factor * zcta_to_place_allocation_factor) |>
+  mutate(
+    sum_products = sum(products),
+    .by = c("state_fips", "place")
+  ) |>
+  mutate(
+    count_membership_associations_per_10k_quality =
+      case_when(
+        sum_products >= 0.75 ~ 1,
+        sum_products >= 0.35 ~ 2,
+        sum_products < 0.35 ~ 3
+      )
+  ) |>
+  select(state_fips, place, count_membership_associations_per_10k_quality)
+
+crosswalk_data_quality |>
+  ggplot(aes(x = count_membership_associations_per_10k_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag 2020") +
+  ylab("Count")
+```
+
+
+```{r}
+#| label: create-data-quality-flag
+
+sa_city_data <-
+  sa_city_data %>%
+  left_join(crosswalk_data_quality, by = c("state_fips", "place")) |>
+  select(year, state = state_fips, place, count_membership_associations_per_10k, count_membership_associations_per_10k_quality) %>%
+  arrange(
+    year, state, place,
+    count_membership_associations_per_10k,
+    count_membership_associations_per_10k_quality
+  )
+```
+
+**Check:** Are there any missing values in the metric?
+
+```{r}
+stopifnot(
+  sum(is.na(sa_city_data$count_membership_associations_per_10k)) == 0
+)
+```
+
+## Save the final file
+
+```{r}
+sa_city_data %>%
+  arrange(year, state, place) %>%
+  write_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv"))
+
+sa_city_data %>%
+  filter(year == 2021) %>%
+  select(-year) %>%
+  arrange(state, place) %>%
+  write_csv(here("06_neighborhoods/social-capital/final/social_associations_2021_city.csv"))
+```
