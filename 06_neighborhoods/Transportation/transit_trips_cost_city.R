@@ -168,7 +168,7 @@ transit_trips_city_2015 <- left_join(transit_trips_tracts_2015, tract_place, by=
 # otherwise, data quality is 2
 transit_trips_city_2015 <- transit_trips_city_2015 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transit_trips = weighted.sum(transit_trips_80ami, w = afact, na.rm = TRUE),
+  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami*afact, na.rm = TRUE),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )
@@ -203,7 +203,7 @@ transit_trips_city_2019 <- left_join(transit_trips_tracts_2019, tract_place, by=
 # otherwise, data quality is 2
 transit_trips_city_2019 <- transit_trips_city_2019 %>% 
   dplyr::group_by(state, place) %>% 
-  dplyr::summarize(index_transit_trips = weighted.sum(transit_trips_80ami, w = afact, na.rm = TRUE),
+  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami*afact, na.rm = TRUE),
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )
@@ -264,7 +264,7 @@ if (length(missing_indices15) > 0) {
 } else {
   cat("No missing values for transportation_cost_county_2015\n")
 }
-# 77 missing values
+# 5 missing values
 
 if (length(missing_indices19) > 0) {
   cat("Observations with missing values for index_transportation_cost:\n")
@@ -272,7 +272,7 @@ if (length(missing_indices19) > 0) {
 } else {
   cat("No missing values for transportation_cost_county_2019\n")
 }
-# 75 missing values
+# 5 missing values
 
 
 ###################################################################
