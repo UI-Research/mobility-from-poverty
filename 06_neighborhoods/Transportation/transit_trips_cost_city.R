@@ -123,7 +123,7 @@ transit_cost_city_2015 <- transit_cost_city_2015 %>%
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )%>%
-  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n > 0.5, 1, ifelse(dq / n <= 0.5, 2, NA)))
+  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
 
 
 # left join with places file to get rid of irrelevant places data
@@ -147,7 +147,7 @@ transit_cost_city_2019 <- transit_cost_city_2019 %>%
                    n = n(),
                    dq = sum(afact > 0.5, na.rm = TRUE)
   )%>%
-  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n > 0.5, 1, ifelse(dq / n <= 0.5, 2, NA)))
+  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
 
 # left join with places file to get rid of irrelevant places data
 transit_cost_city_2019 <- left_join(places, transit_cost_city_2019, by=c("state","place"))
@@ -180,7 +180,7 @@ transit_trips_city_2015 <- transit_trips_city_2015 %>%
     percentile_rank = ((rank - 1) / (n() - 1)) * 100,
     index_transit_trips = round(percentile_rank, 2)
   )%>%
-  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n > 0.5, 1, ifelse(dq / n <= 0.5, 2, NA)))
+  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
 
 
 # left join with places file to get rid of irrelevant places data
@@ -215,7 +215,7 @@ transit_trips_city_2019 <- transit_trips_city_2019 %>%
     percentile_rank = ((rank - 1) / (n() - 1)) * 100,
     index_transit_trips = round(percentile_rank, 2)
   )%>%
-  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n > 0.5, 1, ifelse(dq / n <= 0.5, 2, NA)))
+  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
 
 
 # left join with places file to get rid of irrelevant places data
