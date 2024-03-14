@@ -20,6 +20,7 @@ library(readr)
 library(ggplot2)
 library(tidyverse)
 library(purrr)
+library(tidycensus)
 
 ###################################################################
 
@@ -419,7 +420,7 @@ trips_all_19 <- trips_all_19 %>%
   select(state, place, index_transit_trips, subgroup_type, subgroup)
 
 
-# 3b. Collapse accordingly -- to places and race categories, weighting the measure by HH count per tract
+# 3b. Collapse accordingly -- to places and race categories, weighting the measure by HH count x afact per tract
 
 # checking if unnecessary missings are being created
 na_count <- sum(is.na(cost_data_2015$t_80ami))
