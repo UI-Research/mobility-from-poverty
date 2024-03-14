@@ -1003,8 +1003,8 @@ Please note that the denominator we use is the living wage for a single full-tim
 ### Overview
 
 * **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
-* **Year(s):** 2016, 2017, 2018, 2019, 2021, 2022
-
+* **Year(s):** 2017, 2018, 2019, 2021, 2022 for counties and 2018, 2022 for 
+cities.
 * **Final data name(s):** `digital_access_county_2022.csv`, 
 `digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
 `digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
