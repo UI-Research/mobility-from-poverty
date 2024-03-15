@@ -12,50 +12,7 @@ library(readxl)
 library(stringr)
 library(tidyr)
 
-# FIRST, RUN THE ORIGINAL create_county_file.R 
 
-# Specify URL where source data file is online
-url <- "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/counties/totals/co-est2022-alldata.csv"
-
-# Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile <- "Census_PEP_county.csv"
-
-# Import the data file & save locally
-download.file(url, destfile, mode="wb")
-
-# Import the data file as a dataframe
-county_pops <- read_csv("Census_PEP_county.csv")
-
-# rename columns
-county_pops <- county_pops %>% 
-  rename('2021' = POPESTIMATE2021,
-         '2022' = POPESTIMATE2022,
-         state = STATE,
-         county = COUNTY,
-         state_name = STNAME,
-         county_name = CTYNAME)
-
-# remove unnecessary data before reshaping
-county_pops <- county_pops %>%
-  filter(county != "000")
-
-# keep only variables we want before reshaping by county
-county_pops <- county_pops %>% 
-  select(state, county, state_name, county_name, "2021", "2022")
-
-# reshape by county
-county_pops <- county_pops %>% 
-  pivot_longer(
-    cols = `2021`:`2022`, 
-    names_to = "year",
-    values_to = "population"
-  )
-
-# append to original county population file
-pop2 <- rbind(pop, county_pops)
-
-# resave the updated population file
-write_csv(pop2, "geographic-crosswalks/data/county-populations.csv")
 
 
 
