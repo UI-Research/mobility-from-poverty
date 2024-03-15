@@ -22,6 +22,11 @@ Primary data derived from the IPUMS API.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
+*User warnings* 
+
+    + The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+     + Please check that no folders in the filepath that you have cloned this repostiory to include the acronym "UMF" - this will throw an error from the extract_ipums function. To check your file path you can use the function here::here().
+
 ## Housekeeping
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
@@ -55,18 +60,11 @@ Read in the ACS extracts using the `extract_ipums()` function. Make sure to chan
 
 ```{r}
 acs <- extract_ipums(
-  extract_name = "umf_data_18_22",
+  extract_name = "umf_data_18_22_1year",
   extract_description = "Microdata pull for Mobility Metric Predictors.
   American Community Survey, overall, years 2018, 2019 and 2022 (1-year).",
   survey = list("us2018a", "us2021a", "us2022a")
 )
-
-```
-
-
-```{r}
-acs <- acs %>%
-  filter(sample %in% c("2018 ACS", "2021 ACS", "2022 ACS"))
 
 ```
 
@@ -75,8 +73,6 @@ Isolate data to include each household only once (PERNUM == 1 counts head of hou
 ```{r}
 acs_hh <- acs %>%
   filter(pernum == 1)
-
-rm(acs)
 ```
 
 Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
@@ -90,7 +86,7 @@ count(acs_hh, sample)
 
 Read in household-level replicate weights for the entire population. These will be used in creating standard errors for the income quantile calculation. 
 ```{r}
-repwts_hh <- ipums_repwt_household(
+repwts <- ipums_repwt_household(
   extract_name = "household_replicate_weights_1year",
   extract_description = "Household replicate weights for Income Opportunities 
   Metric Predictors. American Community Survey, years 2018, 2019 and 2022 
@@ -104,14 +100,14 @@ repwts_hh <- ipums_repwt_household(
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
 
 ```{r}
-count(repwts_hh, sample)
+count(repwts, sample)
 
 ```
 
 Remove the sample variable.
 
 ```{r}
-repwts_hh <- repwts_hh %>% 
+repwts_hh <- repwts %>% 
   select(-sample)
 
 ```
@@ -143,18 +139,10 @@ rm(repwts_hh)
 
 Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
 
-* **Vacancy:** reported as "0". 
-Note there are no vacancy results by default of the structure of census data read in.
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
 
 ```{r}
-acs_combined %>% 
-  ggplot(aes(x = vacancy)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  labs(
-    title = "Vacancy Variable Results",
-    y = "Density"
-  )
-
+stopifnot(all(acs_combined$vacancy == "0"))
 ```
 
 * **HHINCOME:** N/As reported as "9999999".
@@ -234,18 +222,14 @@ puma_county_crosswalk <- read_csv(
 )
 ```
 
-Create a version of the crosswalk with just the county-level values of data quality variables for each crosswalk period.
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
 
 ```{r}
-county_puma <- puma_county_crosswalk %>%
-  group_by(crosswalk_period, statefip, county) %>% 
-  summarise(
-    geographic_allocation_quality = mean(geographic_allocation_quality)
-  ) %>% 
-  ungroup()
-
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
 ```
-
 
 ## Merge Crosswalk 
 
@@ -274,8 +258,17 @@ acs_crosswalked <- left_join(
   relationship = "many-to-many"
 )
 
-rm(acs_clean)
+```
 
+Run an anti_join to see what data does not combine. We keep all counties so there should be no observations resulting from the anti-join.
+
+```{r}
+anti_join(acs_clean, 
+          puma_county_crosswalk, 
+          by = c("crosswalk_period", "statefip","puma")
+)
+
+rm(acs_clean)
 ```
 
 Drop any observations with NA for `afact` (i.e. there is no county of interest overlapping this PUMA).
@@ -391,7 +384,9 @@ Calculate the county-level metrics.
 #| label: calc-all
 
 results_all <- acs_all %>%
-  calc_income_quantiles(.geo_level = county)
+  group_split(statefip) %>% 
+  map_dfr(~ calc_income_quantiles(.data = .x, .geo_level = county))
+
 ```
 
 Clean up the confidence interval bounds and sort the data.
@@ -399,7 +394,8 @@ Clean up the confidence interval bounds and sort the data.
 ```{r}
 #| label: finalize-all
 
-results_all <- finalize_metric(results_all, .geo_level = county)
+results_all <- finalize_metric(results_all, 
+                               .geo_level = county)
 
 ```
 
@@ -411,35 +407,43 @@ rm(acs_all)
 ## Add Suppressed Rows to Data
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Expand the county_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of counties we anticipate.
 ```{r}
-results_all_expand <- acs_crosswalked %>% 
-  select(year, statefip, county) %>% 
-  unique() %>% 
-  left_join(results_all, by = c("year", "statefip", "county"))
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
+
+stopifnot(nrow(results_all_expand) == 3143 * 3)
+
 ```
 
 ## Data Quality Flags
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
 
-First, join on to county_puma which provides the quality of the crosswalk (`afact * afact2`).
-```{r}
-
-metrics_income_all <- left_join(results_all_expand, county_puma, by=c("crosswalk_period", "statefip","county"))
-```
-
-Now create the metric quality variable. The employed_quality variable combines quality information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the share_employed metric is being suppressed due to sample size and is given a quality flag of 3.  
+The `pctl_income_quality `variable combines quality information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any place with NA for the `pctl_income_*` variables, the metric is being suppressed due to sample size and is given a quality flag of 3.  
 
 ```{r}
-metrics_income_all <- metrics_income_all %>% 
-         mutate(pctl_income_quality = case_when(is.na(pctl_income_20) ~ 3,
-                                                   geographic_allocation_quality == 1 ~ 1,
-                                                   geographic_allocation_quality == 2 ~ 2,
-                                                   geographic_allocation_quality == 3 ~ 3)
+metrics_income_all <- results_all_expand %>% 
+  mutate(
+    pctl_income_quality = if_else(
+      is.na(pctl_income_20), 
+      NA_real_,
+      geographic_allocation_quality
+    )
   )
 ```
 
-## Evaluate Results
+
+## Validation
 
 Summarize the predictors for the 1-year and 5-year data.
 ```{r}
@@ -505,5 +509,10 @@ metrics_income_all <- metrics_income_all %>%
 
 Export as CSV.
 ```{r}
-write_csv(metrics_income_all, here::here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv"))
+
+metrics_income_all %>% 
+  head(10)
+
+write_csv(metrics_income_all, 
+          here::here("01_financial-well-being", "data", "final", "metrics_income_county_all_longitudinal.csv"))
 ```

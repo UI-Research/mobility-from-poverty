@@ -38,8 +38,6 @@ ipums_repwt_household <- function(extract_name, extract_description, survey){
         description = extract_description,
         samples = c(survey),
         variables = list(
-          #var_spec("PERNUM", 
-           #        case_selections = c("1")),
           var_spec("GQ",
                    case_selections = c("1", "2", "5")),
           "REPWT",

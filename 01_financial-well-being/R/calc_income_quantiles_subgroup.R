@@ -18,7 +18,8 @@ calc_income_quantiles_subgroup <- function(.data, .geo_level, .subgroup) {
         na.rm = FALSE,
         qrule = "hf3"
       ),
-      n = n()
+      weighted_n = n(),
+      geographic_allocation_quality = unweighted(mean(geographic_allocation_quality))
     ) %>%
     ungroup()
   
