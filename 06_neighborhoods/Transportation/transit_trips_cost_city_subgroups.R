@@ -367,82 +367,127 @@ trips_data_2019 <- left_join(trips_data_2019, tract_place, by=c("state", "county
 
 # NOW, collapse by place(s) for each of our four data files
 # weight the collapse by households*afact (the amount of each tract that falls into the place x the number of households represented by the estimate)
+# add quality variable =1 when more than half of the tracts that were collapsed 
+# are 50%+ in the Place, and =2 when less than half the tracts that are collapsed per place are <50% in the Place
 cost_all_15 <- cost_data_2015 %>%
   group_by(state, place) %>%
-  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
+  summarize(
+    index_transportation_cost = weighted.mean(x = t_80ami, w = households * afact, na.rm = TRUE),
+    n = n(),
+    dq = sum(afact > 0.5, na.rm = TRUE)
+  ) %>%
+  mutate(
+    subgroup_type = "race-ethnicity",
+    subgroup = "All",
+    index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 cost_all_19 <- cost_data_2019 %>%
   group_by(state, place) %>%
-  summarize(index_transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
+  summarize(
+    index_transportation_cost = weighted.mean(x = t_80ami, w = households * afact, na.rm = TRUE),
+    n = n(),
+    dq = sum(afact > 0.5, na.rm = TRUE)
+  ) %>%
+  mutate(
+    subgroup_type = "race-ethnicity",
+    subgroup = "All",
+    index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 trips_all_15 <- trips_data_2015 %>%
   group_by(state, place) %>%
-  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
+  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+            ) %>%
+  mutate(
+      subgroup_type = "race-ethnicity",
+      subgroup = "All",
+      index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+      )
 
 trips_all_19 <- trips_data_2019 %>%
   group_by(state, place) %>%
-  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE)) %>%
-  mutate(subgroup_type = "race-ethnicity",
-         subgroup = "All")
+  summarize(index_transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+  ) %>%
+  mutate(
+    subgroup_type = "race-ethnicity",
+    subgroup = "All",
+    index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 
-# Now make sure to change the trips to national percentile ranks
+# Now make sure to change the trips (both years) to national percentile ranks
 
-# Create a new column 'rank' and initialize it with NA
-trips_all_15$rank <- NA
-# Calculate ranks for non-NA values
-non_na_rows <- !is.na(trips_all_15$index_transit_trips)
-trips_all_15$rank[non_na_rows] <- rank(trips_all_15$index_transit_trips[non_na_rows])
-
-# Create a new column 'rank' and initialize it with NA
-trips_all_19$rank <- NA
-# Calculate ranks for non-NA values
-non_na_rows <- !is.na(trips_all_19$index_transit_trips)
-trips_all_19$rank[non_na_rows] <- rank(trips_all_19$index_transit_trips[non_na_rows])
-
-
-# Calculate percentile ranks
-trips_all_15$percentile_rank <- (trips_all_15$rank - 1) / (nrow(trips_all_15) - 1) * 100
-trips_all_19$percentile_rank <- (trips_all_19$rank - 1) / (nrow(trips_all_19) - 1) * 100
-# round to 2 decimals
-trips_all_15$index_transit_trips <- round(trips_all_15$percentile_rank, 2)
-trips_all_19$index_transit_trips <- round(trips_all_19$percentile_rank, 2)
-# keep only what we need
 trips_all_15 <- trips_all_15 %>%
-  select(state, place, index_transit_trips, subgroup_type, subgroup)
+  mutate(
+    rank = rank(index_transit_trips),
+    percentile_rank = ((rank - 1) / (sum(!is.na(index_transit_trips)) - 1)) * 100,
+    index_transit_trips = round(percentile_rank, 2),
+    index_transit_trips_quality = index_transit_trips_quality
+  ) %>%
+  select(state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality) %>%
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips), NA, index_transit_trips_quality))
+
+
 trips_all_19 <- trips_all_19 %>%
-  select(state, place, index_transit_trips, subgroup_type, subgroup)
+  mutate(
+    rank = rank(index_transit_trips),
+    percentile_rank = ((rank - 1) / (sum(!is.na(index_transit_trips)) - 1)) * 100,
+    index_transit_trips = round(percentile_rank, 2),
+    index_transit_trips_quality = index_transit_trips_quality
+  ) %>%
+  select(state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality) %>%
+  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips), NA, index_transit_trips_quality))
 
 
-# 3b. Collapse accordingly -- to places and race categories, weighting the measure by HH count x afact per tract
 
-# checking if unnecessary missings are being created
-na_count <- sum(is.na(cost_data_2015$t_80ami))
+# 3b. Collapse to the CITY level to create RACE-BASED values (to be appended later)
+# Collapse to places and race categories, weighting the measure by HH count x afact per tract
 
 cost_by_race_15 <- cost_data_2015 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE))
+  summarize(transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+            ) %>%
+  mutate(
+    index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
-na_count <- sum(is.na(cost_by_race_15$transit_cost))
-# went from 831 missings to 148 and the values look consistent
 
 cost_by_race_19 <- cost_data_2019 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE))
+  summarize(transportation_cost = weighted.mean(x = t_80ami, w = households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+            )%>%
+  mutate(
+    index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 trips_by_race_15 <- trips_data_2015 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE))
+  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+            )%>%
+  mutate(
+    index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 trips_by_race_19 <- trips_data_2019 %>%
   group_by(state, place, race_category) %>%
-  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE))
+  summarize(transit_trips = sum(transit_trips_80ami*households*afact, na.rm = TRUE),
+            n = n(),
+            dq = sum(afact > 0.5, na.rm = TRUE)
+            )%>%
+  mutate(
+    index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA))
+  )
 
 
 # Make sure we have 3 race vars accounted for each place - create dummy df for merging purposes
@@ -455,12 +500,12 @@ place_expander <- expand_grid(
 cost_by_race_15 <- left_join(place_expander, cost_by_race_15, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category,
-         index_transportation_cost = transit_cost)
+         index_transportation_cost = transportation_cost)
 
 cost_by_race_19 <- left_join(place_expander, cost_by_race_19, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
   rename(subgroup = race_category,
-         index_transportation_cost = transit_cost)
+         index_transportation_cost = transportation_cost)
 
 trips_by_race_15 <- left_join(place_expander, trips_by_race_15, by = c("state", "place", "race_category")) %>%
   mutate(subgroup_type = "race-ethnicity") %>%
@@ -493,7 +538,7 @@ trips_by_race_15 <- trips_by_race_15 %>%
 
 trips_by_race_15 <- trips_by_race_15 %>%
   rename(index_transit_trips = percentile_rank) %>%
-  select(state, place, subgroup, subgroup_type, index_transit_trips)
+  select(state, place, subgroup, subgroup_type, index_transit_trips, index_transit_trips_quality)
 
 
 
@@ -514,10 +559,7 @@ trips_by_race_19 <- trips_by_race_19 %>%
 
 trips_by_race_19 <- trips_by_race_19 %>%
   rename(index_transit_trips = percentile_rank) %>%
-  select(state, place, subgroup, subgroup_type, index_transit_trips)
-
-
-
+  select(state, place, subgroup, subgroup_type, index_transit_trips, index_transit_trips_quality)
 
 
 
@@ -678,36 +720,10 @@ stopifnot(min(trips_by_race_19$index_transit_trips, na.rm = TRUE) >= 0)
 # Good to go
 
 
-###################################################################
-
-# 5. Data Quality marker
-# none of these values are coming from estimates with less than 30 observations
-# so these can all be Data Quality 1
-trips_by_race_15 <- trips_by_race_15 %>% 
-  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
-trips_by_race_19 <- trips_by_race_19 %>% 
-  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
-
-
-trips_all_15 <- trips_all_15 %>% 
-  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
-trips_all_19 <- trips_all_19 %>% 
-  mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips) | is.nan(index_transit_trips), NA, 1))
-
-cost_by_race_15 <- cost_by_race_15 %>% 
-  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
-cost_by_race_19 <- cost_by_race_19 %>% 
-  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
-
-cost_all_15 <- cost_all_15 %>% 
-  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
-cost_all_19 <- cost_all_19 %>% 
-  mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost) | is.nan(index_transportation_cost), NA, 1))
-
 
 ###################################################################
 
-# 6. Export
+# 5. Export
 
 
 # Combine the All values with the Subgroup values by appending
