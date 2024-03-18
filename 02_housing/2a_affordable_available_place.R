@@ -23,7 +23,7 @@
 # lower incomes. Those units thus are not available to lower-income renters. A unit is available at a
 # given level of income if (1) it is affordable at that level, and (2) it is occupied by a renter either at
 # that income level or at a lower level or is vacant. 
-
+ 
 
 # Process:
 # (1) Housekeeping

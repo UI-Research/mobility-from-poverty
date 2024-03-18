@@ -24,7 +24,7 @@
 # given level of income if (1) it is affordable at that level, and (2) it is occupied by a renter either at
 # that income level or at a lower level or is vacant. 
 
-
+ 
 # Process:
 # (1) Housekeeping
 # (2) Import housing affordability measures calculated in 1b_housing_county.R
