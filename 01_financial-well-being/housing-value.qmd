@@ -132,7 +132,7 @@ the first person sampled in the household.
 # Manually set the microdata object equal to whatever the file you downloaded in
 # the previous chunk is called. In my case it is, "usa_00014.xml" but that will
 # be different for you.
-microdata <- "usa_00014.xml"
+microdata <- "usa_00016.xml"
 
 acs1yr_raw <-
   read_ipums_micro(here(glue("01_financial-well-being/data/{microdata}"))) |>
@@ -221,7 +221,7 @@ We create two age subgroups: households over 45 and households under 45
 
 acs1yr <-
   acs1yr |>
-  mutate(subgroup = if_else(age >= 45, "Over or exactly 45 years old", "Under 45 years old"))
+  mutate(subgroup = if_else(age >= 45, "Age 45 and Over", "Under Age 45"))
 ```
 
 We collapse IPUMS race and ethnicity categories into white non-hispanic, Black
@@ -796,9 +796,9 @@ house_value_place_subgroup |>
 
 construct_ratio <- function(share_house_value, share_households) {
   paste0(
-    format(round(100 * share_house_value, 1), nsmall = 1),
+    format(round(share_house_value, 3), nsmall = 1),
     ":",
-    format(round(100 * share_households, 1), nsmall = 1)
+    format(round(share_households, 3), nsmall = 1)
   ) |>
     str_remove_all(pattern = " ")
 }
@@ -971,7 +971,7 @@ export_metric <- function(data, file_type) {
   data <- data |> right_join(pop_file, by = c("year", "state", geo_var))
 
 
- 
+
   if (file_type == "subgroup") {
     if (geo_var == "county") {
       missing_geo <- tribble(
@@ -996,6 +996,13 @@ export_metric <- function(data, file_type) {
           "year", "state", "county", "state_name", "county_name",
           "subgroup", "subgroup_type"
         )) |>
+        mutate(subgroup = factor(subgroup,
+          levels = c(
+            "All",
+            "Age 45 and Over",
+            "Under Age 45"
+          )
+        )) |>
         arrange(year, state, county, subgroup_type, subgroup) |>
         relocate("subgroup_type", .before = subgroup) |>
         group_by(year, state, county) |>
@@ -1005,8 +1012,8 @@ export_metric <- function(data, file_type) {
       missing_geo <- tribble(
         ~state, ~place, ~state_name, ~place_name, ~subgroup_type, ~subgroup,
         "13", "72122", "Georgia", "South Fulton city", "age", "All",
-        "13", "72122", "Georgia", "South Fulton city", "age", "Over or exactly 45 years old",
-        "13", "72122", "Georgia", "South Fulton city", "age", "Under 45 years old"
+        "13", "72122", "Georgia", "South Fulton city", "age", "Age 45 and Over",
+        "13", "72122", "Georgia", "South Fulton city", "age", "Under Age 45"
       ) |>
         expand(nesting(state, place, state_name, place_name, subgroup_type, subgroup),
           year = c(2016, 2017, 2018, 2019)
@@ -1025,6 +1032,13 @@ export_metric <- function(data, file_type) {
             subgroup = "All"
           )) |>
         full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup", "subgroup_type")) |>
+        mutate(subgroup = factor(subgroup,
+          levels = c(
+            "All",
+            "Age 45 and Over",
+            "Under Age 45"
+          )
+        )) |>
         arrange(year, state, place, subgroup_type, subgroup) |>
         relocate("subgroup_type", .before = subgroup) |>
         filter(year >= 2016) |>
@@ -1088,45 +1102,6 @@ assertthat::assert_that(
 )
 ```
 
-
-
-```{r}
-#| label: check-ct-counties-recent
-county_recent <- read_csv(here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_2022_county.csv"))
-
-assertthat::assert_that(
-  all.equal(
-    county_recent |> nrow(),
-    county_file |> filter(year == 2022) |> nrow()
-  )
-)
-
-# Check that only new planning regions are present in 2022 for CT and all 9 are prese t
-assertthat::assert_that(
-  all.equal(
-    # CT counties in final county metric file
-    county_recent |>
-      select(state, county) |>
-      filter(state == "09") |>
-      distinct(county) |>
-      arrange(county),
-    # CT county in population file
-    county_file |>
-      filter(state == "09", year %in% c(2022)) |>
-      select(state, county) |>
-      distinct(county) |>
-      arrange(county)
-  )
-)
-
-assertthat::assert_that(
-  county_recent |>
-    select(state, county) |>
-    filter(state == "09") |>
-    distinct(county) |>
-    nrow() == 9
-)
-```
 
 
 
