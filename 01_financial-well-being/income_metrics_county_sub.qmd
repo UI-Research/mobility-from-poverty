@@ -574,13 +574,25 @@ metrics_income_sub <- results_all_expand %>%
 ```
 
 
-The `pctl_income_quality `variable combines quality information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any place with NA for the `pctl_income_*` variables, the metric is being suppressed due to sample size and is given a quality flag of 3.  
+Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst.
+
+The data quality flag is based on the allocation of the PUMAs that make up a county, which comes from the crosswalk file, and the effective sample size of the county. When the effective sample size is less than 30 all records for that county will be reported as `NA`, including `pctl_income_quality`.
 
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
   mutate(
-    pctl_income_quality = if_else(
+   pctl_income_20_quality = if_else(
       is.na(pctl_income_20), 
+      NA_real_,
+      geographic_allocation_quality
+    ),
+    pctl_income_50_quality = if_else(
+      is.na(pctl_income_50), 
+      NA_real_,
+      geographic_allocation_quality
+    ),
+    pctl_income_80_quality = if_else(
+      is.na(pctl_income_80), 
       NA_real_,
       geographic_allocation_quality
     )
@@ -613,11 +625,10 @@ metrics_income_sub %>%
 
 Break out distributions by subgroup (2021).
 ```{r}
-
 metrics_income_sub %>% 
   filter(year == 2021, subgroup_type == "race-ethnicity") %>%
-  select(county, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
-  pivot_longer(!subgroup, cols = c(pctl_income_20, pctl_income_50, pctl_income_80), 
+  select(subgroup, county, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), 
                names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
@@ -629,11 +640,11 @@ metrics_income_sub %>%
   theme_minimal()
 ```
 
-Look at the counts of the quality flag (all years).
+Look at the counts of the quality flag (all years). We look at quality for `pctl_income_20`, given how the quality variable is created it will be identical to the quality results for income_50 and income_80.
 ```{r}
 metrics_income_sub %>% 
-  select(pctl_income_quality) %>% 
-  ggplot(aes(x = pctl_income_quality)) +
+  select(pctl_income_20_quality) %>% 
+  ggplot(aes(x = pctl_income_20_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
   theme_minimal() +
   ggtitle("Quality Flag (5-year data") +
@@ -664,14 +675,20 @@ Order the variables how we want.
 metrics_income_sub <- metrics_income_sub %>% 
   select(year, state, county, subgroup, subgroup_type, pctl_income_20, pctl_income_20_lb, 
          pctl_income_20_ub,
+         pctl_income_20_quality,
          pctl_income_50, pctl_income_50_lb, 
          pctl_income_50_ub, 
+         pctl_income_50_quality,
          pctl_income_80, pctl_income_80_lb, 
          pctl_income_80_ub,
-         pctl_income_quality)
+         pctl_income_80_quality)
 ```
 
 Export as CSV.
 ```{r}
+
+metrics_income_sub %>% 
+  head(10)
+
 write_csv(metrics_income_sub, here::here("01_financial-well-being", "data", "final", "metrics_income_county_race-ethnicity_longitudinal.csv"))
 ```
