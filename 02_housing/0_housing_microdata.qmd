@@ -125,8 +125,7 @@ puma_place_2022 %>% distinct(statefip, place) %>% nrow() # 486 observations
 # NOTE: data quality variables calculated in geographic-crosswalks/generate_puma_place_crosswalks.qmd
 place_puma <- puma_place_2022 %>%
   group_by(statefip, place) %>%
-  summarize(puma_flag = mean(geographic_allocation_quality), 
-                   size_flag = mean(size_flag))
+  summarize(puma_flag = mean(geographic_allocation_quality))
 
 # save as "place_puma.csv" in gitignore
 write_csv(place_puma, "data/temp/place_puma.csv")
@@ -137,7 +136,7 @@ write_csv(place_puma, "data/temp/place_puma.csv")
 ```{r}
 # (2) Prepare the Census County to PUMA crosswalk
 # open relevant crosswalk data
-puma_county_2022 <-  read_csv("geographic-crosswalks/data/crosswalk_puma_to_county.csv") %>% 
+puma_county_2022 <-  read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_county.csv")) %>% 
   filter(crosswalk_period == 2022) %>% 
   filter(statefip != 72) %>% 
 # drop observations where the weight adjustment is zero
@@ -150,8 +149,7 @@ puma_county_2022 %>% distinct(statefip, county) %>% nrow() # 3,143
 # save a version with just the county-level values of data quality variables
 county_puma <- puma_county_2022 %>%
   group_by(statefip, county) %>%
-  summarize(puma_flag = mean(puma_flag), 
-                   size_county = mean(size_flag))
+  summarize(puma_flag = mean(geographic_allocation_quality))
 
 # save as "place_puma.csv" in gitignore
 write_csv(county_puma, "data/temp/county_puma.csv")
@@ -180,14 +178,14 @@ acs_2022 <- housing_ext_def %>%
 # now have 3,781,759 rows
 
 # check distinct number of places - get 536 observations
-acs2022clean %>% distinct(statefip, place) %>% nrow()
+acs_2022 %>% distinct(statefip, place) %>% nrow()
 
 # run anti_join to see how many cases on the left did not have a match on the right
 test  <- anti_join(acs_2022, puma_place_2022, by=c("statefip","puma"))
 # 1,842,100 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
 
 # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
-acs2022clean <- acs2022clean %>% 
+acs2022clean <- acs_2022 %>% 
   tidylog::filter(!is.na(afact)) %>% 
 # removed 1,839,362 rows (49%), 1,942,397 rows remaining
   filter(afact > 0)
@@ -229,16 +227,16 @@ acs_2022_county <- housing_ext_def %>%
 # 7,336,764 rows remaining
 
 # check distinct number of counties - 3143
-acs2022clean_county %>% distinct(statefip, county) %>% nrow()
+acs_2022_county %>% distinct(statefip, county) %>% nrow()
 
 # run anti_join to see how many cases on the left did not have a match on the right
-test  <- anti_join(acs_2022_county, puma_county, by=c("statefip","puma"))
+test  <- anti_join(acs_2022_county, puma_county_2022, by=c("statefip","puma"))
 # all matched
 
 # Adjust weight to account for PUMA-to-county mapping (those where unique_types > 1).;
 
 # Same adjustments as Kevin:
-acs2022clean <- acs2022clean %>%
+acs2022clean <- acs_2022_county %>%
   mutate(HHWT = HHWT*afact, # the weight of each household is adjusted by the area of the PUMA that falls into a given Place
          HHINCOME = HHINCOME*ADJUST, # adjusts the HH income values by the Census's 12-month adjustment factor (converts numbers into calendar year dollars)
          PERWT = PERWT*afact, # the weight of each person is adjusted by the area of the PUMA that falls into a given Place
