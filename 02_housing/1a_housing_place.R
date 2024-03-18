@@ -293,7 +293,7 @@ households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("
 # for renter and owner subgroups, this is just the population of renters or owners at each income level
 
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
-# if OWNERSHP is not equal to 1 or 2, leave as NA
+# if OWNERSHP is not equal to 1 or 2, leave as NA 
 
 households_2022 <- households_2022 %>%
   mutate(Affordable80AMI_all =
