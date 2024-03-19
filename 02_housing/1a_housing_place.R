@@ -57,7 +57,7 @@ library(tidylog)
 
 # Either run "0_housing_microdata.qmd" OR: Import the already prepared microdata file 
 # this one should already match the PUMAs to places
-acs2022 <- read_csv(here::here("02_housing","data","temp","2022microdata.csv")) 
+acs2022 <- read_csv(here::here("data","temp","2022microdata.csv")) 
 
 # For HH side: isolate original microdata to only GQ under 3 (only want households)
 # see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
@@ -77,7 +77,7 @@ acs2022clean <- acs2022 %>%
 # Choosing only 1-3 excludes seasonal, occasional, and migratory units
 # drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
 
-vacant_microdata22 <- read_csv(here::here("02_housing", "data","temp","vacancy_microdata2022.csv")) %>% 
+vacant_microdata22 <- read_csv(here::here("data","temp","vacancy_microdata2022.csv")) %>% 
   tidylog::filter(VACANCY %in% c(1, 2, 3))
 # 26,866 obs from 106,542 obs (79,676 dropped)
 
