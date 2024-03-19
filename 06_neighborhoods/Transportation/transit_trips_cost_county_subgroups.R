@@ -20,6 +20,7 @@ library(readr)
 library(ggplot2)
 library(tidyverse)
 library(purrr)
+library(tidycensus)
 
 ###################################################################
 
