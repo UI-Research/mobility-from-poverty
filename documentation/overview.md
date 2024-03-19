@@ -889,14 +889,14 @@ schools where 20 percent or more of students come from households living below 1
 
 ### Overview
 
-* **Analyst & Programmer:** Erica Blom & Emily Gutierrez
-* **Year(s):** 2014-15 through 2018-19
-* **Final data name(s):** `MEPS_2014-2018_city.csv` `MEPS_2014-2018_county.csv'
+* **Analyst & Programmer:** Erica Blom, Emily Gutierrez, & James Carter
+* **Year(s):** 2014-15 through 2020-21 county, 2016-17 through 2020-21 city
+* **Final data name(s):** `MEPS_2020_city.csv` `MEPS_2020_county.csv'
 * **Data Source(s):** Common Core of Data and Urban Institute's Modeled Estimates of Poverty in Schools via Education Data Portal
 * **Notes:**
 * **Data Quality Index:** Data quality of "1" requires at least 30 students in the city/county. Data quality of "2" requires at least 15 students in the city/county. The remainder receive a data quality flag of "3".
-* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free and reduced-price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currently available for years 2014-2018.  
-* **Missingness:** 5/3,142 counties in 2014 and 4/3,142 counties for 2015-2018
+* **Limitations:** Because traditional proxies for school poverty (i.e., the share of free and reduced-price meal students; the share of students directly certified for free meals) have grown inconsistent across time and states, this metric uses the Urban Institute's Modeled Estimates of Poverty in Schools (MEPS) to identify school poverty levels (https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf) MEPS is currently available for years 2014-2020.  
+* **Missingness:** Counties Data: Total of 3,142 cities in 2014-2019 and 3,143 cities in 2023. Data missing for Black Students - 2014:88 2015:87 2016:92 2017:106 2018:96 2019:90 2020:89. Hispanic Students - 2014:23 2015:27 2016:24 2017:23 2018:19 2019:16 2020:18 White Studnets - 2014:6 2015-2019:4 2020:5. Cities Data: 3/485 cities in 2016-2017, 3/486 cities in 2018-2019, and 4/486 in 2020 are missing.
 
 ### Process
 
@@ -1002,30 +1002,41 @@ Please note that the denominator we use is the living wage for a single full-tim
 
 ### Overview
 
-* **Analyst & Programmer:** Tina Chelidze
-* **Year(s):** 2021
-* **Final data name(s):** `digital_access_county_2021.csv` and `digital_access_city_2021.csv'
-* **Data Source(s):** Census Bureau's American Community Survey 
-* **Notes:**
-* **Data Quality Index:** `1` means the observation count informing the estimate is greater than or equal to 30. The quality index is a `2` otherwise.
+* **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
+* **Year(s):** 2017, 2018, 2019, 2021, 2022 for counties and 2018, 2022 for 
+cities.
+* **Final data name(s):** `digital_access_county_2022.csv`, 
+`digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
+`digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
+* **Data Source(s):** Census Bureau's 5-year ACS.
+* **Notes:** The unit of analysis for the overall and income subgroup is 
+households, whereas the unit of analysis for the race/ethnicity subgroup is
+people in households. 
+* **Data Quality Index:** `1` means the differnence between the estimate and the
+lower bound estimate is less than 0.1, `2` means the difference is between 0.1
+and 0.2, and `3` means the difference is greater than 0.2. 
 * **Limitations:**
-* **Missingness:** There are no missing county or city level observations.
+* **Missingness:** For the most recent year, 2022, there are no missing county 
+or city level observations.
 
 ### Process
 
-This metric shows the ratio of households with the presence of a computer and a type of broadband internet subscription in their household (we calculate the overall ratio, as well as by racial subgroup - measured according to the race of each head of the household).
+This metric shows the ratio of households with the presence of a computer and a 
+type of broadband internet subscription in their household (we calculate the
+overall ratio, as well as by race/ethnicity and income subgroups.)
 
-This metric is calculated using `digital_access.R' in the 04_education folder.
+This metric is calculated using `digital_access.qmd` in the 08_education folder.
   
 ## Social Capital
-  
-* **Year(s):** 2020
-* **Final data name(s):** `social_associations_geography_2022.csv`
+
+* **Analyst & Programmer:** Tina Chelidze, Manu Alcalá Kovalski
+* **Year(s):** 2020, 2021
+* **Final data name(s):** `social_associations_2021_geography.csv`, `social_associations_all_geography.csv`
 * **Data Source(s):** Census County Business Patterns (CBP) Survey 
 * **Notes:**
-* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 75% or more of the data come from the place which is good, `3` below 35% is bad, and `2` in between is marginal.
 * **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
-* **Missingness:** 152 missing observations for county-level data. No missing observations for city-level data.
+* **Missingness:** 163 missing observations for county-level data. No missing observations for city-level data.
 
 ### Process
 
@@ -1085,13 +1096,15 @@ This metric is a county-level and city-level estimate of population count by rac
 5. Save the data  
 
 
-## Housing wealth
+## Housing value
 
 ### Overview
 
-* **Analyst & Programmer:** Jung Hyun Choi
-* **Year(s):** 2014-2021
-* **Final data name(s):** `county_hh_hw_raceeth_2014_2021.csv`,`place_hh_hw_raceeth_2014_2021.csv`
+* **Analyst & Programmer:** Manu Alcalá Kovalski, Jung Hyun Choi
+* **Year(s):** 2014, 2015, 2016, 2017, 2018, 2019, 2021, and 2022 for counties and 2016, 2017, 2018, 2019, 2021, 2022 for places
+* **Final data name(s):**`households_house_value_race_ethnicity_2022_city.csv`,`households_house_value_race_ethnicity_2022_county.csv`, `households_house_value_race_ethnicity_all_city.csv`, `households_house_value_race_ethnicity_all_county.csv`
+`households_house_value_race_ethnicity_subgroup_city.csv`,
+`households_house_value_race_ethnicity_subgroup_county.csv`
 * **Data Source(s):** ACS 1-yr, PUMA-County, PUMA-Place crosswalks
 * **Notes:** PUMA-County and PUMA-Place crosswalk data are the boundaries in 2012. Census will use the updated boundaries from the 2022 ACS. 
 * **Data Quality Index:** The metrics for the ACS indices are based on the (1) sample size of each race and ethnic household at the county/place and (2) the number of observations that comes from the specific county/place calculated from the  PUMA-county/place crosswalk. First, if the number of households (N) for a race group at a county/place is less than 30 then the data quality always equals `3`. If N is 30 or above, we look at what percent of data for the county actually came from the county/place itself, and the sample size in each county/place. `1` means more than 75% of observations are from the county/place, `2` means more than 35% of observations are from the county/place, and `3` means less than 35% of observations are from the county/place. 
