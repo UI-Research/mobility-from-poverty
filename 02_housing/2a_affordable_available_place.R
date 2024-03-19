@@ -110,7 +110,7 @@ available_2022 <- available_2022 %>%
 # (4) calculate the number of affordable and available units at each income level per 100 households
 # this is the number of units that are rented to people at or below each income threshold
 # plus the number of vacant units at that income threshold over the total number
-# of households in each income bracket
+# of households in each income bracket 
 available_2022_final <- available_2022 %>% 
   # join in vacancy data - note: same as in the affordable script, one place has no units that are identified as vacant
   left_join(vacant_summed_2022, by = c("state", "place")) %>% 
@@ -161,7 +161,7 @@ available_2022_subgroup <- available_2022_final %>%
   # remove leading underscore and capitalize words
   mutate(subgroup = str_remove(subgroup, "_") %>% str_to_title(),
          subgroup_type = "tenure") %>% 
-  # join with affordable values for final file
+  # join with affordable values for final file 
   left_join(affordable_2022_subgroup) %>% 
   # create a rate affordable available quality flag
   # THIS IS THE SAME AS THE SHARE AFFORDABLE QUALITY FLAG
