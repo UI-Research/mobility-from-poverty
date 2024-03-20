@@ -146,7 +146,7 @@ gen new_ratio_quality = string(ratio_living_wage_quality)
 drop ratio_living_wage_quality
 rename new_ratio_quality ratio_living_wage_quality
 
-replace ratio_living_wage_quality = "" if ratio_living_wage_quality == "."
+replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "."
 
 save "wage_ratio_final_2022_subgroup.dta",replace
 
@@ -201,10 +201,10 @@ drop if flag == 1
 
 *** make missing
 replace ratio_living_wage = "NA" if state == "09"
-replace ratio_living_wage_quality = "" if state == "09"
+replace ratio_living_wage_quality = "NA" if state == "09"
 
 *** assert 
-assert ratio_living_wage_quality == "" if ratio_living_wage == "NA"
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 
 *** correct subgroup variables
 replace subgroup_type = 1 if state == "09"
@@ -250,7 +250,7 @@ tab subgroup if _fillin == 1, m  // confirm no all values were filled in
 replace subgroup_type = 2 if _fillin == 1
 
 replace ratio_living_wage = "NA" if _fillin == 1
-replace ratio_living_wage_quality = "" if _fillin == 1 
+replace ratio_living_wage_quality = "NA" if _fillin == 1 
 
 *** assert number of counties
 distinct state county, joint // to confirm there are 3143 counties in the dataset
@@ -275,4 +275,3 @@ save "wage_ratio_final_2022_subgroup.dta", replace
 
 erase "wage_ratio_final_2022_subgroup.dta"
 erase "mit_living_wage-2022.dta"
-erase "~compute_metrics_wage_ratio_2022_subgroup.do.stswp"
