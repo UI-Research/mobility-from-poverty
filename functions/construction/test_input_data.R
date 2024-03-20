@@ -7,7 +7,7 @@
 #' @return The function will fail if the data do not meet certain criteria. 
 #' Returns a tibble with the number of geoids per year.
 #'
-test_input_data <- function(data, geography = "county", subgroups = NULL) {
+test_input_data <- function(data, geography = "county", subgroups = NULL, confidence_intervals = TRUE) {
   
   # check that the file has the necessary columns
   # check that the first few columns are year, state
@@ -17,9 +17,6 @@ test_input_data <- function(data, geography = "county", subgroups = NULL) {
   stopifnot(data_names[2] == "state")
   stopifnot(data_names[3] == "county" | data_names[3] == "place")
   
-  #Check that NA values for confidence intervals and quality variables align 
-  stopifnot(sum(is.na(select(data, ends_with("lb")))) == sum(is.na(select(data, ends_with("quality")))))
-  
   if (!is.null(subgroups)) {
     
     stopifnot(data_names[4] == "subgroup_type")
@@ -27,6 +24,13 @@ test_input_data <- function(data, geography = "county", subgroups = NULL) {
     
   }
 
+  #Check that NA values for confidence intervals and quality variables align 
+  if (isTRUE(confidence_intervals)) {
+    
+    stopifnot(sum(is.na(select(data, ends_with("lb")))) == sum(is.na(select(data, ends_with("quality")))))
+    
+  }
+  
   # check fips
   if (geography == "county") {
     
@@ -58,7 +62,7 @@ test_input_data <- function(data, geography = "county", subgroups = NULL) {
     
     observed_subgroups <- sort(unique(dplyr::pull(data, subgroup)))
     
-    stopifnot(all(observed_subgroups == c("All", subgroups)))
+    stopifnot(all(observed_subgroups == sort(c("All", subgroups))))
     
   }
   
