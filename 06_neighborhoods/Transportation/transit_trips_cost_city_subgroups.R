@@ -779,6 +779,28 @@ transit_trips_subgroup_city <- left_join(places, transit_trips_subgroup_city, by
 transit_cost_subgroup_city <- left_join(places, transit_cost_subgroup_city, by = c("state", "place"))
 # 234,544 obs to 3867 obs
 
+# another place expander to account for the difference between 3867 and 3888 (what the count should be if all places accounted for)
+place_expander <- expand_grid(
+  count(places, state, place) %>% select(-n),
+  race_category = c("All", "Majority White-NH Tracts", "Majority Non-White Tracts", "Mixed Race and Ethnicity Tracts")
+)
+#1944 obs
+
+duplicated_expander <- bind_rows(place_expander, place_expander) %>%
+  mutate(year = ifelse(row_number() <= nrow(place_expander), 2015, 2019)) %>%
+  mutate(subgroup_type = "race-ethnicity") %>%
+  rename(subgroup = race_category)
+
+
+# merge back in to account for missings
+transit_trips_subgroup_city <- left_join(duplicated_expander, transit_trips_subgroup_city, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
+  arrange (year, state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality)
+
+transit_cost_subgroup_city <- left_join(duplicated_expander, transit_cost_subgroup_city, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
+  arrange (year, state, place, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality)
+# 3867 obs to 3888 obs
+
+
 # Save as non-subgroup all-year files
 write_csv(transit_trips_subgroup_city, "06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv")
 write_csv(transit_cost_subgroup_city, "06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv")  
