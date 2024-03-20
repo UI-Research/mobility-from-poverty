@@ -100,7 +100,7 @@ gen new_ratio_quality = string(ratio_living_wage_quality)
 drop ratio_living_wage_quality
 rename new_ratio_quality ratio_living_wage_quality
 
-replace ratio_living_wage_quality = "" if ratio_living_wage_quality == "."
+replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "."
 
 save "wage_ratio_final_2022.dta",replace
 
@@ -145,18 +145,18 @@ drop if flag == 1
 
 *** make missing
 replace ratio_living_wage = "NA" if state == "09"
-replace ratio_living_wage_quality = "" if state == "09"
+replace ratio_living_wage_quality = "NA" if state == "09"
 
 *** assert 
-assert ratio_living_wage_quality == "" if ratio_living_wage == "NA"
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 
 /* export final dataset */
 
 keep if year == 2022
 
-keep year state county state_name county_name ratio_living_wage ratio_living_wage_quality
+keep year state county ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name ratio_living_wage ratio_living_wage_quality
+order year state county ratio_living_wage ratio_living_wage_quality
 
 export delimited using metrics_wage_ratio_2022.csv, replace
 
