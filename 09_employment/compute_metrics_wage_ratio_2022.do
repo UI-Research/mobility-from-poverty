@@ -154,9 +154,9 @@ assert ratio_living_wage_quality == "" if ratio_living_wage == "NA"
 
 keep if year == 2022
 
-keep year state county state_name county_name ratio_living_wage ratio_living_wage_quality
+keep year state county ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name ratio_living_wage ratio_living_wage_quality
+order year state county ratio_living_wage ratio_living_wage_quality
 
 export delimited using metrics_wage_ratio_2022.csv, replace
 

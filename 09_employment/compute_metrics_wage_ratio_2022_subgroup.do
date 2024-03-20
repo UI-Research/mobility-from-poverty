@@ -49,7 +49,7 @@ generate industry_type = .
 	replace industry_type = 8 if naics == 1026 | naics == 1027 // leisure/hospitality/other
 	
 ** variable labels 
-label define industry_labels_mm 1 "All" 2 "Goods Producing" 3 "Public Administration" 4 "Trade, Transit, Utilities" 5 "Information Services" 6 "Professional Services" 7 "Education and Health" 8 "Leisure and Other"
+label define industry_labels_mm 1 "All" 2 "Goods Producing" 3 "Public Administration" 4 "Trade & Transit & Utilities" 5 "Information Services" 6 "Professional Services" 7 "Education and Health" 8 "Leisure and Other"
 
 label values industry_type industry_labels_mm
 
@@ -261,9 +261,9 @@ distinct state county subgroup if subgroup_type == 2, joint // to confirm there 
 count if missing(subgroup)
 count if missing(subgroup_type)
 
-keep year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
+keep year state county subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
+order year state county subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
 sort year state county subgroup
 
