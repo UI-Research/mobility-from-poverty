@@ -58,21 +58,22 @@ drop if industry_type == . // drop super-sections and "unclassified" naics codes
 ** because some naics codes are combined into industries, we need to collapse
 ** we average the average weekly wage across both
 ** but sum the establishment counts 
-collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaverageestablishmentcount, by(st cnty industry_type)
+collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaverageestablishmentcount (first) annualaveragestatuscode, by(st cnty industry_type)
 
-** check for duplicates
+** check for duplicates, you want a surplus of 0
 duplicates report st cnty industry_type
 
 /* test whether all counties have needed codes-- answer is no, which means need to do data expansion later on */ 
 egen obs_per_cnty = count(industry_type), by(st cnty)
 tab obs_per_cnty
 
-** count zeros -- will generate this many zeros in final dataset
+** count zeros -- and confirm zero wages are supressed according to BLS data suppression guidelines for non-reportable wages
 count if avgwkwage == 0
+assert annualaveragestatuscode == "N" if avgwkwage == 0
 
 ** keep variables pre-merge
 
-keep st cnty avgwkwage avgestct industry_type
+keep st cnty avgwkwage avgestct industry_type annualaveragestatuscode
 
 rename st state
 
@@ -97,16 +98,22 @@ gen weekly_living_wage = wage * 40
 /* get ratio (main metric) */
 gen ratio_living_wage = avgwkwage/weekly_living_wage
 
-assert avgwkwage == 0 if ratio_living_wage == 0 // assert ratio is missing if avgwkwage is zero in raw dataset
+** then, replace ratio as missing due to BLS data suppression
+replace ratio_living_wage = . if annualaveragestatuscode == "N"
+
+count if ratio_living_wage == 0 // confirm this replacement worked, this count should be 0
 
 /* create data quality flag 
-per discussion with Greg, >= 30 is 1, <30 is 3 */
+per discussion with Greg, >= 30 is 1, <30 is 3 and those with missing metrics due to BLS suppression and lack of industry (no establishments) are missing */
 gen ratio_living_wage_quality = 1 if avgestct >= 30 & avgestct != .
 replace ratio_living_wage_quality = 3 if avgestct < 30 & avgestct != .
 replace ratio_living_wage_quality = . if avgestct == .
+replace ratio_living_wage_quality = . if annualaveragestatuscode == "N"
 
 /* test flag */
 tab ratio_living_wage_quality, missing
+
+assert ratio_living_wage_quality == . if ratio_living_wage == .
 
 /* put state and county in string with leading 0s */
 drop _merge
@@ -268,3 +275,4 @@ save "wage_ratio_final_2022_subgroup.dta", replace
 
 erase "wage_ratio_final_2022_subgroup.dta"
 erase "mit_living_wage-2022.dta"
+erase "~compute_metrics_wage_ratio_2022_subgroup.do.stswp"
