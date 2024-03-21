@@ -32,7 +32,7 @@ library(tidycensus)
 # Unlike for Places and Tracts, the CNT website allows you to download raw data for all counties at once
 # so we just import the all-county file for the two available years; 2015 and 2019
 # 2015
-transport_county_2015 <- read_csv("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2015_data_counties.csv")
+transport_county_2015 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2015_data_counties.csv")
 
 # create correct FIPS columns
 transport_county_2015 <- transport_county_2015 %>%
@@ -47,7 +47,7 @@ transit_trips_county_2015 <- transport_county_2015 %>%
 
 
 #2019
-transport_county_2019 <- read_csv("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2019_data_counties.csv")
+transport_county_2019 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2019_data_counties.csv")
 transport_county_2019 <- transport_county_2019 %>%
   select(county, blkgrps, population, households, transit_trips_80ami)
 
