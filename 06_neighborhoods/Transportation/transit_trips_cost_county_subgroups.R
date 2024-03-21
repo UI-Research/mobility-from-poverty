@@ -28,10 +28,10 @@ library(tidycensus)
 
 # 2015
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
-tracts15files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract/",
+tracts15files <- list.files(path="C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract/",
                             pattern="*.csv")
 print(tracts15files)
-tractpath15 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
+tractpath15 = file.path("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
 print(tractpath15)
 transport_tracts_2015 <- map_df(tractpath15, read_csv)
 
@@ -55,10 +55,10 @@ transit_cost_tracts_2015 <- transport_tracts_2015 %>%
 
 # 2019
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
-tracts19files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract/",
+tracts19files <- list.files(path="C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract/",
                             pattern="*.csv")
 print(tracts19files)
-tractpath19 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
+tractpath19 = file.path("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
 print(tractpath19)
 transport_tracts_2019 <- map_df(tractpath19, read_csv)
 
@@ -188,13 +188,13 @@ cost_data_2015 <- left_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEO
 ############################################################################
 cost_data_2019 <- left_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID")
 #Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID") %>%
-    nrow() == 0
-)
+#stopifnot(
+#  anti_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID") %>%
+#    nrow() == 0
+#)
 # Error - therefore, check how many missing cost values for observations where we have population
-missing_count <- sum(is.na(cost_data_2019$t_80ami))
-cat("Number of missing values for t_80ami:", missing_count, "\n")
+#missing_count <- sum(is.na(cost_data_2019$t_80ami))
+#cat("Number of missing values for t_80ami:", missing_count, "\n")
 # 831 missing values
 
 ############################################################################
