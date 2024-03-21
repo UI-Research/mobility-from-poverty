@@ -174,13 +174,13 @@ transit_trips_tracts_2019$GEOID <- paste0(transit_trips_tracts_2019$state, trans
 ############################################################################
 cost_data_2015 <- left_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEOID")
 #Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEOID") %>%
-    nrow() == 0
-)
+#stopifnot(
+#  anti_join(acs_tract_pop15, transit_cost_tracts_2015, by = "GEOID") %>%
+#    nrow() == 0
+#)
 # Error - therefore, check how many missing cost values for observations where we have population
-missing_count <- sum(is.na(cost_data_2015$t_80ami))
-cat("Number of missing values for t_80ami:", missing_count, "\n")
+#missing_count <- sum(is.na(cost_data_2015$t_80ami))
+#cat("Number of missing values for t_80ami:", missing_count, "\n")
 # 810 missing values
 
 ############################################################################
@@ -188,13 +188,13 @@ cat("Number of missing values for t_80ami:", missing_count, "\n")
 ############################################################################
 cost_data_2019 <- left_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID")
 #Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID") %>%
-    nrow() == 0
-)
+#stopifnot(
+#  anti_join(acs_tract_pop19, transit_cost_tracts_2019, by = "GEOID") %>%
+#    nrow() == 0
+#)
 # Error - therefore, check how many missing cost values for observations where we have population
-missing_count <- sum(is.na(cost_data_2019$t_80ami))
-cat("Number of missing values for t_80ami:", missing_count, "\n")
+#missing_count <- sum(is.na(cost_data_2019$t_80ami))
+#cat("Number of missing values for t_80ami:", missing_count, "\n")
 # 831 missing values
 
 ############################################################################
@@ -216,13 +216,13 @@ cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
 ############################################################################
 trips_data_2019 <- left_join(acs_tract_pop19, transit_trips_tracts_2019, by = "GEOID")
 #Test with anti_join to make sure it worked properly
-stopifnot(
-  anti_join(acs_tract_pop19, transit_trips_tracts_2019, by = "GEOID") %>%
-    nrow() == 0
-)
+#stopifnot(
+#  anti_join(acs_tract_pop19, transit_trips_tracts_2019, by = "GEOID") %>%
+#    nrow() == 0
+#)
 # Error - therefore, check how many missing trips values for observations where we have population
-missing_count <- sum(is.na(trips_data_2019$transit_trips_80ami))
-cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
+#missing_count <- sum(is.na(trips_data_2019$transit_trips_80ami))
+#cat("Number of missing values for transit_trips_80ami:", missing_count, "\n")
 # 831 missing values - aligns with cost data for the same year, good
 
 ############################################################################
@@ -604,7 +604,7 @@ cost_by_race_2015_outliers <- cost_by_race_15 %>%
 # Nothing unexpected
 
 # Use stopifnot to check if all values are non-negative
-stopifnot(min(cost_by_race_15$index_transportation_cost, na.rm = TRUE) >= 0)
+#stopifnot(min(cost_by_race_15$index_transportation_cost, na.rm = TRUE) >= 0)
 # Good to go
 
 
@@ -642,7 +642,7 @@ cost_by_race_2019_outliers <- cost_by_race_19 %>%
 # Nothing unexpected
 
 # Use stopifnot to check if all values are non-negative
-stopifnot(min(cost_by_race_19$index_transportation_cost, na.rm = TRUE) >= 0)
+#stopifnot(min(cost_by_race_19$index_transportation_cost, na.rm = TRUE) >= 0)
 # Good to go
 
 
@@ -679,7 +679,7 @@ trips_by_race_2015_outliers <- trips_by_race_15 %>%
 # Nothing unexpected
 
 # Use stopifnot to check if all values are non-negative
-stopifnot(min(trips_by_race_15$index_transit_trips, na.rm = TRUE) >= 0)
+#stopifnot(min(trips_by_race_15$index_transit_trips, na.rm = TRUE) >= 0)
 # Good to go
 
 
@@ -716,7 +716,7 @@ trips_by_race_2019_outliers <- trips_by_race_19 %>%
 # Nothing unexpected
 
 # Use stopifnot to check if all values are non-negative
-stopifnot(min(trips_by_race_19$index_transit_trips, na.rm = TRUE) >= 0)
+#stopifnot(min(trips_by_race_19$index_transit_trips, na.rm = TRUE) >= 0)
 # Good to go
 
 

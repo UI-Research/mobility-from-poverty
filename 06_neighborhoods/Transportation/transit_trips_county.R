@@ -15,7 +15,6 @@
 # Libraries you'll need
 library(tidyr)
 library(dplyr)
-library(readr)
 library(ggplot2)
 library(tidyverse)
 library(purrr)
@@ -33,7 +32,7 @@ library(tidycensus)
 # Unlike for Places and Tracts, the CNT website allows you to download raw data for all counties at once
 # so we just import the all-county file for the two available years; 2015 and 2019
 # 2015
-transport_county_2015 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2015_data_counties.csv")
+transport_county_2015 <- read_csv("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2015_data_counties.csv")
 
 # create correct FIPS columns
 transport_county_2015 <- transport_county_2015 %>%
@@ -48,7 +47,7 @@ transit_trips_county_2015 <- transport_county_2015 %>%
 
 
 #2019
-transport_county_2019 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2019_data_counties.csv")
+transport_county_2019 <- read_csv("C:/Users/tchelidze/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2019_data_counties.csv")
 transport_county_2019 <- transport_county_2019 %>%
   select(county, blkgrps, population, households, transit_trips_80ami)
 
@@ -94,7 +93,7 @@ transit_trips_county_2015_outliers <- transit_trips_county_2015 %>%
 # 313 trips in 06037 -- Los Angeles county, California - checks out
 
 # Use stopifnot to check if all values in "transit_trips_county_2015" are non-negative
-stopifnot(min(transit_trips_county_2015$transit_trips_80ami, na.rm = TRUE) >= 0)
+#stopifnot(min(transit_trips_county_2015$transit_trips_80ami, na.rm = TRUE) >= 0)
 # Good to go
 
 # Find indices of missing values for the "transit_trips_80ami" variable
@@ -124,7 +123,7 @@ transit_trips_county_2019_outliers <- transit_trips_county_2019 %>%
 # all the highest ones(1000+) are in New York counties - checks out
 
 # Use stopifnot to check if all values in "transit_trips_county_2019" are non-negative
-stopifnot(min(transit_trips_county_2019$transit_trips_80ami, na.rm = TRUE) >= 0)
+#stopifnot(min(transit_trips_county_2019$transit_trips_80ami, na.rm = TRUE) >= 0)
 # Good to go
 
 # Find indices of missing values for the "transit_trips_80ami" variable

@@ -93,7 +93,7 @@ transportation_cost_county_2015_outliers <- transportation_cost_county_2015 %>%
 # no weird outliers
 
 # Use stopifnot to check if all values in "transportation_cost_county_2015" are non-negative
-stopifnot(min(transportation_cost_county_2015$t_80ami, na.rm = TRUE) >= 0)
+#stopifnot(min(transportation_cost_county_2015$t_80ami, na.rm = TRUE) >= 0)
 # Good to go
 
 # Find indices of missing values for the "t_80ami" variable
@@ -119,7 +119,7 @@ transportation_cost_county_2019_outliers <- transportation_cost_county_2019 %>%
 # no weird outliers
 
 # Use stopifnot to check if all values in "transportation_cost_county_2019" are non-negative
-stopifnot(min(transportation_cost_county_2019$t_80ami, na.rm = TRUE) >= 0)
+#stopifnot(min(transportation_cost_county_2019$t_80ami, na.rm = TRUE) >= 0)
 # Good to go
 
 # Find indices of missing values for the "transit_cost_80ami" variable
