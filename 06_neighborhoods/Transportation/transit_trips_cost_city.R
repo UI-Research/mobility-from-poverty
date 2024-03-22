@@ -29,13 +29,16 @@ library(purrr)
 
 # 1. Import all the tract-level files and combine into one mega-file with only the relevant variables and years
 
+# Define the base path
+basepath <- "C:/Users/RPitingo/Box/Data (Box Admin)/Metrics_2024_round"
+
+
 # 2015
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
 # these files can be found in the Urban Box folder -- replace USERNAME
-tracts15files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",
-                            pattern="*.csv")
+tracts15files <- list.files(path = paste0(basepath, "/Transportation/2015_tract"), pattern = "*.csv")
 print(tracts15files)
-tractpath15 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
+tractpath15 = file.path(basepath, "Transportation/2015_tract", tracts15files)
 print(tractpath15)
 transport_tracts_2015 <- map_df(tractpath15, read_csv)
 
@@ -59,10 +62,9 @@ transit_cost_tracts_2015 <- transport_tracts_2015 %>%
 
 # 2019
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
-tracts19files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract/",
-                            pattern="*.csv")
+tracts19files <- list.files(path = paste0(basepath, "/Transportation/2019_tract"), pattern = "*.csv")
 print(tracts19files)
-tractpath19 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
+tractpath19 = file.path(basepath, "Transportation/2019_tract", tracts19files)
 print(tractpath19)
 transport_tracts_2019 <- map_df(tractpath19, read_csv)
 
@@ -281,8 +283,10 @@ if (length(missing_indices19) > 0) {
 
 
 # Combine the two years into one overall files for both variables
-transit_cost_city <- rbind(transit_cost_city_2015, transit_cost_city_2019)
-transit_trips_city <- rbind(transit_trips_city_2015, transit_trips_city_2019)
+transit_cost_city <- rbind(transit_cost_city_2015, transit_cost_city_2019) %>%
+  select(year, state, place, index_transportation_cost, index_transportation_cost_quality)
+transit_trips_city <- rbind(transit_trips_city_2015, transit_trips_city_2019) %>%
+  select(year, state, place, index_transit_trips, index_transit_trips_quality)
 
 
 # Save as non-subgroup all-year files

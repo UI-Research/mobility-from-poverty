@@ -26,12 +26,14 @@ library(tidycensus)
 
 # 1. Import all the tract-level files and combine into one mega-file with only the relevant variables and years
 
+# Define the base path
+basepath <- "C:/Users/RPitingo/Box/Data (Box Admin)/Metrics_2024_round"
+
 # 2015
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
-tracts15files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract/",
-                            pattern="*.csv")
+tracts15files <- list.files(path = paste0(basepath, "/Transportation/2015_tract"), pattern = "*.csv")
 print(tracts15files)
-tractpath15 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2015_tract",tracts15files)
+tractpath15 = file.path(basepath, "Transportation/2015_tract", tracts15files)
 print(tractpath15)
 transport_tracts_2015 <- map_df(tractpath15, read_csv)
 
@@ -55,10 +57,9 @@ transit_cost_tracts_2015 <- transport_tracts_2015 %>%
 
 # 2019
 # bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
-tracts19files <- list.files(path="C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract/",
-                            pattern="*.csv")
+tracts19files <- list.files(path = paste0(basepath, "/Transportation/2019_tract"), pattern = "*.csv")
 print(tracts19files)
-tractpath19 = file.path("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/2019_tract",tracts19files)
+tractpath19 = file.path(basepath, "Transportation/2019_tract", tracts19files)
 print(tractpath19)
 transport_tracts_2019 <- map_df(tractpath19, read_csv)
 
@@ -794,10 +795,12 @@ duplicated_expander <- bind_rows(place_expander, place_expander) %>%
 
 # merge back in to account for missings
 transit_trips_subgroup_city <- left_join(duplicated_expander, transit_trips_subgroup_city, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
-  arrange (year, state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality)
+  arrange (year, state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality) %>%
+  select(year, state, place, subgroup_type, subgroup, index_transit_trips, index_transit_trips_quality)
 
 transit_cost_subgroup_city <- left_join(duplicated_expander, transit_cost_subgroup_city, by = c("year", "state", "place", "subgroup_type", "subgroup")) %>%
-  arrange (year, state, place, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality)
+  arrange (year, state, place, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality) %>%
+  select(year, state, place, subgroup_type, subgroup, index_transportation_cost, index_transportation_cost_quality)
 # 3867 obs to 3888 obs
 
 

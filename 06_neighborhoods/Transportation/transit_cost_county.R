@@ -28,12 +28,15 @@ library(purrr)
 
 # 1. Import all the files (and/or combine into one file) with only the relevant variables and years
 
+# Define the base path
+basepath <- "C:/Users/RPitingo/Box/Data (Box Admin)/Metrics_2024_round"
+
 # FOR COUNTIES - import the raw data files
 # Unlike for Places and Tracts, the CNT website allows you to download raw data for all counties at once
 # so we just import the all-county file for the two available years; 2015 and 2019
 # 2015
 # raw data lives in the Urban Box folder (replace USERNAME)
-transport_county_2015 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2015_data_counties.csv")
+transport_county_2015 <- read_csv(file.path(basepath, "Transportation/htaindex2015_data_counties.csv"))
 
 # create correct FIPS columns
 transport_county_2015 <- transport_county_2015 %>%
@@ -49,7 +52,7 @@ transportation_cost_county_2015 <- transport_county_2015 %>%
 
 
 #2019
-transport_county_2019 <- read_csv("C:/Users/USERNAME/Box/Lab/Projects/Gates Upward Mobility Framework/Outreach and Tools/Data/Metrics_2024_round/Transportation/htaindex2019_data_counties.csv")
+transport_county_2019 <- read_csv(file.path(basepath, "Transportation/htaindex2019_data_counties.csv"))
 transport_county_2019 <- transport_county_2019 %>%
   select(county, blkgrps, population, households, t_80ami)
 
