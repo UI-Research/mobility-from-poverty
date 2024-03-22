@@ -636,6 +636,13 @@ arrests_place_demo <- left_join(
   by = c("year", "GEOID")
 )
 
+arrests_place_demo <- arrests_place_demo %>%
+  select(-c(state, place)) %>%
+  mutate(
+    state = substr(GEOID, 1, 2),
+    place = substr(GEOID, 3, 7)
+  )
+
 ```
 
 Calculate arrest rates per 100,000 juveniles. If no agencies in a place reported (out of all agencies, including those with only non-juvenile arrests), the value is set to `NA`. We also calculate rates for the following subgroups:
@@ -932,19 +939,43 @@ juv_arrest_place_all_subgroup <- left_join(
 ) %>%
   mutate(
     subgroup_type = case_when(
+      subgroup %in% c("all") ~ "all",
       subgroup %in% c("white", "black", "asian_other", "hispanic") ~ "race-ethnicity",
-      subgroup %in% c("male", "female") ~ "sex",
-      subgroup %in% c("1014", "1517") ~ "age"
+      subgroup %in% c("male", "female") ~ "gender",
+      subgroup %in% c("1014", "1517") ~ "age",
+    ),
+    subgroup = case_when(
+      subgroup == "all" ~ "All",
+      subgroup == "white" ~ "White, Non-Hispanic",
+      subgroup == "black" ~ "Black",
+      subgroup == "hispanic" ~ "Hispanic",
+      subgroup == "asian_other" ~ "Other Races and Ethnicities",
+      subgroup == "1014" ~ "Age 10 to 14",
+      subgroup == "1517" ~ "Age 15 to 17",
+      subgroup == "male" ~ "Male",
+      subgroup == "female" ~ "Female"
     ),
     rate_juv_arrest_quality = ifelse(age_1017 < 30, NA, rate_juv_arrest_quality)) %>%
   select(-age_1017)
 
+juv_arrest_place_all_subgroup <- juv_arrest_place_all_subgroup %>%
+  select(
+    year,
+    state,
+    place,
+    subgroup_type,
+    subgroup,
+    rate_juv_arrest,
+    rate_juv_arrest_quality
+  ) %>%
+  arrange(year, state, place)
 
 # Write out this data set
 juv_arrest_place_all_subgroup %>%
   write_csv(here::here("07_safety",
                        "final",
                        "rate_arrests_place_all_subgroup.csv"))
+
 ```
 
 
