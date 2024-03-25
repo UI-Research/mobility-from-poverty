@@ -373,19 +373,26 @@ rm(ahrf_long, ahrf_clean, all_counties, missing_AHRF, missing_urban)
 ## 5. Construct ratio of population to primary care physicians
 This section creates actual the metric (ratio of population to primary care physicians).
 
-The antecedent of the ratio (numerator) is population and the consequent of the ratio (denominator) is number of primary care physicians. When there is at least 1 primary care physician in the county, the variable created in this step is the population per 1 primary care physician. If there are no primary care physicians in the county, we assign a value of 0.
+In the previous section, we showed that the only `NA` values of primary care physicians in the AHRF data were for nonexistent counties. Therefore, we are unable to distinguish between counties that reported 0 primary care physicians and counties that are coded as `0` but should really be `NA` because they did not report at all or because information was not available. Note that these are administrative data, so it is unclear to me how reporting errors could appear, but it isn't impossible.
+
+County Health Rankings suppresses data for counties with population greater than 2,000 and 0 primary care physicians. They report a missing value for these observations. The rationale for this suppression rule is not explained in their documentation, but our assumption is that they assume "0 PCPs" could be a reporting error for counties with a decent-sized population; it is likely that these counties have at least 1 PCP, so they don't trust the reported `0` value and code it as `NA` instead. Future updates may want to consider contacting County Health Rankings to learn more about this suppression decision.
+
+We apply the same rule for suppression. If population is less than 2000 and 0 PCPs are reported, we assign a value of 0. If the population is greater than 2000 and 0 PCPs are reported, we assign a value of `NA` and assume that these are "false zeros." If there is at least 1 PCP reported, we assign a value that equals the population per 1 primary care physician. The antecedent of the ratio (numerator) is population and the consequent of the ratio (denominator) is number of primary care physicians.
 
 ```{r create-ratio}
 # Create the ratio
 joined_data <- joined_data |>
   mutate(
     ratio_population_pc_physician = case_when(
+      population <= 2000 & pc_physicians == 0 ~ 0,
+      population > 2000 & pc_physicians == 0 ~ NA,
       pc_physicians > 0 ~ round(population/pc_physicians),
-      pc_physicians == 0 ~ 0
+      is.na(pc_physicians) ~ NA
       )
   )
 
 ```
+
 
 
 ## 6. Validation
@@ -412,12 +419,12 @@ joined_data |>
 
 ### 6.2 Distribution of ratio and missingness
 
-The county-level ratio of population to primary care physicians ranges from 0 to 46,784. 6.7 percent of observations do not have a primary care physician.
+The county-level ratio of population to primary care physicians ranges from 0 to 46,784. 6.8 percent of observations do not have a primary care physician.
 
 ```{r check-distribution-ratio}
 quantile(
   joined_data$ratio_population_pc_physician,
-  probs = c(0, .068, .069, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
   na.rm = TRUE
 )
 ```
@@ -425,14 +432,14 @@ quantile(
 ```{r check-distribution-count}
 quantile(
   joined_data$pc_physicians,
-  probs = c(0, .067, .069, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+  probs = c(0, .068, .069, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
   na.rm = TRUE
 )
 
 ```
 
 
-There are no missing ratios for 2014-2019, but 2 in 2020 (from Alaska) and 9 in 2021 (the 9 in 2021 are from Connecticut). These are expected.
+There are a similar number of missing ratios in each year. These are likely counties that we assigned to missing because their population was greater than 2000 but they had 0 reported primary care physicians. There are also 2 counties in 2020 (from Alaska) and 9 in 2021 (from Connecticut) that are missing due to geography changes.
 ```{r check-missings}
 joined_data |>
   group_by(year) |>
@@ -584,7 +591,7 @@ chr_test <- chr_test |>
 
 
 #### 6.4c Compare values from CHR and AHRF
-County Health Rankings reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. We do not report a missing value for these observations. There are 147 of these observations in 2020. Future updates may want to consider contacting County Health Rankings to learn more about this suppression decision. We remove these observations for this exercise.
+County Health Rankings reports a missing value for counties with population greater than 2,000 and 0 primary care physicians. There are 147 of these observations in 2020. We remove these observations for this exercise.
 
 ```{r compare-suppressed}
 # Create subset of observations where PCP counts were suppressed by CHR
@@ -601,7 +608,7 @@ chr_test <- chr_test |>
 
 ```
 
-Two counties from Missouri (Jasper and Newton Counties) are missing PCP counts from CHR but not from our data. These counties do not seem to be disbanded or otherwise unreliable. We remove these counties for this exercise.
+Two counties from Missouri (Jasper and Newton Counties) are missing PCP counts from CHR but not from our data. These counties do not seem to be disbanded or otherwise unreliable. CHR does not have a count of primary care physicians for these counties, but does have a ratio. We remove these counties for this exercise.
 ```{r check-missouri}
 # Check PCP counts missing in CHR but not our data
 chr_test |>
@@ -723,29 +730,10 @@ rm(chr2023, chr_test, chr_test_suppressed, chr_pop, chr_test_2, ahrf_test)
 
 
 ## 7. Add data quality flags
-This section adds a flag for counties with less than 2,000 people to indicate low population, and assigns a data quality flag based on the ratio's sensitivity to an extra primary care physician in the county.
+This section assigns a data quality flag based on the ratio's sensitivity to an extra primary care physician in the county.
 
-Note that County Health Rankings suppresses data for counties with population greater than 2,000 and 0 primary care physicians. They report a missing value for these observations. It is not entirely clear to me why they suppress these data. One potential explanation is that they assume "0 PCPs" could be a reporting error for counties with a decent-sized population. 
+We calculate the sensitivity of the ratio as measured by percent change in the ratio when adding 1 PCP to each county. We then assign poor quality to counties with high sensitivity values. E.g., if there are 800 people in a county with 1 physician, the ratio value is 800. The addition of 1 more physician changes the ratio drastically to a value of 400.
 
-In the last update to this metric when we used data directly from County Health Rankings, their suppression made it so that counties with population greater than 2,000 and 0 PCPs had a ratio of `0` and a quality of `NA`, while Counties with population less than 2,000 and 0 PCPs had a ratio of `0` and a quality of `1`. We do not apply this suppression rule, and any county with 0 reported PCPs is assigned a quality value of `NA`. 
-
-Future updates may want to think more about how to handle the quality indicator for counties that actually have 0 PCPs and those that have 0 reported PCPs due to a reporting error in the data.
-    
-Create a flag for counties with low population    
-```{r flag-low-pop}
-joined_data <- joined_data |>
-  mutate(
-    ratio_population_pc_physician_flag_low_pop = case_when(
-      population < 2000 ~ "1",
-      population >= 2000 ~ "0"
-    )
-  )
-
-```
-
-We calculate the sensitivity of the ratio as measured by percent change in the ratio when adding 1 PCP to each county. E.g., if there are 2,000 people in a county with 1 physician, the addition of 1 more physician changes the ratio drastically.
-
-Note that the quality indicator, which is based on the value of `sensitivity`, will be `NA` when there are 0 primary care physicians in a county. Some counties may actually have 0 PCPs, while others may only have 0 reported due to an error in the data (lack of reporting, etc.). We assign `NA` to all of these counties, but future updates may want to consider how to differentiate these cases. One potential solution would be to assume that counties with population greater than 2,000 but 0 reported PCPs are a reporting error, while counties with population less than 2,000 and 0 reported PCPs actually do not have any PCPs.
 ```{r calculate-sensitivity}
 joined_data <- joined_data |>
   mutate(
@@ -754,13 +742,40 @@ joined_data <- joined_data |>
     # Calculate the differences between each of the new ratios and the original ratio
     plus1_diff = abs(plus1 - as.numeric(ratio_population_pc_physician)),
     sensitivity = ifelse(
-      ratio_population_pc_physician != 0,
+      !is.na(ratio_population_pc_physician),
       plus1_diff / ratio_population_pc_physician,
       NA
     )
   )
 
 ```
+
+In constructing the ratios, we applied the following rules:
+
+* If population <= 2000 and 0 PCPs are reported, we assigned a value of `0` and assumed that these are "true zeros"
+* If population >  2000 and 0 PCPs are reported, we assigned a value of `NA` and assumed that these are "false zeros"
+
+The counties that we are considering false zeros are assigned a `sensitivity` value of `NA` and will therefore receive a `quality` value of `NA`. However, counties that we consider true zeros get assigned a `sensitivity` value of `Inf` because the sensitivity calculation attempts to divide by zero.
+
+```{r check-sensitivity-values}
+joined_data |>
+  filter(pc_physicians == 0) |>
+  count(sensitivity, ratio_population_pc_physician)
+  
+```
+
+We replace the `Inf` values of `sensitivity` with the maximum defined value of `sensitivity`. This will also ensure that these observations are assigned a low quality value in the next step, which is an accurate assignment because we cannot say with certainty that these observations are "true" zeros. A county with 900 people and 0 primary care physicians has a ratio value of zero, however it may be the case that this county has 1 PCP and the true ratio is 900:1. We want the quality value to reflect this possibility.
+```{r}
+max_sensitivity <- joined_data |>
+  filter(sensitivity != Inf) |>
+  pull(sensitivity) |>
+  max()
+
+joined_data <- joined_data |>
+  mutate(sensitivity = if_else(sensitivity==Inf, max_sensitivity, sensitivity))
+
+```
+
 
 90 percent of counties across all years have a percent change less than or equal to 33 percent.
 ```{r check-sensitivity}
@@ -780,7 +795,11 @@ joined_data |>
 
 ```
 
-To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of the number of population per primary care physician. If the ratio changes less than 20 percent we assign a quality value of 1. If the ratio changes between 20 percent and 39 percent we assign a quality value of 2. If the ratio changes between 40 percent and 59 percent we assign a quality value of 3.
+To measure the data quality, we've added 1 to the number of primary care physicians in each county and re-created the ratio of population per primary care physician:
+
+* If the ratio changes less than 20 percent we assign a quality value of 1.
+* If the ratio changes between 20 percent and 39 percent we assign a quality value of 2.
+* If the ratio changes between 40 percent and 59 percent we assign a quality value of 3.
 ```{r assign-data-quality}
 # Assign a data quality flag
 joined_data <- joined_data |>
@@ -793,6 +812,13 @@ joined_data <- joined_data |>
   )
 ```
 
+
+```{r check-data-quality}
+joined_data |>
+  count(ratio_population_pc_physician_quality)
+
+```
+
 Most counties are of high quality in all years.
 ```{r check-quality}
 joined_data |>
@@ -800,9 +826,6 @@ joined_data |>
   ggplot(aes(x = ratio_population_pc_physician_quality)) +
   geom_bar() +
   facet_wrap(~ year, scales = "free_x")
-
-joined_data |>
-  count(ratio_population_pc_physician_quality)
 
 ```
 
@@ -823,26 +846,10 @@ joined_data |>
 
 ```
 
-
-Checking combinations of `0` and `NA` values for important variables. All `NA` values of the `quality` indicator come from observations where the `ratio` is `0` or `NA`.
-```{r check-missing-na}
-# Create subset
-test <- joined_data |>
-  filter(pc_physicians == 0 | ratio_population_pc_physician == 0 |
-           is.na(sensitivity) | is.na(ratio_population_pc_physician_quality))
-
-# Count number of unique observations
-test %>%
-  distinct(pc_physicians, ratio_population_pc_physician,
-           sensitivity, ratio_population_pc_physician_quality) %>%
-  count(pc_physicians, ratio_population_pc_physician,
-           sensitivity, ratio_population_pc_physician_quality)
-
-```
-
-```{r clean-environment-7}
-# Remove obsolete observations
-rm(test)
+If the `ratio` value is `NA`, the `quality` value is also `NA`.
+```{r}
+stopifnot(!all(is.na(joined_data$ratio_population_pc_physician) &
+               is.na(joined_data$ratio_population_pc_physician_quality)))
 ```
 
 
@@ -851,7 +858,13 @@ rm(test)
 ```{r write-data}
 # Remove unnecessary variables and sort by year, state, and county
 final_data <- joined_data |>
-  select(-c(population, pc_physicians, pop, plus1, plus1_diff, sensitivity)) |>
+  select(
+    year, 
+    state,
+    county,
+    ratio_population_pc_physician,
+    ratio_population_pc_physician_quality
+  ) |>
   arrange(year, state, county)
 
 
