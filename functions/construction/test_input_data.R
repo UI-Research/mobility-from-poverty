@@ -24,10 +24,12 @@ test_input_data <- function(data, geography = "county", subgroups = NULL, confid
     
   }
 
-  #Check that NA values for confidence intervals and quality variables align 
-  if (isTRUE(confidence_intervals)) {
+  #Check if confidence intervals and data quality NA values align 
+  if (confidence_intervals) {
     
-    stopifnot(sum(is.na(select(data, ends_with("lb")))) == sum(is.na(select(data, ends_with("quality")))))
+    stopifnot(sum(is.na(select(data, ends_with("_lb")))) == sum(is.na(select(data, ends_with("_quality")))))
+    stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_quality")))))
+    stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_lb")))))
     
   }
   
