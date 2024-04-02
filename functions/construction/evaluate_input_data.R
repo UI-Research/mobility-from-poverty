@@ -19,8 +19,8 @@ evaluate_input_data <- function(data, geography = "county", subgroups = NULL, co
   
   if (!is.null(subgroups)) {
     
-    if(data_names[4] == "subgroup_type"){warning("Subgroup file but subgroup_type is not the fourth column")}
-    if(data_names[5] == "subgroup"){warning("Subgroup file but subgroup is not the fifth column")}
+    if(data_names[4] != "subgroup_type"){warning("Subgroup file but subgroup_type is not the fourth column")}
+    if(data_names[5] != "subgroup"){warning("Subgroup file but subgroup is not the fifth column")}
     
   }
 
@@ -70,7 +70,7 @@ evaluate_input_data <- function(data, geography = "county", subgroups = NULL, co
     
     observed_subgroups <- sort(unique(dplyr::pull(data, subgroup)))
     
-    if(all(observed_subgroups != sort(c("All", subgroups))))
+    if(any(observed_subgroups != sort(c("All", subgroups))))
     {warning("Subgroup values do not align with expected subgroups")}
     
     
