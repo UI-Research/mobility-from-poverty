@@ -48,7 +48,8 @@ if (!dir.exists(path)) {
   dir.create(path, recursive = TRUE)
 }
 
-years <- c(2022:2021)
+county_years <- c(2022:2021, 2018, 2014)
+place_years <- c(2022:2021)
 ```
 
 ## 1) Download microdata from IPUMS API
@@ -85,7 +86,7 @@ write_csv(housing_ext_def, here::here("02_housing","data","temp", paste0("housin
 }
 
 # extract data for 2022 and 2021
-map(years, extract_ipums)
+map(county_years, extract_ipums)
 ```
 
 #### (1b) Import vacant unit specific data
@@ -119,7 +120,7 @@ write_csv(vacant_microdata,  here::here("02_housing","data","temp",paste0("vacan
 }
 
 # extract data for 2022 and 2021
-map(years, extract_vacant_ipums)
+map(county_years, extract_vacant_ipums)
 ```
 
 ## 2) Prepare crosswalks
@@ -152,7 +153,7 @@ puma_place_crosswalk <- function(year){
 }
 
 # loop over 2021 and 2022
-map(years, puma_place_crosswalk)
+map(place_years, puma_place_crosswalk)
 
 # NOTE TO JP: 2021 is missing data for place fips 72122 in Georgia
 # check number of unique places in data
@@ -218,55 +219,59 @@ stopifnot(
 
 ```{r}
 # (3) Prepare Microdata (non-subgroup)
+prepare_place_data <- function(year){
+  # load appropriate place crosswalk 
+  puma_place <- read_csv(here::here("02_housing","data","temp",paste0("puma_place_", year,".csv")))
+  
+  # keep only vars we need
+  acs_data <- housing_ext_def %>%
+    select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
+           VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
+    # clean up for matching purposes
+    dplyr::rename("puma" = "PUMA",
+                  "statefip" = "STATEFIP") %>% 
+    dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
+                  puma = sprintf("%0.5d", as.numeric(puma))) %>% 
+    # Merge the microdata PUMAs to places
+    left_join(puma_place, by=c( "statefip", "puma")) %>% 
+    mutate(place_code = str_c(statefip, place), 
+           year = year) %>% 
+    distinct()
+  
+  # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
+  acs_clean <- acs_data %>% 
+    tidylog::filter(!is.na(afact)) %>% 
+    # removed 1,839,362 rows (49%), 1,942,397 rows remaining
+    filter(afact > 0)
+  # no drops
+  
+  # Adjust weight to account for PUMA-to-county mapping (those where unique_types > 1).;
+  
+  # Same adjustments as Kevin:
+  acs_clean <- acs_clean %>%
+    mutate(HHWT = HHWT*afact, # the weight of each household is adjusted by the area of the PUMA that falls into a given Place
+           HHINCOME = HHINCOME*ADJUST, # adjusts the HH income values by the Census's 12-month adjustment factor (converts numbers into calendar year dollars)
+           PERWT = PERWT*afact, # the weight of each person is adjusted by the area of the PUMA that falls into a given Place
+           RENTGRS = RENTGRS*ADJUST, # adjusts gross monthly rental cost for rented housing units into cal-year dollars
+           OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
+  
+  # save as "microdata.csv" 
+  write_csv(acs_clean,  here::here("02_housing","data","temp",paste0("place_microdata_", year,".csv")))
+}
 
-# keep only vars we need
-acs_2022 <- housing_ext_def %>%
-  select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
-         VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
-  # clean up for matching purposes
-  dplyr::rename("puma" = "PUMA",
-                "statefip" = "STATEFIP") %>% 
-  dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
-                puma = sprintf("%0.5d", as.numeric(puma))) %>% 
-# Merge the microdata PUMAs to places
-  left_join(puma_place_2022, by=c( "statefip", "puma")) %>% 
-  mutate(place_code = str_c(statefip, place)) %>% 
-  distinct()
-# now have 3,781,759 rows
-
-# check distinct number of places - get 536 observations
-acs_2022 %>% distinct(statefip, place) %>% nrow()
-
-# run anti_join to see how many cases on the left did not have a match on the right
-test  <- anti_join(acs_2022, puma_place_2022, by=c("statefip","puma"))
-# 1,842,100 obs from the microdata (makes sense since we limited to only PUMAs that are overlapping with Places of interest)
-
-# Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
-acs2022clean <- acs_2022 %>% 
-  tidylog::filter(!is.na(afact)) %>% 
-# removed 1,839,362 rows (49%), 1,942,397 rows remaining
-  filter(afact > 0)
-# no drops
-
-# Adjust weight to account for PUMA-to-county mapping (those where unique_types > 1).;
-
-# Same adjustments as Kevin:
-acs2022clean <- acs2022clean %>%
-  mutate(HHWT = HHWT*afact, # the weight of each household is adjusted by the area of the PUMA that falls into a given Place
-         HHINCOME = HHINCOME*ADJUST, # adjusts the HH income values by the Census's 12-month adjustment factor (converts numbers into calendar year dollars)
-         PERWT = PERWT*afact, # the weight of each person is adjusted by the area of the PUMA that falls into a given Place
-         RENTGRS = RENTGRS*ADJUST, # adjusts gross monthly rental cost for rented housing units into cal-year dollars
-         OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
-
-# save as "microdata.csv" 
-write_csv(acs2022clean,  here::here("02_housing","data","temp","2022microdata.csv"))
+# loop over years
+map(place_years, prepare_place_data)
 ```
 
 #### 3b) County-level
 
 ```{r}
+prepare_county_microdata <- function(year){
+  # read in appropriate crosswalk 
+  puma_county <- read_csv(here::here("02_housing","data","temp",paste0("puma_county_", year,".csv")))
+  
 # keep only vars we need
-acs_2022_county <- housing_ext_def %>%
+acs_county <- housing_ext_def %>%
   select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
          VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
   # clean up for matching purposes
@@ -275,20 +280,13 @@ acs_2022_county <- housing_ext_def %>%
   dplyr::mutate(statefip = sprintf("%0.2d", as.numeric(statefip)),
                 puma = sprintf("%0.5d", as.numeric(puma))) %>% 
 # Merge the microdata PUMAs to counties
-  left_join(puma_county_2022, by=c( "statefip", "puma")) %>% 
-  mutate(county_code = str_c(statefip, county)) %>% 
+  left_join(puma_county, by=c( "statefip", "puma")) %>% 
+  mutate(county_code = str_c(statefip, county), 
+         year = year) %>% 
   distinct() %>% 
   # Drop any observations with NA or 0 for afact (i.e. there is no counties of interest overlapping this PUMA)
   filter(!is.na(afact), 
          afact > 0)
-# 7,336,764 rows remaining
-
-# check distinct number of counties - 3143
-acs_2022_county %>% distinct(statefip, county) %>% nrow()
-
-# run anti_join to see how many cases on the left did not have a match on the right
-test  <- anti_join(acs_2022_county, puma_county_2022, by=c("statefip","puma"))
-# all matched
 
 # Adjust weight to account for PUMA-to-county mapping (those where unique_types > 1).;
 
@@ -302,4 +300,5 @@ acs2022clean <- acs_2022_county %>%
 
 # save as "microdata.csv" 
 write_csv(acs2022clean,  here::here("02_housing","data","temp","2022microdata_county.csv"))
+}
 ```
