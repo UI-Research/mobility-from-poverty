@@ -17,7 +17,7 @@ Process:
 
 \(0\) Housekeeping
 
-\(1\) Download microdata from IPUMS API
+\(1\) Download microdata from IPUMS API for 2022 and 2021
 
 \(2\) Prepare the Census Place/county to PUMA crosswalks
 
@@ -47,6 +47,8 @@ path <- here::here("02_housing","data","temp")
 if (!dir.exists(path)) {
   dir.create(path, recursive = TRUE)
 }
+
+years <- c(2022:2021)
 ```
 
 ## 1) Download microdata from IPUMS API
@@ -62,10 +64,12 @@ If you don't already have one, you will need register for an IPUMS API key here:
 cps_samps <- get_sample_info("usa")
 # we want "us2022a" for the 2022 ACS
 
-# define extract dataset and variables
-housing_ext_def <- define_extract_usa(
+# define extract dataset and variables and save
+# for all years
+extract_ipums <- function(year){
+  housing_ext_def <- define_extract_usa(
   description = "Housing microdata extract", # description of extract
-  samples = c("us2022a"), # use 2022 ACS data
+  samples = c(paste0("us",year,"a")), # use ACS data
   variables = c("HHWT", "ADJUST", "STATEFIP", "PUMA", "GQ", "OWNERSHP", "OWNCOST", "RENT", "RENTGRS", "HHINCOME",
                 "VALUEH", "VACANCY", "PERNUM", "PERWT", "EDUC", "EDUCD", "GRADEATT", "EMPSTAT", "AGE", "KITCHEN", "PLUMBING")
 ) %>% 
@@ -77,17 +81,21 @@ housing_ext_def <- define_extract_usa(
 # 3373378 obs
 
 # save temp file with API pull
-write_csv(housing_ext_def, here::here("02_housing","data","temp","housing_microdata2022.csv"))
+write_csv(housing_ext_def, here::here("02_housing","data","temp", paste0("housing_microdata",year,".csv")))
+}
 
+# extract data for 2022 and 2021
+map(years, extract_ipums)
 ```
 
 #### (1b) Import vacant unit specific data
 
 ```{r}
 # keep only the variables we need/can even have given this hierarchical structure
-vacant_microdata22 <- define_extract_usa(
+extract_vacant_ipums <- function(year){
+  vacant_microdata <- define_extract_usa(
   description = "Vacancy microdata extract", # description of extract
-  samples = c("us2022a"), # use 2022 ACS data
+  samples = c(paste0("us",year,"a")), # use ACS data
   variables = list(
     "HHWT", 
     var_spec("GQ", case_selections = c("0")), # just download cases where GQ == 0 (vacant)
@@ -107,30 +115,57 @@ vacant_microdata22 <- define_extract_usa(
   ) %>% arrange(statefip, puma)
 
 # save vacancy data
-write_csv(vacant_microdata22,  here::here("02_housing","data","temp","vacancy_microdata2022.csv"))
+write_csv(vacant_microdata,  here::here("02_housing","data","temp",paste0("vacancy_microdata",year,".csv")))
+}
+
+# extract data for 2022 and 2021
+map(years, extract_vacant_ipums)
 ```
 
 ## 2) Prepare crosswalks
 
 #### 2a) Place crosswalk
 
+**NOTE:** In future years of updates, be sure to check the puma/place crosswalk. Some PUMAs change over the years so make sure that when you merge the PUMA microdata and place crosswalk you are getting the expected number of places (in 2024 update it was 486 places)
+
 ```{r}
-
 # Prepare the Census Place to PUMA crosswalk
-puma_place_2022 <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_place.csv")) %>% 
-  filter(crosswalk_period == 2022)
+# open relevant crosswalk data
+puma_place_crosswalk <- function(year){
+  # read in crosswalk file and filter to relevant year
+  puma_place <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_place.csv")) %>% 
+  # NOTE: crosswalk has "2022", and "pre-2022" for year, in future updates, make sure this column is named similarly
+    mutate(crosswalk_period = if_else(crosswalk_period == "pre-2022", "2021", crosswalk_period)) %>% 
+    filter(crosswalk_period == year)
+  
+  # save a version with just the place-level values of data quality variables 
+  # NOTE: data quality variables calculated in geographic-crosswalks/generate_puma_place_crosswalks.qmd
+  place_puma <- puma_place %>%
+    group_by(statefip, place) %>%
+    summarize(puma_flag = mean(geographic_allocation_quality))
+  
+  # save puma_place file
+  write_csv(puma_place,  here::here("02_housing","data","temp",paste0("puma_place_", year,".csv")))
+  
+  # save place_puma file
+  write_csv(place_puma,  here::here("02_housing","data","temp",paste0("place_puma_", year,".csv")))
+}
 
+# loop over 2021 and 2022
+map(years, puma_place_crosswalk)
+
+# NOTE TO JP: 2021 is missing data for place fips 72122 in Georgia
 # check number of unique places in data
-puma_place_2022 %>% distinct(statefip, place) %>% nrow() # 486 observations
+stopifnot(
+  # 2022 data
+  read_csv(here::here("02_housing","data","temp", "puma_place_2022.csv")) %>% 
+    distinct(statefip, place) %>% nrow() == 486,
+  
+  # 2021 data
+  read_csv(here::here("02_housing","data","temp", "puma_place_2021.csv")) %>% 
+    distinct(statefip, place) %>% nrow() == 485
+)
 
-# save a version with just the place-level values of data quality variables 
-# NOTE: data quality variables calculated in geographic-crosswalks/generate_puma_place_crosswalks.qmd
-place_puma <- puma_place_2022 %>%
-  group_by(statefip, place) %>%
-  summarize(puma_flag = mean(geographic_allocation_quality))
-
-# save as "place_puma.csv" in gitignore
-write_csv(place_puma,  here::here("02_housing","data","temp","place_puma.csv"))
 ```
 
 #### 2b) County crosswalk
@@ -138,23 +173,43 @@ write_csv(place_puma,  here::here("02_housing","data","temp","place_puma.csv"))
 ```{r}
 # (2) Prepare the Census County to PUMA crosswalk
 # open relevant crosswalk data
-puma_county_2022 <-  read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_county.csv")) %>% 
-  filter(crosswalk_period == 2022) %>% 
-  filter(statefip != 72) %>% 
-# drop observations where the weight adjustment is zero
-  tidylog::filter(afact!= 0.000)
+puma_county_crosswalk <- function(year){
+  # read in crosswalk and filter to relevant year
+  puma_county <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_county.csv")) %>% 
+     # NOTE: crosswalk has "2022", and "pre-2022" for year, in future updates, make sure this column is named similarly
+    mutate(crosswalk_period = if_else(crosswalk_period == "pre-2022", "2021", crosswalk_period)) %>% 
+    filter(crosswalk_period == year, 
+           statefip != 72) %>% 
+    # drop observations where the weight adjustment is zero
+    tidylog::filter(afact!= 0.000)
+  
+  # save a version with just the county-level values of data quality variables
+  county_puma <- puma_county %>%
+    group_by(statefip, county) %>%
+    summarize(puma_flag = mean(geographic_allocation_quality))
+  
+  # save puma_county file
+  write_csv(puma_county,  here::here("02_housing","data","temp",paste0("puma_county_", year,".csv")))
+  
+  # save county_puma file
+  write_csv(county_puma,  here::here("02_housing","data","temp",paste0("county_puma_", year,".csv")))
 
+}
 
-# check number fo unique countues in data
-puma_county_2022 %>% distinct(statefip, county) %>% nrow() # 3,143
+# loop over 2021 and 2022
+map(years, puma_county_crosswalk)
 
-# save a version with just the county-level values of data quality variables
-county_puma <- puma_county_2022 %>%
-  group_by(statefip, county) %>%
-  summarize(puma_flag = mean(geographic_allocation_quality))
+# check number of unique places in data
+stopifnot(
+  # 2022 data
+  read_csv(here::here("02_housing","data","temp", "puma_county_2022.csv")) %>% 
+    distinct(statefip, county) %>% nrow() == 3143,
+  
+  # 2021 data
+  read_csv(here::here("02_housing","data","temp", "puma_county_2021.csv")) %>% 
+    distinct(statefip, county) %>% nrow() == 3143
+)
 
-# save as "place_puma.csv" in gitignore
-write_csv(county_puma,  here::here("02_housing","data","temp","county_puma.csv"))
 ```
 
 ## 3) Prepate microdata
