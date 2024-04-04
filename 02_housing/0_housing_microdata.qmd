@@ -175,11 +175,18 @@ stopifnot(
 # (2) Prepare the Census County to PUMA crosswalk
 # open relevant crosswalk data
 puma_county_crosswalk <- function(year){
+  
+  # rename for filter
+  if(year != 2022){
+    year_filter <- "pre-2022"
+  }
+  else{
+    year_filter <- 2022
+  }
   # read in crosswalk and filter to relevant year
   puma_county <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_county.csv")) %>% 
      # NOTE: crosswalk has "2022", and "pre-2022" for year, in future updates, make sure this column is named similarly
-    mutate(crosswalk_period = if_else(crosswalk_period == "pre-2022", "2021", crosswalk_period)) %>% 
-    filter(crosswalk_period == year, 
+    filter(crosswalk_period == year_filter, 
            statefip != 72) %>% 
     # drop observations where the weight adjustment is zero
     tidylog::filter(afact!= 0.000)
@@ -198,18 +205,15 @@ puma_county_crosswalk <- function(year){
 }
 
 # loop over 2021 and 2022
-map(years, puma_county_crosswalk)
+map(county_years, puma_county_crosswalk)
 
-# check number of unique places in data
-stopifnot(
-  # 2022 data
-  read_csv(here::here("02_housing","data","temp", "puma_county_2022.csv")) %>% 
-    distinct(statefip, county) %>% nrow() == 3143,
-  
-  # 2021 data
-  read_csv(here::here("02_housing","data","temp", "puma_county_2021.csv")) %>% 
-    distinct(statefip, county) %>% nrow() == 3143
-)
+ # loop over years and test
+for(year in county_years){
+   # check number of unique places in data
+  stopifnot(
+    read_csv(here::here("02_housing","data","temp", paste0("puma_county_", 2014, ".csv"))) %>% 
+      distinct(statefip, county) %>% nrow() == 3143)
+}
 
 ```
 
@@ -224,7 +228,7 @@ prepare_place_data <- function(year){
   puma_place <- read_csv(here::here("02_housing","data","temp",paste0("puma_place_", year,".csv")))
   
   # keep only vars we need
-  acs_data <- housing_ext_def %>%
+  acs_data <- read_csv(here::here("02_housing","data","temp", paste0("housing_microdata",year,".csv"))) %>%
     select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
            VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
     # clean up for matching purposes
@@ -271,7 +275,7 @@ prepare_county_microdata <- function(year){
   puma_county <- read_csv(here::here("02_housing","data","temp",paste0("puma_county_", year,".csv")))
   
 # keep only vars we need
-acs_county <- housing_ext_def %>%
+acs_county <- read_csv(here::here("02_housing","data","temp", paste0("housing_microdata",year,".csv"))) %>%
   select(HHWT, ADJUST, STATEFIP, PUMA, GQ, OWNERSHP, OWNCOST, RENT, RENTGRS, HHINCOME,
          VALUEH, VACANCY, PERNUM, PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE) %>% 
   # clean up for matching purposes
@@ -291,7 +295,7 @@ acs_county <- housing_ext_def %>%
 # Adjust weight to account for PUMA-to-county mapping (those where unique_types > 1).;
 
 # Same adjustments as Kevin:
-acs2022clean <- acs_2022_county %>%
+acs_clean <- acs_county %>%
   mutate(HHWT = HHWT*afact, # the weight of each household is adjusted by the area of the PUMA that falls into a given Place
          HHINCOME = HHINCOME*ADJUST, # adjusts the HH income values by the Census's 12-month adjustment factor (converts numbers into calendar year dollars)
          PERWT = PERWT*afact, # the weight of each person is adjusted by the area of the PUMA that falls into a given Place
@@ -299,6 +303,9 @@ acs2022clean <- acs_2022_county %>%
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" 
-write_csv(acs2022clean,  here::here("02_housing","data","temp","2022microdata_county.csv"))
+write_csv(acs_clean,  here::here("02_housing","data","temp","2022microdata_county.csv"))
 }
+
+# loop over years
+map(county_years, prepare_county_microdata)
 ```
