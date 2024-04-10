@@ -592,11 +592,13 @@ housing <- housing %>%
                 \(x) if_else(x < 30, 1, 0)))
 
 # bring in the PUMA flag file if you have not run "0_microdata.R" before this
-place_puma <- read_csv(here::here("02_housing/data/temp/place_puma.csv")) %>% 
+place_puma <- read_csv(here::here("02_housing/data/temp/place_puma_2021.csv")) %>% 
+  mutate(year = 2021) %>% 
+  bind_rows(read_csv(here::here("02_housing/data/temp/place_puma_2022.csv")) %>% mutate(year = 2022)) %>% 
   rename("state" = "statefip")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-housing <- left_join(housing, place_puma, by=c("state","place"))
+housing <- left_join(housing, place_puma, by=c("state","place", "year"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
 housing <- housing %>% 
@@ -612,9 +614,9 @@ housing <- housing %>%
 ## (9) Clean and export
 ```{r}
 # turn long for subgroup output
-housing_2022_subgroup <- housing_2022 %>%
+housing_subgroup <- housing %>%
   # create year variable
-  mutate(year = 2022) %>% 
+ # mutate(year = 2022) %>% 
   # seperate share_afforadable by AMI and the subgroup
   pivot_longer(cols = matches("share_affordable_"), 
                names_to = c("affordable", "subgroup"),
@@ -637,27 +639,27 @@ housing_2022_subgroup <- housing_2022 %>%
 
 ```{r}
 # keep what we need
-housing_2022_overall <- housing_2022_subgroup %>% 
+housing_overall <- housing_subgroup %>% 
   filter(subgroup == "All") %>% 
   select(year, state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami,
          share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, place)
 
 # export our file as a .csv
-write_csv(housing_2022_overall, here::here("02_housing/data/housing_2022_city.csv"))
+write_csv(housing_overall, here::here("02_housing/data/housing_city.csv"))
 ```
 
 ### (9b) subgroup file
 
 ```{r}
 # keep what we need
-housing_2022_subgroup_final <- housing_2022_subgroup %>% 
+housing_subgroup_final <- housing_subgroup %>% 
   select(year, state, place,subgroup_type, subgroup, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami, 
          share_affordable_80_ami_quality, share_affordable_50_ami_quality, share_affordable_30_ami_quality) %>% 
   arrange(year, state, place, subgroup_type, subgroup)
 
 # export our file as a .csv
-write_csv(housing_2022_subgroup_final, here::here("02_housing/data/housing_2022_subgroups_city.csv"))
+write_csv(housing_subgroup_final, here::here("02_housing/data/housing_subgroups_city.csv"))
 ```
 
 ## (10) Quality Checks and Visualizations
@@ -666,27 +668,27 @@ write_csv(housing_2022_subgroup_final, here::here("02_housing/data/housing_2022_
 
 ```{r}
 # share affordable at 30 AMI histogram
-housing_2022_subgroup_final %>% 
+housing_subgroup_final %>% 
   ggplot(aes(share_affordable_30_ami))+
   geom_histogram()+
-  facet_wrap(~subgroup)
+  facet_wrap(~year)
 ```
 
 ```{r}
 # share affordable at 50 AMI histogram
-housing_2022_subgroup_final %>% 
+housing_subgroup_final %>% 
   ggplot(aes(share_affordable_50_ami))+
   geom_histogram()+
-  facet_wrap(~subgroup)
+  facet_wrap(~year)
 
 ```
 
 ```{r}
 # share affordable at 80 AMI histogram
-housing_2022_subgroup_final %>% 
+housing_subgroup_final %>% 
   ggplot(aes(share_affordable_80_ami))+
   geom_histogram() +
-  facet_wrap(~subgroup)
+  facet_wrap(~year)
 ```
 
 ### (10b) Summaries
