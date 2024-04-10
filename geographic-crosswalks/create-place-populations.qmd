@@ -1,0 +1,277 @@
+---
+title: "Create Place Population File"
+author: "Aaron R. Williams"
+abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of counties with population estimates for 2014-2023"
+format: html
+embed-resources: true
+execute: 
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+library(here)
+
+theme_set(theme_minimal())
+options(scipen = 999)
+
+```
+
+## 2015-2019
+
+```{r}
+#' Get population estimates from the US Census Bureau Population Estimation Program
+#'
+#' @param year An integer for the year of interest
+#'
+#' @return A data frame with estimate for all US counties
+#'
+get_pop <- function(year) {
+  
+  pop <- tidycensus::get_estimates("place", year = year, variables = "POP") %>%
+    mutate(year = year)
+  
+  return(pop)
+  
+}
+
+
+# pull county population data for each year from the Population Estimates Program
+pep_2015_2019 <- map_dfr(
+  .x = 2015:2019, 
+  .f = ~get_pop(year = .x)
+)
+
+```
+
+## 2020
+
+```{r}
+# pull the 2020 decennial census
+census2020 <- get_decennial(
+  geography = "place", 
+  year = 2020, 
+  variables = "P1_001N", 
+  keep_geo_vars = TRUE
+) |>
+  select(NAME, GEOID, variable, value) |>
+  mutate(year = 2020)
+
+```
+
+Temporarily use 2020 Census data for 2021-2023. 
+
+```{r}
+census2020_2023 <- bind_rows(
+  census2020,
+  census2020 |>
+    mutate(year = 2021),
+  census2020 |>
+    mutate(year = 2022),
+  census2020 |>
+    mutate(year = 2023),
+)
+
+```
+
+
+```{r}
+# combine the PEP data and decennial census data
+pop <- bind_rows(pep_2015_2019, census2020_2023)
+
+# drop unnecessary variable and rename the useful variable
+pop <- pop %>%
+  select(-variable) %>%
+  rename(population = value,
+         place_state_name = NAME,
+         state_place = GEOID)
+
+pop <- pop |>
+  separate(place_state_name, into = c("place_name", "state_name", "c", "d", "e"), sep = ",") |>
+  mutate(
+    state_name = str_squish(state_name),
+    place_name = str_squish(place_name)
+  ) |>
+  mutate(
+    state = str_sub(state_place, start = 1, end = 2),
+    place = str_sub(state_place, start = 3, end = 7)
+  ) |>
+  select(year, state, place, state_name, place_name, population) %>%
+  arrange(year, state, place)
+
+```
+
+## 2021-2023
+
+The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later year. Instead, we download and clean up the data.
+
+```{r}
+# read_pep <- function(year) {
+#   
+#   file <- here("geographic-crosswalks", "data", "raw", paste0("pep", year, ".csv"))
+#   
+#   if (year == 2021) {
+#     
+#     url <- 
+#       paste0("https://www2.census.gov/programs-surveys/popest/datasets/",
+#              "2020-", year, "/cities/totals/sub-est", year, "_all.csv")
+#     
+#   } else {
+#     
+#     url <- 
+#       paste0("https://www2.census.gov/programs-surveys/popest/datasets/",
+#              "2020-", year, "/cities/totals/sub-est", year, ".csv")
+#     
+#   }
+#   
+#   if (!file.exists(file)) {
+#     
+#     download.file(
+#       url = url,
+#       destfile = file
+#     )
+#     
+#     
+#   }
+#   
+#   pop_var <- paste0("popestimate", year)
+#   
+#   pep <- read_csv(file) |>
+#     rename_with(tolower) |>
+#     filter(sumlev == "157") |>
+#     mutate(year = year) |>
+#     select(year, state, place, state_name = stname, place_name = name, 
+#            population = any_of(pop_var))
+#   
+#   return(pep)
+#   
+# }
+# 
+# pep_2021_2022 <- map_dfr(
+#   .x = 2021:2022, 
+#   .f = read_pep
+# )
+
+```
+
+2023 data for census places wasn't available for [download](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/). We use 2022 data for 2023 for now.
+
+```{r}
+# pep_2021_2023 <- bind_rows(
+#   pep_2021_2022,
+#   pep_2021_2022 |>
+#     filter(year == 2022) |>
+#     mutate(year = 2023)
+# )
+
+
+```
+
+## Combine Data
+
+```{r}
+final_population <- bind_rows(
+  pop,
+  #pep_2021_2023
+)
+
+final_population <- final_population |>
+  arrange(year, state, place, state_name, place_name)
+
+```
+
+## Subset Data
+
+```{r}
+my_places <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
+  filter(POPESTIMATE2020 > 75000, SUMLEV == "162") |>
+  mutate(state_place = paste0(STATE, PLACE)) |>
+  pull(state_place)
+
+final_population <- final_population |>
+  filter(paste0(state, place) %in% my_places)
+
+```
+
+## Evaluation
+
+```{r}
+count(final_population, year)
+
+```
+
+```{r}
+population_test <- final_population |>
+  filter(year > 2015) |>
+  group_by(state, place) |>
+  mutate(
+    pop_change = population - lag(population),
+    prop_pop_change = (population - lag(population)) / lag(population)
+  ) |>
+  ungroup()
+
+population_test |>
+  ggplot(aes(population, pop_change)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ year) +
+  labs(title = "Population change in different years")
+
+population_test |>
+  ggplot(aes(population, prop_pop_change)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ year) +
+  labs(title = "Proportional population change in different years")
+
+population_test |>
+  slice_max(abs(prop_pop_change), n = 30) |>
+  print(n = Inf)
+
+population_test |>
+  slice_max(abs(pop_change), n = 30) |>
+  print(n = Inf)
+
+```
+
+```{r}
+final_population |>
+  group_by(state, place) |>
+  mutate(fips_frequency = n()) |>
+  filter(fips_frequency != 9) |>
+  ungroup() |>
+  distinct(state, place, state_name, place_name) |>
+  print(n = Inf)
+
+```
+
+
+```{r}
+final_population |>
+  group_by(state_name, place_name) |>
+  mutate(fips_frequency = n()) |>
+  filter(fips_frequency != 9) |>
+  ungroup() |>
+  distinct(state, place, state_name, place_name) |>
+  print(n = Inf)
+
+```
+
+## Save Data
+
+The PEP data are reported using the geographies at the time the estimates were generated. This means the 2023 data include Connecticut's planning regions in 2021 even though they didn't exist at that point. Accordingly, we will download earlier data. 
+
+```{r}
+# We have 486 cities, so for 5 years we should have 2430 observations.
+# However, South Fulton city, Georgia was incorporated in 2017, so we only
+# have population estimates for this city from 2018-2020. Therefore, there
+# are 2428 total observations
+
+write_csv(
+  x = final_population,
+  file = here::here("geographic-crosswalks/data/place-populations.csv")
+)
+```
+
