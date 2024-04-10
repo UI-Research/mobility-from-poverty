@@ -58,20 +58,21 @@ library(tidylog)
 
 ## (2) Import microdata (PUMA Place combination already done)
 
-Either run "0_housing_microdata.qmd" OR: Import the already prepared microdata file 
+Run "0_housing_microdata.qmd" 
 
 ```{r}
 # this one should already match the PUMAs to places
-acs2022 <- read_csv(here::here("02_housing","data","temp","2022microdata.csv")) 
+# create one file with 2022 and 2021 data
+acs <- read_csv(here::here("02_housing","data","temp","place_microdata_2022.csv")) %>% 
+  bind_rows(read_csv(here::here("02_housing","data","temp","place_microdata_2021.csv")))
 
 ```
 
 For HH side: isolate original microdata to only GQ under 3 (only want households)
 see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
 ```{r}
-acs2022clean <- acs2022 %>%
+acs_clean <- acs %>%
   tidylog::filter(GQ < 3) 
-# removed 94,963 rows (5%), 1,847,434 rows remaining
 ```
 ## (3) Create a Vacant units dataframe 
 
@@ -85,9 +86,9 @@ Choosing only 1-3 excludes seasonal, occasional, and migratory units
 drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
 
 ```{r}
-vacant_microdata22 <- read_csv(here::here("02_housing", "data","temp","vacancy_microdata2022.csv")) %>% 
+vacant_microdata <- read_csv(here::here("02_housing", "data","temp","vacancy_microdata2022.csv")) %>% 
+  bind_rows(read_csv(here::here("02_housing", "data","temp","vacancy_microdata2021.csv"))) %>% 
   tidylog::filter(VACANCY %in% c(1, 2, 3))
-# 26,866 obs from 106,542 obs (79,676 dropped)
 
 ```
 
@@ -96,7 +97,7 @@ vacant_microdata22 <- read_csv(here::here("02_housing", "data","temp","vacancy_m
 Using 6% for the USA to match the choice made by Kevin/Aaron. Calculate monthly P & I payment using monthly mortgage rate and compounded interest calculation
 
 ```{r}
-vacant <- vacant_microdata22 %>%
+vacant <- vacant_microdata %>%
   # Turn 9999999 to NA and then multiply by ADJUST variable for all else
   mutate(VALUEH = if_else(VALUEH == 9999999, NA,  VALUEH*ADJUST),
          loan = 0.9 * VALUEH,
@@ -121,12 +122,11 @@ vacant <- vacant %>%
 This needs to come from the original ACS microdata file (rectangularized rather than hierarchical), which has HH-level vars like RENT, RENTGRS, and HHINCOME (unlike the Vacant Unit extract)
 
 ```{r}
-rent_ratio <- acs2022clean %>% 
-  select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, place) %>% 
+rent_ratio <- acs_clean %>% 
+  select(RENT, RENTGRS, HHINCOME, HHWT, PERNUM, OWNERSHP, statefip, place, year) %>% 
   # Keep one observation per household (PERNUM=1), and only rented ones (OWNERSHP=2)
   tidylog::filter(PERNUM == 1,
                   OWNERSHP == 2)
-# removed 1,596,449 rows (86%), 250,985 rows remaining
 ```
 
 ### (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per place)
@@ -136,12 +136,11 @@ rent_ratio <- rent_ratio %>%
   mutate(ratio_rentgrs_rent = RENTGRS/RENT) %>% 
   # Collapse (mean) ratio by place - values have been multiplied by the afact in 
   # 0_housing_microdata.qmd so summarizing gets the place-level value 
-  dplyr::group_by(statefip, place) %>% 
+  dplyr::group_by(statefip, place, year) %>% 
   dplyr::summarize(ratio_rentgrs_rent = mean(ratio_rentgrs_rent, na.rm=TRUE),
                    RENT = mean(RENT), na.rm=TRUE,
                    HHINCOME = mean(HHINCOME), na.rm=TRUE,
                    HHWT = mean(HHWT), na.rm=TRUE)
-# 486 obs
 ```
 
 ### (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
@@ -150,14 +149,15 @@ This "RENTGRS" variable will be used to calculate affordability in Step 6
 
 ```{r}
 puma_place <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_place.csv")) %>% 
-  filter(crosswalk_period == 2022)
+  # recode to match 2021 data
+  mutate(crosswalk_period = ifelse(crosswalk_period == "pre-2022", 2021, crosswalk_period) %>% as.numeric())
 ```
 
 In order to be able to merge in rent_ratio, need to have places in the vacant data file 
 
 ```{r}
 # Merge in places
-vacant_places  <- left_join(vacant, puma_place, by=c("statefip","puma"))
+vacant_places  <- left_join(vacant, puma_place, by=c("statefip","puma", "YEAR" = "crosswalk_period"))
 
 # create a concatenated GEOID for each city(e.g. census place)
 puma_place$GEOID <- paste(puma_place$statefip,puma_place$place, sep = "")
@@ -166,10 +166,9 @@ vacant_places$GEOID <- paste(vacant_places$statefip,vacant_places$place, sep = "
 # limit only to places of interest
 vacant_places <- vacant_places %>%
   tidylog::filter(GEOID %in% puma_place$GEOID)
-#  removed 12,708 rows (42%), 17,265 rows remaining
 
 # Merge rent ratio into vacant unit microdata
-vacant_final<- left_join(vacant_places, rent_ratio, by = c("statefip", "place"))
+vacant_final<- left_join(vacant_places, rent_ratio, by = c("statefip", "place", "YEAR" = "year"))
 # 1 row doesn't merge - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3 (simi valley, CA)
 
 # Update the RENTGRS variable with our calculated ratio
@@ -181,23 +180,40 @@ vacant_final <- vacant_final %>%
 
 Population will be used for weighting. 
 
-NOTE: There is an API to do this that should be used in future updates of the data but we didn't have the capacity to update in 2023
-
 Access via https://www.huduser.gov/portal/datasets/il.html#data_2022	
 
 
 ```{r}
 # Specify URL where source data file is online
-url <- "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx"
+urls <- c("https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx", 
+          "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx")
+
+years <- c(2022:2021)
+
+download_hud_il <- function(year, url){
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile <- here::here("02_housing/data/temp/FMR_Income_Levels_2022.xlsx")
+destfile <- here::here(paste0("02_housing/data/temp/FMR_Income_Levels_",year,".xlsx"))
 
 # Import the data file & save locally
 download.file(url, destfile, mode="wb")
 
 # Import the data file as a dataframe
-FMR_Income_Levels_2022 <- read_excel(here::here("02_housing/data/temp/FMR_Income_Levels_2022.xlsx"))
+FMR_Income_Levels <- read_excel(here::here(paste0("02_housing/data/temp/FMR_Income_Levels_",year,".xlsx"))) %>% 
+  mutate(year = year) 
+
+if(year == 2021){
+  FMR_Income_Levels <- FMR_Income_Levels %>%
+    mutate(state = as.character(State), 
+           county = as.character(County)) %>% 
+    select(-c(County, State))
+}
+
+return(FMR_Income_Levels)
+}
+
+# download and combine 2022 and 2021 data into one file
+FMR_Income_Levels <- map2_df(years, urls, download_hud_il) 
 ```
 
 Import data file (FY&year_4050_FMRs_rev.csv) FY2022_4050_FMRs_rev
@@ -205,24 +221,33 @@ Access via https://www.huduser.gov/portal/datasets/fmr.html#data_2022
 
 ```{r}
 # Specify URL where source data file is online
-url_FMR <- "https://www.huduser.gov/portal/datasets/fmr/fmr2022/FY22_FMRs_revised.xlsx"
+url_FMR <- c("https://www.huduser.gov/portal/datasets/fmr/fmr2022/FY22_FMRs_revised.xlsx", 
+             "https://www.huduser.gov/portal/datasets/fmr/fmr2021/FY21_4050_FMRs_rev.xlsx")
 
+download_hud_fmr <- function(year, url){
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfile_FMR <- here::here("02_housing/data/temp/FMR_pop_2022.xlsx")
+destfile_FMR <- here::here(paste0("02_housing/data/temp/FMR_pop_", year, ".xlsx"))
 
 # Import the data file & save locally
-download.file(url_FMR, destfile_FMR, mode="wb")
+download.file(url, destfile_FMR, mode="wb")
 
 # Import the data file as a dataframe
-FMR_pop_2022 <- read_excel(here::here("02_housing/data/temp/FMR_pop_2022.xlsx"))
+FMR_pop <- read_excel(here::here(paste0("02_housing/data/temp/FMR_pop_", year,".xlsx"))) %>% 
+  mutate(year = year,
+        state = as.numeric(state), 
+        metro = as.numeric(metro))
+}
+
+# download and combine 2022 and 2021 data into one file
+FMR_pop<- map2_df(years, url_FMR, download_hud_fmr)
+
 ```
 
 ### (4a) Merge the 2 files
 
 ```{r}
 # Add the population variable onto the income level file
-FMR_Income_Levels_2022 <- left_join(FMR_Income_Levels_2022, FMR_pop_2022, by=c("fips2010"))
-# 4,765 obs
+FMR_Income_Levels <- tidylog::left_join(FMR_Income_Levels, FMR_pop, by=c("fips2010", "year"))
 ```
 
 ### (4b) Bring in county_place crosswalk
@@ -236,14 +261,12 @@ county_place <- read_csv(here::here("geographic-crosswalks/data/geocorr2022_coun
 ### (4c) Merge FMR file with crosswalk on county
 
 ```{r}
-FMR_Income_Levels_2022 <- FMR_Income_Levels_2022 %>%
-  mutate(county = sprintf("%0.3d", as.numeric(county)),
+FMR_Income_Levels <- FMR_Income_Levels %>%
+  mutate(county = sprintf("%0.3d", as.numeric(county.x)),
          state = sprintf("%0.2d", as.numeric(state.x)))
 
 # left join to assign places to each county-level obs
-FMR_2022 <- left_join(FMR_Income_Levels_2022, county_place, by=c("state.x" = "state", "county"))
-# 62,748 obs
-
+FMR <- left_join(FMR_Income_Levels, county_place, by=c( "state", "county")) 
 ```
 
 ### (4d) Create place_level_income_limits (weight by FMR population in collapse)
@@ -251,8 +274,8 @@ FMR_2022 <- left_join(FMR_Income_Levels_2022, county_place, by=c("state.x" = "st
 Most FMRs have a one-to-one correspondence with places because most places fall into whole counties. However, some counties (mainly in New England) contain multiple FMRs. For these counties, replace the multiple FMR records with just one county record, using the weighted average value of the income levels, weighted by the FMR population
 
 ```{r}
-place_income_limits_2022 <- FMR_2022 %>%
-  dplyr::group_by(state, place) %>%
+place_income_limits <- FMR %>%
+  dplyr::group_by(state, place, year) %>%
   dplyr::summarise(l50_1 = weighted.mean(l50_1, na.rm = T, w = pop20),
                    l50_2 = weighted.mean(l50_2, na.rm = T, w = pop20),
                    l50_3 = weighted.mean(l50_3, na.rm = T, w = pop20),
@@ -284,11 +307,11 @@ place_income_limits_2022 <- FMR_2022 %>%
                 place = sprintf("%0.5d", as.numeric(place)),
   )
 
-place_income_limits_2022$GEOID <- paste(place_income_limits_2022$statefip,place_income_limits_2022$place, sep = "")
+place_income_limits$GEOID <- paste(place_income_limits$statefip,place_income_limits$place, sep = "")
 # limit only to places of interest
-place_income_limits_2022 <- place_income_limits_2022 %>%
+place_income_limits <- place_income_limits %>%
   filter(GEOID %in% puma_place$GEOID)
-# 486 obs
+# 972 obs
 ```
 
 ## (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels) - overall and for renters and owner subgroups
@@ -304,16 +327,15 @@ Merge on the 80% and 50% AMI income levels and determine:
 First, filter microdata to where PERNUM == 1, so only one HH per observation
 
 ```{r}
-microdata_housing <- acs2022clean %>%
+microdata_housing <- acs_clean %>%
   tidylog::filter(PERNUM == 1)
-# removed 1,101,760 rows (60%), 745,674 rows remaining
+#filter: removed 2,223,287 rows (60%), 1,497,043 rows remaining
 ```
 
-Create new dataset called "households_year" to merge microdata & place income limits (place_income_limits_2022) by state and place
+Create new dataset called "households" to merge microdata & place income limits (place_income_limits) by state and place
 
 ```{r}
-households_2022 <- left_join(microdata_housing, place_income_limits_2022, by=c("statefip","place"))
-# 745,674
+households <- left_join(microdata_housing, place_income_limits, by=c("statefip","place", "year"))
 ```
 
 Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
@@ -330,7 +352,7 @@ Also create variable for total population at 80% AMI, 50% AMI, and 30% AMI for r
 ```{r}
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
 # if OWNERSHP is not equal to 1 or 2, leave as NA 
-households_2022 <- households_2022 %>%
+households <- households %>%
   mutate(# create subgroups for renter and owners specifically
     Affordable80AMI_renter = case_when(OWNERSHP==2 & ((RENTGRS*12)<=(l80_4*0.30)) ~ 1,
                                        OWNERSHP==2 & ((RENTGRS*12)>(l80_4*0.30)) ~ 0,
@@ -357,7 +379,7 @@ households_2022 <- households_2022 %>%
   )
 
 # Create new variable 'Affordable50AMI' and 'Below50AMI' for HH below 50% of area median income (L50_4 and OWNERSHP)
-households_2022<- households_2022 %>%
+households<- households %>%
   mutate(
     # create subgroup categories for renters and owners
     Affordable50AMI_renter = case_when(
@@ -384,7 +406,7 @@ households_2022<- households_2022 %>%
   )
 
 # create new variable 'Affordable30AMI' and 'Below80AMI' for HH below 30% of area median income (ELI_4 and OWNERSHP)
-households_2022 <- households_2022 %>%
+households <- households %>%
   mutate(
     # create subgroup categories for renters and owners
     Affordable30AMI_renter = case_when(
@@ -411,21 +433,21 @@ households_2022 <- households_2022 %>%
   )
 
 # save file to use for affordability measure in 2a_affordable_available_place.R
-write_csv(households_2022, here::here("02_housing/data/temp/households_2022.csv"))
+write_csv(households, here::here("02_housing/data/temp/households.csv"))
 
 # Data is 1/3 renters 2/3 owners 
-#skimr::skim(households_2022)
+#skimr::skim(households)
 ```
 
-## (6) Merge Vacant with place_level_income_limits (FMR_2022)
+## (6) Merge Vacant with place_level_income_limits (FMR)
 
 Merge on the % AMI income levels and determine which vacant units are also affordable for a family of 4 at %s of AMI (regardless of actual unit size). If there is a non-zero value for gross rent (RENTGRS), use that for the cost. Otherwise, if there is a valid house value, use the housing cost that was calculated and prepared above in the "vacant" df.
 
 NOTE: 1 row doesn't merge - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3
 
 ```{r}
-vacant_2022 <- left_join(vacant_final, place_income_limits_2022, by=c("statefip","place"))
-# 17,265 
+vacant <- left_join(vacant_final, place_income_limits, by=c("statefip","place", "YEAR" = "year"))
+# 35,631 obs 
 ```
 
 ### (6a) create same 30%, 50%, and 80% AMI affordability indicators
@@ -433,7 +455,7 @@ vacant_2022 <- left_join(vacant_final, place_income_limits_2022, by=c("statefip"
 Include renter and owner subgroups.
 
 ```{r}
-vacant_2022_new <- vacant_2022 %>%
+vacant_new <- vacant %>%
   mutate(
     # 80% AMI all, renter, and owner
     Affordable80AMI_all = case_when(
@@ -475,10 +497,11 @@ vacant_2022_new <- vacant_2022 %>%
       !is.na(VALUEH) ~(total_monthly_cost*12) <= (ELI_4*0.30), 
       is.na(VALUEH) ~ NA)) %>% 
   # turn TRUE/FALSE booleans into binary 1/0 flags
-  mutate(across(matches("Affordable"), ~as.integer(.x)))
+  mutate(across(matches("Affordable"), ~as.integer(.x))) %>% 
+  rename(year = YEAR)
 
 # save file to use for affordability measure in 2a_affordable_available_place.qmd
-write_csv(vacant_2022_new, here::here("02_housing/data/temp/vacant_2022.csv"))
+write_csv(vacant_new, here::here("02_housing/data/temp/vacant.csv"))
 
 # look at data
 #skimr::skim(vacant_2022_new)
@@ -490,8 +513,8 @@ write_csv(vacant_2022_new, here::here("02_housing/data/temp/vacant_2022.csv"))
 
 Need to create a HH count variable for each subgroup to use in step 8 for data quality
 ```{r}
-households_summed_2022 <- households_2022 %>% 
-  group_by(statefip, place) %>%
+households_summed <- households %>% 
+  group_by(statefip, place, year) %>%
   # summarize all Below80AMI, Below50AMI, Below30AMI, and 
   # Affordable80AMI, Affordable50AMI, Affordable30AMI (all, renter, owner) variables
   summarise( 
@@ -511,11 +534,11 @@ households_summed_2022 <- households_2022 %>%
   rename("state" = "statefip")
 
 # Sum variables Affordable80AMI, Affordable50AMI, and Affordable30AMI 
-# from 'vacant_2022', grouped by statefip and place, and weighted by HHWT
-# save as df 'vacant_summed_2022'
+# from 'vacant', grouped by statefip and place, and weighted by HHWT
+# save as df 'vacant_summed'
 
-vacant_summed_2022 <- vacant_2022_new %>% 
-  group_by(statefip, place) %>%
+vacant_summed <- vacant_new %>% 
+  group_by(statefip, place, year) %>%
   summarize(
     across(matches("Affordable"), ~ sum(.x*HHWT.x, na.rm = TRUE), 
            # create naming onvention to add _vacant after columns name
@@ -523,7 +546,7 @@ vacant_summed_2022 <- vacant_2022_new %>%
   rename("state" = "statefip")
 
 # save csv for avaiablity calculation in 2a_affordable_available_place.qmd
-write_csv(vacant_summed_2022, here::here("02_housing/data/temp/vacant_summed_2022.csv"))
+write_csv(vacant_summed, here::here("02_housing/data/temp/vacant_summed.csv"))
 
 ```
 
@@ -532,14 +555,13 @@ write_csv(vacant_summed_2022, here::here("02_housing/data/temp/vacant_summed_202
 NOTE: 1 place doesn't have vacancy data - place 0672016 which didn't have any values with VACANCY = 1, 2, or 3
 
 ```{r}
-housing_2022 <- left_join(households_summed_2022, vacant_summed_2022, by=c("state","place"))
-# 486 obs
+housing <- left_join(households_summed, vacant_summed, by=c("state","place", "year"))
 ```
 
 ### (7c) Calculate share_affordable metric for each level all and for subgroups (renters/owners)
 
 ```{r}
-housing_2022 <- housing_2022 %>%
+housing <- housing %>%
   mutate(
     # all values
     share_affordable_80_ami_all = (Affordable80AMI_all+Affordable80AMI_all_vacant)/Below80AMI,
@@ -563,7 +585,7 @@ housing_2022 <- housing_2022 %>%
 Suppresses if sum(afact) < 30. You can think of this as a sample size accounting for the crosswalk. For example, one person with afact == 0.75 would count as 3/4ths of an observations.
 
 ```{r}
-housing_2022 <- housing_2022 %>% 
+housing <- housing %>% 
   # This data quality flag is based on if the unqieghted number of observations for household below 30/50/80 ami (overall/renter/owner subgroup)
   # is less than 30 
   mutate(across(starts_with("HH_"), 
@@ -574,10 +596,10 @@ place_puma <- read_csv(here::here("02_housing/data/temp/place_puma.csv")) %>%
   rename("state" = "statefip")
 
 # Merge the PUMA flag in & create the final data quality metric based on both size and puma flags
-housing_2022 <- left_join(housing_2022, place_puma, by=c("state","place"))
+housing <- left_join(housing, place_puma, by=c("state","place"))
 
 # Generate the quality var (naming it housing_quality to match Kevin's notation from 2018)
-housing_2022 <- housing_2022 %>% 
+housing <- housing %>% 
   mutate(across(matches("^HH_.*quality"), 
                 \(x) case_when(x==0 & puma_flag==1 ~ 1, 
                                x==0 & puma_flag==2 ~ 2, 
