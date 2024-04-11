@@ -17,7 +17,7 @@ Process:
 
 \(0\) Housekeeping
 
-\(1\) Download microdata from IPUMS API for 2022 and 2021
+\(1\) Download microdata from IPUMS API for 2022, 2021, 2018, and 2014
 
 \(2\) Prepare the Census Place/county to PUMA crosswalks
 
@@ -63,7 +63,7 @@ If you don't already have one, you will need register for an IPUMS API key here:
 ```{r}
 # get a list of all of the sample available
 cps_samps <- get_sample_info("usa")
-# we want "us2022a" for the 2022 ACS
+# we want "us2022a" for the 2022 ACS 1 year (NOTE this may need to change if future updates switch to using the 5 year survey)
 
 # define extract dataset and variables and save
 # for all years
@@ -155,7 +155,8 @@ puma_place_crosswalk <- function(year){
 # loop over 2021 and 2022
 map(place_years, puma_place_crosswalk)
 
-# NOTE TO JP: 2021 is missing data for place fips 72122 in Georgia
+# NOTE: 2021 is missing data for place fips 72122 in Georgia that city in Georgia was incorporated in 2016 and the pre-2022 crosswalk uses places from 2014 so it's not being captured. Given the limitaitons from GeoCorr I don't think we can manually add it back in.
+
 # check number of unique places in data
 stopifnot(
   # 2022 data
@@ -181,7 +182,7 @@ puma_county_crosswalk <- function(year){
     year_filter <- "pre-2022"
   }
   else{
-    year_filter <- 2022
+    year_filter <- "2022"
   }
   # read in crosswalk and filter to relevant year
   puma_county <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_county.csv")) %>% 
@@ -189,7 +190,8 @@ puma_county_crosswalk <- function(year){
     filter(crosswalk_period == year_filter, 
            statefip != 72) %>% 
     # drop observations where the weight adjustment is zero
-    tidylog::filter(afact!= 0.000)
+    tidylog::filter(afact!= 0.000) %>% 
+    mutate(crosswalk_period = as.character(crosswalk_period))
   
   # save a version with just the county-level values of data quality variables
   county_puma <- puma_county %>%
@@ -211,7 +213,7 @@ map(county_years, puma_county_crosswalk)
 for(year in county_years){
    # check number of unique places in data
   stopifnot(
-    read_csv(here::here("02_housing","data","temp", paste0("puma_county_", 2014, ".csv"))) %>% 
+    read_csv(here::here("02_housing","data","temp", paste0("puma_county_", year, ".csv"))) %>% 
       distinct(statefip, county) %>% nrow() == 3143)
 }
 
@@ -303,7 +305,7 @@ acs_clean <- acs_county %>%
          OWNCOST = OWNCOST*ADJUST) # adjusts monthly costs for owner-occupied housing units into cal-year dollars
 
 # save as "microdata.csv" 
-write_csv(acs_clean,  here::here("02_housing","data","temp","2022microdata_county.csv"))
+write_csv(acs_clean,  here::here("02_housing","data","temp",paste0("county_microdata_", year,".csv")))
 }
 
 # loop over years
