@@ -1,0 +1,551 @@
+---
+title: ""
+author: "Aaron R. Williams"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+```
+
+## Construct Database
+
+### Temporary Fixes
+
+```{r}
+bind_rows(
+  read_csv(here("01_financial-well-being/share_debt_2018.csv")),
+  read_csv(here("01_financial-well-being/county-debt-coll-shares-2022.csv")) |>
+    filter(subgroup == "All") |>
+    select(-subgroup_type, -subgroup)
+) |>
+  write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
+
+bind_rows(
+  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2018.csv")),
+  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2021.csv"))
+) |>
+  write_csv(
+    here("data", "temp", "poverty-exposure_county.csv")
+  )
+
+bind_rows(
+  read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2018.csv")),
+  read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2021.csv"))
+) |>
+  write_csv(
+    here("data", "temp", "race-ethnicity-exposure_county.csv")
+  )
+
+bind_rows(
+  read_csv(here("05_local-governance", "voter-turnout", "voter-turnout-2016.csv")),
+  read_csv(here("05_local-governance", "voter-turnout", "voter-turnout-2020.csv"))
+) |>
+  write_csv(
+    here("data", "temp", "voter-turnout.csv")
+  )
+
+```
+
+### Combine Files
+
+```{r}
+urls <- c(
+  here("geographic-crosswalks", "data", "county-populations.csv"),
+  
+  # 01 financial well-being
+  here("01_financial-well-being/final/metrics_income_county_all_longitudinal.csv"),
+  here("01_financial-well-being/final/households_house_value_race_ethnicity_all_county.csv"),
+  here("data", "temp", "county_debt_longitudinal.csv"),
+  
+  # 02 housing
+  here("02_housing/data/final/homelessness_2020_21_county.csv"),
+  
+  # 04 health
+  here("04_health/access-health-services/final/ratio_pop_pcp_metric_all_county.csv"),
+  here("04_health/data/final_data/neonatal_health_2022.csv"),
+  here("04_health/exposure-to-trauma/final/rate_injury_deaths_metric_all_county.csv"),
+  
+  # 05 local-governance
+  here("05_local-governance/descriptive-representation/data/final/descriptive_rep_denominator_county_2021.csv"),
+  here("data", "temp", "voter-turnout.csv"),
+
+  # 06 neighborhoods
+  here("data", "temp", "race-ethnicity-exposure_county.csv"),
+  here("data", "temp", "poverty-exposure_county.csv"),
+  here("06_neighborhoods/social-capital/final/social_associations_all_county.csv"),
+  here("06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv"),
+  here("06_neighborhoods/environment/data/final/environment_county_longitudinal.csv"),
+  
+  # 07 safety
+  here("07_safety/final/rates_crime_county_all.csv"),
+  here("07_safety/final/rate_arrests_county_all.csv"),
+  
+  # 08 education
+  here("08_education/data/final/metrics_preschool_county_all_longitudinal.csv"),
+  here("08_education/SEDA_all_county.csv"),
+  here("08_education/data/final_data/meps_county_2020.csv"),
+  here("08_education/data/final/metrics_college_county_all_longitudinal.csv"),
+  here("08_education/final/digital_access_county_all.csv"),
+  
+  # 09 employment
+  here("09_employment/data/final/metrics_employment_county_all_longitudinal.csv"),
+  here("09_employment/metrics_wage_ratio_2022.csv")
+)
+
+extra_variables <- c(
+  "subgroup", 
+  "subgroup_type",
+  "ratio_population_pc_physician_flag_low_pop",
+  "rate_injury_death_se", 
+  "rate_injury_death_crude"
+  
+)
+
+db <- urls |>
+  map(
+    .f = ~read_csv(.x) |> 
+      select(-any_of(c("state_name", "county_name", extra_variables)))
+  ) |>
+  reduce(left_join, by = c("year", "state", "county"))
+
+
+```
+
+## Quality and Completeness
+
+
+missing metrics metrics rated 1 metrics rated 2 metrics rated 3
+
+```{r}
+#We remove nas because they come from missing data from most years. 
+#This means we cannot count NAs from years that have data
+
+db |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+
+
+
+### Full Database
+
+```{r}
+quality_boolean <- grepl("_quality", colnames(db))
+quality_variables <- colnames(db)[quality_boolean]
+
+
+db_values <- db |>
+  select(-all_of(quality_variables), -ends_with("_ub"), -ends_with("_lb")) |>
+  
+  #Separate ratios out to assess them: 
+  separate(ratio_hispanic_house_value_households, 
+           sep = ":", 
+           into = c("hispanic_house_value", "hispanic_households")
+           ) |>
+  separate(ratio_black_nh_house_value_households, 
+           sep = ":", 
+           into = c("black_nh_house_value", "black_nh_households")
+           ) |>
+  separate(ratio_white_nh_house_value_households,
+           sep = ":", 
+           into = c("white_nh_house_value", "white_nh_households")
+           ) |> 
+  separate(ratio_other_nh_house_value_households, 
+           sep = ":", 
+           into = c("other_nh_house_value", "other_nh_households")
+           )|>
+  mutate(across(black_nh_house_value:white_nh_households, 
+                ~as.numeric(
+                  str_sub(.x, end = -2)
+                  ) / 100
+                )
+         ) |>
+  mutate(pcp = as.numeric(
+    str_sub(ratio_population_pc_physician, end = -3))
+    )
+
+db_quality <- db |>
+  select(ends_with("_quality"))
+
+db_bounds <- db |>
+  select(ends_with("_ub"), ends_with("_lb"))
+
+```
+
+### 01 Financial Well-Being
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, Inf), 
+    pctl_income_20, 
+    pctl_income_50, 
+    pctl_income_80
+  ) |>
+  assert(
+    within_bounds(0, Inf), 
+    share_debt_coll, 
+    share_debt_coll_ub, 
+    share_debt_coll_lb
+  )
+
+db |>
+  separate_wider_delim(
+    ratio_black_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  )
+
+db |>
+  separate_wider_delim(
+    ratio_black_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  )
+
+db |>
+  separate_wider_delim(
+    ratio_hispanic_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  )
+
+db |>
+  separate_wider_delim(
+    ratio_other_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  )
+
+db |>
+  separate_wider_delim(
+    ratio_white_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  )
+
+```
+
+### 02 Housing
+
+```{R}
+db |>
+  assert(
+    within_bounds(0, Inf),
+    count_homeless,
+    count_homeless_lb,
+    count_homeless_ub
+  ) |>
+  assert(
+    within_bounds(0, 1),
+    share_homeless
+  )
+
+test_bounds(
+  data = db, 
+  estimate = count_homeless, 
+  lb = count_homeless_lb, 
+  ub = count_homeless_ub
+)
+
+```
+
+### 04 Health
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, Inf),
+    ratio_population_pc_physician,
+    rate_injury_death,
+    rate_injury_death_lb,
+    rate_injury_death_ub
+  ) |>
+  assert(
+    within_bounds(0, 1),
+    rate_low_birth_weight,
+    rate_low_birth_weight_lb,
+    rate_low_birth_weight_ub
+  )
+
+
+test_bounds(
+  data = db, 
+  estimate = count_homeless, 
+  lb = count_homeless_lb, 
+  ub = count_homeless_ub
+)
+
+test_bounds(
+  data = db, 
+  estimate = rate_low_birth_weight, 
+  lb = rate_low_birth_weight_lb, 
+  ub = rate_low_birth_weight_ub
+)
+
+test_bounds(
+  data = db, 
+  estimate = rate_injury_death, 
+  lb = rate_injury_death_lb, 
+  ub = rate_injury_death_ub
+)
+
+```
+
+### 05 Local Governance
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, Inf),
+    share_desc_rep_total_population,
+    share_desc_rep_total_nonhispanic,
+    share_desc_rep_asian_other,
+    share_desc_rep_black_nonhispanic,
+    share_desc_rep_hispanic,
+    share_desc_rep_white_nonhispanic
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    election_turnout
+  )
+
+```
+
+### 06 Neighborhoods
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, Inf),
+    black_nh_exposure,
+    hispanic_exposure,
+    other_nh_exposure,
+    white_nh_exposure,
+    black_nh_exposure,
+    hispanic_exposure,
+    other_nh_exposure,
+    white_nh_exposure,
+    poverty_exposure,
+    poverty_exposure,
+    economic_connectedness
+  )
+
+db |>
+  assert(
+    within_bounds(0, 10000),
+    count_membership_associations_per_10k
+  )
+
+db |>
+  assert(
+    within_bounds(0, 100),
+    index_air_hazard
+  )
+
+```
+
+### 07 Safety
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, Inf),
+    rate_crime_violent,
+    rate_crime_property,
+    rate_juv_arrest
+  )
+
+```
+
+### 08 Education
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, 1),
+    share_in_preschool,
+    share_in_preschool_lb,
+    share_in_preschool_ub,
+    share_meps20_black,
+    share_meps20_hispanic,
+    share_meps20_white,
+    share_hs_degree,
+    share_hs_degree_lb,
+    share_hs_degree_ub,
+    share_digital_access,
+    share_digital_access_lb,
+    share_digital_access_ub,
+  )
+
+db |>
+  assert(
+    within_bounds(-10, 10), 
+    learning_rate,
+    learning_rate_lb,
+    learning_rate_ub
+  )
+
+test_bounds(
+  data = db, 
+  estimate = share_in_preschool, 
+  lb = share_in_preschool_lb, 
+  ub = share_in_preschool_ub
+)
+
+test_bounds(
+  data = db, 
+  estimate = share_hs_degree, 
+  lb = share_hs_degree_lb, 
+  ub = share_hs_degree_ub
+)
+
+test_bounds(
+  data = db, 
+  estimate = share_digital_access, 
+  lb = share_digital_access_lb, 
+  ub = share_digital_access_ub
+)
+
+test_bounds(
+  data = db, 
+  estimate = learning_rate, 
+  lb = learning_rate_lb, 
+  ub = learning_rate_ub
+)
+
+```
+
+### 09 Employment
+
+```{r}
+db |>
+  assert(
+    within_bounds(0, 1),
+    share_employed,
+    share_employed_lb,
+    share_employed_ub
+  )
+
+db |>
+  assert(
+    within_bounds(0, 2),
+    ratio_living_wage
+  )
+
+test_bounds(
+  data = db, 
+  estimate = share_employed, 
+  lb = share_employed_lb, 
+  ub = share_employed_ub
+)
+
+```
+
+```{r}
+
+db_quality |>
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+## Write the File
+
+```{r}
+write_csv(db, here("data", "11_mobility-metrics_county_longitudinal.csv"))
+
+```
