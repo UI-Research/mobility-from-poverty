@@ -367,14 +367,29 @@ read_csv("04_health/access-health-services/final/ratio_pop_pcp_metric_all_county
 
 ## Neonatal Health
 
-read_csv("04_health/data/final_data/neonatal_health_2022.csv") |>
+read_csv("04_health/final_data/neonatal_health_2022.csv") |>
   evaluate_input_data()
 
-read_csv("04_health/data/final_data/neonatal_health_subgroup_2022.csv") |>
+read_csv("04_health/final_data/neonatal_health_2020.csv") |>
+  evaluate_input_data()
+
+read_csv("04_health/final_data/neonatal_health_2018.csv") |>
+  evaluate_input_data()
+
+read_csv("04_health/final_data/neonatal_health_subgroup_2022.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic",
                                     "Less than High School", "GED/High School Degree",
                                     "Some College", "College Degree or Higher"))
+
+
+read_csv("04_health/final_data/neonatal_health_subgroup_2020.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
+                                    "White, Non-Hispanic"))
+
+read_csv("04_health/final_data/neonatal_health_subgroup_2018.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
+                                    "White, Non-Hispanic"))
 
 ## Air quality 
 
