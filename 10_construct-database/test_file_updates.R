@@ -310,6 +310,12 @@ read_csv("09_employment/metrics_wage_ratio_2022_subgroup.csv") |>
                                                                   "Professional Services", "Education and Health", 
                                                                   "Leisure and Other"))
 
+read_csv("09_employment/metrics_wage_ratio_2021.csv") |>
+  evaluate_input_data(confidence_intervals = FALSE)
+
+read_csv("09_employment/metrics_wage_ratio_years_v2.csv") |>
+  evaluate_input_data(confidence_intervals = FALSE)
+
 ## Income
 
 read_csv("01_financial-well-being/final/metrics_income_place_all_longitudinal.csv") |>
