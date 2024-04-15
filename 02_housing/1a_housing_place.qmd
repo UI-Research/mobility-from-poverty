@@ -3,50 +3,14 @@ title: "Affordable Housing - Place"
 format: html
 editor: visual
 ---
+
 ## Overview
 
- ACS Code: Housing metric
- Amy Rogin (2023-2024) 
- Using IPUMS extract for ACS 2022
- Based on processes developed by Paul Johnson and Kevin Werner in SAS
- and code by Tina Chelidze in R for 2022-2023
- Process:
- (1) Housekeeping
- (2) Import microdata (PUMA Place combination already done)
-       (2a) Create a vacant unit specific file
- (3) Create a Vacant unit dataframe (vacant units will not be accounted for when we isolate households in Steps 4 & 5)
-     Note that to get vacant unit data, need to pull a separate extract from IPUMS; see instructions below.
-       (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer:
-       (3b) Add PMI, taxes, and insurance estimates, to get total monthly cost of vacant units for ownership
-               This "total_monthly_cost" variable will be used to calculate affordability in Step 6
-       (3c) Now create accurate gross rent variable for vacant units for rent: 
-       (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost 
-             vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per place).
-       (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
-               This "RENTGRS" variable will be used to calculate affordability in Step 6
- (4) Import HUD county Income Levels for each FMR and population for FMR 
-           (population will be used for weighting)
-       (4a) Merge the 2 files
-       (4b) Bring in county_place crosswalk
-       (4c) Merge FMR file with crosswalk on county
-       (4d) Create place_level_income_limits (weight by FMR population in collapse)
- (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels)
- (6) Merge Vacant with place_level_income_limits
-       (6a) create same 30%, 50%, and 80% AMI affordability indicators
- (7) Create the housing metric
-       (7a) Summarize households_2021 and vacant both by place
-       (7b) Merge them by place
-       (7c) Calculate share_affordable_30/50/80AMI
- (8) Create Data Quality marker
- (9) Clean and export
- (10) Quality Checks and Visualizations
-       (10a) Histograms
-       (10b) Summaries
-       (10c) Check against last years values
-       
+ACS Code: Housing metric Amy Rogin (2023-2024) Using IPUMS extract for ACS 2022 Based on processes developed by Paul Johnson and Kevin Werner in SAS and code by Tina Chelidze in R for 2022-2023 Process: (1) Housekeeping (2) Import microdata (PUMA Place combination already done) (2a) Create a vacant unit specific file (3) Create a Vacant unit dataframe (vacant units will not be accounted for when we isolate households in Steps 4 & 5) Note that to get vacant unit data, need to pull a separate extract from IPUMS; see instructions below. (3a) Calculate the monthly payment for the vacant units for a given first-time homebuyer: (3b) Add PMI, taxes, and insurance estimates, to get total monthly cost of vacant units for ownership This "total_monthly_cost" variable will be used to calculate affordability in Step 6 (3c) Now create accurate gross rent variable for vacant units for rent: (3d) For all microdata where PERNUM=1 and OWNERSHP=2, generate avg ratio of monthly cost vs advertised price of renting. e.g. ratio = RENTGRS/RENT (calculate per place). (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT\*ratio). This "RENTGRS" variable will be used to calculate affordability in Step 6 (4) Import HUD county Income Levels for each FMR and population for FMR (population will be used for weighting) (4a) Merge the 2 files (4b) Bring in county_place crosswalk (4c) Merge FMR file with crosswalk on county (4d) Create place_level_income_limits (weight by FMR population in collapse) (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels) (6) Merge Vacant with place_level_income_limits (6a) create same 30%, 50%, and 80% AMI affordability indicators (7) Create the housing metric (7a) Summarize households_2021 and vacant both by place (7b) Merge them by place (7c) Calculate share_affordable_30/50/80AMI (8) Create Data Quality marker (9) Clean and export (10) Quality Checks and Visualizations (10a) Histograms (10b) Summaries (10c) Check against last years values
+
 ## (1) Housekeeping
 
-Always use mobility-from-poverty.Rproj to set correct file paths. Working directory should be the root directory of [gitfolder]
+Always use mobility-from-poverty.Rproj to set correct file paths. Working directory should be the root directory of \[gitfolder\]
 
 ```{r}
 # Libraries you'll need
@@ -58,7 +22,7 @@ library(tidylog)
 
 ## (2) Import microdata (PUMA Place combination already done)
 
-Run "0_housing_microdata.qmd" 
+Run "0_housing_microdata.qmd"
 
 ```{r}
 # this one should already match the PUMAs to places
@@ -68,22 +32,20 @@ acs <- read_csv(here::here("02_housing","data","temp","place_microdata_2022.csv"
 
 ```
 
-For HH side: isolate original microdata to only GQ under 3 (only want households)
-see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
+For HH side: isolate original microdata to only GQ under 3 (only want households) see here for more information: https://usa.ipums.org/usa-action/variables/GQ#codes_section
+
 ```{r}
 acs_clean <- acs %>%
   tidylog::filter(GQ < 3) 
 ```
-## (3) Create a Vacant units dataframe 
+
+## (3) Create a Vacant units dataframe
 
 (vacant units will not be accounted for when we isolate households in Steps 4 & 5)
 
- Vacancy = 1 (for rent)
- Vacancy = 2 (for sale)
- Vacancy = 3 (rented or sold but not yet occupied)
+Vacancy = 1 (for rent) Vacancy = 2 (for sale) Vacancy = 3 (rented or sold but not yet occupied)
 
-Choosing only 1-3 excludes seasonal, occasional, and migratory units
-drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
+Choosing only 1-3 excludes seasonal, occasional, and migratory units drop all missing VALUEH (value of housing units) obs: https://usa.ipums.org/usa-action/variables/VALUEH#codes_section
 
 ```{r}
 vacant_microdata <- read_csv(here::here("02_housing", "data","temp","vacancy_microdata2022.csv")) %>% 
@@ -109,6 +71,7 @@ vacant <- vacant_microdata %>%
 ### (3b) Add PMI, taxes, and insurance estimates, to get total monthly cost of vacant units for ownership
 
 This "total_monthly_cost" variable will be used to calculate affordability in Step 6
+
 ```{r}
 vacant <- vacant %>%
   mutate(PMI = (.007 * loan) / 12, # typical annual PMI is .007 of loan amount (taken from Paul/Kevin)
@@ -117,7 +80,7 @@ vacant <- vacant %>%
   )
 ```
 
-### (3c) Now create accurate gross rent variable for vacant units for rent: 
+### (3c) Now create accurate gross rent variable for vacant units for rent:
 
 This needs to come from the original ACS microdata file (rectangularized rather than hierarchical), which has HH-level vars like RENT, RENTGRS, and HHINCOME (unlike the Vacant Unit extract)
 
@@ -143,7 +106,7 @@ rent_ratio <- rent_ratio %>%
                    HHWT = mean(HHWT), na.rm=TRUE)
 ```
 
-### (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT*ratio). 
+### (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT\*ratio).
 
 This "RENTGRS" variable will be used to calculate affordability in Step 6
 
@@ -153,7 +116,7 @@ puma_place <- read_csv(here::here("geographic-crosswalks/data/crosswalk_puma_to_
   mutate(crosswalk_period = ifelse(crosswalk_period == "pre-2022", 2021, crosswalk_period) %>% as.numeric())
 ```
 
-In order to be able to merge in rent_ratio, need to have places in the vacant data file 
+In order to be able to merge in rent_ratio, need to have places in the vacant data file
 
 ```{r}
 # Merge in places
@@ -176,12 +139,11 @@ vacant_final <- vacant_final %>%
   mutate(RENTGRS = RENT.x*ratio_rentgrs_rent)
 ```
 
-## (4) Import HUD county Income Levels for each FMR and population for FMR 
+## (4) Import HUD county Income Levels for each FMR and population for FMR
 
-Population will be used for weighting. 
+Population will be used for weighting.
 
-Access via https://www.huduser.gov/portal/datasets/il.html#data_2022	
-
+Access via https://www.huduser.gov/portal/datasets/il.html#data_2022
 
 ```{r}
 # Specify URL where source data file is online
@@ -216,8 +178,7 @@ return(FMR_Income_Levels)
 FMR_Income_Levels <- map2_df(years, urls, download_hud_il) 
 ```
 
-Import data file (FY&year_4050_FMRs_rev.csv) FY2022_4050_FMRs_rev
-Access via https://www.huduser.gov/portal/datasets/fmr.html#data_2022
+Import data file (FY&year_4050_FMRs_rev.csv) FY2022_4050_FMRs_rev Access via https://www.huduser.gov/portal/datasets/fmr.html#data_2022
 
 ```{r}
 # Specify URL where source data file is online
@@ -316,13 +277,7 @@ place_income_limits <- place_income_limits %>%
 
 ## (5) Generate households_2022: 30%, 50% and 80% AMI (indicator of HH affordable at each of these levels) - overall and for renters and owner subgroups
 
-Merge on the 80% and 50% AMI income levels and determine:
-  1) which households are <= 80% and <= 50% of AMI for a family of 4 
-    (regardless of the actual household size). 
-  2) which units are affordable for a family of 4 at 80% and 50% of AMI
-    (regardless of the actual unit size). "Affordable" means costs are < 30% of the AMI
-    (again, for a family of 4). For owners, use the housing cost, and for renters, 
-    use the gross rent.
+Merge on the 80% and 50% AMI income levels and determine: 1) which households are \<= 80% and \<= 50% of AMI for a family of 4 (regardless of the actual household size). 2) which units are affordable for a family of 4 at 80% and 50% of AMI (regardless of the actual unit size). "Affordable" means costs are \< 30% of the AMI (again, for a family of 4). For owners, use the housing cost, and for renters, use the gross rent.
 
 First, filter microdata to where PERNUM == 1, so only one HH per observation
 
@@ -338,16 +293,13 @@ Create new dataset called "households" to merge microdata & place income limits 
 households <- left_join(microdata_housing, place_income_limits, by=c("statefip","place", "year"))
 ```
 
-Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI
-Read more about the AMI vars methodology here: https://www.huduser.gov/portal/datasets/il//il18/IncomeLimitsMethodology-FY18.pdf
+Create variables called Affordable80AMI, Affordable50AMI, Affordable30AMI Read more about the AMI vars methodology here: https://www.huduser.gov/portal/datasets/il//il18/IncomeLimitsMethodology-FY18.pdf
 
-- l50 is 50% of median rent: Very low-income
-- ELI is 30% of median rent: Extremely low-income
-- l80 is 80% of median rent: Low-income
+-   l50 is 50% of median rent: Very low-income
+-   ELI is 30% of median rent: Extremely low-income
+-   l80 is 80% of median rent: Low-income
 
-For owners, use the housing cost, and for renters, use the gross rent.
-Also create variable for total population at 80% AMI, 50% AMI, and 30% AMI for renter and owner subgroups, this is just the population of renters or owners at each income level
-
+For owners, use the housing cost, and for renters, use the gross rent. Also create variable for total population at 80% AMI, 50% AMI, and 30% AMI for renter and owner subgroups, this is just the population of renters or owners at each income level
 
 ```{r}
 # create new variable 'Affordable80AMI' and 'Below80AMI' for HH below 80% of area median income (L80_4 and OWNERSHP)
@@ -512,6 +464,7 @@ write_csv(vacant_new, here::here("02_housing/data/temp/vacant.csv"))
 ### (7a) Summarize households_2022 and vacant both by place
 
 Need to create a HH count variable for each subgroup to use in step 8 for data quality
+
 ```{r}
 households_summed <- households %>% 
   group_by(statefip, place, year) %>%
@@ -580,9 +533,9 @@ housing <- housing %>%
 
 ## (8) Create the Data Quality variable
 
-### (8a) For Housing metric: total number of HH below 30/50/80% AMI 
+### (8a) For Housing metric: total number of HH below 30/50/80% AMI
 
-Suppresses if sum(afact) < 30. You can think of this as a sample size accounting for the crosswalk. For example, one person with afact == 0.75 would count as 3/4ths of an observations.
+Suppresses if sum(afact) \< 30. You can think of this as a sample size accounting for the crosswalk. For example, one person with afact == 0.75 would count as 3/4ths of an observations.
 
 ```{r}
 housing <- housing %>% 
@@ -612,6 +565,7 @@ housing <- housing %>%
 ```
 
 ## (9) Clean and export
+
 ```{r}
 # turn long for subgroup output
 housing_subgroup <- housing %>%
@@ -664,7 +618,7 @@ write_csv(housing_subgroup_final, here::here("02_housing/data/housing_subgroups_
 
 ## (10) Quality Checks and Visualizations
 
-### (10a) Histograms 
+### (10a) Histograms
 
 ```{r}
 # share affordable at 30 AMI histogram
@@ -693,11 +647,11 @@ housing_subgroup_final %>%
 
 ### (10b) Summaries
 
-Six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics 
-```{r}
-summary(housing_2022_subgroup_final)
-```
+Six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics
 
+```{r}
+summary(housing_subgroup_final)
+```
 
 ### (10c) Check against last years metrics
 
@@ -714,8 +668,7 @@ summary(metrics_2021)
 
 ```
 
-NLIHC has an Out of Reach tool that is a good benchmark for comparing results to: https://nlihc.org/oor
-it's not a 1:1 equivalent measure, but gives a sense of the cost of renting in each state and by zip code
+NLIHC has an Out of Reach tool that is a good benchmark for comparing results to: https://nlihc.org/oor it's not a 1:1 equivalent measure, but gives a sense of the cost of renting in each state and by zip code
 
 ```{r}
 # subgroup summaries
@@ -726,4 +679,3 @@ subgroup_sum <- housing_2022_subgroup %>%
                    "share_affordable_80_ami"),
                  list("mean" = mean,"min"= min,"max"= max),na.rm = T))
 ```
-
