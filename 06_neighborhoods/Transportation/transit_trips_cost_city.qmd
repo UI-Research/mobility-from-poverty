@@ -1,0 +1,453 @@
+---
+title: "Transportation Costs & Trips City"
+author: "Tina Chelidze"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*2023-2024 Mobility Metrics update* 
+
+SUMMARY-LEVEL VALUES 
+
+Raw data pulled from https://htaindex.cnt.org/download/ The Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT)
+
+*User Notice: This program requires downloading raw files from the Metrics_2024_round Box folder prior to running. See details under the Read Data section.*
+
+## Housekeeping
+
+Read in packages for use.
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(purrr)
+```
+
+## Read data
+
+The data from HUD cannot be easily read directly into this program.
+Before running, please download the entirety of the folders listed below from the following [Box
+folder](https://urbanorg.app.box.com/folder/250262697073) into the
+repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
+`"mobility-from-poverty\06_neighborhoods\Transportation\data"`
+
+-   2015_tract
+-   2019_tract
+
+Import all the files (and/or combine into one file) with only the
+relevant variables and years
+
+### 2015
+
+Bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts.
+
+```{r}
+
+tracts15files <- list.files(path = here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "2015_tract"), pattern = "*.csv")
+print(tracts15files)
+
+tractpath15 = file.path(here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "2015_tract"), tracts15files)
+print(tractpath15)
+
+transport_tracts_2015 <- map_df(tractpath15, read_csv)
+```
+
+Create correct FIPS columns
+
+```{r}
+transport_tracts_2015 <- transport_tracts_2015 %>%
+  rename (GEOID = tract) %>%
+  mutate(
+    state = substr(GEOID, start = 2, stop = 3),
+    county = substr(GEOID, start = 4, stop = 6),
+    tract = substr(GEOID, start = 7, stop = 12)
+  )
+```
+
+Keep only variables of interest
+
+```{r}
+transit_trips_tracts_2015 <- transport_tracts_2015 %>%
+  select(GEOID, state, county, tract, blkgrps, population, households, transit_trips_80ami)
+transit_cost_tracts_2015 <- transport_tracts_2015 %>%
+  select(GEOID, state, county, tract, blkgrps, population, households, t_80ami)
+
+```
+
+### 2019
+
+Bring in all the downloaded CSVs (state-level tracts) & combine them into one nation-wide file for tracts
+
+```{r}
+tracts19files <- list.files(path = here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "2019_tract"), pattern = "*.csv")
+print(tracts19files)
+
+tractpath19 = file.path(here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "2019_tract"), tracts19files)
+print(tractpath19)
+
+transport_tracts_2019 <- map_df(tractpath19, read_csv)
+```
+
+Create correct FIPS columns
+
+```{r}
+transport_tracts_2019 <- transport_tracts_2019 %>%
+  rename (GEOID = tract) %>%
+  mutate(
+    state = substr(GEOID, start = 2, stop = 3),
+    county = substr(GEOID, start = 4, stop = 6),
+    tract = substr(GEOID, start = 7, stop = 12)
+  )
+```
+
+Keep only variables of interest
+
+```{r}
+transit_trips_tracts_2019 <- transport_tracts_2019 %>%
+  select(GEOID, state, county, tract, blkgrps, population, households, transit_trips_80ami)
+
+transit_cost_tracts_2019 <- transport_tracts_2019 %>%
+  select(GEOID, state, county, tract, blkgrps, population, households, t_80ami)
+```
+
+## Crosswalk to the cities (from tracts) & aggregate data
+
+Bring in the crosswalk of interest (we want the year range to be before 2020, when tract definitions changed)
+
+```{r}
+tract_place <- read_csv(here::here("geographic-crosswalks", 
+                                   "data", 
+                                   "geocorr2018_tract_to_place.csv"))
+```
+
+Remove the decimal from the tract variable
+
+```{r}
+tract_place <- tract_place %>%
+  mutate(tract = tract*100)
+```
+
+Add in leading zeroes as needed
+
+```{r}
+tract_place <- tract_place %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)),
+         tract = sprintf("%0.6d", as.integer(as.character(tract))),
+         placefp = sprintf("%0.5d", as.numeric(placefp)),
+         county = substr(county, nchar(county) - 2, nchar(county))
+  ) %>%
+  rename(place = placefp)
+```
+
+NOW, aggregate the tract-level data to the place levels for each variable for each year
+
+For when we want to: Limit to the Census Places we want 
+first, bring in the places crosswalk (place-populations.csv)
+
+```{r}
+places <- read_csv(here::here("geographic-crosswalks", 
+                              "data", 
+                              "place-populations.csv"))
+```
+
+Keep only the most relevant year
+
+```{r}
+places <- places %>%
+  filter(year == 2019)
+```
+
+### TRANSPORTATION COST 2015
+
+```{r}
+transit_cost_city_2015 <- left_join(transit_cost_tracts_2015, tract_place, by=c("state", "county", "tract"))
+
+```
+
+Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
+
+```{r}
+transit_cost_city_2015 <- transit_cost_city_2015 %>% 
+  dplyr::group_by(state, place) %>% 
+  dplyr::summarize(index_transportation_cost = round(weighted.mean(t_80ami, w = afact, na.rm = TRUE), 2),
+                   n = n(),
+                   dq = sum(afact > 0.5, na.rm = TRUE)
+  )%>%
+  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
+
+```
+
+Left join with places file to get rid of irrelevant places data
+
+```{r}
+transit_cost_city_2015 <- left_join(places, transit_cost_city_2015, by=c("state","place"))
+```
+
+29317 obs to 486 obs
+
+Keep only the variables we will need & replace NA qual vars where there is NA metric value
+
+```{r}
+transit_cost_city_2015 <- transit_cost_city_2015 %>% 
+  mutate(year=2015)%>%
+  select(year, state, place, index_transportation_cost, index_transportation_cost_quality)%>%
+  dplyr::mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost), NA, index_transportation_cost_quality))
+```
+
+### TRANSPORTATION COST 2019
+
+```{r}
+transit_cost_city_2019 <- left_join(transit_cost_tracts_2019, tract_place, by=c("state", "county","tract"))
+
+```
+
+Collapse to places and also create data quality marker
+
+```{r}
+transit_cost_city_2019 <- transit_cost_city_2019 %>% 
+  dplyr::group_by(state, place) %>% 
+  dplyr::summarize(index_transportation_cost = round(weighted.mean(t_80ami, w = afact, na.rm = TRUE), 2),
+                   n = n(),
+                   dq = sum(afact > 0.5, na.rm = TRUE)
+  )%>%
+  dplyr::mutate(index_transportation_cost_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
+
+```
+
+Left join with places file to get rid of irrelevant places data
+
+```{r}
+transit_cost_city_2019 <- left_join(places, transit_cost_city_2019, by=c("state","place"))
+
+```
+
+29317 obs to 486 obs
+
+Keep only the variables we will need & replace NA qual vars where there is NA metric value
+
+```{r}
+transit_cost_city_2019 <- transit_cost_city_2019 %>% 
+  mutate(year=2019)%>%
+  select(year, state, place, index_transportation_cost, index_transportation_cost_quality)%>%
+  dplyr::mutate(index_transportation_cost_quality = ifelse(is.na(index_transportation_cost), NA, index_transportation_cost_quality))
+```
+
+### TRANSIT TRIPS 2015
+
+```{r}
+transit_trips_city_2015 <- left_join(transit_trips_tracts_2015, tract_place, by=c("state", "county","tract"))
+```
+
+Collapse to places and also create data quality marker
+
+Data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
+
+```{r}
+transit_trips_city_2015 <- transit_trips_city_2015 %>% 
+  dplyr::group_by(state, place) %>% 
+  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami*afact, na.rm = TRUE),
+                   n = n(),
+                   dq = sum(afact > 0.5, na.rm = TRUE)
+  )
+```
+
+Calculate the national percentile ranks
+
+```{r}
+transit_trips_city_2015 <- transit_trips_city_2015 %>%
+  mutate(
+    rank = rank(index_transit_trips),
+    percentile_rank = ((rank - 1) / (n() - 1)) * 100,
+    index_transit_trips = round(percentile_rank, 2)
+  )%>%
+  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
+
+```
+
+Left join with places file to get rid of irrelevant places data4
+
+```{r}
+transit_trips_city_2015 <- left_join(places, transit_trips_city_2015, by=c("state","place"))
+
+```
+
+29317 obs to 486 obs
+
+Keep only the variables we will need & replace NA qual vars where there is NA metric value
+
+```{r}
+transit_trips_city_2015 <- transit_trips_city_2015 %>% 
+  mutate(year==2015)%>%
+  select(year, state, place, index_transit_trips, index_transit_trips_quality)%>%
+  dplyr::mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips), NA, index_transit_trips_quality))
+
+
+```
+
+### TRANSIT TRIPS 2019
+
+```{r}
+transit_trips_city_2019 <- left_join(transit_trips_tracts_2019, tract_place, by=c("state", "county","tract"))
+
+```
+
+Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
+
+```{r}
+transit_trips_city_2019 <- transit_trips_city_2019 %>% 
+  dplyr::group_by(state, place) %>% 
+  dplyr::summarize(index_transit_trips = sum(transit_trips_80ami*afact, na.rm = TRUE),
+                   n = n(),
+                   dq = sum(afact > 0.5, na.rm = TRUE)
+  )
+```
+
+Calculate the national percentile ranks
+
+```{r}
+transit_trips_city_2019 <- transit_trips_city_2019 %>%
+  mutate(
+    rank = rank(index_transit_trips),
+    percentile_rank = ((rank - 1) / (n() - 1)) * 100,
+    index_transit_trips = round(percentile_rank, 2)
+  )%>%
+  dplyr::mutate(index_transit_trips_quality = ifelse(dq / n >= 0.5, 1, ifelse(dq / n < 0.5, 2, NA)))
+
+```
+
+Left join with places file to get rid of irrelevant places data
+
+```{r}
+transit_trips_city_2019 <- left_join(places, transit_trips_city_2019, by=c("state","place"))
+```
+
+29317 obs to 486 obs
+
+Keep only the variables we will need & replace NA qual vars where there is NA metric value
+
+```{r}
+transit_trips_city_2019 <- transit_trips_city_2019 %>% 
+  mutate(year==2019)%>%
+  select(year, state, place, index_transit_trips, index_transit_trips_quality)%>%
+  dplyr::mutate(index_transit_trips_quality = ifelse(is.na(index_transit_trips), NA, index_transit_trips_quality))
+```
+
+## Quality Control Checks 
+
+Create a histogram plot and summary stats for each dataframe
+Check that all values are non-negative & count missing values
+
+Examine outliers
+
+### City-Level Transportation Cost
+
+```{r}
+ggplot(transit_cost_city_2015, aes(x=index_transportation_cost)) + geom_histogram(binwidth=10) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2015")
+
+ggplot(transit_cost_city_2019, aes(x=index_transportation_cost)) + geom_histogram(binwidth=10) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2019")
+```
+
+look at summary stats
+
+```{r}
+summary(transit_cost_city_2015$index_transportation_cost)  
+summary(transit_cost_city_2019$index_transportation_cost)
+```
+
+No weird outliers.
+
+Use stopifnot to check if all values in "transit_cost_city_XXXX" are non-negative
+
+```{r}
+stopifnot(min(transit_cost_city_2015$index_transportation_cost, na.rm = TRUE) >= 0)
+```
+
+Good to go
+
+```{r}
+stopifnot(min(transit_cost_city_2019$index_transportation_cost, na.rm = TRUE) >= 0)
+```
+
+Good to go.
+
+Find indices of missing values for the "index_transportation_cost" variable
+
+```{r}
+missing_indices15 <- which(is.na(transit_cost_city_2015$index_transportation_cost))
+missing_indices19 <- which(is.na(transit_cost_city_2019$index_transportation_cost))
+```
+
+Print observations with missing values
+
+```{r}
+if (length(missing_indices15) > 0) {
+  cat("Observations with missing values for index_transportation_cost:\n")
+  print(transit_cost_city_2015[missing_indices15, , drop = FALSE])
+} else {
+  cat("No missing values for transportation_cost_county_2015\n")
+}
+```
+
+5 missing values.
+
+```{r}
+if (length(missing_indices19) > 0) {
+  cat("Observations with missing values for index_transportation_cost:\n")
+  print(transit_cost_city_2019[missing_indices19, , drop = FALSE])
+} else {
+  cat("No missing values for transportation_cost_county_2019\n")
+}
+```
+
+5 missing values.
+
+## Export final files
+
+Combine the two years into one overall files for both variables.
+
+```{r}
+transit_cost_city <- rbind(transit_cost_city_2015, transit_cost_city_2019) %>%
+  select(year, state, place, index_transportation_cost, index_transportation_cost_quality)
+
+transit_trips_city <- rbind(transit_trips_city_2015, transit_trips_city_2019) %>%
+  select(year, state, place, index_transit_trips, index_transit_trips_quality)
+```
+
+Save as non-subgroup all-year files.
+
+```{r}
+write_csv(transit_cost_city, here::here("06_neighborhoods",
+                                        "Transportation",
+                                        "final",
+                                        "transit_cost_all_city.csv"))  
+
+write_csv(transit_trips_city, here::here("06_neighborhoods", 
+                                         "Transportation", 
+                                         "final", 
+                                         "transit_trips_all_city.csv"))  
+```
+

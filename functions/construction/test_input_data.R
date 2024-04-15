@@ -7,7 +7,7 @@
 #' @return The function will fail if the data do not meet certain criteria. 
 #' Returns a tibble with the number of geoids per year.
 #'
-test_input_data <- function(data, geography = "county", subgroups = NULL) {
+test_input_data <- function(data, geography = "county", subgroups = NULL, confidence_intervals = TRUE) {
   
   # check that the file has the necessary columns
   # check that the first few columns are year, state
@@ -24,6 +24,15 @@ test_input_data <- function(data, geography = "county", subgroups = NULL) {
     
   }
 
+  #Check if confidence intervals and data quality NA values align 
+  if (confidence_intervals) {
+    
+    stopifnot(sum(is.na(select(data, ends_with("_lb")))) == sum(is.na(select(data, ends_with("_quality")))))
+    stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_quality")))))
+    stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_lb")))))
+    
+  }
+  
   # check fips
   if (geography == "county") {
     
@@ -55,7 +64,7 @@ test_input_data <- function(data, geography = "county", subgroups = NULL) {
     
     observed_subgroups <- sort(unique(dplyr::pull(data, subgroup)))
     
-    stopifnot(all(observed_subgroups == c("All", subgroups)))
+    stopifnot(all(observed_subgroups == sort(c("All", subgroups))))
     
   }
   
