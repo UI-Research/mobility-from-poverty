@@ -1,5 +1,5 @@
 ---
-title: ""
+title: "Combine Overall County Data"
 author: "Aaron R. Williams"
 date: today
 format:
@@ -28,6 +28,18 @@ library(here)
 library(assertr)
 library(gt)
 
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
 test_bounds <- function(data, estimate, lb, ub) {
   
   subset <- bind_rows(
@@ -43,13 +55,27 @@ test_bounds <- function(data, estimate, lb, ub) {
   
 }
 
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
 ```
 
 ## Construct Database
 
 ### Temporary Fixes
 
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
 ```{r}
+# combine multiple years
 bind_rows(
   read_csv(here("01_financial-well-being/share_debt_2018.csv")),
   read_csv(here("01_financial-well-being/county-debt-coll-shares-2022.csv")) |>
@@ -58,6 +84,7 @@ bind_rows(
 ) |>
   write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
 
+# combine multiple years
 bind_rows(
   read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2018.csv")),
   read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2021.csv"))
@@ -66,6 +93,7 @@ bind_rows(
     here("data", "temp", "poverty-exposure_county.csv")
   )
 
+# combine multiple years
 bind_rows(
   read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2018.csv")),
   read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2021.csv"))
@@ -74,6 +102,7 @@ bind_rows(
     here("data", "temp", "race-ethnicity-exposure_county.csv")
   )
 
+# combine multiple years
 bind_rows(
   read_csv(here("05_local-governance", "voter-turnout", "voter-turnout-2016.csv")),
   read_csv(here("05_local-governance", "voter-turnout", "voter-turnout-2020.csv"))
@@ -86,8 +115,10 @@ bind_rows(
 
 ### Combine Files
 
+This vector of filepaths points to all file to include in the output data. The vector points to the temp data for files that have temporary fixes.  
+
 ```{r}
-urls <- c(
+filepaths <- c(
   here("geographic-crosswalks", "data", "county-populations.csv"),
   
   # 01 financial well-being
@@ -130,6 +161,7 @@ urls <- c(
   here("09_employment/metrics_wage_ratio_2022.csv")
 )
 
+# variables erroneously included in the data sets
 extra_variables <- c(
   "subgroup", 
   "subgroup_type",
@@ -139,7 +171,12 @@ extra_variables <- c(
   
 )
 
-db <- urls |>
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+db <- filepaths |>
   map(
     .f = ~read_csv(.x) |> 
       select(-any_of(c("state_name", "county_name", extra_variables)))
@@ -151,13 +188,11 @@ db <- urls |>
 
 ## Quality and Completeness
 
+### Data Quality Flags
 
-missing metrics metrics rated 1 metrics rated 2 metrics rated 3
+This section summarizes data quality flags for variables and years.
 
 ```{r}
-#We remove nas because they come from missing data from most years. 
-#This means we cannot count NAs from years that have data
-
 db |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
@@ -173,51 +208,14 @@ db |>
 
 ```
 
-
-
-
 ### Full Database
 
+Evaluate the quality variables. 
+
 ```{r}
-quality_boolean <- grepl("_quality", colnames(db))
-quality_variables <- colnames(db)[quality_boolean]
-
-
-db_values <- db |>
-  select(-all_of(quality_variables), -ends_with("_ub"), -ends_with("_lb")) |>
-  
-  #Separate ratios out to assess them: 
-  separate(ratio_hispanic_house_value_households, 
-           sep = ":", 
-           into = c("hispanic_house_value", "hispanic_households")
-           ) |>
-  separate(ratio_black_nh_house_value_households, 
-           sep = ":", 
-           into = c("black_nh_house_value", "black_nh_households")
-           ) |>
-  separate(ratio_white_nh_house_value_households,
-           sep = ":", 
-           into = c("white_nh_house_value", "white_nh_households")
-           ) |> 
-  separate(ratio_other_nh_house_value_households, 
-           sep = ":", 
-           into = c("other_nh_house_value", "other_nh_households")
-           )|>
-  mutate(across(black_nh_house_value:white_nh_households, 
-                ~as.numeric(
-                  str_sub(.x, end = -2)
-                  ) / 100
-                )
-         ) |>
-  mutate(pcp = as.numeric(
-    str_sub(ratio_population_pc_physician, end = -3))
-    )
-
-db_quality <- db |>
-  select(ends_with("_quality"))
-
-db_bounds <- db |>
-  select(ends_with("_ub"), ends_with("_lb"))
+db |>
+  select(ends_with("_quality")) |>
+  assert(in_set(1, 2, 3), everything())
 
 ```
 
@@ -236,7 +234,8 @@ db |>
     share_debt_coll, 
     share_debt_coll_ub, 
     share_debt_coll_lb
-  )
+  ) |>
+  quiet()
 
 db |>
   separate_wider_delim(
@@ -252,7 +251,8 @@ db |>
     within_bounds(0, Inf),
     numerator,
     denominator
-  )
+  ) |>
+  quiet()
 
 db |>
   separate_wider_delim(
@@ -268,7 +268,8 @@ db |>
     within_bounds(0, Inf),
     numerator,
     denominator
-  )
+  ) |>
+  quiet()
 
 db |>
   separate_wider_delim(
@@ -284,7 +285,8 @@ db |>
     within_bounds(0, Inf),
     numerator,
     denominator
-  )
+  ) |>
+  quiet()
 
 db |>
   separate_wider_delim(
@@ -300,7 +302,8 @@ db |>
     within_bounds(0, Inf),
     numerator,
     denominator
-  )
+  ) |>
+  quiet()
 
 db |>
   separate_wider_delim(
@@ -316,7 +319,8 @@ db |>
     within_bounds(0, Inf),
     numerator,
     denominator
-  )
+  ) |>
+  quiet()
 
 ```
 
@@ -333,7 +337,8 @@ db |>
   assert(
     within_bounds(0, 1),
     share_homeless
-  )
+  ) |>
+  quiet()
 
 test_bounds(
   data = db, 
@@ -360,8 +365,8 @@ db |>
     rate_low_birth_weight,
     rate_low_birth_weight_lb,
     rate_low_birth_weight_ub
-  )
-
+  ) |>
+  quiet()
 
 test_bounds(
   data = db, 
@@ -402,7 +407,8 @@ db |>
   assert(
     within_bounds(0, Inf),
     election_turnout
-  )
+  ) |>
+  quiet()
 
 ```
 
@@ -423,19 +429,16 @@ db |>
     poverty_exposure,
     poverty_exposure,
     economic_connectedness
-  )
-
-db |>
+  ) |>
   assert(
     within_bounds(0, 10000),
     count_membership_associations_per_10k
-  )
-
-db |>
+  ) |>
   assert(
     within_bounds(0, 100),
     index_air_hazard
-  )
+  ) |>
+  quiet()
 
 ```
 
@@ -448,7 +451,8 @@ db |>
     rate_crime_violent,
     rate_crime_property,
     rate_juv_arrest
-  )
+  ) |>
+  quiet()
 
 ```
 
@@ -470,15 +474,14 @@ db |>
     share_digital_access,
     share_digital_access_lb,
     share_digital_access_ub,
-  )
-
-db |>
+  ) |>
   assert(
     within_bounds(-10, 10), 
     learning_rate,
     learning_rate_lb,
     learning_rate_ub
-  )
+  ) |>
+  quiet()
 
 test_bounds(
   data = db, 
@@ -519,13 +522,12 @@ db |>
     share_employed,
     share_employed_lb,
     share_employed_ub
-  )
-
-db |>
+  ) |>
   assert(
     within_bounds(0, 2),
     ratio_living_wage
-  )
+  ) |>
+  quiet()
 
 test_bounds(
   data = db, 
@@ -533,13 +535,6 @@ test_bounds(
   lb = share_employed_lb, 
   ub = share_employed_ub
 )
-
-```
-
-```{r}
-
-db_quality |>
-  assert(in_set(1, 2, 3), everything())
 
 ```
 
