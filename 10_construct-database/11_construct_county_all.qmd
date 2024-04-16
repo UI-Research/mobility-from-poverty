@@ -111,6 +111,45 @@ bind_rows(
     here("data", "temp", "voter-turnout.csv")
   )
 
+bind_rows(
+  read_csv(here("09_employment/metrics_wage_ratio_2022.csv")),
+  read_csv(here("09_employment/metrics_wage_ratio_2021.csv")) |>
+    rename(
+      ratio_living_wage = average_to_living_wage_ratio,
+      ratio_living_wage_quality = wage_ratio_quality
+    )
+) |>
+  write_csv(
+    here("data", "temp", "metrics_wage_ratio.csv")
+  )
+
+bind_rows(
+  read_csv(here("04_health/final_data/neonatal_health_2022.csv"))|>
+  rename(
+    share_low_birth_weight = rate_low_birth_weight,
+    share_low_birth_weight_lb = rate_low_birth_weight_lb,
+    share_low_birth_weight_ub = rate_low_birth_weight_ub,
+    share_low_birth_weight_quality = rate_low_birth_weight_quality,
+  ),
+  read_csv(here("04_health/final_data/neonatal_health_2020.csv"))|>
+  rename(
+    share_low_birth_weight = lbw,
+    share_low_birth_weight_lb = lbw_lb,
+    share_low_birth_weight_ub = lbw_ub,
+    share_low_birth_weight_quality = lbw_quality,
+  ),
+  read_csv(here("04_health/final_data/neonatal_health_2018.csv"))|>
+  rename(
+    share_low_birth_weight = lbw,
+    share_low_birth_weight_lb = lbw_lb,
+    share_low_birth_weight_ub = lbw_ub,
+    share_low_birth_weight_quality = lbw_quality,
+  )
+)  |>
+  write_csv(
+    here("data", "temp", "neonatal_health.csv")
+  )
+
 ```
 
 ### Combine Files
@@ -131,7 +170,7 @@ filepaths <- c(
   
   # 04 health
   here("04_health/access-health-services/final/ratio_pop_pcp_metric_all_county.csv"),
-  here("04_health/data/final_data/neonatal_health_2022.csv"),
+  here("data", "temp", "neonatal_health.csv"),
   here("04_health/exposure-to-trauma/final/rate_injury_deaths_metric_all_county.csv"),
   
   # 05 local-governance
@@ -144,6 +183,8 @@ filepaths <- c(
   here("06_neighborhoods/social-capital/final/social_associations_all_county.csv"),
   here("06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv"),
   here("06_neighborhoods/environment/data/final/environment_county_longitudinal.csv"),
+  here("06_neighborhoods/Transportation/final/transit_trips_all_county.csv"),
+  here("06_neighborhoods/Transportation/final/transit_cost_all_county.csv"),
   
   # 07 safety
   here("07_safety/final/rates_crime_county_all.csv"),
@@ -158,7 +199,7 @@ filepaths <- c(
   
   # 09 employment
   here("09_employment/data/final/metrics_employment_county_all_longitudinal.csv"),
-  here("09_employment/metrics_wage_ratio_2022.csv")
+  here("data", "temp", "metrics_wage_ratio.csv")
 )
 
 # variables erroneously included in the data sets
@@ -216,6 +257,18 @@ db <- db |>
 
 ## Quality and Completeness
 
+### Dimensions
+
+```{r}
+db |> 
+  count(year) |>
+  assert(
+    within_bounds(3142, 3144), 
+    n
+  )
+
+```
+
 ### Data Quality Flags
 
 This section summarizes data quality flags for variables and years.
@@ -255,7 +308,10 @@ db |>
     within_bounds(0, Inf), 
     pctl_income_20, 
     pctl_income_50, 
-    pctl_income_80
+    pctl_income_80,
+    pctl_income_20_quality, 
+    pctl_income_50_quality, 
+    pctl_income_80_quality
   ) |>
   assert(
     within_bounds(0, Inf), 
@@ -390,9 +446,9 @@ db |>
   ) |>
   assert(
     within_bounds(0, 1),
-    rate_low_birth_weight,
-    rate_low_birth_weight_lb,
-    rate_low_birth_weight_ub
+    share_low_birth_weight,
+    share_low_birth_weight_lb,
+    share_low_birth_weight_ub
   ) |>
   quiet()
 
@@ -405,9 +461,9 @@ test_bounds(
 
 test_bounds(
   data = db, 
-  estimate = rate_low_birth_weight, 
-  lb = rate_low_birth_weight_lb, 
-  ub = rate_low_birth_weight_ub
+  estimate = share_low_birth_weight, 
+  lb = share_low_birth_weight_lb, 
+  ub = share_low_birth_weight_ub
 )
 
 test_bounds(
