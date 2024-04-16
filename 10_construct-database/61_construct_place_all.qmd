@@ -93,6 +93,13 @@ bind_rows(
     here("data", "temp", "housing-affordability-city.csv")
   )
 
+read_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv")) |>
+  distinct() |>
+  write_csv(
+    here("data", "temp", "social_associations_all_city.csv")
+  )  
+
+
 ```
 
 ### Combine Files
@@ -120,14 +127,16 @@ filepaths <- c(
 
   # 05 local-governance
   here("05_local-governance/descriptive-representation/data/final/descriptive_rep_denominator_city_2021.csv"),
-  # no voter turnout
+  here("05_local-governance/voter-turnout/voter-turnout-city-2020.csv"),
 
   # 06 neighborhoods
   here("06_neighborhoods/race-ethnicity-exposure/race-ethnicity-exposure-city-2021.csv"),
   here("06_neighborhoods/poverty-exposure/poverty-exposure_city_2021.csv"),
-  here("06_neighborhoods/social-capital/final/social_associations_all_city.csv"),
+  here("data", "temp", "social_associations_all_city.csv"),
   here("06_neighborhoods/social-capital/final/economic_connectedness_city_2022.csv"),
   here("06_neighborhoods/environment/data/final/environment_place_longitudinal.csv"),
+  #here("06_neighborhoods/Transportation/final/transit_trips_all_city.csv"),
+  here("06_neighborhoods/Transportation/final/transit_cost_all_city.csv"),
   
   # 07 safety
   here("07_safety/final/rates_crime_place_all.csv"),
@@ -157,11 +166,10 @@ This code loads each file and then combines them using `left_join()`. The first 
 ```{r}
 db <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
+    .f = ~read_csv(.x) |>
       select(-any_of(c("state_name", "place_name", extra_variables)))
   ) |>
   reduce(left_join, by = c("year", "state", "place"))
-
 
 ```
 
@@ -175,7 +183,9 @@ db <- db |>
     rate_learning_ub = learning_rate_ub,
     rate_learning_quality = learning_rate_quality,
     ratio_high_low_ses_fb_friends = economic_connectedness,
-    ratio_high_low_ses_fb_friends_quality = economic_connectedness_quality
+    ratio_high_low_ses_fb_friends_quality = economic_connectedness_quality,
+    share_election_turnout = election_turnout,
+    share_election_turnout_quality = election_turnout_quality
   )
 
 ```
@@ -188,7 +198,7 @@ db <- db |>
 db |> 
   count(year) |>
   assert(
-    within_bounds(486, 486), 
+    within_bounds(485, 486), 
     n
   )
 
@@ -369,6 +379,11 @@ db |>
     share_desc_rep_hispanic,
     share_desc_rep_white_nonhispanic
   ) |>
+  assert(
+    within_bounds(0, 1),
+    share_election_turnout
+  ) |>    
+  
   quiet()
 
 ```
@@ -392,7 +407,9 @@ db |>
   ) |>
   assert(
     within_bounds(0, 100),
-    index_air_hazard
+    index_air_hazard,
+    index_transportation_cost,
+    #index_transit_trips
   ) |>
   quiet()
 
