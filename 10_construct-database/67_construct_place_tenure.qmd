@@ -1,0 +1,225 @@
+---
+title: "Combine Tenure Place Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Tenure files
+
+Create population file with a variable for Tenure. 
+
+```{r}
+
+read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
+  mutate(all = "All", 
+         tenure_own = "Male", 
+         tenure_rent = "Female") %>% 
+  pivot_longer(cols = c(all:tenure_rent),
+               names_to = "subgroup_type",
+               values_to = "subgroup") %>% 
+  mutate(subgroup_type = ifelse(subgroup_type != "all", "tenure", "all")) %>% 
+  write_csv(here("data", "temp", "place-populations_tenure.csv"))
+
+```
+
+Read file paths to all place files with tenure subgroup information. 
+
+```{r}
+
+filepaths <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "place-populations_Tenure.csv"),
+
+
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+
+db_Tenure <- filepaths |>
+  map(
+    .f = ~read_csv(.x) |> 
+      select(-any_of(c("state_name", "place_name")))
+  ) |>
+  reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
+
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should be 9,432 in a year (3X3144) and at the least there should be 9,426 in a year (3X3142).
+
+```{r}
+
+db_Tenure |> 
+  count(year) |>
+  assert(
+    within_bounds(9426, 9432), 
+    n
+  )
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_Tenure |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_Tenure  |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_Tenure |>
+  select(ends_with("_quality")) |>
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+
+
+### 07 Safety
+
+```{r}
+db_Tenure |>
+  assert(
+    within_bounds(0, Inf),
+    rate_juv_arrest
+  ) |>
+  quiet()
+
+```
+
+### 08 Education
+
+```{r}
+db_Tenure |>
+  assert(
+    within_bounds(0, 1),
+    share_hs_degree,
+    share_hs_degree_lb,
+    share_hs_degree_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_Tenure, 
+  estimate = share_hs_degree, 
+  lb = share_hs_degree_lb, 
+  ub = share_hs_degree_ub
+)
+```
+
+### 09 Employment
+
+```{r}
+db_Tenure |>
+  assert(
+    within_bounds(0, 1),
+    share_employed,
+    share_employed_lb,
+    share_employed_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_Tenure, 
+  estimate = share_employed, 
+  lb = share_employed_lb, 
+  ub = share_employed_ub
+)
+
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_Tenure, here("data", "16_mobility-metrics_place_Tenure_longitudinal.csv"))
+```

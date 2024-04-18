@@ -1,0 +1,366 @@
+---
+title: "Combine Race-Ethnicity Place Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Temporary Fixes
+
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
+```{r}
+
+# Correct geography
+read_csv(here("08_education", "data", "built", "SEDA_all_subgroups_city.csv")) %>%
+  filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
+  write_csv(here("data", "temp", "SEDA_all_subgroups_city.csv"))
+
+
+# Correct subgroup category
+read_csv(here("07_safety/final/rate_arrests_place_all_subgroup.csv")) |>
+  mutate(subgroup = ifelse(subgroup == "White, Non-Hispanic", "White", subgroup)) |>
+  write_csv(
+    here("data", "temp", "rate_arrests_place_all_subgroup_race.csv")
+  )
+
+```
+
+### Race-ethnicity files 
+
+Create a population file with a variable for race-ethnicity and race values.
+
+```{r}
+
+read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
+  mutate(all = "All", 
+         race_eth_black = "Black, Non-Hispanic", 
+         rce_black = "Black",
+         race_ethnicity_white = "White, Non-Hispanic",
+         race_white = "White",
+         race_ethnicity_other = "Other Races and Ethnicities", 
+         race_ethnicity_hisp = "Hispanic") %>% 
+  pivot_longer(cols = c(all:race_ethnicity_hisp),
+               names_to = "subgroup_type",
+               values_to = "subgroup") %>% 
+  mutate(subgroup_type = ifelse(subgroup_type != "all", "race-ethnicity", "all")) %>% 
+  write_csv(here("data", "temp", "place-populations_race-ethnicity.csv"))
+
+```
+
+Read file paths to all place files with race-ethnicity and race information. 
+
+```{r}
+
+filepaths <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "place-populations_race-ethnicity.csv"),
+
+# 01 financial well-being
+here("01_financial-well-being/final/metrics_income_place_race-ethnicity_longitudinal.csv"),
+
+# 02 housing
+here("02_housing/data/final/homelessness_all_subgroups_city.csv"),
+
+# 06 neighborhoods
+here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"),
+
+# 07 safety
+here("data", "temp", "rate_arrests_place_all_subgroup_race.csv"),
+
+# 08 education
+here("08_education/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv"),
+here("data", "temp", "SEDA_all_subgroups_city.csv"),
+here("08_education/data/final/metrics_college_place_race-ethnicity_longitudinal.csv"),
+here("08_education/final/digital_access_city_subgroup_all.csv"),
+
+# 09 employment
+here("09_employment/data/final/metrics_employment_place_race-ethnicity_longitudinal.csv")
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
+
+```{r}
+
+db_race_eth <- filepaths |>
+  map(
+    .f = ~read_csv(.x) |> 
+      select(-any_of(c("state_name", "place_name")))
+  ) |>
+  reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
+
+```
+
+We used old learning rate data, so we rename the variables. We also use old data for economic connectedness, so we rename the variables.
+
+```{r}
+db_race_eth  <- db_race_eth  |>
+  rename(
+    rate_learning = learning_rate,
+    rate_learning_lb = learning_rate_lb,
+    rate_learning_ub = learning_rate_ub,
+    rate_learning_quality = learning_rate_quality
+  )
+
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should 3,402 in a year (7X486) and at the least there should be 3,395 in a year (7X485)
+```{r}
+dimension_test <- function(.data) {
+  .data |> 
+  count(year) |>
+  assert(
+    within_bounds(3395, 3402), 
+    n
+  )
+}
+
+dimension_test(db_race_eth)
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+
+db_race_eth |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_race_eth  |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_race_eth |>
+  select(ends_with("_quality")) |>
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### 01 Financial Well-Being
+
+```{r}
+db_race_eth |>
+  assert(
+    within_bounds(0, Inf), 
+    pctl_income_20, 
+    pctl_income_50, 
+    pctl_income_80,
+    pctl_income_20_quality, 
+    pctl_income_50_quality, 
+    pctl_income_80_quality
+  ) |>
+  quiet()
+
+```
+
+### 02 Housing
+
+```{R}
+db_race_eth |>
+  assert(
+    within_bounds(0, Inf),
+    count_homeless,
+    count_homeless_lb,
+    count_homeless_ub
+  ) |>
+  assert(
+    within_bounds(0, 1),
+    share_homeless
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = count_homeless, 
+  lb = count_homeless_lb, 
+  ub = count_homeless_ub
+)
+
+```
+
+### 07 Safety
+
+```{r}
+db_race_eth |>
+  assert(
+    within_bounds(0, Inf),
+    rate_juv_arrest
+  ) |>
+  quiet()
+
+```
+
+### 08 Education
+
+```{r}
+db_race_eth |>
+  assert(
+    within_bounds(0, 1),
+    share_in_preschool,
+    share_in_preschool_lb,
+    share_in_preschool_ub,
+    share_hs_degree,
+    share_hs_degree_lb,
+    share_hs_degree_ub
+  ) |>
+  assert(
+    within_bounds(-10, 10), 
+    rate_learning,
+    rate_learning_lb,
+    rate_learning_ub
+  ) |>
+  quiet()
+
+db_race_eth |>
+  assert(
+    within_bounds(0, 1),
+    share_digital_access,
+    share_digital_access_lb,
+    share_digital_access_ub,
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = share_in_preschool, 
+  lb = share_in_preschool_lb, 
+  ub = share_in_preschool_ub
+)
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = share_hs_degree, 
+  lb = share_hs_degree_lb, 
+  ub = share_hs_degree_ub
+)
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = share_digital_access, 
+  lb = share_digital_access_lb, 
+  ub = share_digital_access_ub
+)
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = rate_learning, 
+  lb = rate_learning_lb, 
+  ub = rate_learning_ub
+)
+
+```
+
+### 09 Employment
+
+```{r}
+db_race_eth |>
+  assert(
+    within_bounds(0, 1),
+    share_employed,
+    share_employed_lb,
+    share_employed_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = share_employed, 
+  lb = share_employed_lb, 
+  ub = share_employed_ub
+)
+
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_race_eth, here("data", "62_mobility-metrics_place_race-ethnicity_longitudinal.csv"))
+
+```

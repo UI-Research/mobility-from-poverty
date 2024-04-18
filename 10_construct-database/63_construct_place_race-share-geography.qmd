@@ -1,0 +1,247 @@
+---
+title: "Combine Race Share Geography Place Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Temporary Fixes
+
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
+```{r}
+
+# Correct subgroup category
+read_csv(here("01_financial-well-being/city-debt-coll-shares-2021.csv")) |>
+  mutate(subgroup = ifelse(subgroup == "Majority White", "Majority White, Non-Hispanic", subgroup)) |>
+  rename(place = place_fips) |>
+  write_csv(
+    here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv")
+  )
+
+read_csv(here("06_neighborhoods/environment/data/final/environment_place_race-ethnicity_longitudinal.csv")) |>
+  mutate(subgroup = ifelse(subgroup == "No Majority Race/Ethnicity", "Mixed Race and Ethnicity", subgroup)) |>
+  write_csv(
+    here("data", "temp", "environment_place_subroup_race_share.csv")
+  )
+
+read_csv(here("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv")) |>
+  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Non-White", 
+                              subgroup == "Majority White-NH Tracts" ~ "Majority White, Non-Hispanic",
+                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity")) |>
+  write_csv(
+    here("data", "temp", "transit_trips_all_place_subgroups_race_share.csv")
+  )
+
+
+read_csv(here("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv")) |>
+  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Non-White", 
+                              subgroup == "Majority White-NH Tracts" ~ "Majority White, Non-Hispanic",
+                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity")) |>
+  write_csv(
+    here("data", "temp", "transit_cost_all_place_subgroups_race_share.csv")
+  )
+
+```
+
+### Racial share files
+
+Create population file for race share subgroup. 
+
+```{r}
+
+read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
+  mutate(all = "All", 
+         race_non_white = "Majority Non-White", 
+         race_white_non_hisp = "Majority White, Non-Hispanic",
+         race_mixed = "Mixed Race and Ethnicity") %>% 
+  pivot_longer(cols = c(all:race_mixed),
+               names_to = "subgroup_type",
+               values_to = "subgroup") %>% 
+  mutate(subgroup_type = ifelse(subgroup_type != "all", "race-ethnicity", "all")) %>% 
+  write_csv(here("data", "temp", "place-populations_race-share.csv"))
+
+```
+
+Read file paths to all metric data sets with geographic race share data.
+
+```{r}
+
+filepaths <- c(
+
+# Race-share populations
+here("data", "temp", "place-populations_race-share.csv"),
+
+# 01 financial well-being
+here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv"),
+
+# 06 neighborhoods
+here("data", "temp", "environment_place_subroup_race_share.csv"),
+here("data", "temp", "transit_trips_all_place_subgroups_race_share.csv"),
+here("data", "temp", "transit_cost_all_place_subgroups_race_share.csv")
+
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
+
+```{r}
+
+db_race_share <- filepaths |>
+  map(
+    .f = ~read_csv(.x) |> 
+      select(-any_of(c("state_name", "place_name")))
+  ) |>
+  reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
+
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should 1,944 in a year (4X486) and at the least there should be 1,940 in a year (4X485).
+
+```{r}
+dimension_test <- function(.data) {
+  .data |> 
+  count(year) |>
+  assert(
+    within_bounds(1940, 1944), 
+    n
+  )
+}
+
+dimension_test(db_race_share)
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_race_share |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_race_share  |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_race_share |>
+  select(ends_with("_quality")) |>
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+
+### 01 Financial Well-Being
+
+```{r}
+db_race_share |>
+  assert(
+    within_bounds(0, Inf), 
+    share_debt_coll, 
+  ) |>
+  quiet()
+```
+
+### 06 Neighborhoods
+
+```{r}
+db_race_share |>
+  assert(
+    within_bounds(0, 100),
+    index_air_hazard,
+    index_transportation_cost,
+    index_transit_trips
+  ) |>
+  quiet()
+
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_race_share, here("data", "63_mobility-metrics_place_race-share_longitudinal.csv"))
+
+```

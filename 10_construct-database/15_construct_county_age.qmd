@@ -1,0 +1,280 @@
+---
+title: "Combine Age County Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Age files
+
+Create population file with a variable for age. 
+
+```{r}
+
+read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>% 
+  mutate(all = "All", 
+         age_under45 = "Under Age 45", 
+         age_over45 = "Age 45 and Over",
+         age10_14 = "Age 10 to 14",
+         age15_17 = "Age 15 to 17") %>% 
+  pivot_longer(cols = c(all:age15_17),
+               names_to = "subgroup_type",
+               values_to = "subgroup") %>% 
+  mutate(subgroup_type = ifelse(subgroup_type != "all", "age", "all")) %>% 
+  write_csv(here("data", "temp", "county-populations_age.csv"))
+
+```
+
+Read file paths to all county files with age subgroup information. 
+
+```{r}
+
+filepaths <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "county-populations_age.csv"),
+
+# 01 financial well-being
+here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_county.csv"),
+
+# 07 safety
+here("07_safety/final/rate_arrests_county_all_subgroup.csv")
+
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+
+db_age <- filepaths |>
+  map(
+    .f = ~read_csv(.x) |> 
+      select(-any_of(c("state_name", "county_name")))
+  ) |>
+  reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
+
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should be 15,720 in a year (5X3144) and at the least there should be 15,710 in a year (5X3142).
+
+```{r}
+
+db_age |> 
+  count(year) |>
+  assert(
+    within_bounds(15710, 15720), 
+    n
+  )
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_age |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_age  |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_age |>
+  select(ends_with("_quality")) |>
+  assert(in_set(1, 2, 3), everything())
+
+```
+
+### 01 Financial Well-Being
+
+```{r}
+
+db_age |>
+  separate_wider_delim(
+    ratio_black_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  ) |>
+  quiet()
+
+db_age |>
+  separate_wider_delim(
+    ratio_black_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  ) |>
+  quiet()
+
+db_age |>
+  separate_wider_delim(
+    ratio_hispanic_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  ) |>
+  quiet()
+
+db_age |>
+  separate_wider_delim(
+    ratio_other_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  ) |>
+  quiet()
+
+db_age |>
+  separate_wider_delim(
+    ratio_white_nh_house_value_households, 
+    delim = ":",
+    names = c("numerator", "denominator")
+  ) |>
+  mutate(
+    numerator = as.numeric(numerator),
+    denominator = as.numeric(denominator)
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    numerator,
+    denominator
+  ) |>
+  quiet()
+
+```
+
+### 07 Safety
+
+```{r}
+db_age |>
+  assert(
+    within_bounds(0, Inf),
+    rate_juv_arrest
+  ) |>
+  quiet()
+
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_age, here("data", "15_mobility-metrics_county_age_longitudinal.csv"))
+```
