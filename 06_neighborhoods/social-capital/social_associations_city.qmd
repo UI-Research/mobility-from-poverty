@@ -59,7 +59,7 @@ It is sourced below
 
 ```{r}
 # label: source-census-api-key
-source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+#source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
 ```{r}
@@ -238,29 +238,30 @@ merged_sa_zip_city <-
   )
 ```
 
-Create the merged file where the SA numerator (`count_orgs`) is averaged per 
-Place, weighted by the % area of the ZCTA in that Place (`avg_orgs_per_place_weighted_by_area`) 
+Create the merged file where the SA numerator (`count_orgs`) is aggregated to the place level (multiply `count_orgs` by zcta to place allocation factor and then summarize to place)
 and also include total ZCTAs in Place (`zip_total`) & how many of those fully 
 fall within the Place (`zips_in`)
 
 ```{r}
-#| label: average-numerator-per-place-and-by-area
+#| label: numerator-per-place-and-by-area
 
 merged_sa_zip_city <-
   merged_sa_zip_city %>%
+  # multiply `count_orgs` by the allocation factor (a measure of how much of the zcta falls within the place)
+  mutate(count_orgs_afact = count_orgs*zcta_to_place_allocation_factor) %>% 
   summarize(
     zip_total = mean(count_zctas_in_place),
     zips_in = sum(portion_in),
-    avg_orgs_per_place_weighted_by_area = weighted.mean(count_orgs, zcta_to_place_allocation_factor),
+    total_org = sum(count_orgs_afact),
     .by = c(year, state_fips, place)
   )
 ```
 
-**Check:** Are there exactly 35 missing values in the `new_est_zip` variable?
+**Check:** Are there exactly 2 missing values in the `new_est_zip` variable?
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa_zip_city$avg_orgs_per_place_weighted_by_area)) == 35
+  sum(is.na(merged_sa_zip_city$total_org)) == 2
 )
 ```
 
@@ -270,7 +271,7 @@ We drop these missing values
 #| label: drop-missing-estimate
 merged_sa_zip_city <-
   merged_sa_zip_city %>%
-  drop_na(avg_orgs_per_place_weighted_by_area)
+  drop_na(total_org)
 ```
 
 ## Check against Census Place file & limit to population cutoff Places
@@ -322,7 +323,7 @@ sa_city_data <-
   sa_city_data %>%
   mutate(
     pop_ratio = population / 1e4,
-    count_membership_associations_per_10k = round(avg_orgs_per_place_weighted_by_area / pop_ratio, digits = 1)
+    count_membership_associations_per_10k = round(total_org / pop_ratio, digits = 1)
   )
 ```
 
@@ -376,7 +377,8 @@ sa_city_data <-
     year, state, place,
     count_membership_associations_per_10k,
     count_membership_associations_per_10k_quality
-  )
+  ) %>% 
+  distinct()
 ```
 
 **Check:** Are there any missing values in the metric?
