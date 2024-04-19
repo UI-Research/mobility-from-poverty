@@ -68,19 +68,38 @@ quiet <- function(data) {
 
 ```
 
+
+
 ## Construct Database
+
+### Temporary Fixes
+
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
+```{r}
+
+# combine multiple years
+bind_rows(
+  read_csv(here("02_housing/data/available_2021_subgroups_city.csv")),
+  read_csv(here("02_housing/data/available_2022_subgroups_city.csv"))
+) |>
+  write_csv(here("data", "temp", "city_available_housing_tenure.csv"))
+
+
+```
+
 
 ### Tenure files
 
-Create population file with a variable for Tenure. 
+Create population file with a variable for tenure. 
 
 ```{r}
 
 read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
   mutate(all = "All", 
-         tenure_own = "Male", 
-         tenure_rent = "Female") %>% 
-  pivot_longer(cols = c(all:tenure_rent),
+         tenure_rent = "Renter", 
+         tenure_own = "Owner") %>% 
+  pivot_longer(cols = c(all:tenure_own),
                names_to = "subgroup_type",
                values_to = "subgroup") %>% 
   mutate(subgroup_type = ifelse(subgroup_type != "all", "tenure", "all")) %>% 
@@ -94,19 +113,23 @@ Read file paths to all place files with tenure subgroup information.
 
 filepaths <- c(
   
-# Race-ethnicity populations
+#Tenure populations
 here("data", "temp", "place-populations_Tenure.csv"),
 
+#02 Housing
+here("data", "temp", "city_available_housing_tenure.csv"),
+here("02_housing/data/housing_subgroups_city.csv")
 
 )
 
+
 ```
 
-This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
 
 ```{r}
 
-db_Tenure <- filepaths |>
+db_tenure <- filepaths |>
   map(
     .f = ~read_csv(.x) |> 
       select(-any_of(c("state_name", "place_name")))
@@ -119,14 +142,14 @@ db_Tenure <- filepaths |>
 
 ### Dimensions
 
-At most there should be 9,432 in a year (3X3144) and at the least there should be 9,426 in a year (3X3142).
+At most there should be 1,458 in a year (3X486) and at the least there should be 1,455 in a year (3X485).
 
 ```{r}
 
-db_Tenure |> 
+db_tenure |> 
   count(year) |>
   assert(
-    within_bounds(9426, 9432), 
+    within_bounds(1455, 1458), 
     n
   )
 ```
@@ -136,14 +159,14 @@ db_Tenure |>
 This section summarizes data quality flags for variables and years.
 
 ```{r}
-db_Tenure |>
+db_tenure |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
   filter(!is.na(quality)) |>
   print(n = 100)
 
-db_Tenure  |>
+db_tenure  |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -156,64 +179,29 @@ db_Tenure  |>
 Evaluate the quality variables. 
 
 ```{r}
-db_Tenure |>
+db_tenure |>
   select(ends_with("_quality")) |>
   assert(in_set(1, 2, 3), everything())
 
 ```
 
+### 02 Housing
 
-
-### 07 Safety
-
-```{r}
-db_Tenure |>
+```{R}
+db_tenure |>
   assert(
     within_bounds(0, Inf),
-    rate_juv_arrest
+    share_affordable_80_ami,
+    share_affordable_50_ami,
+    share_affordable_30_ami
   ) |>
-  quiet()
-
-```
-
-### 08 Education
-
-```{r}
-db_Tenure |>
   assert(
-    within_bounds(0, 1),
-    share_hs_degree,
-    share_hs_degree_lb,
-    share_hs_degree_ub
+    within_bounds(0, Inf),
+    share_affordable_available_80_ami,
+    share_affordable_available_50_ami,
+    share_affordable_available_30_ami
   ) |>
   quiet()
-
-test_bounds(
-  data = db_Tenure, 
-  estimate = share_hs_degree, 
-  lb = share_hs_degree_lb, 
-  ub = share_hs_degree_ub
-)
-```
-
-### 09 Employment
-
-```{r}
-db_Tenure |>
-  assert(
-    within_bounds(0, 1),
-    share_employed,
-    share_employed_lb,
-    share_employed_ub
-  ) |>
-  quiet()
-
-test_bounds(
-  data = db_Tenure, 
-  estimate = share_employed, 
-  lb = share_employed_lb, 
-  ub = share_employed_ub
-)
 
 ```
 
@@ -221,5 +209,5 @@ test_bounds(
 
 ```{r}
 
-write_csv(db_Tenure, here("data", "16_mobility-metrics_place_Tenure_longitudinal.csv"))
+write_csv(db_tenure, here("data", "67_mobility-metrics_place_tenure_longitudinal.csv"))
 ```
