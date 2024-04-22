@@ -18,7 +18,9 @@
 
     # Libraries you'll need
     library(sf)
-    library(tidyverse)
+    library(tidyr)
+    library(dplyr)
+    library(readr)
 
 
 # (1) download data from socialcapital.org
@@ -38,7 +40,7 @@
 # (2) open and clean the file (separate county and state codes, fill in missing zeroes)
   
      # open data
-      ec_raw <- read_csv("06_neighborhoods/social-capital/temp/social_capital_county.csv")
+      ec_raw <- read.csv("06_neighborhoods/social-capital/temp/social_capital_county.csv")
 
      # add leading zeroes where they are missing (2-digit state FIP + 3-digit county FIP  = 5 digit code)
       ec_raw <- ec_raw %>%
@@ -71,7 +73,7 @@
 # (3)  use crosswalk to check any missing counties	
       
       # import the county file
-      county_pop <- read_csv("geographic-crosswalks/data/county-populations.csv")
+      county_pop <- read.csv("geographic-crosswalks/data/county-populations.csv")
       
       # add in the lost leading zeroes for the county FIP
       county_pop <- county_pop %>%
@@ -81,7 +83,7 @@
         mutate(state = sprintf("%0.2d", as.numeric(state)))
 
       # keep the most recent year of population data (not 2022, but 2020)
-      county_pop <- filter(county_pop, year == 2020)
+      county_pop <- filter(county_pop, year > 2019)
       
       # merge the county file into the ec data file (left join, since county file has more observations)
       merged_ec <- left_join(county_pop, ec_raw, by=c("state", "county"))
@@ -94,21 +96,15 @@
           # 126 counties without EC data
 
       
-# (4)   create data quality flag and add confidence interval
+# (4)   create data quality tag
       merged_ec <- merged_ec %>%
         mutate(data_quality = case_when(ec_county >= 0 ~ 1))
       
-      merged_ec <- merged_ec %>%
-        mutate(
-          ec_se_county_lb = ec_county - qnorm(0.975) * ec_se_county,
-          ec_se_county_ub = ec_county + qnorm(0.975) * ec_se_county
-        )
       
 # (5)   final file cleaning and export to csv file									   
       
       # keep only relevant data (dropping population data, keeping EC data year only)
-      merged_ec <- merged_ec %>% 
-        select(year.y, state, county, state_name, county_name.x, ec_county, ec_se_county_lb, ec_se_county_ub, data_quality)
+      merged_ec <- merged_ec %>% select(year.y, state, county, state_name, county_name.x, ec_county, ec_se_county, data_quality)
       
       
       # rename the needed variable to avoid confusion
@@ -123,11 +119,10 @@
         select(-c(state_name, county_name)) %>%
         rename(economic_connectedness = ec_county,
                economic_connectedness_quality = ec_county_quality,
-               economic_connectedness_lb = ec_se_county_lb,
-               economic_connectedness_ub = ec_se_county_ub)
+               economic_connectedness_se = ec_se_county)
       
       # export as .csv
-      write_csv(merged_ec, "06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv")
+      write_csv(merged_ec, "06_neighborhoods/social-capital/data/economic_connectedness_county_2022.csv")
       
       
       

@@ -20,8 +20,11 @@
 
 # Libraries you'll need
 library(sf)
-library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(readr)
 library(tigris)
+library(stringr)
 
 
 # (1) Download data from socialcapital.org
@@ -43,7 +46,7 @@ download.file(url, destfile)
 # (2) Import and clean the file (separate county and state codes, fill in missing zeroes)
 
       # open data
-      ec_zip_raw <- read_csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
+      ec_zip_raw <- read.csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
 
       # add leading zeroes where they are missing (ZCTA codes are 5 digits)
       ec_zip_raw <- ec_zip_raw %>%
@@ -225,6 +228,6 @@ download.file(url, destfile)
         select(-place_name)
     
       # export as .csv
-      write_csv(ec_city_data, "06_neighborhoods/social-capital/final/economic_connectedness_city_2022.csv")
+      write_csv(ec_city_data, "06_neighborhoods/social-capital/data/economic_connectedness_city_2022.csv")
       
 
