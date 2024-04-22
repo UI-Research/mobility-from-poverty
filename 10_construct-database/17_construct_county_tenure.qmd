@@ -83,6 +83,7 @@ bind_rows(
   read_csv(here("02_housing/data/available_2021_subgroups_county.csv")),
   read_csv(here("02_housing/data/available_2022_subgroups_county.csv"))
 ) |>
+  mutate(subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
   write_csv(here("data", "temp", "county_available_housing_tenure.csv"))
 
 
@@ -94,15 +95,12 @@ bind_rows(
 Create population file with a variable for tenure. 
 
 ```{r}
-
-read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>% 
-  mutate(all = "All", 
-         tenure_rent = "Renter", 
-         tenure_own = "Owner") %>% 
-  pivot_longer(cols = c(all:tenure_own),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "tenure", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Renter", "Owner")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "tenure", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "county-populations_tenure.csv"))
 
 ```
@@ -131,12 +129,44 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_tenure <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "county_name")))
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
 ```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_tenure %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_tenure  <- db_tenure |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_tenure  <- db_tenure  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
 
 ## Quality and Completeness
 
@@ -160,6 +190,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_tenure |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -167,6 +198,7 @@ db_tenure |>
   print(n = 100)
 
 db_tenure  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -181,7 +213,7 @@ Evaluate the quality variables.
 ```{r}
 db_tenure |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 

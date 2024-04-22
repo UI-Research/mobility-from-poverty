@@ -76,16 +76,13 @@ Create population file with a variable for mother's education.
 
 ```{r}
 
-read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>% 
-  mutate(all = "All", 
-         mothers_ed_less = "Less than High School", 
-         mothers_ed_hs = "GED/High School Degree",
-         mothers_ed_some_coll = "Some College",
-         mothers_ed_coll = "College Degree or Higher") %>% 
-  pivot_longer(cols = c(all:mothers_ed_coll),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "mothers-education", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Less than High School", "GED/High School Degree",
+                        "Some College", "College Degree or Higher")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "mothers-education", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "county-populations_mother's education.csv"))
 
 ```
@@ -112,11 +109,55 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_mothers_education <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "county_name")))
+    .f = ~read_csv(.x) 
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
+```
+
+We used the old neonatal health metric name, so we rename the variables.
+
+```{r}
+db_mothers_education  <- db_mothers_education  |>
+  rename(
+    share_low_birth_weight = rate_low_birth_weight,
+    share_low_birth_weight_lb = rate_low_birth_weight_lb,
+    share_low_birth_weight_ub = rate_low_birth_weight_ub,
+    share_low_birth_weight_quality = rate_low_birth_weight_quality,
+  )
+
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_mothers_education %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_mothers_education  <- db_mothers_education |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_mothers_education  <- db_mothers_education  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 ```
 
 ## Quality and Completeness
@@ -141,6 +182,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_mothers_education |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -148,6 +190,7 @@ db_mothers_education |>
   print(n = 100)
 
 db_mothers_education  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -162,7 +205,7 @@ Evaluate the quality variables.
 ```{r}
 db_mothers_education |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 
@@ -172,17 +215,17 @@ db_mothers_education |>
 db_mothers_education |>
   assert(
     within_bounds(0, 1),
-    rate_low_birth_weight,
-    rate_low_birth_weight_lb,
-    rate_low_birth_weight_ub
+    share_low_birth_weight,
+    share_low_birth_weight_lb,
+    share_low_birth_weight_ub
   ) |>
   quiet()
 
 test_bounds(
   data = db_mothers_education, 
-  estimate = rate_low_birth_weight, 
-  lb = rate_low_birth_weight_lb, 
-  ub = rate_low_birth_weight_ub
+  estimate = share_low_birth_weight, 
+  lb = share_low_birth_weight_lb, 
+  ub = share_low_birth_weight_ub
 )
 ```
 

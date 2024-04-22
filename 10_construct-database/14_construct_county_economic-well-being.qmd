@@ -70,24 +70,33 @@ quiet <- function(data) {
 
 ## Construct Database
 
+### Temporary Fixes
+
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
+```{r}
+# Fix subgroup
+read_csv(here("06_neighborhoods/environment/data/final/environment_county_poverty_longitudinal.csv")) |>
+  mutate(subgroup = case_when(subgroup == "Extreme Poverty" ~ "Concentrated Poverty", 
+                              subgroup == "Not Extreme Poverty" ~ "Not Concentrated Poverty", 
+                              TRUE ~ subgroup))|>
+  write_csv(here("data", "temp", "county_envir_longitudinal_econ-well-being.csv"))
+
+```
+
 ### Income and economic disadvantage 
 
 Create population file with a variable covering all income subgroup values.
 
 ```{r}
 
-read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>% 
-  mutate(all = "All", 
-         income_status_ed = "Economically Disadvantaged", 
-         income_status_not_ed = "Not Economically Disadvantaged",
-         income_status_less = "Less than $50,000",
-         income_status_more = "$50,000 or More",
-         income_status_pov = "Extreme Poverty",
-         income_status_not_pov = "Not Extreme Poverty") %>% 
-  pivot_longer(cols = c(all:income_status_not_pov),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "income", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Economically Disadvantaged", "Not Economically Disadvantaged", 
+                        "Less than $50,000", "$50,000 or More", "Concentrated Poverty", "Not Concentrated Poverty")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "income", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "county-populations_econ_dis.csv"))
 
 ```
@@ -102,7 +111,7 @@ filepaths <- c(
 here("data", "temp", "county-populations_econ_dis.csv"),
 
 # 06 neighborhoods
-here("06_neighborhoods/environment/data/final/environment_county_poverty_longitudinal.csv"),
+here("data", "temp", "county_envir_longitudinal_econ-well-being.csv"),
 
 # 08 education
 here("08_education/SEDA_all_subgroups_county.csv"),
@@ -118,8 +127,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_income <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "county_name")))
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
@@ -137,6 +145,39 @@ db_income  <- db_income  |>
   )
 
 ```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_income %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_income  <- db_income  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_income  <- db_income  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
 
 ## Quality and Completeness
 
@@ -161,6 +202,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_income |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -168,6 +210,7 @@ db_income |>
   print(n = 100)
 
 db_income  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -182,7 +225,7 @@ Evaluate the quality variables.
 ```{r}
 db_income |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 

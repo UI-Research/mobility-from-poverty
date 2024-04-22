@@ -78,31 +78,41 @@ This section implements temporary fixes and saves the resulting data in a temp f
 
 # Correct subgroup category
 read_csv(here("01_financial-well-being/city-debt-coll-shares-2021.csv")) |>
-  mutate(subgroup = ifelse(subgroup == "Majority White", "Majority White, Non-Hispanic", subgroup)) |>
+  mutate(subgroup = case_when(subgroup == "Majority White" ~ "Majority White, Non-Hispanic",
+                              subgroup == "No Majority Race/Ethnicity" ~ "Mixed Race and Ethnicity", 
+                              subgroup == "Majority Non-White" ~ "Majority Households of Color",
+                              TRUE ~ subgroup),
+         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
   rename(place = place_fips) |>
   write_csv(
     here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv")
   )
 
 read_csv(here("06_neighborhoods/environment/data/final/environment_place_race-ethnicity_longitudinal.csv")) |>
-  mutate(subgroup = ifelse(subgroup == "No Majority Race/Ethnicity", "Mixed Race and Ethnicity", subgroup)) |>
+  mutate(subgroup = case_when(subgroup == "No Majority Race/Ethnicity" ~ "Mixed Race and Ethnicity", 
+                              subgroup == "Majority Non-White" ~ "Majority Households of Color",
+                              TRUE ~ subgroup)) |>
   write_csv(
     here("data", "temp", "environment_place_subroup_race_share.csv")
   )
 
 read_csv(here("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Non-White", 
+   mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Households of Color", 
                               subgroup == "Majority White-NH Tracts" ~ "Majority White, Non-Hispanic",
-                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity")) |>
+                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity",
+                              TRUE ~ subgroup),
+         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
   write_csv(
     here("data", "temp", "transit_trips_all_place_subgroups_race_share.csv")
   )
 
 
 read_csv(here("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Non-White", 
+   mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Majority Households of Color", 
                               subgroup == "Majority White-NH Tracts" ~ "Majority White, Non-Hispanic",
-                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity")) |>
+                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed Race and Ethnicity",
+                              TRUE ~ subgroup),
+         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
   write_csv(
     here("data", "temp", "transit_cost_all_place_subgroups_race_share.csv")
   )
@@ -114,16 +124,13 @@ read_csv(here("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_
 Create population file for race share subgroup. 
 
 ```{r}
-
-read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
-  mutate(all = "All", 
-         race_non_white = "Majority Non-White", 
-         race_white_non_hisp = "Majority White, Non-Hispanic",
-         race_mixed = "Mixed Race and Ethnicity") %>% 
-  pivot_longer(cols = c(all:race_mixed),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "race-ethnicity", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
+           subgroup = c("All", "Majority Households of Color", "Majority White, Non-Hispanic", 
+                        "Mixed Race and Ethnicity")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "race-ethnicity", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "place-populations_race-share.csv"))
 
 ```
@@ -155,11 +162,42 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_race_share <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "place_name")))
+    .f = ~read_csv(.x) 
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
 
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_race_share %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_race_share  <- db_race_share  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_race_share  <- db_race_share  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 ```
 
 ## Quality and Completeness
@@ -187,6 +225,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_race_share |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -194,6 +233,7 @@ db_race_share |>
   print(n = 100)
 
 db_race_share  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -208,7 +248,7 @@ Evaluate the quality variables.
 ```{r}
 db_race_share |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 

@@ -76,18 +76,18 @@ This section implements temporary fixes and saves the resulting data in a temp f
 
 ```{r}
 
+# Quality NA and variable mismatch
+read_csv(here("02_housing/data/final/homelessness_all_subgroups_city.csv")) |>
+  mutate(share_homeless_quality = ifelse(is.na(share_homeless), NA_character_, share_homeless_quality),
+         count_homeless_quality = ifelse(is.na(count_homeless), NA_character_, count_homeless_quality))|>
+  write_csv(
+    here("data", "temp", "homelessness_place_race-ethnicity.csv")
+  )
+
 # Correct geography
 read_csv(here("08_education", "data", "built", "SEDA_all_subgroups_city.csv")) %>%
   filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
   write_csv(here("data", "temp", "SEDA_all_subgroups_city.csv"))
-
-
-# Correct subgroup category
-read_csv(here("07_safety/final/rate_arrests_place_all_subgroup.csv")) |>
-  mutate(subgroup = ifelse(subgroup == "White, Non-Hispanic", "White", subgroup)) |>
-  write_csv(
-    here("data", "temp", "rate_arrests_place_all_subgroup_race.csv")
-  )
 
 ```
 
@@ -97,18 +97,13 @@ Create a population file with a variable for race-ethnicity and race values.
 
 ```{r}
 
-read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
-  mutate(all = "All", 
-         race_eth_black = "Black, Non-Hispanic", 
-         rce_black = "Black",
-         race_ethnicity_white = "White, Non-Hispanic",
-         race_white = "White",
-         race_ethnicity_other = "Other Races and Ethnicities", 
-         race_ethnicity_hisp = "Hispanic") %>% 
-  pivot_longer(cols = c(all:race_ethnicity_hisp),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "race-ethnicity", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
+           subgroup = c("All", "Black", "Black, Non-Hispanic", "White", 
+               "White, Non-Hispanic", "Other Races and Ethnicities", "Hispanic")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "race-ethnicity", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "place-populations_race-ethnicity.csv"))
 
 ```
@@ -126,13 +121,13 @@ here("data", "temp", "place-populations_race-ethnicity.csv"),
 here("01_financial-well-being/final/metrics_income_place_race-ethnicity_longitudinal.csv"),
 
 # 02 housing
-here("02_housing/data/final/homelessness_all_subgroups_city.csv"),
+here("data", "temp", "homelessness_place_race-ethnicity.csv"),
 
 # 06 neighborhoods
 here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"),
 
 # 07 safety
-here("data", "temp", "rate_arrests_place_all_subgroup_race.csv"),
+here("07_safety/final/rate_arrests_place_all_subgroup.csv"),
 
 # 08 education
 here("08_education/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv"),
@@ -152,8 +147,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_race_eth <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "place_name")))
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
 
@@ -171,6 +165,39 @@ db_race_eth  <- db_race_eth  |>
   )
 
 ```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_race_eth %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -place, -state_name, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_race_eth  <- db_race_eth  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_race_eth  <- db_race_eth  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
 
 ## Quality and Completeness
 
@@ -197,6 +224,7 @@ This section summarizes data quality flags for variables and years.
 ```{r}
 
 db_race_eth |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -204,6 +232,7 @@ db_race_eth |>
   print(n = 100)
 
 db_race_eth  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -218,7 +247,7 @@ Evaluate the quality variables.
 ```{r}
 db_race_eth |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 
@@ -230,10 +259,7 @@ db_race_eth |>
     within_bounds(0, Inf), 
     pctl_income_20, 
     pctl_income_50, 
-    pctl_income_80,
-    pctl_income_20_quality, 
-    pctl_income_50_quality, 
-    pctl_income_80_quality
+    pctl_income_80
   ) |>
   quiet()
 

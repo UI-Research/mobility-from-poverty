@@ -76,19 +76,15 @@ Create population file with a variable for industry.
 
 ```{r}
 
-read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>% 
-  mutate(all = "All", 
-         industry_g = "Goods Producing", 
-         industry_p = "Public Administration",
-         industry_t = "Trade, Transit, Utilities",
-         industry_i = "Information Services",
-         industry_pr = "Professional Services",
-         industry_e = "Education and Health",
-         industry_l = "Leisure and Other") %>% 
-  pivot_longer(cols = c(all:industry_l),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "industry", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Goods Producing", "Public Administration",
+                        "Trade, Transit, Utilities", "Information Services",
+                        "Professional Services", "Education and Health",
+                        "Leisure and Other")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "industry", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "county-populations_industry.csv"))
 
 ```
@@ -115,11 +111,42 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_industry <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "county_name")))
+    .f = ~read_csv(.x) 
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_industry %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_industry  <- db_industry |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_industry  <- db_industry  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 ```
 
 ## Quality and Completeness
@@ -144,6 +171,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_industry |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -151,6 +179,7 @@ db_industry |>
   print(n = 100)
 
 db_industry  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -165,7 +194,7 @@ Evaluate the quality variables.
 ```{r}
 db_industry |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 

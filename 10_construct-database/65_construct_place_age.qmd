@@ -76,16 +76,13 @@ Create population file with a variable for age.
 
 ```{r}
 
-read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>% 
-  mutate(all = "All", 
-         age_under45 = "Under Age 45", 
-         age_over45 = "Age 45 and Over",
-         age10_14 = "Age 10 to 14",
-         age15_17 = "Age 15 to 17") %>% 
-  pivot_longer(cols = c(all:age15_17),
-               names_to = "subgroup_type",
-               values_to = "subgroup") %>% 
-  mutate(subgroup_type = ifelse(subgroup_type != "all", "age", "all")) %>% 
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
+           subgroup = c("All", "Under Age 45", "Age 45 and Over", 
+                        "Age 10 to 14", "Age 15 to 17")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "age", "all")) %>% 
+  select(-population) %>% 
   write_csv(here("data", "temp", "place-populations_age.csv"))
 
 ```
@@ -115,11 +112,42 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_age <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "place_name")))
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
 
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_age %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_age  <- db_age  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_age  <- db_age  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 ```
 
 ## Quality and Completeness
@@ -144,6 +172,7 @@ This section summarizes data quality flags for variables and years.
 
 ```{r}
 db_age |>
+  filter(subgroup != "All") |>
   select(ends_with("_quality")) |>
   pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
   count(variable, quality) |>
@@ -151,6 +180,7 @@ db_age |>
   print(n = 100)
 
 db_age  |>
+  filter(subgroup != "All") |>
   select(year, ends_with("_quality")) |>
   pivot_longer(-year, names_to = "variable", values_to = "quality") |>
   count(year, quality) |>
@@ -165,7 +195,7 @@ Evaluate the quality variables.
 ```{r}
 db_age |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 
