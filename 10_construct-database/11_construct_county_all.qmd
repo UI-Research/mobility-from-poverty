@@ -75,6 +75,18 @@ quiet <- function(data) {
 This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
 
 ```{r}
+
+# fix old variable
+
+ read_csv(here("09_employment/metrics_wage_ratio_years_v2.csv")) |>
+  rename(year = subgroup,
+         ratio_living_wage = average_to_living_wage_ratio,
+         ratio_living_wage_quality = wage_ratio_quality
+    ) %>% 
+  select(-subgroup_type) %>% 
+  arrange(desc(year), state, county) |>
+  write_csv(here("data", "temp", "county_wage_ratio_hist_longitudinal.csv"))
+  
 # combine multiple years
 bind_rows(
   read_csv(here("01_financial-well-being/share_debt_2018.csv")),
@@ -83,6 +95,15 @@ bind_rows(
     select(-subgroup_type, -subgroup)
 ) |>
   write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
+
+# combine multiple years
+bind_rows(
+  read_csv(here("02_housing/data/available_2014_county.csv")),
+  read_csv(here("02_housing/data/available_2018_county.csv")),
+  read_csv(here("02_housing/data/available_2021_county.csv")),
+  read_csv(here("02_housing/data/available_2022_county.csv"))
+) |>
+  write_csv(here("data", "temp", "county_available_housing.csv"))
 
 # combine multiple years
 bind_rows(
@@ -117,7 +138,9 @@ bind_rows(
     rename(
       ratio_living_wage = average_to_living_wage_ratio,
       ratio_living_wage_quality = wage_ratio_quality
-    )
+    ),
+  read_csv(here("data", "temp", "county_wage_ratio_hist_longitudinal.csv")
+  )
 ) |>
   write_csv(
     here("data", "temp", "metrics_wage_ratio.csv")
@@ -150,6 +173,19 @@ bind_rows(
     here("data", "temp", "neonatal_health.csv")
   )
 
+bind_rows(
+read_csv(here("02_housing/data/final/homelessness_2020_21_county.csv")),
+read_csv(here("02_housing/data/final/homelessness_all_county.csv")) |>
+           filter(year == 2019)  |>
+  rename(count_homeless = homeless_count, count_homeless_lb = homeless_count_lb, 
+         count_homeless_ub = homeless_count_ub,share_homeless = homeless_share, 
+         share_homeless_quality = homeless_quality)
+) |>
+  write_csv(
+    here("data", "temp", "homelessness_county_all.csv")
+  )
+
+
 ```
 
 ### Combine Files
@@ -166,7 +202,10 @@ filepaths <- c(
   here("data", "temp", "county_debt_longitudinal.csv"),
   
   # 02 housing
-  here("02_housing/data/final/homelessness_2020_21_county.csv"),
+  here("data", "temp", "homelessness_county_all.csv"),
+  here("data", "temp", "county_available_housing.csv"),
+  here("02_housing/data/housing_county.csv"),
+  
   
   # 04 health
   here("04_health/access-health-services/final/ratio_pop_pcp_metric_all_county.csv"),
@@ -219,8 +258,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 ```{r}
 db <- filepaths |>
   map(
-    .f = ~read_csv(.x) |> 
-      select(-any_of(c("state_name", "county_name", extra_variables)))
+    .f = ~read_csv(.x) 
   ) |>
   reduce(left_join, by = c("year", "state", "county"))
 
@@ -231,13 +269,15 @@ We used old learning rate data, so we rename the variables. We also use old data
 
 ```{r}
 db <- db |>
-  select(-economic_connectedness_se, -share_desc_rep_total_nonhispanic_quality) |>
+  select(-share_desc_rep_total_nonhispanic_quality) |>
   rename(
     rate_learning = learning_rate,
     rate_learning_lb = learning_rate_lb,
     rate_learning_ub = learning_rate_ub,
     rate_learning_quality = learning_rate_quality,
     ratio_high_low_ses_fb_friends = economic_connectedness,
+    ratio_high_low_ses_fb_friends_lb = economic_connectedness_lb,
+    ratio_high_low_ses_fb_friends_ub = economic_connectedness_ub,
     ratio_high_low_ses_fb_friends_quality = economic_connectedness_quality,
     share_black_nh_exposure = black_nh_exposure,
     share_hispanic_exposure = hispanic_exposure,
@@ -254,6 +294,39 @@ db <- db |>
   )
 
 ```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -population), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db  <- db  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db <- db  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
 
 ## Quality and Completeness
 
@@ -296,7 +369,7 @@ Evaluate the quality variables.
 ```{r}
 db |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 
@@ -308,10 +381,7 @@ db |>
     within_bounds(0, Inf), 
     pctl_income_20, 
     pctl_income_50, 
-    pctl_income_80,
-    pctl_income_20_quality, 
-    pctl_income_50_quality, 
-    pctl_income_80_quality
+    pctl_income_80
   ) |>
   assert(
     within_bounds(0, Inf), 
@@ -422,7 +492,20 @@ db |>
     within_bounds(0, 1),
     share_homeless
   ) |>
+  assert(
+    within_bounds(0, Inf),
+    share_affordable_80_ami,
+    share_affordable_50_ami,
+    share_affordable_30_ami
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    share_affordable_available_80_ami,
+    share_affordable_available_50_ami,
+    share_affordable_available_30_ami
+  ) |>
   quiet()
+
 
 test_bounds(
   data = db, 
@@ -430,7 +513,6 @@ test_bounds(
   lb = count_homeless_lb, 
   ub = count_homeless_ub
 )
-
 ```
 
 ### 04 Health
@@ -516,6 +598,13 @@ db |>
     index_air_hazard
   ) |>
   quiet()
+
+test_bounds(
+  data = db, 
+  estimate = ratio_high_low_ses_fb_friends, 
+  lb = ratio_high_low_ses_fb_friends_lb, 
+  ub = ratio_high_low_ses_fb_friends_ub
+)
 
 ```
 

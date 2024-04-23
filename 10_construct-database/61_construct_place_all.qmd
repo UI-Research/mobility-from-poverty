@@ -81,23 +81,30 @@ read_csv(here("01_financial-well-being/city-debt-coll-shares-2021.csv")) |>
   select(-subgroup_type, -subgroup, -city) |>
   rename(place = place_fips) |>
   write_csv(here("data", "temp", "place_debt_longitudinal.csv"))
-# 
-# # combine multiple years
 
+# combine multiple years
 bind_rows(
-  read_csv(here("02_housing", "data", "housing_2022_city.csv")),
-  #read_csv(here("02_housing", "data", "housing_city_2021.csv"))
+  read_csv(here("02_housing/data/available_2021_city.csv")),
+  read_csv(here("02_housing/data/available_2022_city.csv"))
 ) |>
-  arrange(year) |>
-  write_csv(
-    here("data", "temp", "housing-affordability-city.csv")
-  )
+  write_csv(here("data", "temp", "city_available_housing.csv"))
 
+# combine multiple years
 read_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv")) |>
   distinct() |>
   write_csv(
     here("data", "temp", "social_associations_all_city.csv")
   )  
+
+bind_rows(
+read_csv(here("02_housing/data/final/homelessness_2020_21_city.csv")),
+read_csv(here("02_housing/data/final/homelessness_all_city.csv")) |>
+           filter(year == 2019)  
+) |>
+  write_csv(
+    here("data", "temp", "homelessness_city_all.csv")
+  )
+
 
 
 ```
@@ -117,8 +124,9 @@ filepaths <- c(
   here("data", "temp", "place_debt_longitudinal.csv"),
   
   # 02 housing
-  here("02_housing/data/final/homelessness_2020_21_city.csv"),
-  here("data", "temp", "housing-affordability-city.csv"),
+  here("data", "temp", "homelessness_city_all.csv"),
+  here("data", "temp", "city_available_housing.csv"),
+  here("02_housing/data/housing_city.csv"),
 
   # 04 health
   # no ratio of pcp to population
@@ -135,7 +143,7 @@ filepaths <- c(
   here("data", "temp", "social_associations_all_city.csv"),
   here("06_neighborhoods/social-capital/final/economic_connectedness_city_2022.csv"),
   here("06_neighborhoods/environment/data/final/environment_place_longitudinal.csv"),
-  #here("06_neighborhoods/Transportation/final/transit_trips_all_city.csv"),
+  here("06_neighborhoods/Transportation/final/transit_trips_all_city.csv"),
   here("06_neighborhoods/Transportation/final/transit_cost_all_city.csv"),
   
   # 07 safety
@@ -166,8 +174,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 ```{r}
 db <- filepaths |>
   map(
-    .f = ~read_csv(.x) |>
-      select(-any_of(c("state_name", "place_name", extra_variables)))
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "place"))
 
@@ -188,6 +195,38 @@ db <- db |>
     share_election_turnout_quality = election_turnout_quality
   )
 
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -population), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db  <- db  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db  <- db  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 ```
 
 ## Quality and Completeness
@@ -231,7 +270,7 @@ Evaluate the quality variables.
 ```{r}
 db |>
   select(ends_with("_quality")) |>
-  assert(in_set(1, 2, 3), everything())
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
 
 ```
 
@@ -243,10 +282,7 @@ db |>
     within_bounds(0, Inf), 
     pctl_income_20, 
     pctl_income_50, 
-    pctl_income_80,
-    pctl_income_20_quality, 
-    pctl_income_50_quality, 
-    pctl_income_80_quality
+    pctl_income_80
   ) |>
   assert(
     within_bounds(0, Inf), 
@@ -354,6 +390,18 @@ db |>
   assert(
     within_bounds(0, 1),
     share_homeless
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    share_affordable_80_ami,
+    share_affordable_50_ami,
+    share_affordable_30_ami
+  ) |>
+  assert(
+    within_bounds(0, Inf),
+    share_affordable_available_80_ami,
+    share_affordable_available_50_ami,
+    share_affordable_available_30_ami
   ) |>
   quiet()
 
