@@ -200,8 +200,7 @@ skim(place_raceeth)
 ```
 
 We aggregate the race/ethnicity categories into Other races and ethnicities,
-Black non-Hispanic, Hispanic, White non-Hispanic, and All (total population in
-households).
+Black, Hispanic, white, and All (total population in households).
 
 We combine margins of errors for detailed groups using rules from slide 51
 [here](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf).
@@ -631,7 +630,7 @@ read_pop_file <- function(path) {
       !!geo_var := sprintf(glue("%0.{digits}d"), as.numeric(!!geo_var)),
       geoid = paste0(state, !!geo_var)
     ) %>%
-    filter(year >= 2016) |>
+    filter(year >= 2017) |>
     clean_names()
 }
 county_file <- read_pop_file("geographic-crosswalks/data/county-populations.csv")
@@ -723,8 +722,6 @@ reshape_for_export <- function(data, subgroup = "race-ethnicity") {
         subgroup = case_match(subgroup,
           "Total People In Households" ~ "All",
           "Other" ~ "Other Races and Ethnicities",
-          "Black" ~ "Black, Non-Hispanic",
-          "White" ~ "White, Non-Hispanic",
           .default = subgroup
         ),
         subgroup_type = case_match(subgroup,
@@ -906,51 +903,73 @@ place_income_digital_access |> skim()
 #| label: export-csvs
 # Export each of the files as CSVs
 
-export_metric <- function(data, type = c("recent", "subgroup", "multi-year")) {
+export_metric <- function(data, type = c("subgroup", "multi-year")) {
   geo <- ifelse("county" %in% colnames(data), "county", "city")
+  geo_var <- ifelse("county" %in% colnames(data), "county", "place")
 
   data <-
     data |>
     # Transform metric from ratio to percent with 3 decimal places
-    mutate(across(
-      .cols = starts_with("share_digital_access") & !ends_with("quality"),
-      .fns = ~ scales::label_percent(accuracy = 0.001)(.x)
-    )) |>
-    filter(year != 2020)
+    # mutate(across(
+    #   .cols = starts_with("share_digital_access") & !ends_with("quality"),
+    #   .fns = ~ scales::label_percent(accuracy = 0.001)(.x)
+    # )) |>
+    filter(!(year %in% c(2016, 2020))) |>
+    select(-c(state_name, paste0({{ geo_var }}, "_name")))
 
-  if (type == "recent") {
-    data |>
-      filter(year == max(year)) |>
-      select(-year) |>
-      write_csv(
-        here::here("08_education", "final", glue("digital_access_{geo}_{max(data$year)}.csv"))
-      )
-  } else if (type == "multi-year") {
+  if (type == "multi-year") {
     write_csv(
       data,
       here::here("08_education", "final", glue("digital_access_{geo}_all.csv"))
     )
   } else if (type == "subgroup") {
+    data <-
+      data |>
+      filter(year %in% c(2018, 2021)) |>
+      relocate(subgroup_type, .before = "subgroup") |>
+      mutate(subgroup = case_match(subgroup,
+        "Income Less Than 50k" ~ "Less than $50,000",
+        "Income More Than 50k" ~ "$50,000 or More",
+        .default = subgroup
+      ))
     write_csv(
       data,
       here::here("08_education", "final", glue("digital_access_{geo}_subgroup_all.csv"))
     )
   } else {
-    stop("type must be 'recent', 'multi-year', or 'subgroup'")
+    stop("type must be 'multi-year' or 'subgroup'")
   }
 }
 
-export_metric(county_overall_digital_access, "recent")
 export_metric(
   county_overall_digital_access,
   "multi-year"
 )
 export_metric(county_subgroup_digital_access, "subgroup")
 
-export_metric(place_overall_digital_access, "recent")
 export_metric(
   place_overall_digital_access,
   "multi-year"
 )
 export_metric(place_subgroup_digital_access, "subgroup")
+```
+
+Check that the outputted files match the README conventions.
+
+```{r}
+#| label: check-county-files
+county_all <- read_csv(here::here("08_education/final/digital_access_county_all.csv"))
+county_subgroup <- read_csv(here::here("08_education/final/digital_access_county_subgroup_all.csv"))
+
+head(county_all)
+head(county_subgroup)
+```
+
+```{r}
+#| label: check-city-files
+place_all <- read_csv(here::here("08_education/final/digital_access_city_all.csv"))
+place_subgroup <- read_csv(here::here("08_education/final/digital_access_city_subgroup_all.csv"))
+
+head(county_all)
+head(county_subgroup)
 ```

@@ -638,34 +638,28 @@ The .Rmd file for this metric contains detailed steps in notebook for literate s
 
 ## Transportation access
 
-The Low Transportation Cost Index and Transit Trips Index are both calculated "for a 3-person single-parent family with income at 50% of the median income for renters in the region (i.e. CBSA)." They are available in the HUD AFFH data set at the tract level. Both indexes are values on a scale from 0 - 100 and ranked nationally. For transit cost, higher index values means lower cost; for transit trips, higher index values means greater likelihood residents use transit.   
+The Low Transportation Cost Index is calculated using the % income for the regional moderate household, and Transit Trips Index is calculated for the regional moderate household. Both indexes are values on a scale from 0 - 100 and transit trips are ranked nationally. For transit cost, higher index values mean a higher percentage of income spent on transportation; for transit trips, higher index values means greater likelihood residents use transit.   
 
 ### Overview
 
-* **Analyst & Programmer:** Nicole DuBois
-* **Year(s):** 2016 (2012-2016)
-* **Final data name(s):** `county_level_transit_indexes.csv`
-* **Data Source(s):** HUD AFFH Data (AFFHT0006). Note that the transit cost and transit trips indexes are based on Location Affordability Index data, using National Transit Database data.
+* **Analyst & Programmer:** Tina Chelidze
+* **Year(s):** 2015, 2019
+* **Final data name(s):** transit_cost_all_city.csv, transit_cost_all_county.csv, transit_cost_all_subgroups_city.csv, transit_cost_all_subgroups_county.csv, transit_trips_all_city.csv, transit_trips_all_county.csv, transit_trips_all_subgroups_city.csv, transit_trips_all_subgroups_county.csv 
+* **Data Source(s):** Center for Neighborhood Technology (CNT) Housing and Transportation (H+T) Affordability Index. For racial subgroups, we combine these data with demographic population data from the Census ACS.
 * **Notes:**
 * **Data Quality Index:**
 * **Limitations:**
-  1. Both indexes are calculated based on a certain family type. Ideally, we would probably use the number of that type of household to create the population-weighted county average index values. This information is not available so we used the number of families <50% AMI as a proxy.
-  2. 149 tracts have 0 of the household type we used for weighting but do have transit index information. Meaning we effectively zero out the values during the county average calculation. 5 of these tracts make up more than 10% of the county population, which could skew the county values. These tracts were flagged with a 2 for data quality.
-* **Missingness:** 
-  1. Logically, tracts do not have index values if they do not have population.
-  2. There are 179 tracts with population but "N/A" index values for both indexes. Typically, these tracts do not represent a significant amount of the population. 6 counties have N/A tracts that make up more than 10% of the county population. These tracts were flagged with a 2 for data quality.
+  1. Both indexes are calculated based on a moderate-income household in the region. County-level estimates are pulled directly from county-level estimates. City-level estimates are aggregated up from tract-level estimates.
 
 ### Process
 
-1. Download the AFFH data from HUD and import into R, saving the variables of interest: the geographic variables, the two transit indexes, and the number of households < 50% AMI.
-2. Perform a variety of checks on the data to flag places where data quality might not be the highest. See limitations and missingness descriptions above and the R script for more detail.
-3. Generate county-level average index values from the tract-level data. Use the number of households < 50% AMI as the weight.
+1. Download the raw data pulled from the Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT) at https://htaindex.cnt.org/download/. Download for each county or state & unzip each file.
+2. Import into R, aggregating all the unzipped tract- or county-specific files so you have a national dataset. Keep the variables of interest: the geographic variables, the two transit indexes (t_80ami for transportation cost, and transit_trips_80ami for transit trips).
 
 Additional notes for adding the breakdown by race:
 
-The AFFH data set contains several different race variables - for the total population, for households, and for households at various income brackets. To most closely  align with the transit indexes and the initial population-weighted calculation we did, we chose to use the race variables for households at 50% AMI.
+The CNT H+T data set does not contain race variables, so you must pull in ACS demographic data at the tract level and combine your dataframes.
 
-There are several limitations to this choice. There is no 'other' race category, so it is unclear if missing data is due to not fitting into the limited options (white, Black, Hispanic, Asian) or if it is, in fact, missing data.There are 328 tracts with no race data because the number of households at 50% AMI is zero. 20 tracts have 0 values in all race categories. In 223 tracts, we have race information on less than <50% of 50%AMI households. In 342 tracts, we have race information on more than 105% of 50%AMI households (meaning there must be some overlap or data issue). We tried to account for this by taking a similar approach to data quality standards as for the larger data set - noting these issues if a tract makes up a certain percentage of its county.
 
 ---
 
@@ -1003,8 +997,8 @@ Please note that the denominator we use is the living wage for a single full-tim
 ### Overview
 
 * **Analyst & Programmer:** Tina Chelidze and Manuel Alcalá Kovalski
-* **Year(s):** 2016, 2017, 2018, 2019, 2021, 2022
-
+* **Year(s):** 2017, 2018, 2019, 2021, 2022 for counties and 2018, 2022 for 
+cities.
 * **Final data name(s):** `digital_access_county_2022.csv`, 
 `digital_access_city_2022.csv`, `digital_access_county_all.csv`, 
 `digital_access_city_all.csv`, `digital_access_county_subgroup_all.csv`,   `digital_access_city_subgroup_all.csv`,
@@ -1028,14 +1022,15 @@ overall ratio, as well as by race/ethnicity and income subgroups.)
 This metric is calculated using `digital_access.qmd` in the 08_education folder.
   
 ## Social Capital
-  
-* **Year(s):** 2020
-* **Final data name(s):** `social_associations_geography_2022.csv`
+
+* **Analyst & Programmer:** Tina Chelidze, Manu Alcalá Kovalski
+* **Year(s):** 2020, 2021
+* **Final data name(s):** `social_associations_2021_geography.csv`, `social_associations_all_geography.csv`
 * **Data Source(s):** Census County Business Patterns (CBP) Survey 
 * **Notes:**
-* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1' means that 10% or more of the ZIP codes fall mostly in the Census Place boundary, `2' means less than 10% do.
+* **Data Quality Index:** For county-level data, `1` means this metric is reliable calculated at the geography. For city-level data, `1` means 75% or more of the data come from the place which is good, `3` below 35% is bad, and `2` in between is marginal.
 * **Limitations:** For the city-level data, the metric needs to be re-aggregated from ZIP to Place.
-* **Missingness:** 152 missing observations for county-level data. No missing observations for city-level data.
+* **Missingness:** 163 missing observations for county-level data. No missing observations for city-level data.
 
 ### Process
 
@@ -1100,7 +1095,7 @@ This metric is a county-level and city-level estimate of population count by rac
 ### Overview
 
 * **Analyst & Programmer:** Manu Alcalá Kovalski, Jung Hyun Choi
-* **Year(s):** 2014-2022 for counties and 2016-2022 for places
+* **Year(s):** 2014, 2015, 2016, 2017, 2018, 2019, 2021, and 2022 for counties and 2016, 2017, 2018, 2019, 2021, 2022 for places
 * **Final data name(s):**`households_house_value_race_ethnicity_2022_city.csv`,`households_house_value_race_ethnicity_2022_county.csv`, `households_house_value_race_ethnicity_all_city.csv`, `households_house_value_race_ethnicity_all_county.csv`
 `households_house_value_race_ethnicity_subgroup_city.csv`,
 `households_house_value_race_ethnicity_subgroup_county.csv`

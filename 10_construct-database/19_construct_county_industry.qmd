@@ -1,0 +1,218 @@
+---
+title: "Combine Industry County Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### industry files
+
+Create population file with a variable for industry. 
+
+```{r}
+
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Goods Producing", "Public Administration",
+                        "Trade, Transit, Utilities", "Information Services",
+                        "Professional Services", "Education and Health",
+                        "Leisure and Other")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "industry", "all")) %>% 
+  select(-population) %>% 
+  write_csv(here("data", "temp", "county-populations_industry.csv"))
+
+```
+
+Read file paths to all county files with industry subgroup information. 
+
+```{r}
+
+filepaths <- c(
+  
+# Industry populations
+here("data", "temp", "county-populations_industry.csv"),
+
+# 09 employment
+here("09_employment/metrics_wage_ratio_2022_subgroup.csv")
+
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+
+db_industry <- filepaths |>
+  map(
+    .f = ~read_csv(.x) 
+  ) |>
+  reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
+
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_industry %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_industry  <- db_industry |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_industry  <- db_industry  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should be 25,152 in a year (8X3144) and at the least there should be 25,136 in a year (8X3142).
+
+```{r}
+
+db_industry |> 
+  count(year) |>
+  assert(
+    within_bounds(25136, 25152), 
+    n
+  )
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_industry |>
+  filter(subgroup != "All") |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_industry  |>
+  filter(subgroup != "All") |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_industry |>
+  select(ends_with("_quality")) |>
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
+
+```
+
+### 09 Employment
+
+```{r}
+
+db_industry |>
+  assert(
+    within_bounds(0, 5),
+    ratio_living_wage
+  ) |>
+  quiet()
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_industry, here("data", "19_mobility-metrics_county_industry_longitudinal.csv"))
+```

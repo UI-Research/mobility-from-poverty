@@ -1,0 +1,296 @@
+---
+title: "Transportation Cost County"
+author: "Tina Chelidze"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*2023-2024 Mobility Metrics update* 
+
+SUMMARY-LEVEL VALUES 
+
+Raw data pulled from https://htaindex.cnt.org/download/ The Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT)
+
+*User Notice: This program requires downloading raw files from the Metrics_2024_round Box folder prior to running. See details under the Read Data section.*
+
+
+## Housekeeping
+
+Read in packages for use.
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(purrr)
+```
+
+## Read data
+
+The data from HUD cannot be easily read directly into this program.
+Before running, please download the files below from the following [Box
+folder](https://urbanorg.app.box.com/folder/250262697073) into the
+repository folder
+`"mobility-from-poverty\06_neighborhoods\Transportation\data"`
+
+-   htaindex2015_data_counties.csv
+-   htaindex2019_data_counties.csv
+
+Import all the files (and/or combine into one file) with only the
+relevant variables and years
+
+FOR COUNTIES - import the raw data files
+
+Unlike for Places and Tracts, the CNT website allows you to download raw data for all counties at once so we just import the all-county file for the two available years; 2015 and 2019
+
+### 2015
+
+```{r}
+transport_county_2015 <- read_csv(here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "htaindex2015_data_counties.csv"))
+```
+
+create correct FIPS columns
+
+```{r}
+transport_county_2015 <- transport_county_2015 %>%
+  mutate(
+    state = substr(county, start = 2, stop = 3),
+    county = substr(county, start = 4, stop = 6)
+  )
+```
+
+keep only variables of interest
+
+```{r}
+transportation_cost_county_2015 <- transport_county_2015 %>%
+  select(state, county, blkgrps, population, households, t_80ami)
+```
+
+### 2019
+
+```{r}
+transport_county_2019 <- read_csv(here::here("06_neighborhoods",
+                                             "Transportation", 
+                                             "data", 
+                                             "htaindex2019_data_counties.csv"))
+
+
+transport_county_2019 <- transport_county_2019 %>%
+  select(county, blkgrps, population, households, t_80ami)
+```
+
+create correct FIPS columns
+
+```{r}
+transport_county_2019 <- transport_county_2019 %>%
+  mutate(
+    state = substr(county, start = 2, stop = 3),
+    county = substr(county, start = 4, stop = 6)
+  )
+```
+
+Keep only variables of interest
+
+```{r}
+transportation_cost_county_2019 <- transport_county_2019 %>%
+  select(state, county, blkgrps, population, households, t_80ami)
+```
+
+
+Compare to our official county file to make sure we have all counties accounted for
+
+Bring in the official county file you should already be in the project folder for this path to work
+
+```{r}
+counties <- read_csv(here::here("geographic-crosswalks", 
+                                "data", 
+                                "county-populations.csv"))
+
+counties_2015 <- counties %>%
+  filter(year == 2015)
+
+counties_2019 <- counties %>%
+  filter(year == 2019)
+```
+
+All files have same number of observations (3142) so no merging needed to account for missings!
+
+## QC Checks
+
+Create a histogram plot and summary stats for each dataframe check that all values are non-negative & count missing values examine outliers
+
+County-Level Transportation Cost 2015
+
+```{r}
+ggplot(transportation_cost_county_2015, aes(x=t_80ami)) + geom_histogram(binwidth=10) + labs(y="number of counties", x="Annual Transit Cost for the Regional Moderate Income Household, 2015")
+```
+
+Look at summary stats
+
+```{r}
+summary(transportation_cost_county_2015$t_80ami)  
+```
+
+Examine outliers
+
+```{r}
+transportation_cost_county_2015_outliers <- transportation_cost_county_2015 %>% 
+  filter(t_80ami>100) 
+```
+
+No weird outliers
+
+Use stopifnot to check if all values in "transportation_cost_county_2015" are non-negative
+
+```{r}
+stopifnot(min(transportation_cost_county_2015$t_80ami, na.rm = TRUE) >= 0)
+```
+
+Good to go.
+
+Find indices of missing values for the "t_80ami" variable.
+
+```{r}
+missing_indices <- which(is.na(transportation_cost_county_2015$t_80ami))
+```
+
+
+Print observations with missing values
+```{r}
+if (length(missing_indices) > 0) {
+  cat("Observations with missing values for transit_cost_80ami:\n")
+  print(transportation_cost_county_2015[missing_indices, , drop = FALSE])
+} else {
+  cat("No missing values for transportation_cost_county_2015\n")
+}
+```
+
+1 missing value: Loving County, TX (48301 FIPS).
+
+County-Level Transportation Cost 2019
+
+```{r}
+ggplot(transportation_cost_county_2019, aes(x=t_80ami)) + geom_histogram(binwidth=10) + labs(y="number of counties", x="Annual Transit Cost for the Regional Moderate Income Household, 2019")
+```
+
+Look at summary stats
+```{r}
+summary(transportation_cost_county_2019$t_80ami) 
+```
+
+Examine outliers
+```{r}
+transportation_cost_county_2019_outliers <- transportation_cost_county_2019 %>% 
+  filter(t_80ami>100) 
+```
+
+No weird outliers
+
+Use stopifnot to check if all values in "transportation_cost_county_2019" are non-negative
+
+```{r}
+stopifnot(min(transportation_cost_county_2019$t_80ami, na.rm = TRUE) >= 0)
+```
+
+Good to go.
+
+Find indices of missing values for the "transit_cost_80ami" variable
+
+```{r}
+missing_indices <- which(is.na(transportation_cost_county_2019$t_80ami))
+```
+
+Print observations with missing values
+
+```{r}
+if (length(missing_indices) > 0) {
+  cat("Observations with missing values for transit_cost_80ami:\n")
+  print(transportation_cost_county_2019[missing_indices, , drop = FALSE])
+} else {
+  cat("No missing values for transportation_cost_county_2019\n")
+}
+```
+
+No missing values for 2019.
+
+## Data quality marker
+
+Determine data quality cutoffs based on number of observations (all at the HH level for these values)
+
+```{r}
+summary(transportation_cost_county_2015$households) 
+summary(transportation_cost_county_2019$households) 
+```
+
+We use a 30 HH cutoff for Data Quality 3 for the ACS variables, so for the sake of consistency, since none of these are less than 30 (all minimum values are at least 30 HHs), Data Quality can be 1 for all these observations BUT ALSO, rename all the metrics variables to what we had before (transit_trips & transit_cost), so we can name the quality variable appropriately
+
+```{r}
+transportation_cost_county_2015 <- transportation_cost_county_2015 %>% 
+  rename(transit_cost = t_80ami) %>%
+  mutate(transit_cost_quality = 1)
+transportation_cost_county_2019 <- transportation_cost_county_2019 %>% 
+  rename(transit_cost = t_80ami) %>%
+  mutate(transit_cost_quality = 1)
+```
+
+## Export files
+
+Add a variable for the year of the data
+
+```{r}
+transportation_cost_county_2015 <- transportation_cost_county_2015 %>%
+  mutate(
+    year = 2015
+  )
+```
+
+```{r}
+transportation_cost_county_2019 <- transportation_cost_county_2019 %>%
+  mutate(
+    year = 2019
+  )
+```
+
+Combine the two years into one overall files for both variables
+
+```{r}
+transit_cost_county <- rbind(transportation_cost_county_2015, transportation_cost_county_2019)
+```
+
+Keep variables of interest and order them appropriately also rename to correct var names
+
+```{r}
+transit_cost_county <- transit_cost_county %>%
+  rename(index_transportation_cost = transit_cost,
+         index_transportation_cost_quality = transit_cost_quality) %>%
+  select(year, state, county, index_transportation_cost, index_transportation_cost_quality) %>%
+  arrange(year, state, county, index_transportation_cost, index_transportation_cost_quality)
+  
+```
+
+Save as non-subgroup all-year files.
+
+```{r}
+write_csv(transit_cost_county, here::here("06_neighborhoods", 
+                                          "Transportation", 
+                                          "final", 
+                                          "transit_cost_all_county.csv"))
+```
+
+
+
+

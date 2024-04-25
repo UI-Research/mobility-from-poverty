@@ -58,21 +58,22 @@ drop if industry_type == . // drop super-sections and "unclassified" naics codes
 ** because some naics codes are combined into industries, we need to collapse
 ** we average the average weekly wage across both
 ** but sum the establishment counts 
-collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaverageestablishmentcount, by(st cnty industry_type)
+collapse (mean) avgwkwage=annualaverageweeklywage (sum) avgestct=annualaverageestablishmentcount (first) annualaveragestatuscode, by(st cnty industry_type)
 
-** check for duplicates
+** check for duplicates, you want a surplus of 0
 duplicates report st cnty industry_type
 
 /* test whether all counties have needed codes-- answer is no, which means need to do data expansion later on */ 
 egen obs_per_cnty = count(industry_type), by(st cnty)
 tab obs_per_cnty
 
-** count zeros -- will generate this many zeros in final dataset
+** count zeros -- and confirm zero wages are supressed according to BLS data suppression guidelines for non-reportable wages
 count if avgwkwage == 0
+assert annualaveragestatuscode == "N" if avgwkwage == 0
 
 ** keep variables pre-merge
 
-keep st cnty avgwkwage avgestct industry_type
+keep st cnty avgwkwage avgestct industry_type annualaveragestatuscode
 
 rename st state
 
@@ -97,16 +98,22 @@ gen weekly_living_wage = wage * 40
 /* get ratio (main metric) */
 gen ratio_living_wage = avgwkwage/weekly_living_wage
 
-assert avgwkwage == 0 if ratio_living_wage == 0 // assert ratio is missing if avgwkwage is zero in raw dataset
+** then, replace ratio as missing due to BLS data suppression
+replace ratio_living_wage = . if annualaveragestatuscode == "N"
+
+count if ratio_living_wage == 0 // confirm this replacement worked, this count should be 0
 
 /* create data quality flag 
-per discussion with Greg, >= 30 is 1, <30 is 3 */
+per discussion with Greg, >= 30 is 1, <30 is 3 and those with missing metrics due to BLS suppression and lack of industry (no establishments) are missing */
 gen ratio_living_wage_quality = 1 if avgestct >= 30 & avgestct != .
 replace ratio_living_wage_quality = 3 if avgestct < 30 & avgestct != .
 replace ratio_living_wage_quality = . if avgestct == .
+replace ratio_living_wage_quality = . if annualaveragestatuscode == "N"
 
 /* test flag */
 tab ratio_living_wage_quality, missing
+
+assert ratio_living_wage_quality == . if ratio_living_wage == .
 
 /* put state and county in string with leading 0s */
 drop _merge
@@ -139,7 +146,7 @@ gen new_ratio_quality = string(ratio_living_wage_quality)
 drop ratio_living_wage_quality
 rename new_ratio_quality ratio_living_wage_quality
 
-replace ratio_living_wage_quality = "" if ratio_living_wage_quality == "."
+replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "."
 
 save "wage_ratio_final_2022_subgroup.dta",replace
 
@@ -194,10 +201,10 @@ drop if flag == 1
 
 *** make missing
 replace ratio_living_wage = "NA" if state == "09"
-replace ratio_living_wage_quality = "" if state == "09"
+replace ratio_living_wage_quality = "NA" if state == "09"
 
 *** assert 
-assert ratio_living_wage_quality == "" if ratio_living_wage == "NA"
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 
 *** correct subgroup variables
 replace subgroup_type = 1 if state == "09"
@@ -243,7 +250,7 @@ tab subgroup if _fillin == 1, m  // confirm no all values were filled in
 replace subgroup_type = 2 if _fillin == 1
 
 replace ratio_living_wage = "NA" if _fillin == 1
-replace ratio_living_wage_quality = "" if _fillin == 1 
+replace ratio_living_wage_quality = "NA" if _fillin == 1 
 
 *** assert number of counties
 distinct state county, joint // to confirm there are 3143 counties in the dataset
@@ -254,9 +261,9 @@ distinct state county subgroup if subgroup_type == 2, joint // to confirm there 
 count if missing(subgroup)
 count if missing(subgroup_type)
 
-keep year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
+keep year state county subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
-order year state county state_name county_name subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
+order year state county subgroup_type subgroup ratio_living_wage ratio_living_wage_quality
 
 sort year state county subgroup
 

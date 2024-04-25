@@ -1,0 +1,248 @@
+---
+title: "Combine Disability County Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Disability files
+
+Create population file with a variable for disability. 
+
+```{r}
+
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "with disability", "without disability")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "disability", "all")) %>% 
+  select(-population) %>% 
+  write_csv(here("data", "temp", "county-populations_disability.csv"))
+
+```
+
+Read file paths to all county files with disability subgroup information. 
+
+```{r}
+
+filepaths <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "county-populations_disability.csv"),
+
+# 08 education
+here("08_education/data/final/metrics_college_county_disability_longitudinal.csv"),
+
+# 09 employment
+here("09_employment/data/final/metrics_employment_county_disability_longitudinal.csv")
+
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+
+db_disability <- filepaths |>
+  map(
+    .f = ~read_csv(.x)
+  ) |>
+  reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
+
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_disability %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_disability  <- db_disability |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_disability  <- db_disability  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should be 9,432 in a year (3X3144) and at the least there should be 9,426 in a year (3X3142).
+
+```{r}
+
+db_disability |> 
+  count(year) |>
+  assert(
+    within_bounds(9426, 9432), 
+    n
+  )
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_disability |>
+  filter(subgroup != "All") |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_disability  |>
+  filter(subgroup != "All") |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_disability |>
+  select(ends_with("_quality")) |>
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
+
+```
+
+
+### 08 Education
+
+```{r}
+db_disability |>
+  assert(
+    within_bounds(0, 1),
+    share_hs_degree,
+    share_hs_degree_lb,
+    share_hs_degree_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_disability, 
+  estimate = share_hs_degree, 
+  lb = share_hs_degree_lb, 
+  ub = share_hs_degree_ub
+)
+```
+
+### 09 Employment
+
+```{r}
+db_disability |>
+  assert(
+    within_bounds(0, 1),
+    share_employed,
+    share_employed_lb,
+    share_employed_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_disability, 
+  estimate = share_employed, 
+  lb = share_employed_lb, 
+  ub = share_employed_ub
+)
+
+```
+
+## Write the File
+
+```{r}
+
+write_csv(db_disability, here("data", "18_mobility-metrics_county_disability_longitudinal.csv"))
+```
