@@ -1,0 +1,281 @@
+---
+title: "Combine Income County Files"
+author: "Aaron R. Williams & JP Walsh"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+execute:
+  message: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r quarto-setup, include = FALSE}
+options(knitr.kable.NA = "")
+
+```
+
+```{r load-packages}
+library(tidyverse)
+library(tidylog)
+library(here)
+library(assertr)
+library(gt)
+
+```
+
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+
+```{r}
+#' Test the bounds of a confidence interval relative to the estimate
+#'
+#' @param data The data frame of interest
+#' @param estimate The unquoted name of the estimate variable
+#' @param lb The unquoted name of the lower bound variable
+#' @param ub The unquoted name of the upper bound variable
+#'
+test_bounds <- function(data, estimate, lb, ub) {
+  
+  subset <- bind_rows(
+    data |>
+      filter({{ ub }} < {{ lb }}),
+    data |>
+      filter({{ estimate }} > {{ ub }}),
+    data |>
+      filter({{ estimate  }} < {{ lb }}),
+  )
+  
+  stopifnot(nrow(subset) == 0)
+  
+}
+
+
+#' Helper function to silence output from testing code
+#'
+#' @param data A data frame
+#'
+quiet <- function(data) {
+  
+  quiet <- data
+  
+}
+
+```
+
+## Construct Database
+
+### Temporary Fix
+
+```{r}
+read_csv(here("06_neighborhoods/environment/data/final/environment_county_poverty_longitudinal.csv")) |>
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "income"))|>
+  write_csv(here("data", "temp", "county_envir_longitudinal_econ-well-being.csv"))
+
+```
+
+### Income and economic disadvantage 
+
+Create population file with a variable covering all income subgroup values.
+
+```{r}
+expand_grid(
+  read_csv(here("geographic-crosswalks", "data", "county-populations.csv")),
+           subgroup = c("All", "Economically Disadvantaged", "Not Economically Disadvantaged", 
+                        "Less than $50,000", "$50,000 or More", "Extreme Poverty", "Not Extreme Poverty")
+) %>% 
+   mutate(subgroup_type = ifelse(subgroup != "All", "income", "all")) %>% 
+  select(-population) %>% 
+  write_csv(here("data", "temp", "county-populations_econ_dis.csv"))
+
+```
+
+Read file paths to all county files with income subgroup information. 
+
+```{r}
+filepaths <- c(
+  
+  # Race-ethnicity populations
+  here("data", "temp", "county-populations_econ_dis.csv"),
+  
+  # 06 neighborhoods
+  here("data", "temp", "county_envir_longitudinal_econ-well-being.csv"),
+  
+  # 08 education
+  here("08_education/SEDA_all_subgroups_county.csv"),
+  here("08_education/final/digital_access_county_subgroup_all.csv")
+  
+)
+
+```
+
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
+
+```{r}
+
+db_income <- filepaths |>
+  map(
+    .f = ~read_csv(.x)
+  ) |>
+  reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
+
+```
+
+We used old learning rate data, so we rename the variables.
+
+```{r}
+db_income  <- db_income  |>
+  rename(
+    rate_learning = learning_rate,
+    rate_learning_lb = learning_rate_lb,
+    rate_learning_ub = learning_rate_ub,
+    rate_learning_quality = learning_rate_quality
+  )
+
+```
+
+### Clean file
+
+Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.
+
+```{r}
+
+years_data <- db_income %>% 
+  group_by(year) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  group_by(year) %>% 
+  count() %>% 
+  select(year) %>% 
+  pull()
+
+```
+
+Filter for only years that have data available.
+
+```{r}
+db_income  <- db_income  |>
+  filter(year %in% years_data)
+```
+
+The quality flags are currently inputed as numbers 1 through 3. Update the data so these are labeled as text: 1="Strong", 2="Marginal", 3="Weak".
+
+```{r}
+db_income  <- db_income  |>
+  mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
+```
+
+
+## Quality and Completeness
+
+### Dimensions
+
+At most there should be 22,008 in a year (7X3144) and at the least there should be 21,994 in a year (7X3142).
+
+```{r}
+
+db_income |> 
+  count(year) |>
+  assert(
+    within_bounds(21994, 22008), 
+    n
+  )
+
+```
+
+### Data Quality Flags
+
+This section summarizes data quality flags for variables and years.
+
+```{r}
+db_income |>
+  filter(subgroup != "All") |>
+  select(ends_with("_quality")) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "quality") |>
+  count(variable, quality) |>
+  filter(!is.na(quality)) |>
+  print(n = 100)
+
+db_income  |>
+  filter(subgroup != "All") |>
+  select(year, ends_with("_quality")) |>
+  pivot_longer(-year, names_to = "variable", values_to = "quality") |>
+  count(year, quality) |>
+  print(n = 100)
+
+```
+
+### Full Database
+
+Evaluate the quality variables. 
+
+```{r}
+db_income |>
+  select(ends_with("_quality")) |>
+  assert(in_set("Strong", "Marginal", "Weak"), everything())
+
+```
+
+### 06 Neighborhoods
+
+```{r}
+db_income |>
+  assert(
+    within_bounds(0, 100),
+    index_air_hazard
+  ) |>
+  quiet()
+
+```
+
+### 08 Education
+
+```{r}
+db_income |>  
+  assert(
+    within_bounds(-10, 10), 
+    rate_learning,
+    rate_learning_lb,
+    rate_learning_ub
+  ) |>
+  quiet()
+
+db_income |>
+  assert(
+    within_bounds(0, 1),
+    share_digital_access,
+    share_digital_access_lb,
+    share_digital_access_ub,
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_income, 
+  estimate = share_digital_access, 
+  lb = share_digital_access_lb, 
+  ub = share_digital_access_ub
+)
+
+test_bounds(
+  data = db_income, 
+  estimate = rate_learning, 
+  lb = rate_learning_lb, 
+  ub = rate_learning_ub
+)
+
+```
+
+
+## Write the File
+
+```{r}
+
+write_csv(db_income, here("data", "14_mobility-metrics_county_income_longitudinal.csv"))
+
+```
