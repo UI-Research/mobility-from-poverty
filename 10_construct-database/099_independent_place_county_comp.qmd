@@ -1,5 +1,5 @@
 ---
-title: "99_independent_place_county_comp"
+title: "099_test_county_independent_city"
 author: "JP Walsh"
 date: today
 format:
@@ -26,6 +26,7 @@ library(tidylog)
 library(here)
 library(assertr)
 library(gt)
+library(reactable)
 
 options(scipen = 999)
 ```
@@ -74,7 +75,7 @@ compare_wide <- function(counties, places, .year, .variable, .subgroup = NULL) {
     suffix = c("_c", "_p")
   ) |>
     mutate(
-      error = round(county_temp_value - place_temp_value, digits = 5),
+      error = round(county_temp_value - place_temp_value, digits = 3),
       equal = county_temp_value == place_temp_value
     ) |>
     select(-county_temp_value, -place_temp_value)
@@ -83,137 +84,125 @@ compare_wide <- function(counties, places, .year, .variable, .subgroup = NULL) {
 ```
 
 
-## Longitudinal Data        
+## Combined files       
 
-Employment metric.
+Read the overall files and race-ethnciity subgroup files.
 ```{r}
 
-counties <- read_csv(here("09_employment", "data", "final",  "metrics_employment_county_all_longitudinal.csv")) |>
+counties <- read_csv(here("data", "11_mobility-metrics_county_longitudinal.csv")) |>
   filter(paste0(state, county) %in% paste0(fips$state, fips$county))
 
-places <- read_csv(here("09_employment", "data", "final",  "metrics_employment_place_all_longitudinal.csv")) |>
+places <- read_csv(here("data", "61_mobility-metrics_place_longitudinal.csv")) |>
+  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
+  inner_join(fips, by = c("state", "place")) |>
+  select(year, state, place, county, everything())
+
+counties_race <- read_csv(here("data", "12_mobility-metrics_county_race-ethnicity_longitudinal.csv")) |>
+  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
+
+places_race <- read_csv(here("data", "62_mobility-metrics_place_race-ethnicity_longitudinal.csv")) |>
   filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
   inner_join(fips, by = c("state", "place")) |>
   select(year, state, place, county, everything())
 
 ```
 
-
-```{r}
-compare_wide(counties, places, .year = 2022, .variable = share_employed)
-```
-
-Income metric. 
+### Financial well-being
 
 ```{r}
 
-counties <- read_csv(here("01_financial-well-being", "data", "final",  "metrics_income_county_all_longitudinal.csv")) |>
-  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
+compare_wide(counties, places, .year = 2021, .variable = share_debt_coll) %>% 
+  reactable()
 
-places <- read_csv(here("01_financial-well-being", "data", "final",  "metrics_income_place_all_longitudinal.csv")) |>
-  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
-  inner_join(fips, by = c("state", "place")) |>
-  select(year, state, place, county, everything())
+compare_wide(counties_race, places_race, .year = 2021, .variable = pctl_income_80, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal)) %>% 
+  reactable()
+
 
 ```
 
+### Housing 
 
 ```{r}
-compare_wide(counties, places, .year = 2022, .variable = pctl_20)
+
+compare_wide(counties_race, places_race, .year = 2021, .variable = count_homeless, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
+compare_wide(counties, places, .year = 2021, .variable = share_affordable_available_30_ami)%>% 
+  reactable()
+compare_wide(counties, places, .year = 2021, .variable = share_affordable_80_ami)%>% 
+  reactable()
+
 ```
+
+### local-governance
 
 ```{r}
-compare_wide(counties, places, .year = 2022, .variable = pctl_50)
+
+compare_wide(counties, places, .year = 2021, .variable = share_desc_rep_other)%>% 
+  reactable()
+compare_wide(counties, places, .year = 2020, .variable = share_election_turnout)%>% 
+  reactable()
 ```
+
+### 06 neighborhoods
 
 ```{r}
-compare_wide(counties, places, .year = 2022, .variable = pctl_80)
-```
 
-
-## Race/Ethnicity Data        
-
-Employment metric.
-```{r}
-
-counties_race_ethnicity <- read_csv(here("09_employment", "data", "final",  "metrics_employment_county_race-ethnicity_longitudinal.csv")) |>
-  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
-
-places_race_ethnicity <- read_csv(here("09_employment", "data", "final",  "metrics_employment_place_race-ethnicity_longitudinal.csv")) |>
-  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
-  inner_join(fips, by = c("state", "place")) |>
-  select(year, state, place, county, everything())
-
-```
-
-```{r}
-compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = share_employed, .subgroup = "subgroup")
-```
-
-Income metric.
-```{r}
-
-counties_race_ethnicity <- read_csv(here("01_financial-well-being", "data", "final",  "metrics_income_county_race-ethnicity_longitudinal.csv")) |>
-  filter(paste0(state, county) %in% paste0(fips$state, fips$county))
-
-places_race_ethnicity <- read_csv(here("01_financial-well-being", "data", "final",  "metrics_income_place_race-ethnicity_longitudinal.csv")) |>
-  filter(paste0(state, place) %in% paste0(fips$state, fips$place)) |>
-  inner_join(fips, by = c("state", "place")) |>
-  select(year, state, place, county, everything())
+compare_wide(counties, places, .year = 2021, .variable = share_black_nh_exposure)%>% 
+  reactable()
+compare_wide(counties_race %>% 
+               rename(share_poverty_exposure =poverty_exposure), 
+             places_race, .year = 2021, .variable = share_poverty_exposure, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
+compare_wide(counties, places, .year = 2021, .variable = count_membership_associations_per_10k)%>% 
+  reactable()
+compare_wide(counties, places, .year = 2019, .variable = index_air_hazard)%>% 
+  reactable()
+compare_wide(counties, places, .year = 2019, .variable = index_transit_trips)%>% 
+  reactable()
+compare_wide(counties, places, .year = 2019, .variable = index_transportation_cost)%>% 
+  reactable()
 
 ```
+
+### 07 safety
 
 ```{r}
-compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_20, .subgroup = "subgroup")
+compare_wide(counties, places, .year = 2021, .variable = rate_crime_violent)%>% 
+  reactable()
+compare_wide(counties_race, places_race, .year = 2021, .variable = rate_juv_arrest, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
 ```
+
+### 08 education
 
 ```{r}
-compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_50, .subgroup = "subgroup")
+
+compare_wide(counties_race, places_race, .year = 2021, .variable = share_in_preschool, .subgroup = "subgroup") %>% 
+  filter(!is.na(share_in_preschool_c))%>% 
+  reactable()
+compare_wide(counties_race, places_race, .year = 2017, .variable = rate_learning, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
+compare_wide(counties, places, .year = 2020, .variable = share_meps20_black)%>% 
+  reactable()
+compare_wide(counties_race, places_race, .year = 2021, .variable = share_hs_degree, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
+compare_wide(counties_race, places_race, .year = 2021, .variable = share_digital_access, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
+
 ```
+
+### 09 employment
 
 ```{r}
-compare_wide(counties_race_ethnicity, places_race_ethnicity, .year = 2021, .variable = pctl_80, .subgroup = "subgroup")
+compare_wide(counties_race, places_race, .year = 2021, .variable = share_employed, .subgroup = "subgroup") %>% 
+  filter(!is.na(equal))%>% 
+  reactable()
 ```
-
-
-#Compare IPUMS data
-There are 3 independent places/counties where the results differ and all are in Virginia (650, 700, 760) and only in the pre-2022 data.
-
-Read in the PUMA to county and PUMA to places crosswalk files to try to identify the differences.
-```{r}
-
-puma_county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
-puma_place_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv")) 
-```
-
-For county 659 in Virginia, the place crosswalk includes a very small portion of a PUMA that is not included in the county crosswalk.
-```{r}
-puma_place_crosswalk %>% 
-  filter(statefip == 51, place == 35000)
-
-puma_county_crosswalk %>% 
-  filter(statefip == 51, county == 650)
-```
-
-
-For county 700 in Virginia, the place crosswalk also includes a very small portion of a PUMA that is not included in the county crosswalk.
-```{r}
-puma_place_crosswalk %>% 
-  filter(statefip == 51, place == 56000)
-
-puma_county_crosswalk %>% 
-  filter(statefip == 51, county == 700)
-```
-
-
-For county 760 in Virginia, the same issue exists.
-```{r}
-puma_place_crosswalk %>% 
-  filter(statefip == 51, place == 67000)
-
-puma_county_crosswalk %>% 
-  filter(statefip == 51, county == 760)
-```
-
-
 
