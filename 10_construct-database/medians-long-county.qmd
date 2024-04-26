@@ -1,0 +1,207 @@
+---
+title: "Calculate Medians for Dashboard - Longitudinal"
+author: "Judah Axelrod and Aaron R. Williams, Updated by Kassandra Martinchek"
+date: today
+format:
+  html:
+    df-print: kable
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: true
+    grid:
+      body-width: 1200px
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+# Mobility metrics median calculations
+
+This code calculates weighted medians of the mobility metrics at the county level.
+
+We exclude missing values and calculate the proportion of places and proportion of population missing for each metric. The function below is used to calculate the proportion of population missing for each metric.
+
+```{r}
+missing_share <- function(x, weight) {
+  
+  sum(as.numeric(is.na(x)) * weight) / sum(weight)
+  
+}
+
+```
+
+
+The steps taken for calculating the median estimates are as follow:
+
+-   Calculate the population-weighted median
+-   Calculate the proportion of counties that are missing
+-   Calculate the proportion of people that are missing
+
+# County level
+
+## Load Packages
+
+```{r}
+#| label: load-packages
+
+options(scipen = 999)
+
+library(tidyverse)
+library(here)
+library(tidycensus)
+library(kableExtra)
+
+```
+
+## Load Data
+
+```{r}
+#| label: load-data
+metrics <- read_csv(here("data", "11_mobility-metrics_county_longitudinal.csv")) |>
+  select(-ends_with("_lb"), -ends_with("_ub"))
+
+# Create crosswalk for each variable's corresponding quality field
+metric_qual_crosswalk <- as_tibble(
+  metrics |> 
+  select((where(is.numeric) & !matches('quality')) | index_air_hazard_quality) |> # why is air quality singled out here
+  colnames()
+) |> 
+  rename(name = value) |> 
+  mutate(qual_varname = case_when(
+    str_detect(name, 'pctl_income') ~ 'pctl_income_quality',
+    str_detect(name, 'share_affordable') ~ 'share_affordable_quality',
+    str_detect(name, 'homeless') ~ 'homeless_quality',
+    str_detect(name, 'crime') ~ 'rate_crime_quality',
+    str_detect(name, 'share_desc_rep') ~ NA, # No quality variables for these
+    TRUE ~ str_c(name, '_quality')
+  ))
+```
+
+We load county-level population estimates from the 2020 decennial census.
+
+```{r}
+# Not available for 2014 so set that year equal to 2015 values
+population <- map_dfr(c(2015, 2015:2022), ~get_estimates(
+  geography = "county", 
+  product = "population",
+  year = .x
+),
+.id = 'year') |>
+  filter(variable %in% c('POP', 'POPESTIMATE')) |> 
+  mutate(
+    year = as.numeric(year) + 2013,
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  ) |>
+  select(state, county, population = value, year)
+
+metrics <- left_join(metrics, population, by = c("state", "county", "year")) # there is already population in the metrics-- does this need to happen?
+
+sum(is.na(metrics$population.y)) # 16 missing when use data for Y but 3142 missing for X
+metrics <- metrics |> filter(!is.na(population.y)) # throws an error-- assess if this can be eliminated?; error because there are two population variables, fixed with code update 
+```
+
+## Calculate Medians
+
+We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American.
+
+```{r}
+# Remove missing variable-year combos 
+safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
+
+weighted_median <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  summarize(
+    across(
+      .cols = -population.y, 
+      .fns = ~safe_wtd_quantile(., weights = population.y, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median")
+
+state_count <- metrics |> 
+    mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
+  pivot_longer(cols = ends_with('_quality') & -index_air_hazard_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  filter(quality %in% 1:2) |> 
+  count(state_name, year, qual_varname) |> 
+  count(qual_varname, year, name = 'n_states')
+ 
+proportion_by_qual <- metrics |>
+  mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
+  select(where(is.numeric)) |>
+  pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
+  summarize(population = sum(population.y),
+   .by = c('year', 'qual_varname', 'quality')
+  ) |> 
+  mutate(pop_share = population / sum(population), .by = c('year', 'qual_varname')) |> 
+  filter(quality %in% 2:3) |> 
+  select(-population) |> 
+  arrange(qual_varname, quality)
+
+
+missing_population <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |>
+  summarize(
+    across(
+      .cols = -population.y, 
+      .fns = ~missing_share(.x, weight = population.y)
+    ), .by='year') |> 
+  pivot_longer(cols = -year, values_to = "missing_population")
+ 
+missing_county <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |>
+  summarize(
+    across(
+      .cols = -population.y, 
+      .fns = ~sum(is.na(.x)) / n()
+    ), .by = 'year') |> 
+  pivot_longer(cols = -year, values_to = "missing_county")
+  
+low_pctle <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  summarize(
+    across(
+      .cols = -population.y, 
+      .fns = ~safe_wtd_quantile(., weights = population.y, probs = 0.05, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "low_pctle")
+
+high_pctle <- metrics |>
+  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  summarize(
+    across(
+      .cols = -population.y, 
+      .fns = ~safe_wtd_quantile(., weights = population.y, probs = 0.95, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "high_pctle")
+
+weighted_median |> 
+  full_join(low_pctle, by = c("year", "name")) |>
+  full_join(high_pctle, by = c("year", "name")) |>  
+  full_join(missing_population, by = c("year", "name")) |>
+  full_join(missing_county, by = c("year", "name")) |>
+  left_join(metric_qual_crosswalk, by = "name") |> 
+  left_join(proportion_by_qual, by = c("year", "qual_varname")) |>  #M:M Merge is expected behavior here 
+  left_join(state_count, by = c("year", "qual_varname")) |> 
+  pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |> 
+  select(-qual_varname, -qualityNA_popshare) |> 
+  mutate(across(where(is.numeric), ~round(.,digits=2))) |> 
+  rowwise() |> 
+  # Share of pop that is either missing or quality = 3 for that metric
+  mutate(share_lq3 = sum(missing_population, quality3_popshare, na.rm = TRUE)) |> 
+  # Remove all-missing metric-years
+  filter(missing_county < 1) |> 
+  kbl() |> 
+  kable_styling(font_size = 10, fixed_thead = TRUE)
+
+
+```
+
