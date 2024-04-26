@@ -62,21 +62,6 @@ library(kableExtra)
 metrics <- read_csv(here("data", "11_mobility-metrics_county_longitudinal.csv")) |>
   select(-ends_with("_lb"), -ends_with("_ub"))
 
-# Create crosswalk for each variable's corresponding quality field
-metric_qual_crosswalk <- as_tibble(
-  metrics |> 
-  select((where(is.numeric) & !matches('quality')) | index_air_hazard_quality) |> # why is air quality singled out here
-  colnames()
-) |> 
-  rename(name = value) |> 
-  mutate(qual_varname = case_when(
-    str_detect(name, 'pctl_income') ~ 'pctl_income_quality',
-    str_detect(name, 'share_affordable') ~ 'share_affordable_quality',
-    str_detect(name, 'homeless') ~ 'homeless_quality',
-    str_detect(name, 'crime') ~ 'rate_crime_quality',
-    str_detect(name, 'share_desc_rep') ~ NA, # No quality variables for these
-    TRUE ~ str_c(name, '_quality')
-  ))
 ```
 
 We load county-level population estimates from the 2020 decennial census.
@@ -112,7 +97,7 @@ We calculate weighted medians for each numeric variable. This means our estimate
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
 weighted_median <- metrics |>
-  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
     across(
       .cols = -population.y, 
@@ -125,7 +110,7 @@ state_count <- metrics |>
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
                                                  . == "Weak" ~ 3))) |>
-  pivot_longer(cols = ends_with('_quality') & -index_air_hazard_quality, names_to = 'qual_varname', values_to = 'quality') |> 
+  pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
   filter(quality %in% 1:2) |> 
   count(state_name, year, qual_varname) |> 
   count(qual_varname, year, name = 'n_states')
@@ -146,7 +131,7 @@ proportion_by_qual <- metrics |>
 
 
 missing_population <- metrics |>
-  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |>
+  select(where(is.numeric) & (!ends_with('quality'))) |>
   summarize(
     across(
       .cols = -population.y, 
@@ -155,7 +140,7 @@ missing_population <- metrics |>
   pivot_longer(cols = -year, values_to = "missing_population")
  
 missing_county <- metrics |>
-  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |>
+  select(where(is.numeric) & (!ends_with('quality'))) |>
   summarize(
     across(
       .cols = -population.y, 
@@ -164,7 +149,7 @@ missing_county <- metrics |>
   pivot_longer(cols = -year, values_to = "missing_county")
   
 low_pctle <- metrics |>
-  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
     across(
       .cols = -population.y, 
@@ -174,7 +159,7 @@ low_pctle <- metrics |>
   pivot_longer(cols = -year, values_to = "low_pctle")
 
 high_pctle <- metrics |>
-  select(where(is.numeric) & (!ends_with('quality') | index_air_hazard_quality)) |> 
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
     across(
       .cols = -population.y, 
@@ -183,12 +168,12 @@ high_pctle <- metrics |>
   ) |>
   pivot_longer(cols = -year, values_to = "high_pctle")
 
-weighted_median |> 
+weighted_med_table <- weighted_median |> 
   full_join(low_pctle, by = c("year", "name")) |>
   full_join(high_pctle, by = c("year", "name")) |>  
   full_join(missing_population, by = c("year", "name")) |>
   full_join(missing_county, by = c("year", "name")) |>
-  left_join(metric_qual_crosswalk, by = "name") |> 
+  mutate(qual_varname = paste0(name, '_quality')) |>
   left_join(proportion_by_qual, by = c("year", "qual_varname")) |>  #M:M Merge is expected behavior here 
   left_join(state_count, by = c("year", "qual_varname")) |> 
   pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |> 
@@ -198,10 +183,25 @@ weighted_median |>
   # Share of pop that is either missing or quality = 3 for that metric
   mutate(share_lq3 = sum(missing_population, quality3_popshare, na.rm = TRUE)) |> 
   # Remove all-missing metric-years
-  filter(missing_county < 1) |> 
+  filter(missing_county < 1 & name != 'population.x') |> 
+  ungroup()
+
+weighted_med_table |> 
   kbl() |> 
   kable_styling(font_size = 10, fixed_thead = TRUE)
-
-
 ```
 
+
+```{r plot-lq3-by-varyear}
+weighted_med_table |>
+  mutate(year = as.factor(year)) |> 
+  # summarize(share_lq3 = mean(share_lq3), .by='name') |> 
+  ggplot(aes(x=share_lq3, y=name, color=year)) +
+  geom_point(alpha = 0.7) + 
+  geom_jitter() +
+  labs(
+    title = "County Medians Quality (Averaged across Years)",
+    x = "Share NA or Quality==3",
+    y = NULL
+  )
+```
