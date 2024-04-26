@@ -1,0 +1,214 @@
+---
+title: "National medians file (mock)"
+author: "JP Walsh (Judah Axelrod and Aaron R. Williams)"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: true
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+# Mobility metrics median calculations (mock version)
+
+This code calculates a mock file of weighted medians from the mobility metrics at the county and then the place level for each year for each metric.
+For years where a given metric was not calculated the median result will show up as NA. 
+
+## Load Packages
+
+```{r}
+#| label: load-packages
+
+options(scipen = 999)
+
+library(tidyverse)
+library(here)
+library(tidycensus)
+
+theme_set(theme_minimal())
+
+```
+
+# County level
+
+## Load Data
+
+```{r}
+#| label: load-data
+metrics <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) |>
+  select(-ends_with("_lb"), -ends_with("_ub"))
+
+```
+
+We load county-level population estimates from the 2020 decennial census.
+
+```{r}
+population <- get_decennial(
+  geography = "county", 
+  variables = "P1_001N", 
+  year = 2020
+) |>
+  mutate(
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  ) |>
+  select(state, county, population = value)
+
+metrics <- left_join(metrics, population, by = c("state", "county"))
+
+# sum(is.na(metrics$population))
+
+```
+
+## Calculate Medians
+
+We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. 
+
+```{r}
+
+years <- c(2014:2022)
+
+create_national_median <- function(year_select) {
+
+metrics_clean <- metrics %>% 
+  filter(year == year_select)
+
+metrics_clean <- metrics_clean[,colSums(is.na(metrics_clean))<nrow(metrics_clean)]
+
+if("index_air_quality" %in% colnames(metrics_clean))
+{
+
+metrics_clean |>
+  mutate(county_state = paste0(county_name, ', ', state_name)) |> 
+  select(year, county_state, where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
+  group_by(year) |>
+  summarize(
+    across(
+      .cols = -c('county_state', 'population'), 
+      .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE))
+    )
+  ) |>
+  pivot_longer(cols = -year, 
+               names_to = c('.value', 'group'),
+               names_pattern = "(.+)_\\.(.+)")
+  
+} else { 
+
+metrics_clean |>
+  mutate(county_state = paste0(county_name, ', ', state_name)) |> 
+  select(year, county_state, where(is.numeric) & (!ends_with('quality'))) |>
+  group_by(year) |>
+  summarize(
+    across(
+      .cols = -c('county_state', 'population'), 
+      .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE))
+    )
+  ) |>
+  pivot_longer(cols = -year, 
+               names_to = c('.value', 'group'),
+               names_pattern = "(.+)_\\.(.+)")
+}
+
+}
+
+county_medians <- map_df(years, ~create_national_median(year_select = .x)) |> 
+  write_csv(here::here("10_construct-database", "county_medians_years_mock.csv"))
+
+
+```
+
+# Place level
+
+This section of the code calculates variable medians at the place level.
+
+## Load Data
+
+```{r}
+#| label: load-data-place
+metrics <- read_csv(here("data", "05_mobility-metrics_place_longitudinal.csv")) |>
+  select(-ends_with("_lb"), -ends_with("_ub"))
+
+```
+
+We load place-level population estimates from the 2020 decennial census.
+
+```{r}
+population <- get_decennial(
+  geography = "place", 
+  variables = "P1_001N", 
+  year = 2020
+) |>
+  mutate(
+    state = str_sub(GEOID, start = 1, end = 2),
+    place = str_sub(GEOID, start = 3, end = 7)
+  ) |>
+  select(state, place, population = value)
+
+metrics <- left_join(metrics, population, by = c("state", "place"))
+
+sum(is.na(metrics$population))
+
+```
+
+## Calculate Medians
+
+We calculate weighted medians for each numeric variable. Note that in 2014-15 the only variables that existed in the place level file are ratios and not numeric so we do not calculate medians from these years. 
+
+```{r}
+
+years <- c(2016:2021)
+
+create_national_median <- function(year_select) {
+
+metrics_clean <- metrics %>% 
+  filter(year == year_select)
+
+metrics_clean <- metrics_clean[,colSums(is.na(metrics_clean))<nrow(metrics_clean)]
+
+if("index_air_quality" %in% colnames(metrics_clean))
+{
+
+metrics_clean |>
+  mutate(place_state = paste0(place_name, ', ', state_name)) |> 
+  select(year, place_state, where(is.numeric) & (!ends_with('quality') | index_air_quality)) |>
+  group_by(year) |>
+  summarize(
+    across(
+      .cols = -c('place_state', 'population'), 
+      .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE))
+    )
+  ) |>
+  pivot_longer(cols = -year, 
+               names_to = c('.value', 'group'),
+               names_pattern = "(.+)_\\.(.+)")
+  
+} else { 
+
+metrics_clean |>
+  mutate(place_state = paste0(place_name, ', ', state_name)) |> 
+  select(year, place_state, where(is.numeric) & (!ends_with('quality'))) |>
+  group_by(year) |>
+  summarize(
+    across(
+      .cols = -c('place_state', 'population'), 
+      .fns = list(.wtd_med = ~Hmisc::wtd.quantile(., weights = population, probs = 0.5, na.rm = TRUE))
+    )
+  ) |>
+  pivot_longer(cols = -year, 
+               names_to = c('.value', 'group'),
+               names_pattern = "(.+)_\\.(.+)")
+}
+
+}
+
+place_medians <- map_df(years, ~create_national_median(year_select = .x))  |> 
+  write_csv(here::here("10_construct-database", "place_medians_years_mock.csv"))
+
+
+```
+
