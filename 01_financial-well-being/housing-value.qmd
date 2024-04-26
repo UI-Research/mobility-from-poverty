@@ -1,0 +1,1160 @@
+---
+title: "Housing Value"
+author: " Manu Alcalá Kovalski"
+date: now
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+    code-fold: show
+    code-tools: true
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+---
+
+```{=html}
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+```
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+This program creates the **Housing Value** metric defined as the ratio between
+the share of a community’s housing wealth held by a racial or ethnic group to
+the share of households of the same group metric
+
+Initially written by Jung Hyun Choi and updated by Manu Alcalá Kovalski
+in 2023-2024.
+
+## Process
+
+-   [Housekeeping](#housekeeping)
+-   [Read Data](#read-data)
+-   [Clean Data](#clean-data)
+-   [Merge Crosswalk](#merge-crosswalk)
+-   [Create Housing Value Metric](#create-metric)
+-   [Evaluate Results](#evaluate-results)
+-   [Export](#export)
+
+## Housekeeping {#sec-housekeeping}
+
+```{r}
+#| label: setup
+
+options(scipen = 999)
+librarian::shelf(
+  tidyverse,
+  ipumsr,
+  here,
+  glue,
+  labelled,
+  skimr,
+  UrbanInstitute / urbnthemes,
+  tidylog,
+  assertr
+)
+set_urbn_defaults(style = "print")
+```
+
+### Read Data {#sec-read-data}
+
+We extract the 1 year ACS files from the IPUMS API using `ipumsr`. You will need
+to have an API key in order to do so. If you don't have one, you can register to
+the [IPUMS
+USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu)
+data collection and create an API key. For more information on how to get an API
+key, see the `ipumsr` [getting started
+vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
+
+By default, `ipumsr` API functions assume that your key is stored in the
+**IPUMS\_API\_KEY** environment variable. You can also provide your key directly
+to these functions, but storing it in an environment variable saves you some
+typing and helps prevent you from inadvertently sharing your key with others
+(for instance, on GitHub).
+
+You can save your API key to the IPUMS\_API\_KEY environment variable with
+`set_ipums_api_key(api_key = "paste-your-key-here", save = TRUE)`. This will add
+your API key to your .Renviron file in your user home directory.
+
+```{r}
+#| label: query-ipums-api
+#| cache: true
+#| eval: false
+## 2.1. ACS: keep households living not living in gq
+
+# Run this the first time you run this code to avoid requesting the same data
+# multiple times
+
+acs_vars <- c(
+  "YEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", "CLUSTER",
+  "STATEFIP", "COUNTYFIP", "MET2013", "CITY", "PUMA", "STRATA",
+  "GQ", "OWNERSHP", "OWNERSHPD", "VALUEH", "PERNUM", "PERWT",
+  "RACE", "RACED", "HISPAN", "HISPAND", "AGE"
+)
+
+years <- 2014:2022
+usa_ext_def <- define_extract_usa(
+  description = "ACS 1 Year 2014-2022",
+  samples = paste0("us", years, "a"),
+  variables = acs_vars
+)
+
+# usa_ext_submitted <- submit_extract(usa_ext_def)
+# usa_ext_complete <- wait_for_extract(usa_ext_submitted)
+
+# download_extract() will return a character vector including the file paths
+# to all downloaded files.
+# Create a data folder before running this if it doesn't exist
+
+# fs::dir_create(here("01_financial-well-being/data"))
+
+# filepath <- download_extract(usa_ext_complete,
+#   download_dir = here("01_financial-well-being/data")
+# )
+```
+
+### Clean data {#sec-clean-data}
+
+We load the 2014-2022 1 Year ACS microdata we downloaded from IPUMS above. IPUMS
+loads the data as a person-level data set with some household
+variables.Therefore, we can analyze the data at the household level by keeping
+the first person sampled in the household.
+
+```{r}
+#| label: load-acs
+#| cache: true
+#| dependson: "import-acs-one-year"
+#| include: false
+
+# Manually set the microdata object equal to whatever the file you downloaded in
+# the previous chunk is called. In my case it is, "usa_00014.xml" but that will
+# be different for you.
+microdata <- "usa_00016.xml"
+
+acs1yr_raw <-
+  read_ipums_micro(here(glue("01_financial-well-being/data/{microdata}"))) |>
+  janitor::clean_names() |>
+  rename(
+    ownership = ownershp,
+    state = statefip,
+    county = countyfip,
+  ) |>
+  filter(
+    year != 2020,
+    pernum == 1
+  )
+```
+
+The
+[ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels)
+documentation says that:
+
+> "labelled vectors are not intended for use throughout the entire analysis
+> process. Instead, they should be used during the initial data preparation
+> process to convert raw data into values that are more meaningful. These can
+> then be converted to other variable types (often factors) for analysis.
+> Unfortunately, this isn’t a process that can typically be automated, as it
+> depends primarily on the research questions the data will be used to address.
+> However, ipumsr provides several functions to manipulate value labels to make
+> this process easier.
+
+A useful way of finding missing value labels is to call `ipums_var_info(acs1yr)`
+and inspect the `val_labels`.
+
+Notice that missing values for "value of housing units" (`valueh`) are labelled
+as 9999998, and 9999999. We fix this before doing any computations.
+
+```{r}
+#| label: handle-missingness
+
+
+acs1yr <-
+  acs1yr_raw |>
+  mutate(
+    valueh = lbl_na_if(valueh, ~ .lbl %in% c("Missing", "N/A")),
+  )
+
+acs1yr |>
+  assertr::verify(valueh < 9999998 | is.na(valueh))
+```
+
+Next, we exclude individuals living in group quarters because we only want
+households for this metric. In particular, we exclude people living in places
+other than housing units (e.g., correctional facilities, nursing homes, mental
+hospitals, dorms, barracks, group homes, missions). For more information, see
+the [variable
+description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on
+IPUMS USA.
+
+```{r}
+#| label: keep-households-only
+acs1yr <-
+  acs1yr |>
+  mutate(gq = as_factor(gq)) |>
+  filter(!(gq %in% c("Group quarters--Institutions", "Other group quarters")))
+```
+
+FIPS codes should always contain leading zeros so that state codes are two
+digits, county codes are three digits, and place codes are five digits.
+
+```{r}
+#| label: clean-fips-codes
+
+acs1yr <-
+  acs1yr |>
+  mutate(
+    across(c(state, county, city, puma), as.character),
+    state = str_pad(state, width = 2, pad = "0", side = "left"),
+    county = str_pad(county, width = 3, pad = "0", side = "left"),
+    city = str_pad(city, width = 5, pad = "0", side = "left"),
+    puma = str_pad(puma, width = 5, pad = "0", side = "left")
+  )
+```
+
+We create two age subgroups: households over 45 and households under 45
+
+```{r}
+#| label: add-age-subgroup
+
+acs1yr <-
+  acs1yr |>
+  mutate(subgroup = if_else(age >= 45, "Age 45 and Over", "Under Age 45"))
+```
+
+We collapse IPUMS race and ethnicity categories into white non-hispanic, Black
+non-hispanic, other non-hispanic, and
+
+```{r}
+#| label: add-race-ethnicity-subgroup
+
+
+acs1yr <-
+  acs1yr |>
+  mutate(
+    race = lbl_relabel(race, lbl(10, "Other") ~ .lbl %in% c("American Indian or Alaska Native", "Chinese", "Japanese", "Other Asian or Pacific Islander", "Other race, nec", "Two major races", "Three or more major races")),
+    across(c(race, hispan), as_factor)
+  ) |>
+  mutate(
+    race_ethnicity = case_when(
+      race == "White" & hispan == "Not Hispanic" ~ "white_nh",
+      race == "Black/African American" & hispan == "Not Hispanic" ~ "black_nh",
+      race == "Other" & hispan == "Not Hispanic" ~ "other_nh",
+      hispan != "Not Hispanic" ~ "hispanic",
+      .default = NA_character_
+    ),
+    race_ethnicity = factor(race_ethnicity,
+      levels = c(
+        "white_nh",
+        "black_nh",
+        "hispanic",
+        "other_nh"
+      )
+    )
+  )
+```
+
+## Merge Crosswalk {#sec-merge-crosswalk}
+
+We merge our 1-year ACS data with PUMA-county and PUMA-place geocodes to get
+county and place boundaries.
+
+For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 county.
+For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2016 county.
+
+The weight of each household is adjusted by the area of the PUMA that falls into
+a given County/Place
+
+```{r}
+#| label: define-crosswalk-years
+
+acs1yr <-
+  acs1yr |>
+  mutate(crosswalk_period = if_else(year < 2022, "pre-2022", "2022"))
+
+# Check that only new planning regions are present in 2022 for CT
+assertthat::assert_that(
+  all.equal(acs1yr |>
+    select(year, state, county) |>
+    filter(state == "09", year == 2022) |>
+    distinct(county) |>
+    pull(), c("190", "000", "180", "170", "130", "140", "120"))
+)
+
+county_file <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+county_file |>
+  filter(year == 2021, state == "09")
+
+acs1yr |>
+  select(year, state, county) |>
+  filter(state == "09", year == 2021) |>
+  distinct(county)
+
+county_file |>
+  filter(year == 2021, state == "09")
+```
+
+::: panel-tabset
+#### County
+
+```{r}
+#| label: puma-to-county-crosswalk
+
+puma_county_crosswalk <-
+  read_csv(here::here(
+    "geographic-crosswalks",
+    "data",
+    "crosswalk_puma_to_county.csv"
+  )) |>
+  rename(
+    state = statefip,
+  ) |>
+  # Filter out Puerto Rico since this will be NA for the ACS data
+  filter(state != "72")
+
+
+households_county <-
+  acs1yr |>
+  right_join(puma_county_crosswalk,
+    by = c("state", "puma", "crosswalk_period")
+  ) |>
+  # if county isn't present in the ACS use county codes from PUMA-County crosswalk
+  mutate(
+    county = if_else(county.x != "000", county.x, county.y),
+    hhwt = if_else(county.x != "000", hhwt, hhwt * afact),
+    sum_products = if_else(county.x != "000", 1, sum_products)
+  ) |>
+  select(-c(county.x, county.y)) |>
+  # Remove old counties from 2022 Conneticut data
+  filter(!(year == 2022 & state == "09" & str_starts(county, "0")))
+
+puma_county_crosswalk |>
+  filter(state == "09", crosswalk_period == "2022") |>
+  distinct(county)
+```
+
+#### Place
+
+```{r}
+#| label: puma-to-place-crosswalk
+
+puma_place_crosswalk <-
+  read_csv(here::here(
+    "geographic-crosswalks",
+    "data",
+    "crosswalk_puma_to_place.csv"
+  )) |>
+  rename(state = statefip)
+
+households_place <-
+  acs1yr |>
+  right_join(puma_place_crosswalk,
+    by = c("state", "puma", "crosswalk_period")
+  ) |>
+  mutate(hhwt = hhwt * afact)
+```
+:::
+
+## Create Housing Value Metric {#sec-create-metric}
+
+### Housing Share
+
+We will now compute the share of households by race and ethnicity (i.e., total
+number of households for each race and ethnic group divided by the total number
+of households)
+
+::: panel-tabset
+### County
+
+```{r}
+#| label: share-of-households-by-race-ethnicity-county
+
+share_households_county <-
+  households_county |>
+  select(year, state, county, hhwt, race_ethnicity) |>
+  summarise(
+    household = sum(hhwt),
+    .by = c(year, state, county, race_ethnicity)
+  ) |>
+  mutate(
+    total = sum(household),
+    .by = c(year, state, county)
+  ) |>
+  mutate(share_households = household / total) |>
+  select(year, state, county, race_ethnicity, share_households)
+
+share_households_county_subgroup <-
+  households_county |>
+  select(year, state, county, hhwt, race_ethnicity, subgroup) |>
+  summarise(
+    household = sum(hhwt),
+    .by = c(year, state, county, race_ethnicity, subgroup)
+  ) |>
+  mutate(
+    total = sum(household),
+    .by = c(year, state, county, subgroup)
+  ) |>
+  mutate(share_households = household / total) |>
+  select(year, state, county, race_ethnicity, subgroup, share_households)
+```
+
+**Check:** Is `share_households` between 0 and 1?
+
+```{r}
+#| label: check-share-hh-county-check
+stopifnot(min(share_households_county$share_households) >= 0)
+stopifnot(max(share_households_county$share_households) <= 1)
+```
+
+We visualize the distribution of the share of households by race and ethnicity
+
+```{r}
+#| label: check-share-households-county
+
+share_households_county |>
+  drop_na() |>
+  ggplot(aes(x = share_households)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  facet_wrap(. ~ race_ethnicity) +
+  labs(
+    title = "Share of Households by Race and Ethnicity",
+    subtitle = "County",
+    y = "Count",
+    x = "Share of Households"
+  )
+
+summary(share_households_county)
+skimr::skim(share_households_county)
+```
+
+```{r}
+#| label: check-share-households-county-age
+
+share_households_county_subgroup |>
+  ggplot(aes(x = share_households)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  facet_wrap(race_ethnicity ~ subgroup, ncol = 2) +
+  labs(
+    title = "Share of Households by Race and Ethnicity",
+    subtitle = "County",
+    y = "Count",
+    x = "Share of Households"
+  )
+
+summary(share_households_county_subgroup)
+skimr::skim(share_households_county_subgroup)
+```
+
+### Place
+
+```{r}
+#| label:  share-of-households-by-race-ethnicity-place
+
+share_households_place <-
+  households_place |>
+  select(year, state, place, hhwt, race_ethnicity) |>
+  summarise(
+    households = sum(hhwt),
+    .by = c(year, state, place, race_ethnicity)
+  ) |>
+  mutate(
+    total_households = sum(households),
+    .by = c(year, state, place)
+  ) |>
+  mutate(share_households = households / total_households) |>
+  select(year, state, place, race_ethnicity, share_households)
+
+share_households_place_subgroup <-
+  households_place |>
+  select(year, state, place, hhwt, race_ethnicity, subgroup) |>
+  summarise(
+    households = sum(hhwt),
+    .by = c(year, state, place, race_ethnicity, subgroup)
+  ) |>
+  mutate(
+    total_households = sum(households),
+    .by = c(year, state, place, subgroup)
+  ) |>
+  mutate(share_households = households / total_households) |>
+  select(year, state, place, race_ethnicity, subgroup, share_households)
+```
+
+**Check:** Is `share_households` between 0 and 1?
+
+```{r}
+#| label: check-share-households-race-ethnicity-place
+
+stopifnot(min(share_households_place$share_households) >= 0)
+stopifnot(max(share_households_place$share_households) <= 1)
+
+share_households_place |>
+  ggplot(aes(x = share_households)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  facet_wrap(. ~ race_ethnicity) +
+  labs(
+    title = "Share of Households by Race and Ethnicity",
+    subtitle = "Place",
+    y = "Count",
+    x = "Share of Households"
+  )
+
+skimr::skim(share_households_place)
+summary(share_households_place)
+```
+
+```{r}
+#| label: check-share-households-place-age
+
+stopifnot(min(share_households_place_subgroup$share_households) >= 0)
+stopifnot(max(share_households_place_subgroup$share_households) <= 1)
+
+share_households_place_subgroup |>
+  ggplot(aes(x = share_households)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+  facet_wrap(subgroup ~ race_ethnicity, ncol = 2) +
+  labs(
+    title = "Share of Households by Race and Ethnicity",
+    subtitle = "Place",
+    y = "Count",
+    x = "Share of Households"
+  )
+
+skimr::skim(share_households_place_subgroup)
+summary(share_households_place_subgroup)
+```
+
+:::
+
+### Housing Value Share
+
+We keep observations for homeowners only in order to calculate total aggregated
+housing wealth for homeowners for each race and ethnic group divided by the
+total aggregated housing value
+
+```{r}
+#| label: total-house-values-by-race
+
+house_value_by_race <- function(data, ...) {
+  data |>
+    mutate(ownership = as_factor(ownership)) |>
+    filter(ownership == "Owned or being bought (loan)") |>
+    summarise(
+      house_value = sum(valueh * hhwt),
+      home_owners = n(),
+      .by = c(year, state, race_ethnicity, ...)
+    )
+}
+
+house_value_county_subgroup <- house_value_by_race(households_county, county, subgroup)
+house_value_county <- house_value_by_race(households_county, county)
+
+
+house_value_place_subgroup <- house_value_by_race(households_place, place, subgroup)
+house_value_place <- house_value_by_race(households_place, place)
+```
+
+
+The metrics for the ACS indices are based on:
+
+  - (1) sample size of each race and ethnic household at the county/place and
+  - (2) the number of observations that comes from the specific county/place
+    calculated from the PUMA-county/place crosswalk.
+
+Therefore, the data quality is poor for counties/places with a extremely small
+number of households (N). To assess the data quality of counties/places with
+larger N, we need to consider what percent of data for the county/place actually
+came from the county/place itself. We have this information in the `sum_products` column obtained from the crosswalk file. To read more about 
+how it was constructed, see the "Create quality variable" section of the ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd) notebook. 
+
+In particular,
+
+  - Data quality is good (`1`): N is greater than 30 and more than 75% of
+    observations are from the county/place.
+  - Data quality is marginal (`2`): N is greater than 30 but only 35% to 75% of
+    observations are from the county/place.
+  - Data quality is poor (`3`): N is less than or equal to 30 **or** if less
+    than or equal 35% of observations are from the county/place
+
+
+```{r}
+#| label: quality-check-flag-functions
+
+construct_quality_flag <- function(x, y) {
+  case_when(
+    x > 30 & y > 0.75 ~ 1,
+    x > 30 & (y > 0.35 & y <= 0.75) ~ 2,
+    x <= 30 | y <= 0.35 ~ 3,
+    .default = NA_integer_
+  )
+}
+```
+
+::: {.panel-tabset}
+
+### County
+
+```{r}
+#| label: add-quality-check-flags-county
+
+county_quality <-
+  households_county |>
+  distinct(year, state, county, .keep_all = TRUE) |>
+  select(year, state, county, population, sum_products, geographic_allocation_quality)
+
+
+house_value_county <-
+  house_value_county |>
+  left_join(county_quality, by = c("year", "state", "county")) |>
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(population, sum_products)
+  )
+
+house_value_county |>
+  ggplot(aes(x = ratio_house_value_households_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  labs(
+    title = "Quality Flag",
+    subtitle = "County",
+    x = "Quality Flag",
+    y = "Count"
+  )
+
+janitor::tabyl(house_value_county, ratio_house_value_households_quality)
+```
+
+
+```{r}
+#| label: add-quality-check-flags-county-subgroup
+
+house_value_county_subgroup <-
+  house_value_county_subgroup |>
+  left_join(county_quality, by = c("year", "state", "county")) |>
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(population, sum_products)
+  )
+
+house_value_county_subgroup |>
+  ggplot(aes(x = ratio_house_value_households_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  labs(
+    title = "Quality Flag",
+    subtitle = "County",
+    x = "Quality Flag",
+    y = "Count"
+  ) +
+  facet_wrap(. ~ subgroup, ncol = 2)
+```
+
+### Place
+
+```{r}
+#| label: add-quality-check-flags-place
+
+place_quality <-
+  households_place %>%
+  distinct(state, place, .keep_all = TRUE) |>
+  select(state, place, sum_products, population)
+
+house_value_place <-
+  house_value_place |>
+  left_join(place_quality,
+    by = c("state", "place")
+  ) |>
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(population, sum_products)
+  )
+
+
+house_value_place |>
+  ggplot(aes(x = ratio_house_value_households_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  labs(
+    title = "Quality Flag",
+    subtitle = "Place",
+    x = "Quality Flag",
+    y = "Count"
+  )
+```
+
+
+```{r}
+#| label: add-quality-check-flags-place-subgroup
+
+house_value_place_subgroup <-
+  house_value_place_subgroup |>
+  left_join(place_quality,
+    by = c("state", "place")
+  ) |>
+  mutate(
+    ratio_house_value_households_quality = construct_quality_flag(population, sum_products)
+  )
+
+
+house_value_place_subgroup |>
+  ggplot(aes(x = ratio_house_value_households_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  labs(
+    title = "Quality Flag",
+    subtitle = "Place, Age Over 45 Subgroup",
+    x = "Quality Flag",
+    y = "Count"
+  ) +
+  facet_wrap(race_ethnicity ~ subgroup, ncol = 2)
+```
+:::
+
+
+```{r}
+#| label: house-value-by-race-ethnicity
+
+house_value_by_race <- function(data, ...) {
+  data |>
+    mutate(total_house_value = sum(house_value), .by = c(year, state, ...)) |>
+    mutate(share_house_value = house_value / total_house_value) |>
+    select(year, state, ..., race_ethnicity, house_value, total_house_value, share_house_value, ratio_house_value_households_quality)
+}
+
+
+
+house_value_county <- house_value_by_race(house_value_county, county)
+house_value_county_subgroup <- house_value_by_race(house_value_county_subgroup, county, subgroup)
+house_value_place <- house_value_by_race(house_value_place, place)
+house_value_place_subgroup <- house_value_by_race(house_value_place_subgroup, place, subgroup)
+```
+
+
+```{r}
+house_value_county |>
+  ggplot() +
+  geom_density(aes(x = share_house_value),
+    color = "blue", fill = alpha("blue", 0.3)
+  ) +
+  facet_wrap(. ~ race_ethnicity) +
+  theme_minimal() +
+  labs(
+    title = "Share House Value by Race/Ethnicity",
+    subtitle = "County",
+    x = "Share House Value",
+    y = "Density"
+  )
+
+house_value_county_subgroup |>
+  ggplot() +
+  geom_density(aes(x = share_house_value),
+    color = "blue", fill = alpha("blue", 0.3)
+  ) +
+  facet_wrap(race_ethnicity ~ subgroup, ncol = 2) +
+  theme_minimal() +
+  labs(
+    title = "Share House Value by Race/Ethnicity and Age",
+    subtitle = "County, Age over 45 Subgroup",
+    x = "Share House Value",
+    y = "Density"
+  )
+
+
+house_value_place |>
+  ggplot() +
+  geom_density(aes(x = share_house_value),
+    color = "blue", fill = alpha("blue", 0.3)
+  ) +
+  facet_wrap(. ~ race_ethnicity) +
+  theme_minimal() +
+  labs(
+    title = "Share House Value by Race/Ethnicity",
+    subtitle = "Place",
+    x = "Share House Value",
+    y = "Density"
+  )
+
+
+house_value_place_subgroup |>
+  ggplot() +
+  geom_density(aes(x = share_house_value),
+    color = "blue", fill = alpha("blue", 0.3)
+  ) +
+  facet_wrap(race_ethnicity ~ subgroup, ncol = 2) +
+  theme_minimal() +
+  labs(
+    title = "Share House Value by Race/Ethnicity and Age",
+    subtitle = "Place, Age over 45 Subgroup",
+    x = "Share House Value",
+    y = "Density"
+  )
+```
+
+## Create Final Output Data: Merge Household & Housing Value Share
+
+```{r}
+#| label: compute-ratio-house-value-households
+
+construct_ratio <- function(share_house_value, share_households) {
+  paste0(
+    format(round(share_house_value, 3), nsmall = 1),
+    ":",
+    format(round(share_households, 3), nsmall = 1)
+  ) |>
+    str_remove_all(pattern = " ")
+}
+
+ratio_house_value_households <- function(households_data, house_value_data, ...) {
+  geo_var <- if_else("county" %in% colnames(households_data), "county", "place")
+  households_data |>
+    left_join(house_value_data,
+      by = c("year", "state", geo_var, "race_ethnicity", ...)
+    ) |>
+    mutate(
+      ratio_house_value_households = construct_ratio(share_house_value, share_households),
+      .by = c(race_ethnicity, ...)
+    ) |>
+    arrange(year, state, {{ geo_var }}, ...)
+}
+
+
+reshape_to_wide <- function(data, ...) {
+  data |>
+    pivot_wider(
+      id_cols = c(year, state, ...),
+      names_from = race_ethnicity,
+      values_from = c(ratio_house_value_households, ratio_house_value_households_quality),
+      names_glue = "{race_ethnicity}_{.value}"
+    ) %>%
+    rename_with(~ str_remove(.x, "ratio_") %>% paste0("ratio_", .), contains("ratio")) %>%
+    # order variables according to request
+    select(
+      year, state, ...,
+      ratio_black_nh_house_value_households, ratio_black_nh_house_value_households_quality,
+      ratio_hispanic_house_value_households, ratio_hispanic_house_value_households_quality,
+      ratio_other_nh_house_value_households, ratio_other_nh_house_value_households_quality,
+      ratio_white_nh_house_value_households, ratio_white_nh_house_value_households_quality
+    ) %>%
+    arrange(year, state, ...)
+}
+```
+
+Before computing the ratio of house value to households, we need to merge the household and house value data. We do not expect perfect matches between the two datasets because the house value data is based on households that own their homes, while the household data includes all households. 
+
+```{r}
+#| label: calculate-metric
+
+ratio_house_value_households_county <- ratio_house_value_households(
+  share_households_county,
+  house_value_county
+) |>
+  reshape_to_wide(county)
+
+
+ratio_house_value_households_county_subgroup <- ratio_house_value_households(
+  share_households_county_subgroup,
+  house_value_county_subgroup,
+  "subgroup"
+) |>
+  reshape_to_wide(county, subgroup)
+
+ratio_house_value_households_place <-
+  ratio_house_value_households(
+    share_households_place,
+    house_value_place
+  ) |>
+  reshape_to_wide(place)
+
+ratio_house_value_households_place_subgroup <-
+  ratio_house_value_households(
+    share_households_place_subgroup,
+    house_value_place_subgroup,
+    "subgroup"
+  ) |>
+  reshape_to_wide(place, subgroup)
+```
+
+**Check:** Are there 3,143 counties and 486 places in the final output?
+
+Our metric county data has 3,143 counties as expected for all years prior to
+2022. The metric places data also has the expected 486 places.
+
+```{r}
+#| label: check-number-of-counties-places
+
+stopifnot(
+  ratio_house_value_households_county |>
+    distinct(year, state, county) |>
+    count(year) |>
+    filter(year != 2022) |>
+    pull(n) == 3143
+)
+
+
+stopifnot(
+  ratio_house_value_households_place |>
+    distinct(year, state, place) |>
+    count(year) |>
+    filter(year == 2022) |>
+    pull(n) == 486
+)
+```
+
+
+There are 3 counties in the county populations file that are
+not present in our metric data. These are the planning regions of Connecticut. We will merge these in by performing as `right_join` using the county population file from the geographic crosswalks directory before exporting. Metric and quality values for these counties will be left as NA. 
+
+
+```{r}
+#| label: find-missing-counties
+
+
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  tidylog::filter(year == 2022) %>%
+  select(-year)
+
+(
+  missing_counties <- ratio_house_value_households_county %>%
+    filter(year == 2022) |>
+    distinct(state, county) |>
+    anti_join(x = all_counties, y = _, by = c("state", "county"))
+)
+
+all_counties |>
+  filter(state == "09")
+```
+
+At this stage, the number of counties in 2022 is 3,141.
+
+```{r}
+#| label: check-number-of-counties-2022
+#| error: true
+
+stopifnot(
+  ratio_house_value_households_county |>
+    distinct(year, state, county) |>
+    count(year) |>
+    filter(year == 2022) |>
+    pull(n) == 3141
+)
+```
+
+Check number of missings and variable summaries before exporting:
+
+```{r}
+skimr::skim(ratio_house_value_households_county)
+skimr::skim(ratio_house_value_households_county_subgroup)
+skimr::skim(ratio_house_value_households_place)
+skimr::skim(ratio_house_value_households_place_subgroup)
+```
+
+
+## Export {#sec-export}
+
+We remove 2014, 2015 observations for places due to missing values in the place populations file for those years. 
+
+```{r}
+#| label: export-data
+
+export_metric <- function(data, file_type) {
+  geography <- ifelse("place" %in% colnames(data), "city", "county")
+
+  if (geography == "city") {
+    data <-
+      data |>
+      filter(!(year %in% c(2014, 2015)))
+  }
+  geo_var <- ifelse(geography == "city", "place", "county")
+
+  pop_file <-
+    read_csv(here::here("geographic-crosswalks", "data", paste0(geo_var, "-populations.csv"))) |>
+    filter(year != 2020)
+  data <- data |> right_join(pop_file, by = c("year", "state", geo_var))
+
+
+
+  if (file_type == "subgroup") {
+    if (geo_var == "county") {
+      missing_geo <- tribble(
+        ~state, ~county, ~state_name, ~county_name, ~subgroup_type, ~subgroup,
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "All",
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "Age 45 and Over",
+        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "Under Age 45"
+      ) |> expand(nesting(state, county, state_name, county_name, subgroup_type, subgroup),
+        year = c(2014, 2015, 2016, 2017, 2018, 2019)
+      )
+
+      data <-
+        data |>
+        filter(county_name != "Valdez-Cordova Census Area") |>
+        mutate(subgroup_type = "age", .before = "subgroup") |>
+        bind_rows(ratio_house_value_households_county |>
+          mutate(
+            subgroup_type = "age",
+            subgroup = "All"
+          )) |>
+        full_join(missing_geo, by = c(
+          "year", "state", "county", "state_name", "county_name",
+          "subgroup", "subgroup_type"
+        )) |>
+        mutate(subgroup = factor(subgroup,
+          levels = c(
+            "All",
+            "Age 45 and Over",
+            "Under Age 45"
+          )
+        )) |>
+        arrange(year, state, county, subgroup_type, subgroup) |>
+        relocate("subgroup_type", .before = subgroup) |>
+        group_by(year, state, county) |>
+        fill(c(state_name, county_name), .direction = "downup") |>
+        ungroup()
+    } else if (geo_var == "place") {
+      missing_geo <- tribble(
+        ~state, ~place, ~state_name, ~place_name, ~subgroup_type, ~subgroup,
+        "13", "72122", "Georgia", "South Fulton city", "age", "All",
+        "13", "72122", "Georgia", "South Fulton city", "age", "Age 45 and Over",
+        "13", "72122", "Georgia", "South Fulton city", "age", "Under Age 45"
+      ) |>
+        expand(nesting(state, place, state_name, place_name, subgroup_type, subgroup),
+          year = c(2016, 2017, 2018, 2019)
+        )
+
+      data <-
+        data |>
+        # Filter out South Fulton city, which is NA for all years for this metric
+        # and then add the table with complete year-state-county-subgroup
+        # combinations
+        filter(place_name != "South Fulton city") |>
+        mutate(subgroup_type = "age", .before = "subgroup") |>
+        bind_rows(ratio_house_value_households_place |>
+          mutate(
+            subgroup_type = "age",
+            subgroup = "All"
+          )) |>
+        full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup", "subgroup_type")) |>
+        mutate(subgroup = factor(subgroup,
+          levels = c(
+            "All",
+            "Age 45 and Over",
+            "Under Age 45"
+          )
+        )) |>
+        arrange(year, state, place, subgroup_type, subgroup) |>
+        relocate("subgroup_type", .before = subgroup) |>
+        filter(year >= 2016) |>
+        group_by(year, state, place) |>
+        fill(c(state_name, place_name), .direction = "downup") |>
+        ungroup()
+    }
+  }
+
+  output_path <- here(glue("01_financial-well-being/final/households_house_value_race_ethnicity_{file_type}_{geography}.csv"))
+
+  data |>
+    select(-c(population, state_name, rlang::sym(paste0(geo_var, "_name")))) |>
+    write_csv(file = output_path)
+}
+
+
+export_metric(ratio_house_value_households_county, file_type = "all")
+export_metric(ratio_house_value_households_county_subgroup, file_type = "subgroup")
+
+
+
+export_metric(ratio_house_value_households_place, file_type = "all")
+export_metric(ratio_house_value_households_place_subgroup, file_type = "subgroup")
+```
+
+Check that final files have the expected number of observations per year
+
+```{r}
+#| label: check-ct-counties-all
+county_all <- read_csv(here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_all_county.csv"))
+
+county_file <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+county_all |> count(year)
+county_file |> count(year)
+
+# Check that only new planning regions are present in 2022 for CT and all 9 are prese t
+assertthat::assert_that(
+  all.equal(
+    # CT counties in final county metric file
+    county_all |>
+      select(year, state, county) |>
+      filter(state == "09", year %in% c(2022)) |>
+      distinct(county) |>
+      arrange(county),
+    # CT county in population file
+    county_file |>
+      select(year, state, county) |>
+      filter(state == "09", year %in% c(2022)) |>
+      distinct(county) |>
+      arrange(county)
+  )
+)
+
+assertthat::assert_that(
+  county_all |>
+    select(year, state, county) |>
+    filter(state == "09", year %in% c(2022)) |>
+    distinct(county) |>
+    nrow() == 9
+)
+```
+
+
+
+
+```{r}
+#| label: check-ct-counties-subgroup
+county_subgroup <- read_csv(here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_subgroup_county.csv"))
+
+
+county_all |> count(year)
+county_file |> count(year)
+
+# Check that only new planning regions are present in 2022 for CT and all 9 are prese t
+assertthat::assert_that(
+  all.equal(
+    # CT counties in final county metric file
+    county_subgroup |>
+      select(year, state, county) |>
+      filter(state == "09", year %in% c(2022)) |>
+      distinct(county) |>
+      arrange(county),
+    # CT county in population file
+    county_file |>
+      select(year, state, county) |>
+      filter(state == "09", year %in% c(2022)) |>
+      distinct(county) |>
+      arrange(county)
+  )
+)
+
+assertthat::assert_that(
+  county_subgroup |>
+    select(year, state, county) |>
+    filter(state == "09", year %in% c(2022)) |>
+    distinct(county) |>
+    nrow() == 9
+)
+```
+
+```{r}
+place_all <- read_csv(here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_all_city.csv"))
+place_subgroup <- read_csv(here::here(
+  "01_financial-well-being", "final",
+  "households_house_value_race_ethnicity_subgroup_city.csv"
+))
+```
+
+**Check**: How many observations for Valdez-Cordova and South Fulton city?
+
+```{r}
+county_subgroup |>
+  filter(county_name == "Valdez-Cordova Census Area") |>
+  count(year)
+place_subgroup |>
+  filter(place_name == "South Fulton city") |>
+  count(year)
+```
