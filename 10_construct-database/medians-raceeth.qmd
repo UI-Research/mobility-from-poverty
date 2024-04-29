@@ -103,11 +103,31 @@ metrics_03 <- metrics_03 |>
 
 ```
 
+Reshape the dataset and filter to most recent year available
+
+```{r}
+
+# reshape to long
+metrics_01_long <- metrics_01 |>
+  mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
+  pivot_longer(cols = pctl_income_20:share_employed_quality,
+               names_to = "variable",
+               values_to = "value")
+
+# filter to max -- what the ???
+metrics_01_long <- metrics_01_long |>
+  group_by(county, subgroup, variable) |>
+  mutate(max_year = case_when(max(year) & is.na(variable) ~ year)) 
+
+```
+
 We load county-level population estimates from the 2020 decennial census.
 
 ```{r}
 # Not available for 2013 or 2014 so set that year equal to 2015 values
-population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates(
+population <- map_dfr(c(2015:2022), ~get_estimates(
   geography = "county", 
   product = "characteristics",
   variables = "POPESTIMATE",
@@ -123,6 +143,14 @@ population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates(
   ) |>
   select(state, county, population = value, year)
 
+## take out 1 year 
+get_estimates(
+  geography = "county", 
+  product = "characteristics",
+  variables = "POPESTIMATE",
+  breakdown = c("RACE", "HISP"),
+  vintage = 2019
+)
 
 ```
 
