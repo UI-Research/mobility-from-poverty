@@ -1,6 +1,6 @@
 ---
 title: "Calculate Medians for Dashboard - Longitudinal"
-author: "Judah Axelrod and Aaron R. Williams"
+author: "Judah Axelrod and Aaron R. Williams, Updated by Kassandra Martinchek"
 date: today
 format:
   html:
@@ -63,36 +63,44 @@ The steps taken for calculating the median estimates are as follow:
 ```{r}
 #| label: load-data
 
-metrics <- read_csv(here("data", "00_mobility-metrics_longitudinal.csv")) |>
+metrics <- read_csv(here("data", "11_mobility-metrics_county_longitudinal.csv")) |>
   select(-ends_with("_lb"), -ends_with("_ub"))
 
-metrics_01 <- read_csv(here("data", "01_mobility-metrics_race-ethnicity_longitudinal.csv")) |>
-  select(-ends_with("_lb"), -ends_with("_ub"), -population)
-
-metrics_02 <- read_csv(here("data", "02_mobility-metrics_race_longitudinal.csv")) |>
-  select(-ends_with("_lb"), -ends_with("_ub"), -population) #|> 
-
-poverty_02 <- read_csv(here("data", "02_poverty-exposure_race-ethnicity.csv")) |>
+metrics_01 <- read_csv(here("data", "12_mobility-metrics_county_race-ethnicity_longitudinal.csv")) |>
   select(-ends_with("_lb"), -ends_with("_ub"))
 
-metrics_03 <- read_csv(here("data", "03_mobility-metrics_race-share_longitudinal.csv")) |> 
+metrics_03 <- read_csv(here("data", "13_mobility-metrics_county_race-share_longitudinal.csv")) |> 
   select(-ends_with("_lb"), -ends_with("_ub"))
 
-# Create crosswalk for each variable's corresponding quality field
-metric_qual_crosswalk <- as_tibble(
-  metrics |> 
-  select((where(is.numeric) & !matches('quality')) | index_air_quality) |> 
-  colnames()
-) |> 
-  rename(name = value) |> 
-  mutate(qual_varname = case_when(
-    str_detect(name, 'pctl_income') ~ 'pctl_income_quality',
-    str_detect(name, 'share_affordable') ~ 'share_affordable_quality',
-    str_detect(name, 'homeless') ~ 'homeless_quality',
-    str_detect(name, 'crime') ~ 'rate_crime_quality',
-    str_detect(name, 'share_desc_rep') ~ NA, # No quality variables for these
-    TRUE ~ str_c(name, '_quality')
-  ))
+# old file extracts that are not needed
+#metrics_02 <- read_csv(here("data", "02_mobility-metrics_race_longitudinal.csv")) |>
+ # select(-ends_with("_lb"), -ends_with("_ub"), -population) #|> 
+
+#poverty_02 <- read_csv(here("data", "02_poverty-exposure_race-ethnicity.csv")) |>
+ # select(-ends_with("_lb"), -ends_with("_ub"))
+```
+
+Prepare metrics 03 for wrangling-- requires merging population figures from metrics file into this subgroup file
+
+```{r}
+
+# merge the overall population figures to the metrics 03 data (which is at the neighborhood level) ? Because race population weighting doesn't make sense because this is classified at the neighborhood level
+
+metrics_pop <- metrics |>
+  mutate(county_state = paste0(county_name, ', ', state_name)) |> 
+  select(population, year, county_state)
+
+metrics_03 <- metrics_03 |>
+  mutate(county_state = paste0(county_name, ', ', state_name))
+
+metrics_03 <- left_join(x = metrics_03,
+                        y = metrics_pop,
+                        by = c("year", "county_state"))
+
+metrics_03 <- metrics_03 |>
+  select(-county_state) |>
+  filter(year != 2014) # population not available for this year in the data plus only want most recent data anywho!
+
 ```
 
 We load county-level population estimates from the 2020 decennial census.
@@ -101,7 +109,9 @@ We load county-level population estimates from the 2020 decennial census.
 # Not available for 2013 or 2014 so set that year equal to 2015 values
 population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates(
   geography = "county", 
-  product = "population",
+  product = "characteristics",
+  variables = "POPESTIMATE",
+  breakdown = c("RACE", "HISP"),
   year = .x
 ),
 .id = 'year') |>
@@ -125,20 +135,19 @@ We calculate weighted medians for each numeric variable. This means our estimate
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
 calc_year_subgroup_table <- function(metrics_df) {
-  metrics_df <- left_join(metrics_df, population, by = c("state", "county", "year")) |> 
-    filter(!is.na(population))
+ # metrics_df <- left_join(metrics_df, population, by = c("state", "county", "year")) |> 
+  #  filter(!is.na(population))
   
   weighted_median <- metrics_df |>
     mutate(county_state = paste0(county_name, ', ', state_name)) |> 
-   # regex matches vars ending in _quality except for index_air_quality 
-    select(county_state, subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |> 
+    select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
     summarize(
       across(
         .cols = -c('population', 'county_state'),
         .fns = list(
           .wtd_median = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE),
-          .min_county = ~min(., na.rm = TRUE),
-          .max_county = ~max(., na.rm = TRUE)
+          .wtd_lowpct = ~safe_wtd_quantile(., weights = population, probs = 0.05, na.rm = TRUE),
+          .wtd_highpct = ~safe_wtd_quantile(., weights = population, probs = 0.95, na.rm = TRUE)
         )
       ), .by = c('year','subgroup')
     ) |>
@@ -147,14 +156,20 @@ calc_year_subgroup_table <- function(metrics_df) {
                   
   
   state_count <- metrics_df |> 
-    pivot_longer(cols = (matches('^(?!index_air_quality$).*_quality$', perl=TRUE)), names_to = 'qual_varname', values_to = 'quality') |> 
+    mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
+    pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
     filter(quality %in% 1:2) |> 
     count(state_name, year, subgroup, qual_varname) |> 
     count(qual_varname, year, subgroup, name = 'n_states')
     
   proportion_by_qual <- metrics_df |>
+    mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
     select(subgroup, where(is.numeric)) |>
-    pivot_longer(cols = (matches('^(?!index_air_quality$).*_quality$', perl=TRUE)), names_to = 'qual_varname', values_to = 'quality') |> 
+    pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
     summarize(population = sum(population),
      .by = c('year', 'subgroup', 'qual_varname', 'quality')
     ) |> 
@@ -165,7 +180,7 @@ calc_year_subgroup_table <- function(metrics_df) {
   
   
   missing_population <- metrics_df |>
-    select(subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |>
+    select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
     summarize(
       across(
         .cols = -population, 
@@ -174,7 +189,7 @@ calc_year_subgroup_table <- function(metrics_df) {
     pivot_longer(cols = -c('year','subgroup'), values_to = "missing_population")
    
   missing_county <- metrics_df |>
-    select(subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |>
+    select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
     summarize(
       across(
         .cols = -population, 
@@ -185,7 +200,7 @@ calc_year_subgroup_table <- function(metrics_df) {
   weighted_median |> 
     full_join(missing_population, by = c("year", "subgroup", "name")) |>
     full_join(missing_county, by = c("year", "subgroup", "name"))|>
-    left_join(metric_qual_crosswalk, by = "name") |> 
+    mutate(qual_varname = paste0(name, '_quality')) |>
     left_join(proportion_by_qual, by = c("year", "subgroup", "qual_varname")) |>  #M:M Merge is expected behavior here
     left_join(state_count, by = c("year", "subgroup", "qual_varname")) |> 
     pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |>
@@ -202,11 +217,12 @@ calc_year_subgroup_table <- function(metrics_df) {
 }
 ```
 
-### Percentile income, share in preschool, share employed, share with HS degree, rate low birth weight, and rate of learning achievement
+### Percentile income, homeless count, poverty exposure, juvinile arrest rate, share in preschool, share employed, share with HS degree, rate low birth weight, digitial access, employment rate, and rate of learning achievement
+
+-- NEEDS TO BE DE-BUGGED W/R/T POP ESTIMATES -- 
 
 ```{r}
 calc_year_subgroup_table(metrics_01) |>   
-  relocate(min_county, max_county, .after = last_col()) |> 
   datatable(caption = "01_Metrics")
 
 calc_year_subgroup_table(metrics_01) |>
@@ -219,26 +235,12 @@ calc_year_subgroup_table(metrics_01) |>
   )
 ```
 
-### Share of digital access and rate of juvenile arrest
-```{r}
-calc_year_subgroup_table(metrics_02) |>   
-  relocate(min_county, max_county, .after = last_col()) |> 
-  datatable(caption = "02_Metrics")
+### Air quality index, transit trips index, share with debt in collections, and transportation cost 
 
-calc_year_subgroup_table(metrics_02) |>
-  ggplot(aes(share_lq3, name, color = subgroup)) +
-  geom_point(alpha = 0.3) +
-  labs(
-    title = "County Race-Ethnicity Medians Quality",
-    x = "Share NA or Quality==3",
-    y = NULL
-  )
-```
+Note: Uses overall population weighting because defined at neighborhood level
 
-### Air quality index, transit trips index, share with debt in collections, and transportation cost
 ```{r}
-calc_year_subgroup_table(metrics_03) |>
-  relocate(min_county, max_county, .after = last_col()) |> 
+calc_year_subgroup_table(metrics_03) |> 
   datatable(caption = "03_Metrics Table")
 
 calc_year_subgroup_table(metrics_03) |>
@@ -251,167 +253,3 @@ calc_year_subgroup_table(metrics_03) |>
   )
 ```
 
-### Share of poverty exposure
-```{r}
-calc_year_subgroup_table(poverty_02) |>
-  relocate(min_county, max_county, .after = last_col()) |> 
-  datatable(caption = "02_Poverty Table")
-
-calc_year_subgroup_table(poverty_02) |>
-  ggplot(aes(share_lq3, name, color = subgroup)) +
-  geom_point(alpha = 0.3) +
-  labs(
-    title = "County Race-Ethnicity Medians Quality",
-    x = "Share NA or Quality==3",
-    y = NULL
-  )
-
-```
-
-# Place level
-
-This section of the code calculates variable medians at the place level.
-
-## Load Data
-
-```{r}
-#| label: load-data-place
-metrics_06 <- read_csv(here("data", "06_mobility-metrics_place_race-ethnicity_longitudinal.csv")) |>
-  select(-ends_with("_lb"), -ends_with("_ub"), -population)
-
-metrics_07 <- read_csv(here("data", "07_mobility-metrics_place_race_longitudinal.csv")) |>
-  select(-ends_with("_lb"), -ends_with("_ub"))
-```
-
-We load place-level population estimates from the 2020 decennial census.
-
-```{r}
-get_estimates_place <- function(year){
-  if(year < 2020) variable = "POP"
-  else variable = "POPESTIMATE"
-  get_estimates(year = year, 
-                geography = 'place',
-                variable = variable)
-}
-population <- map_dfr(c(2015, 2015, 2015:2022), ~get_estimates_place(year = .x), .id = 'year') |>
-  filter(variable %in% c('POP', 'POPESTIMATE')) |> 
-  mutate(
-    year = as.numeric(year) + 2012,
-    state = str_sub(GEOID, start = 1, end = 2),
-    place = str_sub(GEOID, start = 3, end = 7)
-  ) |>
-  select(state, place, population = value, year)
-
-```
-
-## Calculate Medians
-
-We calculate the same set of statistics as above for the county-level metrics. This means our estimates represent the place mobility metric for the average American living in a large city.
-
-
-```{r}
-create_year_subgroup_table <- function(metrics_df, table_caption){
-
-  metrics_df <- left_join(metrics_df, population, by = c("state", "place", "year")) |>
-    filter(!is.na(population))
-  
-  weighted_median <- metrics_df |>
-    mutate(place_state = paste0(place_name, ', ', state_name)) |> 
-   # regex matches vars ending in _quality except for index_air_quality 
-    select(place_state, subgroup, where(is.numeric) & (!matches('^(?!index_air_quality$).*_quality$', perl=TRUE))) |> 
-    summarize(
-      across(
-        .cols = -c('population', 'place_state'),
-        .fns = list(
-          .wtd_median = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE),
-          .min_place = ~min(., na.rm = TRUE),
-          .max_place = ~max(., na.rm = TRUE)
-        )
-      ), .by = c('year','subgroup')
-    ) |>
-    pivot_longer(cols = -c('year','subgroup'), names_to = c('name', '.value'), 
-                 names_pattern = '(.*)_\\.(.*)')
-  
-  state_count <- metrics_df |> 
-    pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
-    filter(quality %in% 1:2) |> 
-    count(state_name, year, subgroup, qual_varname) |> 
-    count(qual_varname, year, subgroup, name = 'n_states')
-    
-  proportion_by_qual <- metrics_df |>
-    select(subgroup, where(is.numeric)) |>
-    pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
-    summarize(population = sum(population),
-     .by = c('year', 'subgroup', 'qual_varname', 'quality')
-    ) |> 
-    mutate(pop_share = population / sum(population), .by = c('year', 'subgroup', 'qual_varname')) |> 
-    filter(quality %in% 2:3) |> 
-    select(-population) |> 
-    arrange(qual_varname, quality)
-  
-  
-  missing_population <- metrics_df |>
-    select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
-    summarize(
-      across(
-        .cols = -population, 
-        .fns = ~missing_share(.x, weight = population)
-      ), .by=c('year','subgroup')) |> 
-    pivot_longer(cols = -c('subgroup','year'), values_to = "missing_population")
-   
-  missing_place <- metrics_df |>
-    select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
-    summarize(
-      across(
-        .cols = -population, 
-        .fns = ~sum(is.na(.x)) / n()
-      ), .by = c('year','subgroup')) |> 
-    pivot_longer(cols = -c('year','subgroup'), values_to = "missing_place")
-    
-  weighted_median |> 
-    full_join(missing_population, by = c("year", "subgroup", "name")) |>
-    full_join(missing_place, by = c("year", "subgroup", "name"))|>
-    left_join(metric_qual_crosswalk, by = "name") |> 
-    left_join(proportion_by_qual, by = c("year", "subgroup", "qual_varname")) |>  #M:M Merge is expected behavior here
-    left_join(state_count, by = c("year", "subgroup", "qual_varname")) |> 
-    pivot_wider(names_from = quality, names_glue = 'quality{quality}_popshare', values_from = pop_share) |>
-    select(-qual_varname, -qualityNA_popshare) |> 
-    mutate(across(where(is.numeric), ~round(.,digits=2))) |> 
-    rowwise() |> 
-    # Share of pop that is either missing or quality = 3 for that metric
-    mutate(share_lq3 = sum(missing_population, quality3_popshare, na.rm = TRUE)) |> 
-    # Remove all-missing metric-years
-    filter(missing_place < 1) |>
-    select(year, name, subgroup, share_lq3, everything()) |>
-    arrange(desc(year), name, subgroup) |>    
-    relocate(min_place, max_place, .after = last_col()) |> 
-    datatable()
-  
-}
-```
-
-### Place level - Percentile income,share employed, share with HS degree, share in preschool, share homeless, rate of learning
-```{r}
-create_year_subgroup_table(metrics_06, '06_Metrics Table')
-```
-
-### Place level - rate of juvenile arrest, share of digital access
-```{r}
-create_year_subgroup_table(metrics_07, '07_Metrics Table')
-```
-
-# Discussion
-
-* `pctl_income_20`
-* `share_employed`
-* `share_hs_degree`
-* `share_in_preschool`
-* `rate_low_birthweight`
-* `rate_learning`
-* `rate_juv_arrest`
-* `share_digital_access`
-* `index_air_quality`
-* `share_debt_col`
-* `index_transit_trips`
-* `transportation_cost`
-* `share_poverty_exposure`
