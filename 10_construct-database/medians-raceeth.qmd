@@ -72,12 +72,6 @@ metrics_01 <- read_csv(here("data", "12_mobility-metrics_county_race-ethnicity_l
 metrics_03 <- read_csv(here("data", "13_mobility-metrics_county_race-share_longitudinal.csv")) |> 
   select(-ends_with("_lb"), -ends_with("_ub"))
 
-# old file extracts that are not needed
-#metrics_02 <- read_csv(here("data", "02_mobility-metrics_race_longitudinal.csv")) |>
- # select(-ends_with("_lb"), -ends_with("_ub"), -population) #|> 
-
-#poverty_02 <- read_csv(here("data", "02_poverty-exposure_race-ethnicity.csv")) |>
- # select(-ends_with("_lb"), -ends_with("_ub"))
 ```
 
 Prepare metrics 03 for wrangling-- requires merging population figures from metrics file into this subgroup file
@@ -304,13 +298,59 @@ calc_year_subgroup_table(metrics_01_df) |>
 
 ### Air quality index, transit trips index, share with debt in collections, and transportation cost 
 
+First, filter to most recent year only-- this could be a function given we use it above
+
+```{r}
+
+# reshape to long
+metrics_03_long <- metrics_03 |>
+  select(!ends_with("quality")) |>
+  pivot_longer(cols = share_debt_coll:index_transportation_cost,
+               names_to = "variable",
+               values_to = "value")
+
+# filter to max 
+metrics_03_long <- metrics_03_long |>
+  group_by(year, variable) |>
+  filter(!all(is.na(value))) 
+
+recent_year_data_03 <- metrics_03_long |>
+  group_by(variable) |>
+  summarize(recent_year = max(year)) 
+
+metrics_03_long <- left_join(x = metrics_03_long,
+                             y = recent_year_data_03,
+                             by = "variable")
+
+metrics_03_long_recent <- metrics_03_long |>
+  filter(year == recent_year)
+
+# reshape back to wide for later functions and merge with quality variables
+metrics_03_quality <- metrics_03 |>
+  select(year, state, county, subgroup, ends_with("quality"))
+
+metrics_03_recent_values <- metrics_03_long_recent |>
+  pivot_wider(names_from = variable,
+              values_from = value) 
+
+metrics_03_recent <- left_join(x = metrics_03_recent_values,
+                               y = metrics_03_quality,
+                               by = c("year", "county", "state", "subgroup"))
+
+metrics_03_recent <- metrics_03_recent |>
+  ungroup() |>
+  select(-recent_year)
+
+
+```
+
 Note: Uses overall population weighting because defined at neighborhood level
 
 ```{r}
-calc_year_subgroup_table(metrics_03) |> 
+calc_year_subgroup_table(metrics_03_recent) |> 
   datatable(caption = "03_Metrics Table")
 
-calc_year_subgroup_table(metrics_03) |>
+calc_year_subgroup_table(metrics_03_recent) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
