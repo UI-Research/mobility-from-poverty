@@ -50,6 +50,8 @@ missing_share <- function(x, weight) {
 }
 ```
 
+
+
 The steps taken for calculating the median estimates are as follow:
 
 -   Calculate the population-weighted median
@@ -99,46 +101,60 @@ metrics_03 <- metrics_03 |>
 
 Reshape the dataset and filter to most recent year available 
 
+First, create a function
+
 ```{r}
 
+recent_year_filter <- function(data, col_a, col_b) {
 # reshape to long
-metrics_01_long <- metrics_01 |>
+metrics_long <- data |>
   select(!ends_with("quality")) |>
-  pivot_longer(cols = pctl_income_20:share_employed,
+  pivot_longer(cols = {{col_a}}:{{col_b}},
                names_to = "variable",
                values_to = "value")
 
 # filter to max 
-metrics_01_long <- metrics_01_long |>
+metrics_long <- metrics_long |>
   group_by(year, variable) |>
   filter(!all(is.na(value))) 
 
-recent_year_data <- metrics_01_long |>
+recent_year_data <- metrics_long |>
   group_by(variable) |>
   summarize(recent_year = max(year)) 
 
-metrics_01_long <- left_join(x = metrics_01_long,
-                             y = recent_year_data,
-                             by = "variable")
+metrics_long <- left_join(x = metrics_long,
+                          y = recent_year_data,
+                          by = "variable")
 
-metrics_01_long_recent <- metrics_01_long |>
+metrics_long_recent <- metrics_long |>
   filter(year == recent_year)
 
 # reshape back to wide for later functions and merge with quality variables
-metrics_01_quality <- metrics_01 |>
+metrics_quality <- data |>
   select(year, state, county, subgroup, ends_with("quality"))
 
-metrics_01_recent_values <- metrics_01_long_recent |>
+metrics_recent_values <- metrics_long_recent |>
   pivot_wider(names_from = variable,
               values_from = value) 
 
-metrics_01_recent <- left_join(x = metrics_01_recent_values,
-                               y = metrics_01_quality,
-                               by = c("year", "county", "state", "subgroup"))
+metrics_recent <- left_join(x = metrics_recent_values,
+                            y = metrics_quality,
+                            by = c("year", "county", "state", "subgroup"))
 
-metrics_01_recent <- metrics_01_recent |>
+metrics_recent <- metrics_recent |>
   ungroup() |>
   select(-recent_year)
+}
+
+```
+
+Now, implement that function
+
+```{r}
+
+metrics_01_recent <- recent_year_filter(data = metrics_01,
+                                        col_a = pctl_income_20,
+                                        col_b = share_employed)
 
 ```
 
@@ -302,45 +318,9 @@ First, filter to most recent year only-- this could be a function given we use i
 
 ```{r}
 
-# reshape to long
-metrics_03_long <- metrics_03 |>
-  select(!ends_with("quality")) |>
-  pivot_longer(cols = share_debt_coll:index_transportation_cost,
-               names_to = "variable",
-               values_to = "value")
-
-# filter to max 
-metrics_03_long <- metrics_03_long |>
-  group_by(year, variable) |>
-  filter(!all(is.na(value))) 
-
-recent_year_data_03 <- metrics_03_long |>
-  group_by(variable) |>
-  summarize(recent_year = max(year)) 
-
-metrics_03_long <- left_join(x = metrics_03_long,
-                             y = recent_year_data_03,
-                             by = "variable")
-
-metrics_03_long_recent <- metrics_03_long |>
-  filter(year == recent_year)
-
-# reshape back to wide for later functions and merge with quality variables
-metrics_03_quality <- metrics_03 |>
-  select(year, state, county, subgroup, ends_with("quality"))
-
-metrics_03_recent_values <- metrics_03_long_recent |>
-  pivot_wider(names_from = variable,
-              values_from = value) 
-
-metrics_03_recent <- left_join(x = metrics_03_recent_values,
-                               y = metrics_03_quality,
-                               by = c("year", "county", "state", "subgroup"))
-
-metrics_03_recent <- metrics_03_recent |>
-  ungroup() |>
-  select(-recent_year)
-
+metrics_03_recent <- recent_year_filter(data = metrics_03,
+                                        col_a = share_debt_coll,
+                                        col_b = index_transportation_cost)
 
 ```
 
