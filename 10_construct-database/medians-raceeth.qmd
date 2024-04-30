@@ -116,10 +116,45 @@ metrics_01_long <- metrics_01 |>
                names_to = "variable",
                values_to = "value")
 
-# filter to max -- what the ???
+# filter to max 
 metrics_01_long <- metrics_01_long |>
-  group_by(county, subgroup, variable) |>
-  mutate(max_year = case_when(max(year) & is.na(variable) ~ year)) 
+  group_by(year, variable) |>
+  filter(!all(is.na(value))) 
+
+recent_year_data <- metrics_01_long |>
+  group_by(variable) |>
+  summarize(recent_year = max(year)) 
+
+metrics_01_long <- left_join(x = metrics_01_long,
+                             y = recent_year_data,
+                             by = "variable")
+
+metrics_01_long_recent <- metrics_01_long |>
+  filter(year == recent_year)
+
+# reshape back to wide for later functions and mutate quality vars
+
+# mutate quality vars first-- also does not work
+quality_vars <- metrics_01_long_recent |>
+  filter(str_detect(variable, "quality$")) |>
+  distinct(variable) |>
+  pull(variable)
+
+metrics_01_long_recent <- metrics_01_long_recent |>
+  mutate(across(all_of(quality_vars), ~case_when(. == 1 ~ "Strong",
+                                                  . == 2 ~ "Marginal",
+                                                  . == 3 ~ "Weak")))
+
+# pivot wider DOES work
+metrics_01_recent <- metrics_01_long_recent |>
+  pivot_wider(names_from = variable,
+              values_from = value)
+
+# below does not work!!
+metrics_01_recent <- metrics_01_recent |>
+    mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
+                                                . == 2 ~ "Marginal",
+                                                . == 3 ~ "Weak")))
 
 ```
 
