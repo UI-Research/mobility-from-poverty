@@ -103,16 +103,14 @@ metrics_03 <- metrics_03 |>
 
 ```
 
-Reshape the dataset and filter to most recent year available
+Reshape the dataset and filter to most recent year available 
 
 ```{r}
 
 # reshape to long
 metrics_01_long <- metrics_01 |>
-  mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
-                                                 . == "Marginal" ~ 2,
-                                                 . == "Weak" ~ 3))) |>
-  pivot_longer(cols = pctl_income_20:share_employed_quality,
+  select(!ends_with("quality")) |>
+  pivot_longer(cols = pctl_income_20:share_employed,
                names_to = "variable",
                values_to = "value")
 
@@ -132,60 +130,69 @@ metrics_01_long <- left_join(x = metrics_01_long,
 metrics_01_long_recent <- metrics_01_long |>
   filter(year == recent_year)
 
-# reshape back to wide for later functions and mutate quality vars
+# reshape back to wide for later functions and merge with quality variables
+metrics_01_quality <- metrics_01 |>
+  select(year, state, county, subgroup, ends_with("quality"))
 
-# mutate quality vars first-- also does not work
-quality_vars <- metrics_01_long_recent |>
-  filter(str_detect(variable, "quality$")) |>
-  distinct(variable) |>
-  pull(variable)
-
-metrics_01_long_recent <- metrics_01_long_recent |>
-  mutate(across(all_of(quality_vars), ~case_when(. == 1 ~ "Strong",
-                                                  . == 2 ~ "Marginal",
-                                                  . == 3 ~ "Weak")))
-
-# pivot wider DOES work
-metrics_01_recent <- metrics_01_long_recent |>
+metrics_01_recent_values <- metrics_01_long_recent |>
   pivot_wider(names_from = variable,
-              values_from = value)
+              values_from = value) 
 
-# below does not work!!
+metrics_01_recent <- left_join(x = metrics_01_recent_values,
+                               y = metrics_01_quality,
+                               by = c("year", "county", "state", "subgroup"))
+
 metrics_01_recent <- metrics_01_recent |>
-    mutate(across(ends_with("quality"), ~case_when(. == 1 ~ "Strong",
-                                                . == 2 ~ "Marginal",
-                                                . == 3 ~ "Weak")))
+  ungroup() |>
+  select(-recent_year)
 
 ```
 
 We load county-level population estimates from the 2020 decennial census.
 
 ```{r}
-# Not available for 2013 or 2014 so set that year equal to 2015 values
-population <- map_dfr(c(2015:2022), ~get_estimates(
+# Only some variables are pre-2020 and can't be called here
+# variable definitions: https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars/2017.html
+population_data <- map_dfr(c (2020:2022), ~get_estimates(
   geography = "county", 
   product = "characteristics",
   variables = "POPESTIMATE",
   breakdown = c("RACE", "HISP"),
   year = .x
 ),
-.id = 'year') |>
-  filter(variable %in% c('POP', 'POPESTIMATE')) |> 
-  mutate(
-    year = as.numeric(year) + 2012,
-    state = str_sub(GEOID, start = 1, end = 2),
-    county = str_sub(GEOID, start = 3, end = 5)
-  ) |>
-  select(state, county, population = value, year)
+.id = 'year') 
 
-## take out 1 year 
-get_estimates(
-  geography = "county", 
-  product = "characteristics",
-  variables = "POPESTIMATE",
-  breakdown = c("RACE", "HISP"),
-  vintage = 2019
-)
+population <- population_data |>
+  mutate(
+    year = case_when(year == 1 ~ 2017,
+                     year != 1 ~ as.numeric(year) + 2019),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5),
+    subgroup = case_when(RACE == 1 & HISP == 1 ~ "White, Non-Hispanic",
+                         RACE == 1 & HISP == 0 ~ "White",
+                         RACE == 2 & HISP == 1 ~ "Black, Non-Hispanic",
+                         RACE == 2 & HISP == 0 ~ "Black",
+                         HISP == 2 ~ "Hispanic",
+                         RACE != 1 & RACE != 2 & HISP == 1 ~ "Other Races and Ethnicities",
+                         RACE == 0 & HISP == 0 ~ "All")
+  ) 
+
+population <- population |>
+  group_by(year, state, county, subgroup) |>
+  summarize(population = sum(value)) |>
+  select(state, county, subgroup, population, year) |>
+  filter(!is.na(subgroup))
+
+```
+
+Merge population data to metrics data for specific subgroup weighting
+
+```{r}
+
+ metrics_01_df <- left_join(x = metrics_01_recent, 
+                            y = population, 
+                            by = c("state", "county", "year", "subgroup")) |> 
+    filter(!is.na(population))
 
 ```
 
@@ -198,8 +205,6 @@ We calculate weighted medians for each numeric variable. This means our estimate
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
 calc_year_subgroup_table <- function(metrics_df) {
- # metrics_df <- left_join(metrics_df, population, by = c("state", "county", "year")) |> 
-  #  filter(!is.na(population))
   
   weighted_median <- metrics_df |>
     mutate(county_state = paste0(county_name, ', ', state_name)) |> 
@@ -282,13 +287,12 @@ calc_year_subgroup_table <- function(metrics_df) {
 
 ### Percentile income, homeless count, poverty exposure, juvinile arrest rate, share in preschool, share employed, share with HS degree, rate low birth weight, digitial access, employment rate, and rate of learning achievement
 
--- NEEDS TO BE DE-BUGGED W/R/T POP ESTIMATES -- 
-
 ```{r}
-calc_year_subgroup_table(metrics_01) |>   
+
+calc_year_subgroup_table(metrics_01_df) |>   
   datatable(caption = "01_Metrics")
 
-calc_year_subgroup_table(metrics_01) |>
+calc_year_subgroup_table(metrics_01_df) |>
   ggplot(aes(share_lq3, name, color = subgroup)) +
   geom_point(alpha = 0.3) +
   labs(
