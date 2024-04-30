@@ -25,12 +25,13 @@ library(tidylog)
 library(ipumsr)
 library(readxl)
 library(skimr)
-
+library(tidytable)
 ```
 
 ```{r}
 # Specify the target year for the data
-target_year = 2022
+# need to run for 2022, 2021, 2018, and 2014
+target_year = 2021
 ```
 
 ## (2) Import housing affordability data (created in 1b_housing_county.R)
@@ -40,8 +41,10 @@ Either run "1b_housing_county.R" OR: Import the already prepared housing afforda
 ```{r}
 # this file is at the household level still so we can 
 # calculate the availability metric
-households_yyyy <- read_csv(here::here("02_housing/data/temp/households_county.csv")) %>% 
-  filter(year == target_year)
+households_yyyy <- fread(here::here("02_housing/data/temp/households_county.csv")) %>% 
+  filter(year == target_year) %>% 
+  mutate(statefip = str_pad(statefip, 2,"left", 0), 
+         county = str_pad(county, 2, "left", 0))
 
 
 # this file is at the county level for calculating the overall number
@@ -83,9 +86,9 @@ available_yyyy <- households_yyyy %>%
 
 ```{r}
 available_yyyy <- available_yyyy %>% 
-  group_by(statefip, county) %>% 
   dplyr::summarise(across(matches("Below|Affordable|at_"), ~sum(.x*HHWT, na.rm = TRUE)), 
-                   HHobs_count = n()) %>% 
+                   HHobs_count = dplyr::n(), 
+                   .by = c(statefip, county)) %>% 
   rename("state" = "statefip") %>% 
   ungroup()
 ```
