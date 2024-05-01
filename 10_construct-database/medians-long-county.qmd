@@ -72,9 +72,11 @@ We calculate weighted medians for each numeric variable. This means our estimate
 
 
 ```{r}
+#| label: calculate-medians
 # Remove missing variable-year combos 
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
+# Compute population-weighted median for each metric by year
 weighted_median <- metrics |>
   select(where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -85,6 +87,11 @@ weighted_median <- metrics |>
   ) |>
   pivot_longer(cols = -year, values_to = "weighted_median")
 
+```
+
+```{r}
+#| label: calculate-state-count
+# Compute the number of states for which the metric for a given year is available with marginal or better quality
 state_count <- metrics |> 
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
@@ -93,7 +100,11 @@ state_count <- metrics |>
   filter(quality %in% 1:2) |> 
   count(state_name, year, qual_varname) |> 
   count(qual_varname, year, name = 'n_states')
- 
+```
+
+```{r}
+#| label: calculate-proportion-by-qual
+# Compute proportion of each variable for each year that is of marginal quality and of weak quality
 proportion_by_qual <- metrics |>
   mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
@@ -107,8 +118,12 @@ proportion_by_qual <- metrics |>
   filter(quality %in% 2:3) |> 
   select(-population) |> 
   arrange(qual_varname, quality)
+```
 
 
+```{r}
+#| label: calculate-missing
+# Compute proportion of population missing for each metric
 missing_population <- metrics |>
   select(where(is.numeric) & (!ends_with('quality'))) |>
   summarize(
@@ -117,7 +132,11 @@ missing_population <- metrics |>
       .fns = ~missing_share(.x, weight = population)
     ), .by='year') |> 
   pivot_longer(cols = -year, values_to = "missing_population")
- 
+```
+
+```{r}
+#| label: calculate-missing-county
+# Compute share of counties missing for each metric
 missing_county <- metrics |>
   select(where(is.numeric) & (!ends_with('quality'))) |>
   summarize(
@@ -126,7 +145,11 @@ missing_county <- metrics |>
       .fns = ~sum(is.na(.x)) / n()
     ), .by = 'year') |> 
   pivot_longer(cols = -year, values_to = "missing_county")
-  
+```
+
+```{r}
+#| label: calculate-pctle
+# Compute population-weighted 5th and 95th percentile
 low_pctle <- metrics |>
   select(where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -146,7 +169,11 @@ high_pctle <- metrics |>
     ), .by = 'year'
   ) |>
   pivot_longer(cols = -year, values_to = "high_pctle")
+```
 
+```{r}
+#| label: combine-metrics
+# Bring all metrics together and print to kable output
 weighted_med_table <- weighted_median |> 
   full_join(low_pctle, by = c("year", "name")) |>
   full_join(high_pctle, by = c("year", "name")) |>  
@@ -172,6 +199,7 @@ weighted_med_table |>
 
 
 ```{r plot-lq3-by-varyear}
+# Plot percentage of population for which each metric is missing or of quality 3, per year
 weighted_med_table |>
   mutate(year = as.factor(year)) |> 
   ggplot(aes(x=share_lq3, y=name, color=year)) +
@@ -183,4 +211,13 @@ weighted_med_table |>
     x = "Share NA or Quality==3",
     y = NULL
   )
+```
+
+```{r export-data}
+# Export medians with any metric-year with > 15% of population missing/low quality suppressed
+weighted_med_table |> 
+  mutate(group = "wtd_med", weighted_median = ifelse(share_lq3 > 0.15, NA, weighted_median)) |> 
+  select(year, group, name, weighted_median) |> 
+  pivot_wider(names_from = name, values_from = weighted_median) |> 
+  write_csv(here("10_construct-database", "county_medians_year_suppressed.csv"))
 ```
