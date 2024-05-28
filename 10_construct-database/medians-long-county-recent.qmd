@@ -65,10 +65,97 @@ metrics <- read_csv(here("data", "11_mobility-metrics_county_longitudinal.csv"))
 
 ```
 
+```{r}
+# make the housing wealth variable numeric
+# function to reshape ratio variables 
+# double check the treatment of NAs with code reviewer
+calculate_ratio <- function(var) {
+  # Extract the numeric values before and after the colon
+  x <- as.numeric(sub("^([0-9]*\\.?[0-9]+):([0-9]*\\.?[0-9]+)$", "\\1", var))
+  y <- as.numeric(sub("^([0-9]*\\.?[0-9]+):([0-9]*\\.?[0-9]+)$", "\\2", var))
+  
+  # Calculate the ratio
+  ratio <- x / y
+  
+  return(ratio)
+}
+
+# apply it to the dataset
+metrics <- metrics |>
+  mutate(ratio_black_nh_house_value_households = calculate_ratio(ratio_black_nh_house_value_households),
+         ratio_hispanic_house_value_households = calculate_ratio(ratio_hispanic_house_value_households),
+         ratio_other_nh_house_value_households = calculate_ratio(ratio_other_nh_house_value_households),
+         ratio_white_nh_house_value_households = calculate_ratio(ratio_white_nh_house_value_households))
+
+```
+
+We load county-level population estimates from the 2020 decennial census.
+
+```{r}
+# Only some variables are pre-2020 and can't be called here
+# variable definitions: https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars/2017.html
+population_data <- map_dfr(c (2020:2022), ~get_estimates(
+  geography = "county", 
+  product = "characteristics",
+  variables = "POPESTIMATE",
+  breakdown = c("RACE", "HISP"),
+  year = .x
+),
+.id = 'year') 
+
+population <- population_data |>
+  mutate(
+    year = case_when(year == 1 ~ 2017,
+                     year != 1 ~ as.numeric(year) + 2019),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5),
+    subgroup = case_when(RACE == 1 & HISP == 1 ~ "white_nh",
+                         RACE == 1 & HISP == 0 ~ "white",
+                         RACE == 2 & HISP == 1 ~ "black_nh",
+                         RACE == 2 & HISP == 0 ~ "black",
+                         HISP == 2 ~ "hispanic",
+                         RACE != 1 & RACE != 2 & HISP == 1 ~ "other",
+                         RACE == 0 & HISP == 0 ~ "all")
+  ) 
+
+population <- population |>
+  group_by(year, state, county, subgroup) |>
+  summarize(population = sum(value)) |>
+  select(state, county, subgroup, population, year) |>
+  filter(!is.na(subgroup))
+
+# reshape
+population_wide <- population |>
+  pivot_wider(names_from = subgroup,
+              values_from = population)
+
+```
+
+Merge population data to metrics data for specific subgroup weighting
+
+```{r}
+
+ metrics <- left_join(x = metrics, 
+                      y = population_wide, 
+                      by = c("state", "county", "year")) 
+
+```
+
 ## Calculate Medians
 
 We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. Note that 2014 is excluded because we don't have population data for that year.
 
+Subset non-segregated variables for subgroup weighting 
+
+```{r}
+
+metrics_nonseg <- metrics |>
+  select(year, state, county, population, black_nh, white_nh, hispanic, other, rate_injury_death, ratio_population_pc_physician, share_affordable_available_30_ami, share_affordable_available_50_ami, share_affordable_available_80_ami, share_affordable_80_ami, share_affordable_50_ami, share_affordable_80_ami, share_affordable_30_ami, count_membership_associations_per_10k, ratio_high_low_ses_fb_friends, share_election_turnout, rate_crime_violent, rate_crime_property, ratio_living_wage)
+
+```
+
+
+Calculate medians -- need to add subgroup weighting to this
 
 ```{r}
 # Remove missing variable-year combos 
@@ -83,6 +170,36 @@ weighted_median <- metrics |>
     ), .by = 'year'
   ) |>
   pivot_longer(cols = -year, values_to = "weighted_median")
+
+weighted_black <- metrics_nonseg |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -c(black_nh, white_nh, hispanic, other, population), 
+      .fns = ~safe_wtd_quantile(., weights = black_nh, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_black")
+
+weighted_hispanic <- metrics_nonseg |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -c(black_nh, white_nh, hispanic, other, population), 
+      .fns = ~safe_wtd_quantile(., weights = hispanic, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_hispanic")
+
+weighted_white <- metrics_nonseg |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -c(black_nh, white_nh, hispanic, other, population), 
+      .fns = ~safe_wtd_quantile(., weights = white_nh, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_white")
 
 state_count <- metrics |> 
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
@@ -149,6 +266,9 @@ high_pctle <- metrics |>
 weighted_med_table <- weighted_median |> 
   full_join(low_pctle, by = c("year", "name")) |>
   full_join(high_pctle, by = c("year", "name")) |>  
+  left_join(weighted_black, by = c("year", "name")) |>  
+  left_join(weighted_hispanic, by = c("year", "name")) |> 
+  left_join(weighted_white, by = c("year", "name")) |> 
   full_join(missing_population, by = c("year", "name")) |>
   full_join(missing_county, by = c("year", "name")) |>
   mutate(qual_varname = paste0(name, '_quality')) |>
@@ -170,6 +290,7 @@ weighted_med_table <- weighted_median |>
   #kable_styling(font_size = 10, fixed_thead = TRUE)
 ```
 
+Filter to most recent year
 
 ```{r}
 
@@ -191,6 +312,22 @@ metrics_long_recent <- metrics_long |>
 
 ```
 
+Add in organizational variables
+
+```{r}
+
+metrics_long_recent <- metrics_long_recent |>
+  mutate(pillar = case_when(name == "rate_learning" | name == "share_meps20_black" | name == "share_meps20_hispanic" | name == "share_meps20_white" | name == "share_in_preschool" | name == "share_hs_degree" | name == "share_digital_access" ~ "High-Quality Education",
+                            name == "index_air_hazard" | name == "rate_injury_death" | name == "ratio_population_pc_physician" | name == "share_low_birth_weight" ~ "Healthy Enviornment and Access to Good Healthcare",
+                            name == "index_transit_trips" | name == "index_transportation_cost" | name == "share_affordable_available_30_ami" | name == "share_affordable_available_50_ami" | name == "share_affordable_available_80_ami" | name == "share_affordable_30_ami" | name == "share_affordable_50_ami" | name == "share_affordable_80_ami" | name == "count_homeless" | name == "share_homeless" | name == "share_black_nh_exposure" | name == "share_hispanic_exposure" | name == "share_other_nh_exposure" | name == "share_white_nh_exposure" | name == "share_poverty_exposure" | name == "count_membership_associations_per_10k" | name == "ratio_high_low_ses_fb_friends" ~ "Opportunity-Rich and Inclusive Neighborhoods", 
+                            name == "share_election_turnout" | name == "share_desc_rep_other" | name == "share_desc_rep_black_nonhispanic" | name == "share_desc_rep_hispanic" | name == "share_desc_rep_white_nonhispanic" | name == "rate_crime_violent" | name == "rate_crime_property" | name == "rate_juv_arrest" ~ "Responsive and Just Governance", 
+                            name == "pctl_income_20" | name == "pctl_income_50" | name == "pctl_income_80" | name == "share_debt_coll" | name == "share_employed" | name ==  "ratio_living_wage" | name == "ratio_black_nh_house_value_households" | name == "ratio_hispanic_house_value_households" | name == "ratio_other_nh_house_value_households" | name == "ratio_white_nh_house_value_households" ~ "Rewarding Work"
+))
+
+```
+
+Show error plot
+
 ```{r plot-lq3-by-varyear}
 metrics_long_recent |>
   mutate(year = as.factor(year)) |> 
@@ -211,8 +348,11 @@ Metrics are suppressed (NA) if more than 15 percent are missing or low quality
 metrics_recent_suppressed <- metrics_long_recent |> 
   mutate(weighted_median = ifelse(share_lq3 > 0.15, NA, weighted_median),
          high_pctle = ifelse(share_lq3 > 0.15, NA, high_pctle),
-         low_pctle = ifelse(share_lq3 > 0.15, NA,low_pctle)) |> 
-  select(year, name, weighted_median, low_pctle, high_pctle, share_lq3) 
+         low_pctle = ifelse(share_lq3 > 0.15, NA,low_pctle),
+         black_median = ifelse(share_lq3 > 0.15, NA, weighted_median_black),
+         hispanic_median = ifelse(share_lq3 > 0.15, NA, weighted_median_hispanic),
+         white_median = ifelse(share_lq3 > 0.15, NA, weighted_median_white),) |> 
+  select(year, pillar, name, weighted_median, low_pctle, high_pctle, black_median, hispanic_median, white_median, share_lq3) 
 
 metrics_recent_suppressed |> 
   kbl() |> 
