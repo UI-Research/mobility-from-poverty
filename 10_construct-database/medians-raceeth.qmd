@@ -207,6 +207,24 @@ Merge population data to metrics data for specific subgroup weighting
 
 ```
 
+Generate regions datasets for stratification analysis
+
+```{r}
+
+northeast_01 <- metrics_01_df |>
+  filter(state_name == c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont", "New Jersey", "New York", "Pennsylvania"))
+
+midwest_01 <- metrics_01_df |>
+  filter(state_name == c("Illinois", "Indiana", "Michigan", "Ohio", "Wisconsin", "Iowa", "Kansas", "Minnesota", "Missouri", "Nebraska", "North Dakota", "South Dakota"))
+
+south_01 <- metrics_01_df |>
+  filter(state_name == c("Delaware", "District of Columbia", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "Virginia", "West Virginia", "Alabama", "Kentucky", "Mississippi", "Tennessee", "Arkansas", "Louisiana", "Oklahoma", "Texas"))
+
+west_01 <- metrics_01_df |>
+  filter(state_name == c("Arizona", "Colorado", "Idaho", "Montana", "Nevada", "New Mexico", "Utah", "Wyoming", "Alaska", "California", "Hawaii", "Oregon", "Washington"))
+
+```
+
 ## Calculate Medians
 
 We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. We also calculate `share_lq3`, which is the share of the population for which the given metric is either missing or `quality=3`. 
@@ -215,7 +233,7 @@ We calculate weighted medians for each numeric variable. This means our estimate
 # Remove missing variable-year combos
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
-calc_year_subgroup_table <- function(metrics_df) {
+calc_year_subgroup_table <- function(metrics_df, northeast_df, midwest_df, south_df, west_df) {
   
   weighted_median <- metrics_df |>
     mutate(county_state = paste0(county_name, ', ', state_name)) |> 
@@ -232,7 +250,46 @@ calc_year_subgroup_table <- function(metrics_df) {
     ) |>
     pivot_longer(cols = -c('year','subgroup'), names_to = c('name', '.value'), 
                  names_pattern = '(.*)_\\.(.*)')
-                  
+
+weighted_northeast <- northeast_df |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_northeast")
+
+weighted_midwest <- midwest_df |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_midwest")
+
+weighted_south <- south_df |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_south")
+
+weighted_west <- west_df |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_west")                  
   
   state_count <- metrics_df |> 
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
@@ -277,6 +334,10 @@ calc_year_subgroup_table <- function(metrics_df) {
     pivot_longer(cols = -c('year','subgroup'), values_to = "missing_county")
     
   weighted_median |> 
+    left_join(weighted_northeast, by = c("year", "name")) |> 
+    left_join(weighted_midwest, by = c("year", "name")) |> 
+    left_join(weighted_south, by = c("year", "name")) |> 
+    left_join(weighted_west, by = c("year", "name")) |> 
     full_join(missing_population, by = c("year", "subgroup", "name")) |>
     full_join(missing_county, by = c("year", "subgroup", "name"))|>
     mutate(qual_varname = paste0(name, '_quality')) |>
@@ -298,33 +359,25 @@ calc_year_subgroup_table <- function(metrics_df) {
 
 ### SUBGROUP: Percentile income, homeless count, poverty exposure, juvinile arrest rate, share in preschool, share employed, share with HS degree, rate low birth weight, digital access, employment rate, and rate of learning achievement
 
-```{r}
-
-#calc_year_subgroup_table(metrics_01_df) |>   
- # datatable(caption = "01_Metrics")
-
-calc_year_subgroup_table(metrics_01_df) |>
-  ggplot(aes(share_lq3, name, color = subgroup)) +
-  geom_point(alpha = 0.3) +
-  labs(
-    title = "County Race-Ethnicity Medians Quality",
-    x = "Share NA or Quality==3",
-    y = NULL
-  )
-
-```
-
 Suppress weighted medians with 15 percent of counties low quality or missing -- as did in the overall feature
 
 ```{r}
 
-metrics_01_recent_final <- calc_year_subgroup_table(metrics_01_df) 
+metrics_01_recent_final <- calc_year_subgroup_table(metrics_df = metrics_01_df,
+                                                    northeast_df = northeast_01,
+                                                    midwest_df = midwest_01,
+                                                    south_df = south_01,
+                                                    west_df = west_01) 
  
 metrics_recent_suppressed_01 <- metrics_01_recent_final |> 
   mutate(weighted_median = ifelse(share_lq3 > 0.15, NA, wtd_median),
          high_pctle = ifelse(share_lq3 > 0.15, NA, wtd_highpct),
-         low_pctle = ifelse(share_lq3 > 0.15, NA,wtd_lowpct)) |> 
-  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, share_lq3) 
+         low_pctle = ifelse(share_lq3 > 0.15, NA, wtd_lowpct),
+         weighted_median_northeast = ifelse(share_lq3 > 0.15, NA, weighted_median_northeast),
+         weighted_median_midwest = ifelse(share_lq3 > 0.15, NA, weighted_median_midwest),
+         weighted_median_south = ifelse(share_lq3 > 0.15, NA, weighted_median_south),
+         weighted_median_west = ifelse(share_lq3 > 0.15, NA, weighted_median_west)) |> 
+  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3) 
 
 ```
 
@@ -337,7 +390,7 @@ metrics_recent_suppressed_01 <- metrics_recent_suppressed_01 |>
                             name == "count_homeless" | name == "share_homeless" | name == "share_poverty_exposure" ~ "Opportunity-Rich and Inclusive Neighborhoods",
                             name == "pctl_income_20" | name == "pctle_income_50" | name == "pctl_income_80" | name == "share_employed" ~ "Rewarding Work",
                             name == "share_digital_access" | name == "share_hs_degree" | name == "share_in_preschool" | name == "rate_learning" ~ "High-Quality Education")) |>
-  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, share_lq3)
+  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3)
 
 ```
 
@@ -367,33 +420,45 @@ metrics_03_recent <- recent_year_filter(data = metrics_03,
 
 ```
 
-Note: Uses overall population weighting because defined at neighborhood level
+Generate regions datasets for stratification analysis
 
 ```{r}
-#calc_year_subgroup_table(metrics_03_recent) |>   
- # datatable(caption = "03_Metrics")
 
-calc_year_subgroup_table(metrics_03_recent) |>
-  ggplot(aes(share_lq3, name, color = subgroup)) +
-  geom_point(alpha = 0.3) +
-  labs(
-    title = "County Race-Ethnicity Medians Quality",
-    x = "Share NA or Quality==3",
-    y = NULL
-  )
+northeast_03 <- metrics_03_recent |>
+  filter(state_name == c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont", "New Jersey", "New York", "Pennsylvania"))
+
+midwest_03 <- metrics_03_recent |>
+  filter(state_name == c("Illinois", "Indiana", "Michigan", "Ohio", "Wisconsin", "Iowa", "Kansas", "Minnesota", "Missouri", "Nebraska", "North Dakota", "South Dakota"))
+
+south_03 <- metrics_03_recent |>
+  filter(state_name == c("Delaware", "District of Columbia", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "Virginia", "West Virginia", "Alabama", "Kentucky", "Mississippi", "Tennessee", "Arkansas", "Louisiana", "Oklahoma", "Texas"))
+
+west_03 <- metrics_03_recent |>
+  filter(state_name == c("Arizona", "Colorado", "Idaho", "Montana", "Nevada", "New Mexico", "Utah", "Wyoming", "Alaska", "California", "Hawaii", "Oregon", "Washington"))
+
 ```
+
+Note: Uses overall population weighting because defined at neighborhood level
 
 Suppress weighted medians with 15 percent of counties low quality or missing -- as did in the overall feature
 
 ```{r}
 
-metrics_03_recent_final <- calc_year_subgroup_table(metrics_03_recent) 
+metrics_03_recent_final <- calc_year_subgroup_table(metrics_df = metrics_03_recent,
+                                                    northeast_df = northeast_03,
+                                                    midwest_df = midwest_03,
+                                                    south_df = south_03,
+                                                    west_df = west_03) 
  
 metrics_recent_suppressed_03 <- metrics_03_recent_final |> 
   mutate(weighted_median = ifelse(share_lq3 > 0.15, NA, wtd_median),
          high_pctle = ifelse(share_lq3 > 0.15, NA, wtd_highpct),
-         low_pctle = ifelse(share_lq3 > 0.15, NA,wtd_lowpct)) |> 
-  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, share_lq3) 
+         low_pctle = ifelse(share_lq3 > 0.15, NA,wtd_lowpct),
+         weighted_median_northeast = ifelse(share_lq3 > 0.15, NA, weighted_median_northeast),
+         weighted_median_midwest = ifelse(share_lq3 > 0.15, NA, weighted_median_midwest),
+         weighted_median_south = ifelse(share_lq3 > 0.15, NA, weighted_median_south),
+         weighted_median_west = ifelse(share_lq3 > 0.15, NA, weighted_median_west)) |> 
+  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3) 
 
 ```
 
@@ -404,7 +469,7 @@ metrics_recent_suppressed_03 <- metrics_recent_suppressed_03 |>
   mutate(pillar = case_when(name == "index_air_hazard" ~ "Healthy Enviornment and Access to Good Healthcare",
                             name == "index_transit_trips" | name == "index_transportation_cost" ~ "Opportunity-Rich and Inclusive Neighborhoods",
                             name == "share_debt_coll" ~ "Rewarding Work")) |>
-  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, share_lq3)
+  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3)
 
 ```
 
