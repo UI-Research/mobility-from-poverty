@@ -351,6 +351,83 @@ weighted_med_table <- weighted_median |>
   #kable_styling(font_size = 10, fixed_thead = TRUE)
 ```
 
+Suppression code for stratification datasets
+
+```{r}
+
+stratification_suppression <- function(data, qual_var) {
+
+proportion_by_qual <- data |>
+  mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
+                                                 . == "Marginal" ~ 2,
+                                                 . == "Weak" ~ 3))) |>
+  select(where(is.numeric)) |>
+  pivot_longer(cols = ends_with('_quality'), names_to = 'qual_varname', values_to = 'quality') |> 
+  summarize(population = sum(population),
+   .by = c('year', 'qual_varname', 'quality')
+  ) |> 
+  mutate(pop_share = population / sum(population), .by = c('year', 'qual_varname')) |> 
+  filter(quality %in% 3) |> 
+  select(-population) |> 
+  arrange(qual_varname, quality)
+
+missing_county <- data |>
+  select(where(is.numeric) & (!ends_with('quality'))) |>
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~sum(is.na(.x)) / n()
+    ), .by = 'year') |> 
+  pivot_longer(cols = -year, values_to = "missing_county")
+
+missing_population <- data |>
+  select(where(is.numeric) & (!ends_with('quality'))) |>
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~missing_share(.x, weight = population)
+    ), .by='year') |> 
+  pivot_longer(cols = -year, values_to = "missing_population")
+
+suppression_data <- missing_population |>
+  full_join(missing_county, by = c("year", "name")) |>
+  mutate(qual_varname = paste0(name, '_quality')) |>
+  left_join(proportion_by_qual, by = c("year", "qual_varname")) |>
+  select(-qual_varname, -quality) |>
+  mutate(across(where(is.numeric), ~round(.,digits=2)))|> 
+  rowwise() |>
+  mutate({{qual_var}} = sum(missing_population, pop_share, na.rm = TRUE))  |>
+  filter(missing_county < 1 & name != 'population') |>
+  ungroup() |>
+  select(year, name, {{qual_var}})
+}
+
+```
+
+Get stratification quality vars and merge onto dataset
+
+```{r}
+
+qual_northeast <- stratification_suppression(data = northeast,
+                                             qual_var = share_lq3_northeast)
+
+qual_midwest <- stratification_suppression(data = midwest,
+                                           qual_var = share_lq3_midwest)
+
+qual_south <- stratification_suppression(data = south,
+                                         qual_var = share_lq3_south)
+
+qual_west <- stratification_suppression(data = west,
+                                        qual_var = share_lq3_west)
+
+```
+
+```{r}
+
+
+
+```
+
 Filter to most recent year
 
 ```{r}
