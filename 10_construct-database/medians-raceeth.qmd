@@ -38,6 +38,7 @@ library(here)
 library(tidycensus)
 library(DT)
 library(kableExtra)
+library("tidylog", warn.conflicts = FALSE)
 
 theme_set(theme_minimal())
 
@@ -225,6 +226,55 @@ west_01 <- metrics_01_df |>
 
 ```
 
+Load RUCS codes (needed to create urban and rural breakdowns-- use these same files for both subgroup extracts)
+
+```{r}
+
+rucs_codes_23 <- read_csv(here("10_construct-database", "Ruralurbancontinuumcodes2023.csv")) |>
+  janitor::clean_names()
+
+rucs_codes_13 <- read_csv(here("10_construct-database", "ruralurbancodes2013.csv")) |>
+  janitor::clean_names()
+
+```
+
+Merge RUCS codes to MM data
+
+```{r}
+
+# create fips code for merging
+metrics_01_df <- metrics_01_df |>
+  mutate(fips = paste0(state, county))
+
+# reduce the vars in RUCS crosswalk
+rucs_codes_23 <- rucs_codes_23 |>
+   select(fips, rucc_2023)
+
+# merge datasets together -- no rows unaligned in 2023 RUCS codes
+metrics_rucs_01 <- left_join(x = metrics_01_df,
+                          y = rucs_codes_23,
+                          by = "fips")
+
+# now, make one harmonized RUCS variable
+metrics_01_df <- metrics_rucs_01 |>
+  mutate(rucs_code = case_when(rucc_2023 <= 3 ~ "Urban",
+                               rucc_2023 >= 4 ~ "Rural")) |>
+  select(-rucc_2023)
+
+```
+
+Create separate rural and urban data sets for metrics calculation
+
+```{r}
+
+rural_01 <- metrics_01_df |>
+  filter(rucs_code == "Rural")
+
+urban_01 <- metrics_01_df |>
+  filter(rucs_code == "Urban")
+
+```
+
 ## Calculate Medians
 
 We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. We also calculate `share_lq3`, which is the share of the population for which the given metric is either missing or `quality=3`. 
@@ -233,9 +283,9 @@ We calculate weighted medians for each numeric variable. This means our estimate
 # Remove missing variable-year combos
 safe_wtd_quantile <- possibly(Hmisc::wtd.quantile, otherwise = NA)
 
-calc_year_subgroup_table <- function(metrics_df, northeast_df, midwest_df, south_df, west_df) {
+calc_year_subgroup_table <- function(metrics_df, northeast_df, midwest_df, south_df, west_df, rural_df, urban_df) {
   
-  weighted_median <- metrics_df |>
+weighted_median <- metrics_df |>
     mutate(county_state = paste0(county_name, ', ', state_name)) |> 
     select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
     summarize(
@@ -251,7 +301,7 @@ calc_year_subgroup_table <- function(metrics_df, northeast_df, midwest_df, south
     pivot_longer(cols = -c('year','subgroup'), names_to = c('name', '.value'), 
                  names_pattern = '(.*)_\\.(.*)')
 
-weighted_northeast <- northeast_01 |>
+weighted_northeast <- northeast_df |>
   mutate(county_state = paste0(county_name, ', ', state_name)) |> 
   select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -263,7 +313,7 @@ weighted_northeast <- northeast_01 |>
   pivot_longer(cols = -c('year','subgroup')) |>
   rename(weighted_median_northeast:=value)
 
-weighted_midwest <- midwest_01 |>
+weighted_midwest <- midwest_df |>
   mutate(county_state = paste0(county_name, ', ', state_name)) |> 
   select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -275,7 +325,7 @@ weighted_midwest <- midwest_01 |>
   pivot_longer(cols = -c('year','subgroup')) |>
   rename(weighted_median_midwest:=value)
 
-weighted_south <- south_01 |>
+weighted_south <- south_df |>
   mutate(county_state = paste0(county_name, ', ', state_name)) |> 
   select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -287,7 +337,7 @@ weighted_south <- south_01 |>
   pivot_longer(cols = -c('year','subgroup')) |>
   rename(weighted_median_south:=value)
 
-weighted_west <- west_01 |>
+weighted_west <- west_df |>
   mutate(county_state = paste0(county_name, ', ', state_name)) |> 
   select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
   summarize(
@@ -299,7 +349,31 @@ weighted_west <- west_01 |>
   pivot_longer(cols = -c('year','subgroup')) |>
   rename(weighted_median_west:=value)                  
   
-  state_count <- metrics_df |> 
+weighted_rural <- rural_df |>
+  mutate(county_state = paste0(county_name, ', ', state_name)) |> 
+  select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -c('population', 'county_state'), 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = c('year', 'subgroup')
+  ) |>
+  pivot_longer(cols = -c('year','subgroup')) |>
+  rename(weighted_median_rural:=value)  
+
+weighted_urban <- urban_df |>
+  mutate(county_state = paste0(county_name, ', ', state_name)) |> 
+  select(county_state, subgroup, where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -c('population', 'county_state'), 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = c('year', 'subgroup')
+  ) |>
+  pivot_longer(cols = -c('year','subgroup')) |>
+  rename(weighted_median_urban:=value) 
+
+state_count <- metrics_df |> 
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
                                                  . == "Weak" ~ 3))) |>
@@ -308,7 +382,7 @@ weighted_west <- west_01 |>
     count(state_name, year, subgroup, qual_varname) |> 
     count(qual_varname, year, subgroup, name = 'n_states')
     
-  proportion_by_qual <- metrics_df |>
+proportion_by_qual <- metrics_df |>
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
                                                  . == "Weak" ~ 3))) |>
@@ -323,7 +397,7 @@ weighted_west <- west_01 |>
     arrange(qual_varname, quality)
   
   
-  missing_population <- metrics_df |>
+missing_population <- metrics_df |>
     select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
     summarize(
       across(
@@ -332,7 +406,7 @@ weighted_west <- west_01 |>
       ), .by=c('year','subgroup')) |> 
     pivot_longer(cols = -c('year','subgroup'), values_to = "missing_population")
    
-  missing_county <- metrics_df |>
+missing_county <- metrics_df |>
     select(subgroup, where(is.numeric) & (!ends_with('quality'))) |>
     summarize(
       across(
@@ -341,11 +415,13 @@ weighted_west <- west_01 |>
       ), .by = c('year','subgroup')) |> 
     pivot_longer(cols = -c('year','subgroup'), values_to = "missing_county")
     
-  weighted_median |> 
+weighted_median |> 
     left_join(weighted_northeast, by = c("year", "subgroup", "name")) |> 
     left_join(weighted_midwest, by = c("year", "subgroup", "name")) |> 
     left_join(weighted_south, by = c("year", "subgroup", "name")) |> 
     left_join(weighted_west, by = c("year", "subgroup", "name")) |> 
+    left_join(weighted_rural, by = c("year", "subgroup", "name")) |> 
+    left_join(weighted_urban, by = c("year", "subgroup", "name")) |> 
     full_join(missing_population, by = c("year", "subgroup", "name")) |>
     full_join(missing_county, by = c("year", "subgroup", "name"))|>
     mutate(qual_varname = paste0(name, '_quality')) |>
@@ -430,7 +506,9 @@ metrics_01_recent_final <- calc_year_subgroup_table(metrics_df = metrics_01_df,
                                                     northeast_df = northeast_01,
                                                     midwest_df = midwest_01,
                                                     south_df = south_01,
-                                                    west_df = west_01) 
+                                                    west_df = west_01,
+                                                    rural_df = rural_01,
+                                                    urban_df = urban_01) 
 
 ```
 
@@ -450,6 +528,12 @@ qual_south_01 <- stratification_suppression_subg(data = south_01,
 qual_west_01 <- stratification_suppression_subg(data = west_01,
                                                 qual_var = share_lq3_west)
 
+qual_rural_01 <- stratification_suppression_subg(data = rural_01,
+                                                 qual_var = share_lq3_rural)
+
+qual_urban_01 <- stratification_suppression_subg(data = urban_01,
+                                                 qual_var = share_lq3_urban)
+
 ```
 
 
@@ -459,7 +543,9 @@ metrics_01_postsupp <- metrics_01_recent_final |>
   full_join(qual_northeast_01, by = c("year", "subgroup", "name")) |>
   full_join(qual_midwest_01, by = c("year", "subgroup", "name")) |>
   full_join(qual_south_01, by = c("year", "subgroup", "name")) |>
-  full_join(qual_west_01, by = c("year", "subgroup", "name")) 
+  full_join(qual_west_01, by = c("year", "subgroup", "name")) |>
+  full_join(qual_rural_01, by = c("year", "subgroup", "name")) |>
+  full_join(qual_urban_01, by = c("year", "subgroup", "name"))
 
 ```
 
@@ -474,8 +560,10 @@ metrics_recent_suppressed_01 <- metrics_01_postsupp |>
          weighted_median_northeast = ifelse(share_lq3_northeast > 0.15, NA, weighted_median_northeast),
          weighted_median_midwest = ifelse(share_lq3_midwest > 0.15, NA, weighted_median_midwest),
          weighted_median_south = ifelse(share_lq3_south > 0.15, NA, weighted_median_south),
-         weighted_median_west = ifelse(share_lq3_west > 0.15, NA, weighted_median_west)) |> 
-  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3) 
+         weighted_median_west = ifelse(share_lq3_west > 0.15, NA, weighted_median_west),
+         weighted_median_rural = ifelse(share_lq3_rural > 0.15, NA, weighted_median_rural),
+         weighted_median_urban = ifelse(share_lq3_urban > 0.15, NA, weighted_median_urban)) |> 
+  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, weighted_median_rural, weighted_median_urban, share_lq3) 
 
 ```
 
@@ -486,9 +574,9 @@ metrics_recent_suppressed_01 <- metrics_recent_suppressed_01 |>
   mutate(pillar = case_when(name == "rate_juv_arrest" ~ "Responsive and Just Governance",
                             name == "share_low_birth_weight" ~ "Healthy Enviornment and Access to Good Healthcare",
                             name == "count_homeless" | name == "share_homeless" | name == "share_poverty_exposure" ~ "Opportunity-Rich and Inclusive Neighborhoods",
-                            name == "pctl_income_20" | name == "pctle_income_50" | name == "pctl_income_80" | name == "share_employed" ~ "Rewarding Work",
+                            name == "pctl_income_20" | name == "pctl_income_50" | name == "pctl_income_80" | name == "share_employed" ~ "Rewarding Work",
                             name == "share_digital_access" | name == "share_hs_degree" | name == "share_in_preschool" | name == "rate_learning" ~ "High-Quality Education")) |>
-  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3)
+  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, weighted_median_rural, weighted_median_urban, share_lq3)
 
 ```
 
@@ -536,6 +624,51 @@ west_03 <- metrics_03_recent |>
 
 ```
 
+Merge RUCS codes to MM data
+
+```{r}
+
+# create fips code for merging
+metrics_03_recent <- metrics_03_recent |>
+  mutate(fips = paste0(state, county))
+
+# adjust RUCS 2013 data for CT
+rucs_codes_13 <- rucs_codes_13 |>
+  filter(state == "CT" | fips == "02261")  |>
+  select(fips, rucc_2013)
+
+# merge datasets together -- only 26 rows unaligned in 2023 RUCS codes, mostly in CT (because of updated FIPS codes, so we need the 2013 codes for these counties)
+metrics_rucs_03 <- left_join(x = metrics_03_recent,
+                          y = rucs_codes_23,
+                          by = "fips")
+
+# expect 36 matches-- and this is what we get!
+metrics_rucs_03 <- left_join(x = metrics_rucs_03,
+                          y = rucs_codes_13,
+                          by = "fips")
+
+# now, make one harmonized RUCS variable
+metrics_03_recent <- metrics_rucs_03 |>
+  mutate(rucs_code_int = case_when(!is.na(rucc_2023) ~ rucc_2023,
+                                   !is.na(rucc_2013) ~ rucc_2013)) |>
+  mutate(rucs_code = case_when(rucs_code_int <= 3 ~ "Urban",
+                               rucs_code_int >= 4 ~ "Rural")) |>
+  select(-rucc_2023, -rucc_2013, -rucs_code_int)
+
+```
+
+Create separate rural and urban data sets for metrics calculation
+
+```{r}
+
+rural_03 <- metrics_03_recent |>
+  filter(rucs_code == "Rural")
+
+urban_03 <- metrics_03_recent |>
+  filter(rucs_code == "Urban")
+
+```
+
 Note: Uses overall population weighting because defined at neighborhood level
 
 Suppress weighted medians with 15 percent of counties low quality or missing -- as did in the overall feature
@@ -546,7 +679,9 @@ metrics_03_recent_final <- calc_year_subgroup_table(metrics_df = metrics_03_rece
                                                     northeast_df = northeast_03,
                                                     midwest_df = midwest_03,
                                                     south_df = south_03,
-                                                    west_df = west_03) 
+                                                    west_df = west_03,
+                                                    rural_df = rural_03,
+                                                    urban_df = urban_03) 
 ```
 
 Add stratification suppression vars
@@ -565,6 +700,12 @@ qual_south_03 <- stratification_suppression_subg(data = south_03,
 qual_west_03 <- stratification_suppression_subg(data = west_03,
                                                 qual_var = share_lq3_west)
 
+qual_rural_03 <- stratification_suppression_subg(data = rural_03,
+                                                 qual_var = share_lq3_rural)
+
+qual_urban_03 <- stratification_suppression_subg(data = urban_03,
+                                                 qual_var = share_lq3_urban)
+
 ```
 
 
@@ -574,7 +715,9 @@ metrics_03_postsupp <- metrics_03_recent_final |>
   full_join(qual_northeast_03, by = c("year", "subgroup", "name")) |>
   full_join(qual_midwest_03, by = c("year", "subgroup", "name")) |>
   full_join(qual_south_03, by = c("year", "subgroup", "name")) |>
-  full_join(qual_west_03, by = c("year", "subgroup", "name")) 
+  full_join(qual_west_03, by = c("year", "subgroup", "name")) |>
+  full_join(qual_rural_03, by = c("year", "subgroup", "name")) |>
+  full_join(qual_urban_03, by = c("year", "subgroup", "name")) 
 
 ```
 
@@ -588,8 +731,10 @@ metrics_recent_suppressed_03 <- metrics_03_postsupp |>
          weighted_median_northeast = ifelse(share_lq3_northeast > 0.15, NA, weighted_median_northeast),
          weighted_median_midwest = ifelse(share_lq3_midwest > 0.15, NA, weighted_median_midwest),
          weighted_median_south = ifelse(share_lq3_south > 0.15, NA, weighted_median_south),
-         weighted_median_west = ifelse(share_lq3_west > 0.15, NA, weighted_median_west)) |> 
-  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3) 
+         weighted_median_west = ifelse(share_lq3_west > 0.15, NA, weighted_median_west),
+         weighted_median_rural = ifelse(share_lq3_rural > 0.15, NA, weighted_median_rural),
+         weighted_median_urban = ifelse(share_lq3_urban > 0.15, NA, weighted_median_urban)) |> 
+  select(year, name, subgroup, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, weighted_median_rural, weighted_median_urban, share_lq3) 
 
 ```
 
@@ -600,7 +745,7 @@ metrics_recent_suppressed_03 <- metrics_recent_suppressed_03 |>
   mutate(pillar = case_when(name == "index_air_hazard" ~ "Healthy Enviornment and Access to Good Healthcare",
                             name == "index_transit_trips" | name == "index_transportation_cost" ~ "Opportunity-Rich and Inclusive Neighborhoods",
                             name == "share_debt_coll" ~ "Rewarding Work")) |>
-  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, share_lq3)
+  select(pillar, name, subgroup, year, weighted_median, low_pctle, high_pctle, weighted_median_northeast, weighted_median_midwest, weighted_median_south, weighted_median_west, weighted_median_rural, weighted_median_urban, share_lq3)
 
 ```
 
