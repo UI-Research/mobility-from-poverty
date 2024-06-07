@@ -52,6 +52,7 @@ library(tidyverse)
 library(here)
 library(tidycensus)
 library(kableExtra)
+library("tidylog", warn.conflicts = FALSE)
 
 ```
 
@@ -159,6 +160,66 @@ west <- metrics |>
 
 ```
 
+Load RUCS codes (needed to create urban and rural breakdowns)
+
+```{r}
+
+rucs_codes_23 <- read_csv(here("10_construct-database", "Ruralurbancontinuumcodes2023.csv")) |>
+  janitor::clean_names()
+
+rucs_codes_13 <- read_csv(here("10_construct-database", "ruralurbancodes2013.csv")) |>
+  janitor::clean_names()
+
+```
+
+Merge RUCS codes to MM data
+
+```{r}
+
+# create fips code for merging
+metrics <- metrics |>
+  mutate(fips = paste0(state, county))
+
+# reduce the vars in RUCS crosswalk
+rucs_codes_23 <- rucs_codes_23 |>
+   select(fips, rucc_2023)
+
+rucs_codes_13 <- rucs_codes_13 |>
+  filter(state == "CT" | fips == "02261")  |>
+  select(fips, rucc_2013)
+
+# merge datasets together -- only 61 rows unaligned in 2023 RUCS codes, mostly in CT (because of updated FIPS codes, so we need the 2013 codes for these counties)
+metrics_rucs <- left_join(x = metrics,
+                          y = rucs_codes_23,
+                          by = "fips")
+
+# expect 61 matches-- and this is what we get!
+metrics_rucs <- left_join(x = metrics_rucs,
+                          y = rucs_codes_13,
+                          by = "fips")
+
+# now, make one harmonized RUCS variable
+metrics <- metrics_rucs |>
+  mutate(rucs_code_int = case_when(!is.na(rucc_2023) ~ rucc_2023,
+                               !is.na(rucc_2013) ~ rucc_2013)) |>
+  mutate(rucs_code = case_when(rucs_code_int <= 3 ~ "Urban",
+                               rucs_code_int >= 4 ~ "Rural")) |>
+  select(-rucc_2023, -rucc_2013)
+
+```
+
+Create separate rural and urban data sets for metrics calculation
+
+```{r}
+
+rural <- metrics |>
+  filter(rucs_code == "Rural")
+
+urban <- metrics |>
+  filter(rucs_code == "Urban")
+
+```
+
 ## Calculate Medians
 
 We calculate weighted medians for each numeric variable. This means our estimates represent the county mobility metric for the average American. Note that 2014 is excluded because we don't have population data for that year.
@@ -259,6 +320,26 @@ weighted_west <- west |>
   ) |>
   pivot_longer(cols = -year, values_to = "weighted_median_west")
 
+weighted_rural <- rural |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_rural")
+
+weighted_urban <- urban |>
+  select(where(is.numeric) & (!ends_with('quality'))) |> 
+  summarize(
+    across(
+      .cols = -population, 
+      .fns = ~safe_wtd_quantile(., weights = population, probs = 0.5, na.rm = TRUE)
+    ), .by = 'year'
+  ) |>
+  pivot_longer(cols = -year, values_to = "weighted_median_urban")
+
 state_count <- metrics |> 
     mutate(across(ends_with("quality"), ~case_when(. == "Strong" ~ 1,
                                                  . == "Marginal" ~ 2,
@@ -330,6 +411,8 @@ weighted_med_table <- weighted_median |>
   left_join(weighted_midwest, by = c("year", "name")) |> 
   left_join(weighted_south, by = c("year", "name")) |> 
   left_join(weighted_west, by = c("year", "name")) |> 
+  left_join(weighted_rural, by = c("year", "name")) |>
+  left_join(weighted_urban, by = c("year", "name")) |> 
   full_join(missing_population, by = c("year", "name")) |>
   full_join(missing_county, by = c("year", "name")) |>
   mutate(qual_varname = paste0(name, '_quality')) |>
@@ -420,6 +503,12 @@ qual_south <- stratification_suppression(data = south,
 qual_west <- stratification_suppression(data = west,
                                         qual_var = share_lq3_west)
 
+qual_rural <- stratification_suppression(data = rural,
+                                         qual_var = share_lq3_rural)
+
+qual_urban <- stratification_suppression(data = urban,
+                                         qual_var = share_lq3_urban)
+
 ```
 
 ```{r}
@@ -428,7 +517,9 @@ weighted_med_table_supp <- weighted_med_table |>
   full_join(qual_northeast, by = c("year", "name")) |>
   full_join(qual_midwest, by = c("year", "name")) |>
   full_join(qual_south, by = c("year", "name")) |>
-  full_join(qual_west, by = c("year", "name")) 
+  full_join(qual_west, by = c("year", "name")) |>
+  full_join(qual_rural, by = c("year", "name")) |>
+  full_join(qual_urban, by = c("year", "name")) 
 
 ```
 
@@ -482,9 +573,11 @@ metrics_recent_suppressed <- metrics_long_recent |>
          northeast_median = ifelse(share_lq3_northeast > 0.15, NA, weighted_median_northeast),
          midwest_median = ifelse(share_lq3_midwest > 0.15, NA, weighted_median_midwest),
          south_median = ifelse(share_lq3_south > 0.15, NA, weighted_median_south),
-         west_median = ifelse(share_lq3_west > 0.15, NA, weighted_median_west)) |> 
+         west_median = ifelse(share_lq3_west > 0.15, NA, weighted_median_west),
+         rural_median = ifelse(share_lq3_rural > 0.15, NA, weighted_median_rural),
+         urban_median = ifelse(share_lq3_urban > 0.15, NA, weighted_median_urban)) |> 
   filter(!is.na(pillar)) |> # arg why wont this filter work??
-  select(pillar, name, year, weighted_median, low_pctle, high_pctle, black_median, hispanic_median, white_median, northeast_median, midwest_median, south_median, west_median, share_lq3) 
+  select(pillar, name, year, weighted_median, low_pctle, high_pctle, black_median, hispanic_median, white_median, northeast_median, midwest_median, south_median, west_median, rural_median, urban_median, share_lq3) 
 
 metrics_recent_suppressed |> 
   kbl() |> 
