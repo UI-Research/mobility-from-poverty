@@ -590,6 +590,7 @@ Now, we count the number of metrics each county has in the top percentile, for p
 ```{r}
 
 # Select the variables needed to count
+# 17 metrics total
 metrics_county_ct <- metrics |>
   select(index_air_hazard, rate_injury_death, ratio_population_pc_physician, rate_learning, share_in_preschool, share_hs_degree, share_digital_access, share_poverty_exposure, share_affordable_available_30_ami, count_membership_associations_per_10k, ratio_high_low_ses_fb_friends, share_election_turnout, share_employed, ratio_living_wage, index_transit_trips, index_transportation_cost, share_debt_coll, state, county, population, year)
 
@@ -602,14 +603,12 @@ metrics_county_ct_long <- metrics_county_ct %>%
   pivot_longer(cols = -c("state", "county", "population", "year"), names_to = "variable", values_to = "value")
 
 # Identify the most recent year for each variable
-most_recent_years <- metrics_county_ct_long %>%
-  group_by(variable) %>%
-  summarize(most_recent_year = max(year)) %>%
-  ungroup()
+recent_year_data_2 <- recent_year_data |>
+  rename(variable = name) 
 
 # Filter the dataset to only include the most recent year of data for each variable
 metrics_county_ct_recent <- metrics_county_ct_long %>%
-  inner_join(most_recent_years, by = c("variable", "year" = "most_recent_year"))
+  semi_join(recent_year_data_2, by = c("variable", "year" = "recent_year"))
 
 ```
 
@@ -644,53 +643,12 @@ metrics_county_ct_recent_ptcle_join <- metrics_county_ct_recent %>%
 
 # Count the number of variables above the weighted 5th percentile for each county
 pctle_ct <- metrics_county_ct_recent_ptcle_join %>%
-  group_by(county) %>%
-  summarize(
-    count_above_percentile = sum(value > weighted_5th_percentile, na.rm = TRUE)
-  )
-
-```
-
-
-
-
-```{r}
-
-weighted_percentile <- function(x, w, p = 0.05) {
-  df <- tibble(x = x, w = w) %>%
-    arrange(x) %>%
-    mutate(cum_weight = cumsum(w) / sum(w))
-  
-  percentile_value <- df %>%
-    filter(cum_weight >= p) %>%
-    slice(1) %>%
-    pull(x)
-  
-  return(percentile_value)
-}
-
-
-# Calculate the weighted 5th percentile for each variable
-percentiles <- metrics_county_ct %>%
-  pivot_longer(cols = -c("state", "county", "population"), names_to = "variable", values_to = "value") %>%
-  group_by(variable) %>%
-  summarize(weighted_5th_percentile = weighted_percentile(value, population))
-
-# Join the percentiles back to the original data and select most recent year data
-metrics_county_ct_long <- metrics_county_ct %>%
-  pivot_longer(cols = -c("state", "county", "population"), names_to = "variable", values_to = "value") # %>%
- # left_join(percentiles, by = "variable")
-
-metrics_county_ct_long_recent <- metrics_county_ct_long %>%
-  group_by(variable) %>%
-  filter(year == max(year)) %>%
-  ungroup()
-
-# Count the number of variables above the weighted 5th percentile for each county
-percentile_count <- metrics_county_ct_long %>%
   group_by(state, county) %>%
   summarize(
     count_above_percentile = sum(value > weighted_5th_percentile, na.rm = TRUE)
   )
+
+# When filtering we see 211 counties have values in top 5th percentile for all 17 metrics
+summary(pctle_ct$count_above_percentile)
 
 ```
