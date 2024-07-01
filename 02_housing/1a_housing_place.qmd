@@ -100,10 +100,13 @@ rent_ratio <- rent_ratio %>%
   # Collapse (mean) ratio by place - values have been multiplied by the afact in 
   # 0_housing_microdata.qmd so summarizing gets the place-level value 
   dplyr::group_by(statefip, place, year) %>% 
-  dplyr::summarize(ratio_rentgrs_rent = mean(ratio_rentgrs_rent, na.rm=TRUE),
-                   RENT = mean(RENT), na.rm=TRUE,
-                   HHINCOME = mean(HHINCOME), na.rm=TRUE,
-                   HHWT = mean(HHWT), na.rm=TRUE)
+  dplyr::summarize(ratio_rentgrs_rent = weighted.mean(ratio_rentgrs_rent, 
+                                                      w = HHWT, 
+                                                      na.rm=TRUE),
+                   RENT = mean(RENT, na.rm=TRUE),
+                   HHINCOME = mean(HHINCOME, na.rm=TRUE),
+                   HHWT = mean(HHWT, na.rm=TRUE)
+  )
 ```
 
 ### (3e) In the vacant file, update RENTGRS to be more representative of what actual cost would be (RENTGRS = RENT\*ratio).
@@ -660,27 +663,14 @@ summary(housing_subgroup_final)
 
 ### (10c) Check against last years metrics
 
-Download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10 and save in Downloads folder as "mobility_metrics_place.csv"
+Download 2021 mobility metrics at the place level: https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10 and save in the 02_housing/data/temp folder in the UMF repository as "mobility_metrics_place.csv"
 
 ```{r}
-username = getwd() %>% str_match("Users/.*?/") %>% str_remove_all("Users|/")
 
-metrics_2021 <- read_csv(paste0("C:/Users/",username,"/Downloads/mobility_metrics_place.csv")) %>% 
+metrics_2021 <- read_csv(here::here("02_housing", "data", "temp", "mobility_metrics_place.csv")) %>% 
   filter(year == 2021) %>% 
   select(state, place, share_affordable_80_ami, share_affordable_50_ami, share_affordable_30_ami) 
 
 summary(metrics_2021)
 
-```
-
-NLIHC has an Out of Reach tool that is a good benchmark for comparing results to: https://nlihc.org/oor it's not a 1:1 equivalent measure, but gives a sense of the cost of renting in each state and by zip code
-
-```{r}
-# subgroup summaries
-subgroup_sum <- housing_2022_subgroup %>% 
-  group_by(subgroup) %>% 
-  reframe(across(c("share_affordable_30_ami",
-                   "share_affordable_50_ami", 
-                   "share_affordable_80_ami"),
-                 list("mean" = mean,"min"= min,"max"= max),na.rm = T))
 ```
