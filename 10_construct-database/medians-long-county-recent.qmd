@@ -599,9 +599,13 @@ Now, we count the number of metrics each county has in the top percentile, for p
 ```{r}
 
 # Select the variables needed to count
-# 17 metrics total
+# 13 metrics total
 metrics_county_ct <- metrics |>
-  select(index_air_hazard, rate_injury_death, ratio_population_pc_physician, rate_learning, share_in_preschool, share_hs_degree, share_digital_access, share_poverty_exposure, share_affordable_available_30_ami, count_membership_associations_per_10k, ratio_high_low_ses_fb_friends, share_election_turnout, share_employed, ratio_living_wage, index_transit_trips, index_transportation_cost, share_debt_coll, state, county, population, year)
+  select(index_air_hazard, rate_learning, share_in_preschool, share_hs_degree, share_digital_access, share_affordable_available_30_ami, count_membership_associations_per_10k, ratio_high_low_ses_fb_friends, share_election_turnout, share_employed, ratio_living_wage, index_transit_trips, index_transportation_cost, state, county, population, year)
+
+# need to do the "flipped" vars separately -- 4 total
+metrics_county_ct_flip <- metrics |>
+  select(rate_injury_death, ratio_population_pc_physician, share_poverty_exposure, share_debt_coll, state, county, population, year)
 
 ```
 
@@ -623,8 +627,22 @@ metrics_county_ct_recent <- metrics_county_ct_long %>%
 
 ```{r}
 
+# Reshape the data to a long format
+metrics_county_ct_long_flip <- metrics_county_ct_flip %>%
+  pivot_longer(cols = -c("state", "county", "population", "year"), names_to = "variable", values_to = "value")
+
+# Filter the dataset to only include the most recent year of data for each variable
+metrics_county_ct_recent_flip <- metrics_county_ct_long_flip %>%
+  semi_join(recent_year_data_2, by = c("variable", "year" = "recent_year"))
+
+```
+
+Create a function to implement
+
+```{r}
+
 # Function to calculate population-weighted percentile
-weighted_percentile <- function(x, w, p = 0.05) {
+weighted_percentile <- function(x, w, p) {
   df <- tibble(x = x, w = w) %>%
     arrange(x) %>%
     mutate(cum_weight = cumsum(w) / sum(w))
@@ -637,27 +655,123 @@ weighted_percentile <- function(x, w, p = 0.05) {
   return(percentile_value)
 }
 
+weighted_percentile_less <- function(x, w, p) {
+  df <- tibble(x = x, w = w) %>%
+    arrange(x) %>%
+    mutate(cum_weight = cumsum(w) / sum(w))
+  
+  percentile_value <- df %>%
+    filter(cum_weight <= p) %>%
+    slice(1) %>%
+    pull(x)
+  
+  return(percentile_value)
+}
+
+```
+
+Now calculate the percentiles.
+
+First, the 5th percentile (WORST COUNTIES, HERE ALSO DO THE FLIP)
+
+```{r}
+
 # Calculate the weighted 5th percentile for each variable
-percentiles <- metrics_county_ct_recent %>%
+percentiles_05 <- metrics_county_ct_recent %>%
   group_by(variable) %>%
-  summarize(weighted_5th_percentile = weighted_percentile(value, population))
+  summarize(weighted_5th_percentile = weighted_percentile_less(value, population, p = 0.05))
+
+percentiles_05_flip <- metrics_county_ct_recent_flip %>%
+  group_by(variable) %>%
+  summarize(weighted_5th_percentile = weighted_percentile(value, population, p = 0.95)) # need this to be 95 to capture the flipped
 
 ```
 
 ```{r}
 
 # Join the percentiles back to the original data
-metrics_county_ct_recent_ptcle_join <- metrics_county_ct_recent %>%
-  left_join(percentiles, by = "variable")
+metrics_county_ct_recent_ptcle_join_05 <- metrics_county_ct_recent %>%
+  left_join(percentiles_05, by = "variable")
 
 # Count the number of variables above the weighted 5th percentile for each county
-pctle_ct <- metrics_county_ct_recent_ptcle_join %>%
+pctle_ct_05 <- metrics_county_ct_recent_ptcle_join_05 %>%
   group_by(state, county) %>%
   summarize(
     count_above_percentile = sum(value > weighted_5th_percentile, na.rm = TRUE)
   )
 
+# summary
+summary(pctle_ct_05$count_above_percentile)
+
+```
+
+
+```{r}
+
+# Join the percentiles back to the original data
+metrics_county_ct_recent_ptcle_join_05_flip <- metrics_county_ct_recent_flip %>%
+  left_join(percentiles_05_flip, by = "variable")
+
+# Count the number of variables above the weighted 5th percentile for each county
+pctle_ct_05_flip <- metrics_county_ct_recent_ptcle_join_05_flip %>%
+  group_by(state, county) %>%
+  summarize(
+    count_above_percentile = sum(value > weighted_5th_percentile, na.rm = TRUE)
+  )
+
+# summary
+summary(pctle_ct_05_flip$count_above_percentile)
+
+```
+
+Now, do the 95th percentile (the BEST COUNTIES)
+
+```{r}
+
+# Calculate the weighted 95th percentile for each variable
+percentiles_95 <- metrics_county_ct_recent %>%
+  group_by(variable) %>%
+  summarize(weighted_95th_percentile = weighted_percentile(value, population, p = 0.95))
+
+percentiles_95_flip <- metrics_county_ct_recent_flip %>%
+  group_by(variable) %>%
+  summarize(weighted_95th_percentile = weighted_percentile_less(value, population, p = 0.05))
+
+```
+
+
+```{r}
+
+# Join the percentiles back to the original data
+metrics_county_ct_recent_ptcle_join_95 <- metrics_county_ct_recent %>%
+  left_join(percentiles_95, by = "variable")
+
+# Count the number of variables above the weighted 5th percentile for each county
+pctle_ct_95 <- metrics_county_ct_recent_ptcle_join_95 %>%
+  group_by(state, county) %>%
+  summarize(
+    count_above_percentile = sum(value > weighted_95th_percentile, na.rm = TRUE)
+  )
+
 # When filtering we see 211 counties have values in top 5th percentile for all 17 metrics
-summary(pctle_ct$count_above_percentile)
+summary(pctle_ct_95$count_above_percentile)
+
+```
+
+```{r}
+
+# Join the percentiles back to the original data
+metrics_county_ct_recent_ptcle_join_95_flip <- metrics_county_ct_recent_flip %>%
+  left_join(percentiles_95_flip, by = "variable")
+
+# Count the number of variables above the weighted 5th percentile for each county
+pctle_ct_95_flip <- metrics_county_ct_recent_ptcle_join_95_flip %>%
+  group_by(state, county) %>%
+  summarize(
+    count_above_percentile = sum(value > weighted_95th_percentile, na.rm = TRUE)
+  )
+
+# When filtering we see 211 counties have values in top 5th percentile for all 17 metrics
+summary(pctle_ct_95_flip$count_above_percentile)
 
 ```
