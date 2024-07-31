@@ -42,7 +42,7 @@ download.file(url, destfile)
 
 # (2) Import and clean the file (separate county and state codes, fill in missing zeroes)
 
-      # open data
+      # open data (results in error on SAS serve: reason unknown)
       ec_zip_raw <- read_csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
 
       # add leading zeroes where they are missing (ZCTA codes are 5 digits)
