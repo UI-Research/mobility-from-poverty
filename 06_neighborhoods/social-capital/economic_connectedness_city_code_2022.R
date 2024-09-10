@@ -20,11 +20,8 @@
 
 # Libraries you'll need
 library(sf)
-library(tidyr)
-library(dplyr)
-library(readr)
+library(tidyverse)
 library(tigris)
-library(stringr)
 
 
 # (1) Download data from socialcapital.org
@@ -45,8 +42,8 @@ download.file(url, destfile)
 
 # (2) Import and clean the file (separate county and state codes, fill in missing zeroes)
 
-      # open data
-      ec_zip_raw <- read.csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
+      # open data (results in error on SAS serve: reason unknown)
+      ec_zip_raw <- read_csv("06_neighborhoods/social-capital/temp/social_capital_zip.csv")
 
       # add leading zeroes where they are missing (ZCTA codes are 5 digits)
       ec_zip_raw <- ec_zip_raw %>%
@@ -145,9 +142,12 @@ download.file(url, destfile)
       
       # Exploring options for data quality marker
       # create a new variable that tracks the number of ZCTAs falling in each Place (duplicates)
+      # Set the year to 2022 for merging
+      merge_year <- c(2022)
       merged_ec_city <- merged_ec_city %>% 
         group_by(place, place_name) %>%
-        mutate(num_ZCTAs_in_place = n())
+        mutate(num_ZCTAs_in_place = n(),
+               year = merge_year)
       
       # create the merged file where the EC variable is averaged per Place (new_ec_zip_), weighted by the % area of the ZCTA in that Place
       # and also include total ZCTAs in Place & how many of those partially fall outside the Place 
@@ -156,7 +156,8 @@ download.file(url, destfile)
               summarize(
                 zip_total = mean(num_ZCTAs_in_place), 
                 zipsin = sum(portionin), 
-                new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace)
+                new_ec_zip = weighted.mean(ec_zip, ZCTAinPlace),
+                year = merge_year
                 )
       
       # drop missing values
@@ -178,7 +179,9 @@ download.file(url, destfile)
       
       # keep only 2020 data to prepare for merge (should leave us with 486 obs total)
       keep <- c(2020)
-      places_pop <- filter(places_pop, year %in% keep)
+      places_pop <- places_pop %>% 
+        filter(year %in% keep) %>% 
+        select(! year) # Keep only merge_year when merging
       
       # merge places_pop with data file in order to get final EC city data
       ec_city_data <- left_join(places_pop, test2, by=c("place_name", "state"))
@@ -228,6 +231,6 @@ download.file(url, destfile)
         select(-place_name)
     
       # export as .csv
-      write_csv(ec_city_data, "06_neighborhoods/social-capital/data/economic_connectedness_city_2022.csv")
+      write_csv(ec_city_data, "06_neighborhoods/social-capital/final/economic_connectedness_city_2022.csv")
       
 

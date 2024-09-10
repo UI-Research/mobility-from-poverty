@@ -1,0 +1,1127 @@
+---
+title: "Employment Opportunities Predictor, County-level, Subgroups"
+author: "JP Walsh and Aaron R. Williams"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*Program for the creation of the Subgroup calculations for the Employment Opportunities Upward Mobility Predictor at the County-level*
+
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+
+Primary data derived from the IPUMS API.
+
+Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
+
+## Housekeeping
+
+Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
+
+```{r}
+library(tidyverse)
+library(ipumsr)
+library(reactable)
+library(srvyr)
+library(scales)
+library(furrr)
+library(tictoc)
+
+options(scipen = 999)
+
+theme_set(theme_minimal())
+
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
+#set_ipums_api_key("Your KEY", save = TRUE)
+
+source(here::here("functions", "API", "extract_ipums.R"))
+source(here::here("functions", "API", "ipums_repwt_employment.R"))
+source(here::here("09_employment", "R", "finalize_metric.R"))
+source(here::here("09_employment", "R", "calc_survey_mean.R"))
+source(here::here("09_employment", "R", "calc_survey_mean_subgroup.R"))
+
+```
+
+## Read ACS Data
+
+### Person-Level Data
+
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two years of 5-year data (2018c, and 2021c). 5-year 2022 data will be added pending its release.
+
+```{r}
+acs <- extract_ipums(
+  extract_name = "umf_data_18_22_5year",
+  extract_description = "Microdata pull for Mobility Metric Predictors.
+  American Community Survey, overall, years 2018 and 2021 (5-year).",
+  survey = list("us2018c", "us2021c")
+)
+
+```
+
+Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
+
+```{r}
+count(acs, sample)
+```
+
+Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation. Note: the replicate weights are limited to these ages during the data pull. 
+```{r}
+acs_age <- acs %>% 
+  filter(age >= 25 & age <= 54) 
+
+```
+
+### Replicate Weights 
+
+Read in person-level replicate weights for the 25 to 54 year old population. These will be used in creating standard errors for the employment opportunity calculation. 
+
+*Warning* This is a large data pull and will take time to finish (likely between 15-20 minutes). It is highly recommended you run this program on a server with large computing power.
+```{r}
+repwts <- ipums_repwt_employment(
+  extract_name = "employment_replicate_weights_5year",
+  extract_description = "Person replicate weights for Employment Opportunities 
+  Metric Predictors. American Community Survey, years 2018 and 2021 
+  (5-year).",
+  survey = list("us2018c", "us2021c")
+)  %>% 
+  select(-cbserial, -cbpernum)
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts, sample)
+```
+
+Remove the sample variable.
+
+```{r}
+repwts_person <- repwts %>% 
+  select(-sample)
+
+```
+
+### Merge on repwts
+
+Merge the replicate weights on to the ACS samples. The length calls let us know the count of records going in and coming out of the join. 
+The number of unique persons in acs_age should be the same as acs_combined. Check that this is the case.
+```{r}
+
+acs_combined <- 
+  left_join(
+    acs_age,
+    repwts_person,
+    by = "unique_person_id"
+  )
+
+stopifnot(length(unique(pull(acs_combined, unique_person_id))) == length(unique(pull(acs_age, unique_person_id))))
+
+rm(acs_age)
+rm(repwts_person)
+
+```
+
+Check that the merge did not result in any missing values.
+```{r}
+stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
+```
+
+## Clean Data
+
+Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
+
+* **Age:** No missing values reported in variable description. Run the following test to confirm all values are between 25 and 54.
+
+```{r}
+
+stopifnot(all(acs_combined$age %in% c(25:54)))
+          
+```
+
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
+
+```{r}
+stopifnot(all(acs_combined$vacancy == "0"))
+```
+
+* **Empstat:** N/As reported as "0".
+There are many records with the value missing for `empstat`. 
+
+```{r}
+acs_combined %>% 
+  count(empstat) %>% 
+  ggplot(mapping = aes(x = factor(empstat), y = n)) +
+  geom_col() +
+  geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Empstat, All Records",
+    x = "Employment Status",
+    y = NULL
+  )
+```
+
+Turn the missing/"not in universe" value from the empstat variable into NAs. Rename to the more meaningful "employment_status". 
+
+```{r}
+acs_clean <- acs_combined %>%
+  mutate(
+    employment_status = ifelse(
+      empstat == 0, 
+      NA_integer_,
+      empstat)
+  )
+
+```
+
+Look at distribution of `employment_status` after adjustment. There should be no more records with the value "0".
+
+```{r}
+acs_clean %>% 
+  count(employment_status) %>% 
+  ggplot(mapping = aes(x = factor(employment_status), y = n)) +
+  geom_col() +
+  geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Employment, All Records",
+    x = "Employment Status",
+    y = NULL
+  )
+
+```
+
+Filter for group quarters (GQ), we want to keep only households including additional households under updated definitions.
+
+```{r}
+count(acs_clean, gq)
+
+```
+
+```{r}
+acs_clean <- acs_clean %>%
+  filter(gq %in% c("Households under 1970 definition", 
+                   "Additional households under 1990 definition",
+                   "Additional households under 2000 definition"))
+```
+
+Check that group quarters fall only into household categories.
+
+```{r}
+acs_clean %>% 
+  count(gq) %>% 
+  ggplot(mapping = aes(x = gq, y = n)) +
+  geom_col() +
+  geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  scale_x_discrete(labels = label_wrap(10)) +
+  labs(
+    title = "GQ, All Records",
+    x = "GQ",
+    y = NULL
+  )
+
+```
+
+### Create race variable
+
+Evaluate the values in the RACE and HISPAN variables.
+
+* IPUMS documented values for RACE: 
+    + 1 White
+    + 2 Black/African American/Negro
+    + 3 American Indian or Alaska Native 
+    + 4 Chinese 
+    + 5 Japanese
+    + 6 Other Asian or Pacific Islander 
+    + 7 Other race 
+    + 8 Two major races 
+    + 9 Three or more major races
+
+* IPUMS documented values for HISPAN: 
+    + 0 Not Hispanic 
+    + 1 Mexican 
+    + 2 Puerto Rican 
+    + 3 Cuban 
+    + 4 Other 
+    + 9 Not Reported 
+
+Look at the distribution of values for the race and hispan variables.
+```{r}
+acs_clean %>% 
+  count(race) %>% 
+  ggplot(mapping = aes(x = race, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+acs_clean %>% 
+  count(hispan) %>% 
+  ggplot(mapping = aes(x = hispan, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Hispan, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Hispan",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+Create the race/ethnicity variable. For race/ethnicity categories that are not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
+
+Rename the values from number category to race label: 
+  +Race is Black/African American and Hispan is Not Hispanic = "Black, Non-Hispanic"
+  +Hispan is not equal to Not Hispanic = "Hispanic"
+  +Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
+  +Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(
+    subgroup_race = case_when(
+      hispan != "Not Hispanic" ~ "Hispanic",
+      race == "White" ~ "White, Non-Hispanic",
+      race == "Black/African American" ~ "Black, Non-Hispanic",
+      !race %in% c("Black/African American", "White") ~ "Other Races and Ethnicities"
+    )
+  )
+
+```
+
+Look at the race/ethnicity subgroup distribution.
+```{r}
+
+acs_clean %>% 
+  count(subgroup_race) %>% 
+  ggplot(mapping = aes(x = factor(subgroup_race), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Race/ethnicity, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Race/ethnicity",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+### Create gender variable
+
+Evaluate the values in the gender variable.
+
+* IPUMS documented values for SEX: 
+    + 1 Male
+    + 2 Female
+    + 9 Missing/blank 
+
+Look at the distribution of values for the sex variable. There are no missing values in the data and the records are reported in an appropriate format.
+```{r}
+acs_clean %>% 
+  count(sex) %>% 
+  ggplot(mapping = aes(x = sex, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("sex, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Sex",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+Rename the variable to subgroup_gender. The variable terms remain the same but any values outside of Male and Female are mutated to NA character variables. Though there are no missing values in the current data let's leave this in the case of future ACS surveys including missing values for this variable. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
+                                     sex == "Female" ~ "Female",
+                                     TRUE ~ NA_character_))
+```
+
+### Create disability variable
+
+The ACS includes 5 variables covering physical and mental disabilities (DIFFCARE, DIFFSENS, DIFFMOB, DIFFPHYS, DIFFREM). To make these variables more clear, first rename them.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  rename(self_care_difficulty = diffcare,
+         vision_hearing_difficulty = diffsens,
+         independent_living_difficulty = diffmob,
+         ambulatory_difficulty = diffphys,
+         cognitive_difficulty = diffrem)
+```
+
+Evaluate the values in these variables and create an overall subgroup for disability.
+We will count an individual to be disabled if they answer yes or have any of these difficulties. 
+
+* IPUMS documented values for self_care_difficulty: 
+    + 0 N/A
+    + 1 No
+    + 2 Yes 
+
+Plot the options for self_care_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(self_care_difficulty) %>% 
+  ggplot(mapping = aes(x = self_care_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Self-care difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "self_care_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for  vision_hearing_difficulty: 
+    + 0 N/A
+    + 1 No vision or hearing difficulty
+    + 2 Has vision or hearing difficulty
+
+Plot the options for  vision_hearing_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count( vision_hearing_difficulty) %>% 
+  ggplot(mapping = aes(x =  vision_hearing_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Vision or Hearing difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = " vision_hearing_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for independent_living_difficulty: 
+    + 0 N/A
+    + 1 No independent living difficulty
+    + 2 Has independent living difficulty
+
+Plot the options for independent_living_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(independent_living_difficulty) %>% 
+  ggplot(mapping = aes(x = independent_living_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Independent living difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "independent_living_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+* IPUMS documented values for ambulatory_difficulty: 
+    + 0 N/A
+    + 1 No ambulatory difficulty
+    + 2 Has ambulatory difficulty 
+  
+Plot the options for ambulatory_difficulty below.
+```{r}
+
+acs_clean %>% 
+  count(ambulatory_difficulty) %>% 
+  ggplot(mapping = aes(x = ambulatory_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Ambulatory difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "ambulatory_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+  
+* IPUMS documented values for cognitive_difficulty: 
+    + 0 N/A
+    + 1 No cognitive difficulty
+    + 2 Has cognitive difficulty 
+  
+Plot the options for cognitive_difficulty below.
+```{r}
+acs_clean %>% 
+  count(cognitive_difficulty) %>% 
+  ggplot(mapping = aes(x = cognitive_difficulty, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Cognitive difficulty, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "cognitive_difficulty",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+Create the subgroup for disability. 
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_disability = case_when(cognitive_difficulty == "Has cognitive difficulty" |
+                                           ambulatory_difficulty == "Has ambulatory difficulty" |
+                                           independent_living_difficulty == "Has independent living difficulty" |
+                                            vision_hearing_difficulty == "Has vision or hearing difficulty" |
+                                           self_care_difficulty == "Yes" ~ "With Disability",
+                                         TRUE ~ "Without Disability"))
+  
+```
+
+Check the variable breakout. 
+```{r}
+acs_clean %>% 
+  count(subgroup_disability) %>% 
+  ggplot(mapping = aes(x = subgroup_disability, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Subgroup Disability, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Disability",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+
+```{r}
+rm(acs_combined)
+
+```
+
+## Crosswalk
+
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder. 
+
+```{r}
+puma_county_crosswalk <- read_csv(
+  here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
+)
+
+```
+
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+```{r}
+county_list <- puma_county_crosswalk %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
+```
+
+
+## Merge Crosswalk 
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
+```
+
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
+
+```{r}
+count(acs_clean, crosswalk_period, year)
+
+```
+
+Join the cleaned ACS data onto the crosswalk.
+
+```{r}
+acs_crosswalked <- left_join(
+  acs_clean, 
+  puma_county_crosswalk, 
+  by = c("crosswalk_period", "statefip","puma"),
+  relationship = "many-to-many"
+)
+
+```
+
+Run an anti_join to see what data does not combine. We keep all counties so there should be no observations resulting from the anti-join.
+
+```{r}
+anti_join(acs_clean, 
+          puma_county_crosswalk, 
+          by = c("crosswalk_period", "statefip","puma")
+)
+```
+
+Drop any observations with NA for `afact` (i.e. there is no county of interest overlapping this PUMA).
+
+Create a count of how many observations this applies to.
+```{r}
+count(acs_crosswalked, is.na(afact))
+
+acs_crosswalked <- acs_crosswalked %>% 
+  drop_na(afact)
+
+```
+
+Also filter out cases where `afact` is equal to zero. These cases will not be counted in the metric calculation.
+
+Create a count of how many observations this applies to.
+```{r}
+count(acs_crosswalked, afact == 0)
+
+acs_crosswalked <- acs_crosswalked %>% 
+  filter(afact > 0)
+
+```
+
+Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
+
+Select an example of the repwtp variables before and after this step. The weighting should show in slightly adjusted repwtp variables after this process. 
+```{r}
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
+
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(perwt = perwt * afact,
+         across(matches("repwtp[0-9]+"), ~.x * afact))
+
+select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
+```
+
+## Prepare computational variables
+
+Create a binary employed variable for calculating the share employed. IPUMS data codes "Employed" as equal to 1.
+
+```{r}
+
+acs_crosswalked <- acs_crosswalked %>% 
+  mutate(employed = employment_status == 1) 
+
+```
+
+Check if `employment_status` is ever `NA`.
+
+```{r}
+stopifnot(sum(is.na(acs_crosswalked$employment_status)) == 0)
+```
+
+Confirm there are no vacant properties included in the data.
+
+```{r}
+stopifnot(sum(is.na(acs_crosswalked$vacancy)) == 0)
+```
+
+## Create employment metric: All
+
+Create the employment metric. 
+
+Objective: calculate the percent of individuals between 25 and 54 that are employed in every county.
+
+Aggregation should be weighted by PERWT (this is a person level statistic).
+
+### Pre-drop suppressed cells
+
+First, to save time when processing the metric, calculate the effective sample count for each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: all-effective-samples
+acs_all <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_all %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-all
+acs_all <- acs_all %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+Calculate the county-level metrics. 
+
+```{r}
+#| label: calc-all
+results_all <- acs_all %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean(.data = .x, .geo_level = county))
+```
+
+Clean up the confidence interval bounds and sort the data.
+
+```{r}
+#| label: finalize-all
+results_all <- finalize_metric(results_all)
+```
+
+```{r}
+rm(acs_all)
+```
+
+## Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+```{r}
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
+
+stopifnot(nrow(results_all_expand) == 3143 * 2)
+```
+
+## Create employed metric: subgroups
+
+## Race/Ethnicity
+
+To save time when processing the metric, calculate the effective sample count for each race-ethnicity group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: race-ethnicity-effective-samples
+acs_race_ethnicity <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_race_ethnicity %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the employment metric for the race/ethnicity subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-race-ethnicity
+acs_race_ethnicity <- acs_race_ethnicity %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-race-ethnicity
+results_race_ethnicity <- acs_race_ethnicity %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_race))
+```
+
+```{r}
+#| label: finalize-race-ethnicity
+results_race_ethnicity <- finalize_metric(results_race_ethnicity)
+```
+
+```{r}
+rm(acs_race_ethnicity)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for race-ethnicity.
+```{r}
+expanded_county_list_race <- county_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_race) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_race_ethnicity_expanded <- expanded_county_list_race  %>% 
+  left_join(results_race_ethnicity, by = c("year", "statefip", "county", "subgroup_race")) %>% 
+  filter(!is.na(year), !is.na(subgroup_race)) %>% 
+  mutate(subgroup_type = "race-ethnicity") %>% 
+  rename(subgroup = subgroup_race)
+
+stopifnot(nrow(results_race_ethnicity_expanded) == 3143 * 2 * 4)
+```
+
+## Gender
+
+To save time when processing the metric, calculate the effective sample count for each gender group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: gender-effective-samples
+acs_gender <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_gender) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_gender %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_gender) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the employment metric for the gender subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-gender
+acs_gender <- acs_gender %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-gender
+results_gender <- acs_gender %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_gender))
+```
+
+```{r}
+#| label: finalize-gender
+results_gender <- finalize_metric(results_gender)
+```
+
+```{r}
+rm(acs_gender)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for gender data.
+```{r}
+expanded_county_list_gender <- county_list %>% 
+  left_join(results_gender, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_gender) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_gender_expanded <- expanded_county_list_gender  %>% 
+  left_join(results_gender, by = c("year", "statefip", "county", "subgroup_gender")) %>% 
+  filter(!is.na(year), !is.na(subgroup_gender)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+stopifnot(nrow(results_gender_expanded) == 3143 * 2 * 2)
+```
+
+## Disability
+
+To save time when processing the metric, calculate the effective sample count for each disability group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: disability-effective-samples
+acs_disability <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_disability) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_disability %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_disability) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the employment metric for the disability subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-disability
+acs_disability <- acs_disability %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-disability
+results_disability <- acs_disability %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_survey_mean_subgroup(.data = .x,
+                                      .geo_level = county,
+                                      .subgroup = subgroup_disability))
+```
+
+```{r}
+#| label: finalize-disability
+results_disability <- finalize_metric(results_disability)
+```
+
+```{r}
+rm(acs_disability)
+```
+
+### Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for disability data.
+```{r}
+expanded_county_list_disability <- county_list %>% 
+  left_join(results_disability, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid, subgroup_disability) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_disability_expanded <- expanded_county_list_disability  %>% 
+  left_join(results_disability, by = c("year", "statefip", "county", "subgroup_disability")) %>% 
+  filter(!is.na(year), !is.na(subgroup_disability)) %>% 
+  mutate(subgroup_type = "disability") %>% 
+  rename(subgroup = subgroup_disability)
+
+stopifnot(nrow(results_disability_expanded) == 3143 * 2 * 2)
+```
+
+## Data Quality Flags
+
+Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
+
+First combine the subgroup data sets.
+```{r}
+metrics_employment_sub <- results_all_expand %>% 
+  mutate(subgroup = "All",
+         subgroup_type = "all") %>% 
+  bind_rows(results_race_ethnicity_expanded, results_disability_expanded, results_gender_expanded)
+```
+
+Now create the metric quality variable. The `share_employed_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_employed` metric is being suppressed due to sample size and is given a quality flag of 3.  
+
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>% 
+  mutate(
+    share_employed_quality = if_else(
+      is.na(share_employed), 
+      NA_real_,
+      geographic_allocation_quality
+    )
+  )
+```
+
+
+## Validation
+
+Show summary statistics for the metric across all counties in the 5-year data.
+```{r}
+metrics_employment_sub %>% 
+  select(share_employed:share_employed_quality) %>% 
+  summary()
+```
+
+Calculate the coefficient of variation for each year by subgroup for the `share_employed` variable.
+The higher this number the greater variability in the data. We can see that for certain subgroups there is high variability due to the limited sample.  
+```{r}
+metrics_employment_sub %>% 
+  group_by(year, subgroup) %>% 
+  summarise(sd_employ = sd(share_employed, na.rm = TRUE),
+         mean_employ = mean(share_employed, na.rm = TRUE),
+         cv = sd_employ/mean_employ)
+```
+
+Look at distribution of `share_employed` for all counties. We generally see a normal distribution. 
+```{r}
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup == "All") %>% 
+  select(share_employed) %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share employed, by county 2022 (5-year data)") +
+  ylab("Density")
+  
+```
+
+### Race distribution
+
+Look at distribution of `share_employed` share by county by race.
+For each race-ethnicity group we see a generally normal distribution. 
+```{r}
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup_type == "race-ethnicity") %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share employed, race/ethnicity, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+```
+
+### Gender distribution
+Look at distribution of `share_employed` by county by gender.
+For each gender category we see a generally normal distribution.
+```{r}
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup_type == "gender") %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share employed, gender, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+### Disability distribution
+Look at distribution of `share_employed` by county by disability status.
+For both disability categories we see a generally normal distribution.
+```{r}
+
+metrics_employment_sub %>% 
+  filter(year == 2021, subgroup_type == "disability") %>% 
+  ggplot(aes(x = share_employed)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share employed, disability, by county 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+```
+  
+### Quality and suppression
+
+Look at the counts of the quality flag overall.
+```{r}
+metrics_employment_sub %>% 
+  select(share_employed_quality) %>% 
+  ggplot(aes(x = share_employed_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag, All (5-year data)") +
+  ylab("Count")
+
+```
+
+Look at quality by  each individual subgroup.
+
+```{r}
+metrics_employment_sub %>% 
+  filter(subgroup != "All") %>% 
+  ggplot(aes(x = share_employed_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  facet_wrap(~subgroup) +
+  ggtitle("Quality Flag, subgroups (5-year data)") +
+  ylab("Count")
+```
+
+
+Tabulate share of data suppressed by year.
+```{r}
+metrics_employment_sub %>% 
+  group_by(year) %>% 
+  summarise(suppressed = sum(is.na(share_employed)),
+            total = n(),
+            suppressed_share = suppressed/total)
+metrics_employment_sub %>% 
+  filter(subgroup != "All") %>% 
+  group_by(year, subgroup) %>% 
+  summarise(suppressed = sum(is.na(share_employed)),
+            total = n(),
+            suppressed_share = suppressed/total)
+```
+
+## Export 
+
+Rename state.
+
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>% 
+  rename("state" = "statefip") %>% 
+  arrange(year, state, county, subgroup)
+```
+
+Order the variables how we want.
+
+```{r}
+metrics_employment_sub <- metrics_employment_sub %>% 
+  select(year, state, county, subgroup_type, 
+         subgroup, share_employed, share_employed, 
+         share_employed_lb, share_employed_ub, share_employed_quality)
+```
+
+Export as CSV.
+
+```{r}
+
+metrics_employment_race <- metrics_employment_sub %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+write_csv(metrics_employment_race, here::here("09_employment", "data", "final", "metrics_employment_county_race-ethnicity_longitudinal.csv"))
+
+metrics_employment_gender <- metrics_employment_sub %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+write_csv(metrics_employment_gender, here::here("09_employment", "data", "final", "metrics_employment_county_gender_longitudinal.csv"))
+
+metrics_employment_disability <- metrics_employment_sub %>% 
+  filter(subgroup_type %in% c("all", "disability"))
+
+write_csv(metrics_employment_disability, here::here("09_employment", "data", "final", "metrics_employment_county_disability_longitudinal.csv"))
+```

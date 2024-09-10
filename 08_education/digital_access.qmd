@@ -1,0 +1,975 @@
+---
+title: "Share of households with broadband access in the home"
+author: "Manu Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+editor_options: 
+  chunk_output_type: source
+execute:
+  warning: false
+  message: false
+editor:
+  markdown:
+    wrap: 80
+    canonical: true
+---
+
+```{r}
+options(scipen = 999)
+
+library(tidyverse)
+library(urbnthemes)
+library(tidycensus)
+library(censusapi)
+library(glue)
+library(janitor)
+library(tidylog)
+library(skimr)
+
+set_urbn_defaults(style = "print")
+```
+
+This metric shows the ratio of households with the presence of a computer and a
+type of broadband internet subscription in their household (we calculate the
+overall ratio, as well as by racial subgroup - measured according to the race of
+each head of the household).
+
+## Process
+
+1.  Housekeeping
+
+2.  Pull demographics for Census Places and Census Counties
+
+3.  Clean and reshape to move data into the vars we want
+
+4.  Calculate the digital access metric
+
+5.  Create a data quality flag
+
+6.  Cleaning and export
+
+## Housekeeping
+
+```{r}
+#| label: housekeeping
+# Explore where to pull data from
+acs5_vars <- load_variables(2021, "acs5", cache = TRUE)
+acs1_vars <- load_variables(2021, "acs1", cache = TRUE)
+acs1_subject_vars <- load_variables(2021, "acs1/subject", cache = TRUE)
+```
+
+## Pull demographics for Census Places and Census Counties
+
+```{r}
+#| label: census-pull-function
+pull_census_data <- function(vars, geography, survey, years) {
+  census_data <- map_dfr(years, ~ get_acs(
+    geography = {{ geography }},
+    variables = vars,
+    survey = survey,
+    year = .x,
+    moe_level = 95
+  ) %>%
+    mutate(year = .x) %>%
+    pivot_wider(names_from = variable, values_from = c(estimate, moe))) %>%
+    rename_with(
+      ~ str_remove(.x, "estimate_"),
+      starts_with("estimate_")
+    ) |>
+    clean_names()
+
+
+  if (geography == "county") {
+    census_data <- census_data %>%
+      filter(!str_detect(geoid, "^72"))
+  }
+
+
+  return(census_data)
+}
+```
+
+### Communities overall
+
+-   Unit of analysis: Households,
+-   Survey: ACS 5
+-   Census table: B28003
+-   Years: 2017, 2018, 2019, 2021, 2022
+
+We are using the 5-yr ACS for the communities overall (and subgroups), from 2017
+to 2022. This will be based on table B28003.
+
+```{r}
+#| label: pull-overall-communities
+# "Population" variables refer to households/people in households in a
+# given category.
+
+# "Digital" variables (those with a "digital" prefix) refer to households/people in households in a given category that have a computer with a broadband internet subscription.
+
+years <- c(2017, 2018, 2019, 2021, 2022)
+
+overall_vars <-
+  c( # Population variables
+    "total_households" = "B28003_001",
+    # Digital variables
+    "total_households_digital" = "B28003_004"
+  )
+
+# Apply our function to multiple datasets using map2 and assigns the results
+# back to the specified object names in the global environment, reducing repetitive code such as:
+# county_overall <- pull_census_data(geography = "county",
+#                                    vars = overall_vars,
+#                                    years = acs1_years,
+#                                    survey = "acs1")
+# place_overall <- pull_census_data(geography = "place",
+#                                    vars = overall_vars,
+#                                    years = acs1_years,
+#                                    survey = "acs1")
+map(
+  .x = c("county", "place"),
+  .f = ~ assign(
+    x = paste0(.x, "_overall"),
+    value = pull_census_data(
+      geography = .x,
+      vars = overall_vars,
+      years = years,
+      survey = "acs5"
+    ),
+    envir = .GlobalEnv
+  )
+)
+
+# 4,969 rows
+skim(county_overall)
+# 3,763 rows
+skim(place_overall)
+```
+
+### Race/ethnicity subgroup
+
+-   Unit of analysis: Population in households,
+-   Survey: ACS 5
+-   Census table(s): B28009, S2802 (subject table)
+-   Years: 2018, 2021
+
+```{r}
+acs5_years <- c(2018, 2021)
+
+raceeth_vars <-
+  c( # Population variables
+    "total_people_in_households" = "S2802_C01_001",
+    "white" = "B28009A_001",
+    "black" = "B28009B_001",
+    "aian" = "B28009C_001",
+    "asian" = "B28009D_001",
+    "nhpi" = "B28009E_001",
+    "other" = "B28009F_001",
+    "two_or_more" = "B28009G_001",
+    "hispanic" = "B28009I_001",
+    # Digital variables
+    "total_people_in_households_digital" = "S2802_C02_001",
+    "white_digital" = "S2802_C02_005",
+    "black_digital" = "S2802_C02_006",
+    "aian_digital" = "S2802_C02_007",
+    "asian_digital" = "S2802_C02_008",
+    "nhpi_digital" = "S2802_C02_009",
+    "other_digital" = "S2802_C02_010",
+    "two_or_more_digital" = "S2802_C02_011",
+    "hispanic_digital" = "S2802_C02_012"
+  )
+
+map(
+  .x = c("county", "place"),
+  .f = ~ assign(
+    x = paste0(.x, "_raceeth"),
+    value = pull_census_data(
+      geography = .x,
+      vars = raceeth_vars,
+      years = acs5_years,
+      survey = "acs5"
+    ),
+    envir = .GlobalEnv
+  )
+)
+
+skim(county_raceeth)
+skim(place_raceeth)
+```
+
+We aggregate the race/ethnicity categories into Other races and ethnicities,
+Black, Hispanic, white, and All (total population in households).
+
+We combine margins of errors for detailed groups using rules from slide 51
+[here](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf).
+
+```{r}
+#| label: aggregate-raceeth
+aggregate_raceeth <- function(data) {
+  data |>
+    mutate(
+      other = asian + aian + nhpi + other + two_or_more
+    ) |>
+    mutate(
+      other_digital = asian_digital + aian_digital + nhpi_digital + other_digital + two_or_more_digital
+    ) |>
+    mutate(
+      moe_other_digital = sqrt(
+        moe_aian_digital^2 +
+          moe_asian_digital^2 +
+          moe_nhpi_digital^2 +
+          moe_other_digital^2 +
+          moe_two_or_more_digital^2
+      )
+    ) |>
+    select(
+      geoid, name, year,
+      matches("total_people|other$|other_digital$|black|hispanic|white$|white_digital")
+    )
+}
+
+lst(county_raceeth, place_raceeth) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = aggregate_raceeth(.y),
+      envir = .GlobalEnv
+    )
+  )
+```
+
+### Income subgroup
+
+-   Unit of analysis: Households,
+-   Survey: ACS 5,
+-   Years: 2018, 2021,
+-   Table: B28004
+
+```{r}
+#| label: pull-income-data
+
+income_vars <-
+  c( # Population variables
+    "total_households" = "B28004_001",
+    "less_than_10k" = "B28004_002",
+    "10k_to_20k" = "B28004_006",
+    "20k_to_35k" = "B28004_010",
+    "35k_to_50k" = "B28004_014",
+    "50k_to_75k" = "B28004_018",
+    "75k_or_more" = "B28004_022",
+    "less_than_10k_digital" = "B28004_004",
+    "10k_to_20k_digital" = "B28004_008",
+    "20k_to_35k_digital" = "B28004_012",
+    "35k_to_50k_digital" = "B28004_016",
+    "50k_to_75k_digital" = "B28004_020",
+    "75k_or_more_digital" = "B28004_024"
+  )
+
+
+aggregate_income_subgroup <- function(data) {
+  data |>
+    mutate(
+      income_less_than_50k = less_than_10k + x10k_to_20k + x20k_to_35k + x35k_to_50k,
+      moe_income_less_than_50k = sqrt(
+        moe_less_than_10k^2 +
+          moe_10k_to_20k^2 +
+          moe_20k_to_35k^2 +
+          moe_35k_to_50k^2
+      ),
+      income_more_than_50k = x50k_to_75k + x75k_or_more,
+      moe_income_more_than_50k = sqrt(moe_50k_to_75k^2 + moe_75k_or_more^2),
+      income_less_than_50k_digital = less_than_10k_digital + x10k_to_20k_digital + x20k_to_35k_digital + x35k_to_50k_digital,
+      moe_income_less_than_50k_digital = sqrt(
+        moe_less_than_10k_digital^2 +
+          moe_10k_to_20k_digital^2 +
+          moe_20k_to_35k_digital^2 +
+          moe_35k_to_50k_digital^2
+      ),
+      income_more_than_50k_digital =
+        x50k_to_75k_digital + x75k_or_more_digital,
+      moe_income_more_than_50k_digital = sqrt(
+        moe_50k_to_75k_digital^2 +
+          moe_75k_or_more_digital^2
+      ),
+      total_households_digital =
+        income_less_than_50k_digital + income_more_than_50k_digital,
+      moe_total_households_digital = sqrt(
+        moe_less_than_10k_digital^2 +
+          moe_10k_to_20k_digital^2 +
+          moe_20k_to_35k_digital^2 +
+          moe_35k_to_50k_digital^2 +
+          moe_50k_to_75k_digital^2 +
+          moe_75k_or_more_digital^2
+      )
+    ) |>
+    select(year, geoid, name, total_households, moe_total_households_digital, total_households_digital, income_less_than_50k, moe_income_less_than_50k, income_more_than_50k, moe_income_more_than_50k, income_less_than_50k_digital, moe_income_less_than_50k_digital, income_more_than_50k_digital, moe_income_more_than_50k_digital)
+}
+
+map(
+  .x = c("county", "place"),
+  .f = ~ assign(
+    x = paste0(.x, "_income"),
+    value = pull_census_data(
+      geography = .x,
+      vars = income_vars,
+      years = acs5_years,
+      survey = "acs5"
+    ) |>
+      aggregate_income_subgroup(),
+    envir = .GlobalEnv
+  )
+)
+
+skim(county_income)
+skim(place_income)
+```
+
+## Confidence Intervals
+
+We then calculate confidence intervals at the 95% level by adding/subtracting
+the MOE estimate from our digital access variables:
+
+```{r}
+#| label: calculate-confidence-intervals
+
+calculate_confidence_intervals <- function(data) {
+  data |>
+    mutate(across(
+      .cols = any_of(c(
+        "total_households_digital",
+        "total_people_in_households_digital",
+        "other_digital",
+        "black_digital",
+        "hispanic_digital",
+        "white_digital",
+        "income_less_than_50k_digital",
+        "income_more_than_50k_digital"
+      )),
+      .fns = list(
+        lb = ~ .x - get(paste0("moe_", cur_column())),
+        ub = ~ .x + get(paste0("moe_", cur_column()))
+      ),
+      .names = "{.col}_{.fn}"
+    ))
+}
+
+
+lst(
+  county_overall,
+  place_overall,
+  county_raceeth,
+  place_raceeth,
+  county_income,
+  place_income
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = calculate_confidence_intervals(.y),
+      envir = .GlobalEnv
+    )
+  )
+```
+
+## Calculate the digital access metric
+
+```{r}
+#| label: calculate-digital-access-metric
+
+calculate_digital_access_metric <- function(data) {
+  data |>
+    mutate(across(
+      .cols = any_of(c(
+        "total_households",
+        "total_people_in_households",
+        "other",
+        "black",
+        "hispanic",
+        "white",
+        "income_less_than_50k",
+        "income_more_than_50k"
+      )),
+      .fns = list(
+        share_digital_access = ~ get(paste0(cur_column(), "_digital")) / .x,
+        share_digital_access_lb = ~ get(paste0(cur_column(), "_digital_lb")) / .x,
+        share_digital_access_ub = ~ get(paste0(cur_column(), "_digital_ub")) / .x
+      ),
+      .names = "{.fn}_{.col}"
+    )) |>
+    arrange(geoid, name, year) %>%
+    # replace instances with division by zero
+    mutate(across(everything(), ~ if_else(is.nan(.x) | is.infinite(.x), NA, .x)))
+}
+
+
+lst(
+  county_overall,
+  place_overall,
+  county_raceeth,
+  place_raceeth,
+  county_income,
+  place_income
+) %>%
+  map2(
+    .x = paste0(names(.), "_digital_access"),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = calculate_digital_access_metric(.y),
+      envir = .GlobalEnv
+    )
+  )
+
+
+map_dbl(county_overall_digital_access, ~ sum(is.nan(.x)))
+map_dbl(place_overall_digital_access, ~ sum(is.nan(.x)))
+map_dbl(county_raceeth_digital_access, ~ sum(is.nan(.x)))
+map_dbl(place_raceeth_digital_access, ~ sum(is.nan(.x)))
+map_dbl(county_income_digital_access, ~ sum(is.nan(.x)))
+map_dbl(place_income_digital_access, ~ sum(is.nan(.x)))
+```
+
+Inspect summary statistics and missigness for counties:
+
+```{r}
+map(
+  list(
+    county_overall_digital_access,
+    county_raceeth_digital_access,
+    county_income_digital_access
+  ),
+  skim
+)
+```
+
+and for places:
+
+```{r}
+map(
+  list(
+    place_overall_digital_access,
+    place_raceeth_digital_access,
+    place_income_digital_access
+  ),
+  skim
+)
+```
+
+# Create data quality flags
+
+We can use the width of the MOE to determine quality. If the value minus the
+lower bound is \<0.1, then the quality is strong (\_quality=1); if it is =\>.1
+and \<.2, the quality is marginal (\_quality=2), and if it is \>=.2, then the
+quality is weak (\_quality=3). Otherwise, if any of the census table values are
+
+suppressed, those should have the metric value show as "NA" and the data quality
+should also be "NA."
+
+```{r}
+#| label: data-quality-flags
+
+add_quality_flag <- function(data) {
+  data |>
+    mutate(across(
+      .cols = any_of(c(
+        "share_digital_access_lb_total_households",
+        "share_digital_access_lb_total_people_in_households",
+        "share_digital_access_lb_income_less_than_50k",
+        "share_digital_access_lb_income_more_than_50k",
+        "share_digital_access_lb_other",
+        "share_digital_access_lb_black",
+        "share_digital_access_lb_hispanic",
+        "share_digital_access_lb_white"
+      )),
+      .fns = ~ case_when(
+        get(str_remove(cur_column(), "_lb")) - .x < 0.1 ~ 1,
+        get(str_remove(cur_column(), "_lb")) - .x < 0.2 ~ 2,
+        get(str_remove(cur_column(), "_lb")) - .x >= 0.2 ~ 3,
+        .default = NA_real_
+      ),
+      .names = "{.col}_quality"
+    )) |>
+    rename_with(~ str_replace(., "_lb_", "_"), ends_with("_quality"))
+}
+
+lst(
+  county_overall_digital_access,
+  place_overall_digital_access,
+  county_raceeth_digital_access,
+  place_raceeth_digital_access,
+  county_income_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = add_quality_flag(.y),
+      envir = .GlobalEnv
+    )
+  )
+
+plot_quality_flags <- function(data) {
+  data |>
+    select(starts_with("share_digital_access") & ends_with("quality")) |>
+    pivot_longer(everything()) |>
+    mutate(name = str_remove(name, "share_digital_access_") |>
+      str_remove("_quality") |>
+      str_replace_all("_", " ") |>
+      str_to_title()) |>
+    count(name, value) |>
+    ggplot() +
+    geom_col(aes(
+      x = value,
+      y = n
+    )) +
+    facet_wrap(. ~ name) +
+    labs(
+      x = "Quality flag value",
+      y = "Count",
+      title = "Share Digital Access Quality Flag"
+    )
+}
+
+count(
+  county_overall_digital_access,
+  share_digital_access_total_households_quality
+)
+
+count(
+  place_overall_digital_access,
+  share_digital_access_total_households_quality
+)
+
+plot_quality_flags(county_raceeth_digital_access) +
+  labs(subtitle = "By Race/Ethnicity")
+
+plot_quality_flags(place_raceeth_digital_access) +
+  labs(subtitle = "By Race/Ethnicity")
+
+plot_quality_flags(county_income_digital_access) +
+  labs(subtitle = "By Income")
+
+plot_quality_flags(place_income_digital_access) +
+  labs(subtitle = "By Income")
+```
+
+We also cap the lower bound at 0 and upper bound at 1
+
+```{r}
+cap_ci <- function(data) {
+  data |>
+    rowwise() |>
+    mutate(
+      across(
+        contains("share_digital_access_lb"),
+        ~ max(.x, 0, na.rm = TRUE)
+      ),
+      across(
+        contains("share_digital_access_ub"),
+        ~ min(.x, 1, na.rm = TRUE)
+      )
+    ) |>
+    ungroup()
+}
+
+lst(
+  county_overall_digital_access,
+  place_overall_digital_access,
+  county_raceeth_digital_access,
+  place_raceeth_digital_access,
+  county_income_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = cap_ci(.y),
+      envir = .GlobalEnv
+    )
+  )
+
+skim(county_overall_digital_access)
+skim(county_raceeth_digital_access)
+skim(county_income_digital_access)
+
+skim(place_overall_digital_access)
+skim(place_raceeth_digital_access)
+skim(place_income_digital_access)
+```
+
+# Prepare the data for saving & export final Metrics files
+
+```{r}
+#| label: read-pop-files
+# Read final County or Places population file to isolate data needed for each geography
+#
+# This function also cleans these files the following way:
+# - add in the lost leading zeroes for the state/county FIPs & state/place FIPs
+# - keep the most recent year of population data (not 2022, but 2020)
+# - add a geoid column
+#'
+#' @param path
+read_pop_file <- function(path) {
+  data <- read_csv(here::here(path))
+  geo_var <- ifelse("county" %in% colnames(data), sym("county"), sym("place"))
+  digits <- ifelse("county" %in% colnames(data), 3, 5)
+
+  data %>%
+    mutate(
+      state = sprintf("%0.2d", as.numeric(state)),
+      !!geo_var := sprintf(glue("%0.{digits}d"), as.numeric(!!geo_var)),
+      geoid = paste0(state, !!geo_var)
+    ) %>%
+    filter(year >= 2017) |>
+    clean_names()
+}
+county_file <- read_pop_file("geographic-crosswalks/data/county-populations.csv")
+places_file <- read_pop_file("geographic-crosswalks/data/place-populations.csv")
+```
+
+```{r}
+#| label: merge-pop-files
+
+# merge the data files into the population files (left join, since data files have more observations)
+
+lst(
+  county_overall_digital_access,
+  county_raceeth_digital_access,
+  county_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = left_join(county_file, .y, by = c("geoid", "year")),
+      envir = .GlobalEnv
+    )
+  )
+
+count(county_overall_digital_access, year)
+count(county_raceeth_digital_access, year)
+count(county_income_digital_access, year)
+
+lst(
+  place_overall_digital_access,
+  place_raceeth_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = left_join(places_file, .y, by = c("geoid", "year")),
+      envir = .GlobalEnv
+    )
+  )
+
+count(place_overall_digital_access, year)
+count(place_raceeth_digital_access, year)
+count(place_income_digital_access, year)
+```
+
+```{r}
+#| label: reshape-to-export
+
+# RESHAPE TO PREPARE EXPORT
+# reshape each of these from wide to long (so that there are 5 obs per place -- all, white, black, asian, other)
+
+reshape_for_export <- function(data, subgroup = "race-ethnicity") {
+  geo_var <- ifelse("county" %in% colnames(data), sym("county"), sym("place"))
+
+
+
+  data <-
+    data %>%
+    select(
+      year, state, !!geo_var, state_name, paste0(geo_var, "_name"),
+      starts_with("share_digital_access")
+    )
+  if (subgroup == "overall") {
+    data <-
+      data |>
+      rename_with(~ str_remove(., "_total_households"), starts_with("share_digital_access"))
+  } else if (subgroup == "race-ethnicity") {
+    data <-
+      data |>
+      pivot_longer(starts_with("share_digital_access")) |>
+      mutate(subgroup = str_remove(name, "share_digital_access_") |>
+        str_remove("lb_") |>
+        str_remove("ub_") |>
+        str_remove("_quality") |>
+        str_replace_all("_", " ") |>
+        str_to_title()) |>
+      mutate(
+        name = case_when(
+          str_detect(name, "quality") ~ "share_digital_access_quality",
+          str_detect(name, "lb_") ~ "share_digital_access_lb",
+          str_detect(name, "ub_") ~ "share_digital_access_ub",
+          .default = "share_digital_access"
+        ),
+        subgroup = case_match(subgroup,
+          "Total People In Households" ~ "All",
+          "Other" ~ "Other Races and Ethnicities",
+          .default = subgroup
+        ),
+        subgroup_type = case_match(subgroup,
+          "All" ~ "all",
+          .default = "race-ethnicity"
+        )
+      ) |>
+      pivot_wider(
+        names_from = name,
+        values_from = value
+      )
+  } else if (subgroup == "income") {
+    data <-
+      data |>
+      pivot_longer(starts_with("share_digital_access")) |>
+      mutate(subgroup = str_remove(name, "share_digital_access_") |>
+        str_remove("lb_") |>
+        str_remove("ub_") |>
+        str_remove("_quality") |>
+        str_replace_all("_", " ") |>
+        str_to_title()) |>
+      mutate(
+        name = case_when(
+          str_detect(name, "quality") ~ "share_digital_access_quality",
+          str_detect(name, "lb_") ~ "share_digital_access_lb",
+          str_detect(name, "ub_") ~ "share_digital_access_ub",
+          .default = "share_digital_access"
+        )
+      ) |>
+      pivot_wider(
+        names_from = name,
+        values_from = value
+      ) |>
+      mutate(
+        subgroup_type = "income",
+        subgroup = str_replace(subgroup, "Total Households", "All")
+      )
+  }
+
+  data |>
+    arrange(year, state, !!geo_var, state_name, paste0(geo_var, "_name"))
+}
+
+
+lst(
+  county_overall_digital_access,
+  place_overall_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = reshape_for_export(.y, subgroup = "overall"),
+      envir = .GlobalEnv
+    )
+  )
+
+lst(
+  county_raceeth_digital_access,
+  place_raceeth_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = reshape_for_export(.y, subgroup = "race-ethnicity"),
+      envir = .GlobalEnv
+    )
+  )
+
+# 3144 obs (counties) * 5 race groups = 15,720 obs -- accurate
+count(county_raceeth_digital_access, year)
+
+# 486 obs (places) * 5 race groups = 2,430 obs -- accurate
+count(place_raceeth_digital_access, year)
+
+lst(
+  county_income_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = reshape_for_export(.y, subgroup = "income"),
+      envir = .GlobalEnv
+    )
+  )
+```
+
+We suppress showing metric values for observations with missing quality flags.
+However, since there aren't any missing quality flag values when the metric
+value is not missing, the code chunk below doesn't actually remove any
+observations currently.
+
+```{r}
+#| label: suppress-bad-cvs
+
+# Use this to check that there are no missing quality flags
+# when the metric value is not missing
+count_bad_cvs <- function(data) {
+  data |>
+    filter(is.na(share_digital_access_quality) & !is.na(share_digital_access)) |>
+    nrow()
+}
+
+county_overall_digital_access |> count_bad_cvs()
+
+place_overall_digital_access |> count_bad_cvs()
+
+county_raceeth_digital_access |> count_bad_cvs()
+
+place_raceeth_digital_access |> count_bad_cvs()
+
+county_income_digital_access |> count_bad_cvs()
+
+place_income_digital_access |> count_bad_cvs()
+
+suppress_bad_cvs <- function(data) {
+  data %>%
+    mutate(across(
+      c(share_digital_access, share_digital_access_lb, share_digital_access_ub),
+      ~ if_else(is.na(share_digital_access_quality), NA_real_, .x)
+    ))
+}
+
+
+lst(
+  county_overall_digital_access,
+  place_overall_digital_access,
+  county_raceeth_digital_access,
+  place_raceeth_digital_access,
+  county_income_digital_access,
+  place_income_digital_access
+) %>%
+  map2(
+    .x = names(.),
+    .y = .,
+    .f = ~ assign(
+      x = .x,
+      value = suppress_bad_cvs(.y),
+      envir = .GlobalEnv
+    )
+  )
+
+county_subgroup_digital_access <-
+  bind_rows(
+    county_raceeth_digital_access,
+    county_income_digital_access
+  )
+
+place_subgroup_digital_access <-
+  bind_rows(
+    place_raceeth_digital_access,
+    place_income_digital_access
+  )
+```
+
+```{r}
+#| label: skim-before-export
+
+county_overall_digital_access |> skim()
+
+place_overall_digital_access |> skim()
+
+county_raceeth_digital_access |> skim()
+
+place_raceeth_digital_access |> skim()
+
+county_income_digital_access |> skim()
+
+place_income_digital_access |> skim()
+```
+
+```{r}
+#| label: export-csvs
+# Export each of the files as CSVs
+
+export_metric <- function(data, type = c("subgroup", "multi-year")) {
+  geo <- ifelse("county" %in% colnames(data), "county", "city")
+  geo_var <- ifelse("county" %in% colnames(data), "county", "place")
+
+  data <-
+    data |>
+    # Transform metric from ratio to percent with 3 decimal places
+    # mutate(across(
+    #   .cols = starts_with("share_digital_access") & !ends_with("quality"),
+    #   .fns = ~ scales::label_percent(accuracy = 0.001)(.x)
+    # )) |>
+    filter(!(year %in% c(2016, 2020))) |>
+    select(-c(state_name, paste0({{ geo_var }}, "_name")))
+
+  if (type == "multi-year") {
+    write_csv(
+      data,
+      here::here("08_education", "final", glue("digital_access_{geo}_all.csv"))
+    )
+  } else if (type == "subgroup") {
+    data <-
+      data |>
+      filter(year %in% c(2018, 2021)) |>
+      relocate(subgroup_type, .before = "subgroup") |>
+      mutate(subgroup = case_match(subgroup,
+        "Income Less Than 50k" ~ "Less than $50,000",
+        "Income More Than 50k" ~ "$50,000 or More",
+        .default = subgroup
+      ))
+    write_csv(
+      data,
+      here::here("08_education", "final", glue("digital_access_{geo}_subgroup_all.csv"))
+    )
+  } else {
+    stop("type must be 'multi-year' or 'subgroup'")
+  }
+}
+
+export_metric(
+  county_overall_digital_access,
+  "multi-year"
+)
+export_metric(county_subgroup_digital_access, "subgroup")
+
+export_metric(
+  place_overall_digital_access,
+  "multi-year"
+)
+export_metric(place_subgroup_digital_access, "subgroup")
+```
+
+Check that the outputted files match the README conventions.
+
+```{r}
+#| label: check-county-files
+county_all <- read_csv(here::here("08_education/final/digital_access_county_all.csv"))
+county_subgroup <- read_csv(here::here("08_education/final/digital_access_county_subgroup_all.csv"))
+
+head(county_all)
+head(county_subgroup)
+```
+
+```{r}
+#| label: check-city-files
+place_all <- read_csv(here::here("08_education/final/digital_access_city_all.csv"))
+place_subgroup <- read_csv(here::here("08_education/final/digital_access_city_subgroup_all.csv"))
+
+head(county_all)
+head(county_subgroup)
+```
