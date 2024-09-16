@@ -2,7 +2,7 @@
 title: "Create Place Population File"
 author: "Aaron R. Williams"
 date: today
-abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of places with population estimates for 2015-2020. It then creates a stub file for putting together the population files."
+abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of places with population estimates for 2015-2023. It then creates a stub file for putting together the population files."
 format: 
   html:
     toc: true
@@ -91,67 +91,50 @@ pop <- pop |>
   arrange(year, state, place)
 ```
 
-## 2021-2022
+## 2021-2023
 
-The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later years. Ideally, we would download the files and use them. Unfortunately, the files have inconsitencies so we skip this step for now. 
+The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later years. Ideally, we would download the files and use them. Unfortunately, the files have inconsistencies so we skip this step for now. 
 
 ```{r}
 # Specify URL where source data file is online
 placeurl <-
-  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv"
+  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2022.csv")
+destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2023.csv")
 
 # Import the data file & save locally
 if (!file.exists(destfileplace)) {
   download.file(placeurl, destfileplace, mode = "wb")
 }
 
-# Import the data file as a dataframe
-pep_2021_2022 <- read_csv(destfileplace) |>
+pep_2021_2023 <- read_csv(destfileplace) |>
   rename_with(tolower) |>
+  filter(sumlev == 162) |>
   select(
     state, place,
     state_name = stname,
     place_name = name,
-    popestimate2021,
-    popestimate2022
-  )
-
-# remove unnecessary data before reshaping
-pep_2021_2022 <- pep_2021_2022 |>
-  filter(place != "00000")
-
-# reshape by place
-pep_2021_2022 <- pep_2021_2022 |>
+    starts_with("popestimate")
+  ) |>
+  # remove unnecessary data before reshaping
+  filter(place != "00000") |>
+  # reshape by place
   pivot_longer(
-    cols = c(popestimate2021, popestimate2022),
+    cols = starts_with("popestimate"),
     names_to = "year",
     values_to = "population"
-  )
-
-pep_2021_2022 <- pep_2021_2022 |>
-  mutate(year = as.numeric(str_remove(string = year, pattern = "popestimate")))
+  ) |>
+  mutate(year = as.numeric(str_remove(string = year, pattern = "popestimate"))) |>
+  filter(year > 2020)
 ```
 
 The PEP file includes disaggregations of places and duplicate places. We drop these. 
 
 ```{r}
-pep_2021_2022 <- pep_2021_2022 |>
+pep_2021_2023 <- pep_2021_2023 |>
   filter(!str_detect(place_name, pattern = "(pt\\.)")) |>
   distinct(year, state, place, state_name, place_name, population)
-```
-
-2023 data for census places wasn't available for [download](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/). We use 2022 data for 2023 for now.
-
-```{r}
-pep_2021_2023 <- bind_rows(
-  pep_2021_2022,
-  pep_2021_2022 |>
-    filter(year == 2022) |>
-    mutate(year = 2023)
-)
 ```
 
 ## Combine Data
