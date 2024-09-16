@@ -22,7 +22,6 @@ library(here)
 
 theme_set(theme_minimal())
 options(scipen = 999)
-
 ```
 
 ## 2015-2019
@@ -35,21 +34,18 @@ options(scipen = 999)
 #' @return A data frame with estimate for all US counties
 #'
 get_pop <- function(year) {
-  
   pop <- tidycensus::get_estimates("place", year = year, variables = "POP") %>%
     mutate(year = year)
-  
+
   return(pop)
-  
 }
 
 
 # pull county population data for each year from the Population Estimates Program
 pep_2015_2019 <- map_dfr(
-  .x = 2015:2019, 
-  .f = ~get_pop(year = .x)
+  .x = 2015:2019,
+  .f = ~ get_pop(year = .x)
 )
-
 ```
 
 ## 2020
@@ -57,14 +53,13 @@ pep_2015_2019 <- map_dfr(
 ```{r}
 # pull the 2020 decennial census
 census2020 <- get_decennial(
-  geography = "place", 
-  year = 2020, 
-  variables = "P1_001N", 
+  geography = "place",
+  year = 2020,
+  variables = "P1_001N",
   keep_geo_vars = TRUE
 ) |>
   select(NAME, GEOID, variable, value) |>
   mutate(year = 2020)
-
 ```
 
 ## Combine
@@ -76,9 +71,11 @@ pop <- bind_rows(pep_2015_2019, census2020)
 # drop unnecessary variable and rename the useful variable
 pop <- pop %>%
   select(-variable) %>%
-  rename(population = value,
-         place_state_name = NAME,
-         state_place = GEOID)
+  rename(
+    population = value,
+    place_state_name = NAME,
+    state_place = GEOID
+  )
 
 pop <- pop |>
   separate(place_state_name, into = c("place_name", "state_name", "c", "d", "e"), sep = ",") |>
@@ -92,7 +89,6 @@ pop <- pop |>
   ) |>
   select(year, state, place, state_name, place_name, population) %>%
   arrange(year, state, place)
-
 ```
 
 ## 2021-2022
@@ -101,7 +97,7 @@ The [Population Estimates Program](https://www.census.gov/data/datasets/time-ser
 
 ```{r}
 # Specify URL where source data file is online
-placeurl <- 
+placeurl <-
   "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
@@ -109,19 +105,17 @@ destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2022.csv")
 
 # Import the data file & save locally
 if (!file.exists(destfileplace)) {
-
   download.file(placeurl, destfileplace, mode = "wb")
-  
 }
-  
+
 # Import the data file as a dataframe
 pep_2021_2022 <- read_csv(destfileplace) |>
   rename_with(tolower) |>
   select(
-    state, place, 
+    state, place,
     state_name = stname,
-    place_name = name, 
-    popestimate2021, 
+    place_name = name,
+    popestimate2021,
     popestimate2022
   )
 
@@ -130,16 +124,15 @@ pep_2021_2022 <- pep_2021_2022 |>
   filter(place != "00000")
 
 # reshape by place
-pep_2021_2022 <- pep_2021_2022 |> 
+pep_2021_2022 <- pep_2021_2022 |>
   pivot_longer(
-    cols = c(popestimate2021, popestimate2022), 
+    cols = c(popestimate2021, popestimate2022),
     names_to = "year",
     values_to = "population"
   )
 
 pep_2021_2022 <- pep_2021_2022 |>
   mutate(year = as.numeric(str_remove(string = year, pattern = "popestimate")))
-
 ```
 
 The PEP file includes disaggregations of places and duplicate places. We drop these. 
@@ -148,8 +141,6 @@ The PEP file includes disaggregations of places and duplicate places. We drop th
 pep_2021_2022 <- pep_2021_2022 |>
   filter(!str_detect(place_name, pattern = "(pt\\.)")) |>
   distinct(year, state, place, state_name, place_name, population)
-
-
 ```
 
 2023 data for census places wasn't available for [download](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/). We use 2022 data for 2023 for now.
@@ -161,7 +152,6 @@ pep_2021_2023 <- bind_rows(
     filter(year == 2022) |>
     mutate(year = 2023)
 )
-
 ```
 
 ## Combine Data
@@ -174,7 +164,6 @@ final_population <- bind_rows(
 
 final_population <- final_population |>
   arrange(year, state, place, state_name, place_name)
-
 ```
 
 ## Subset Data
@@ -189,7 +178,6 @@ my_places <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
 
 final_population <- final_population |>
   filter(paste0(state, place) %in% my_places)
-
 ```
 
 ## Evaluation
@@ -201,7 +189,6 @@ final_population |>
     in_set(485, 486),
     n
   )
-
 ```
 
 ```{r}
@@ -217,15 +204,14 @@ population_test <- final_population |>
 population_test |>
   ggplot(aes(population, pop_change)) +
   geom_point(alpha = 0.1) +
-  facet_wrap(~ year) +
+  facet_wrap(~year) +
   labs(title = "Population change in different years")
 
 population_test |>
   ggplot(aes(population, prop_pop_change)) +
   geom_point(alpha = 0.1) +
-  facet_wrap(~ year) +
+  facet_wrap(~year) +
   labs(title = "Proportional population change in different years")
-
 ```
 
 We can look at the places with the largest proportion change. 
@@ -242,7 +228,6 @@ We can look at places with the largest absolute change in population.
 population_test |>
   slice_max(abs(pop_change), n = 30) |>
   print(n = Inf)
-
 ```
 
 We can look at places with FIPS that don't show up in every year. 
@@ -255,7 +240,6 @@ final_population |>
   ungroup() |>
   distinct(state, place, state_name, place_name) |>
   print(n = Inf)
-
 ```
 
 We can look at places with place names that don't show up in every year. 
@@ -268,7 +252,6 @@ final_population |>
   ungroup() |>
   distinct(state, place, state_name, place_name) |>
   print(n = Inf)
-
 ```
 
 ## Save Data
