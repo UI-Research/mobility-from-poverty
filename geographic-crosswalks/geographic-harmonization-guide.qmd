@@ -18,73 +18,324 @@ editor_options:
 #| label: setup
 library(tidyverse)
 library(here)
+library(assertthat)
 ```
 
 ## Overview
 
-This document includes the number of geographies in each year, justifications for decisions, and documentations of important changes to geographies. In particular, it articulates a plan to answer these big questions:
+This document includes the number of geographies in each year, justifications for decisions, and documentations of important changes to geographies. In particular, it addresses the following questions:
 
--   What are all of the geographic crosswalks we need?
--   What time perspective should we use? For example, should we report Connecticut data for the nine planning regions before 2022 or use the eight counties?
--   We use a population threshold to identify large cities. Should this change over time as cities grow and shrink?
+-   [What geographies are in our final data? How do they change over time?](#sec-our-geographies)
+-   [What are geographic crosswalks and when/how do I use them?](#sec-what-are-crosswalks)
+-   [What are all the geographic crosswalk in this project?](#sec-crosswalks-we-use)
+-   [Are the geographies in our final data aligned with our population files?](#sec-are-geographies-aligned)
 
-## How Geographies Relate from Year-to-Year
+## What geographies are in our data? How do they change over time? {#sec-our-geographies}
 
+We report our final data for counties and places.
+
+::: callout-note
 Each year some new entities come into existence and other entities are dissolved. This may be the result of new incorporations or statistical delineations, the redrawing or splitting of administrative areas, disincorporations, mergers and consolidations, and other types of changes.
 
 Check out the Census's comphrensive [guide](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518) to all the changes to US census geographies to learn more.
+:::
 
-### How many county and county-equivalents are in our data?
+### Counties
 
-We have 3,142 counties and county-equivalents for 2014-2018, 3,143 for 2020-2021, and 3,144 in 2022. The average number of counties per state is 62, but the number varies from three in Delaware to 254 in Texas.
+We have:
 
+-   3,134 counties for 2014-2019
+-   3,135 for 2020-2021
+-   3,144 counties for 2022-2023
 
 ```{r}
 #| label: load-output-data
 
-county_data <- read_csv(here::here("data/11_mobility-metrics_county_longitudinal.csv"))
+county_data <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv"))
 
 county_data |>
   count(year)
 ```
 
-There are two important changes to note:
+The average number of counties per state is 62, but the number varies from three in Delaware to 254 in Texas.
 
-#### Alaska county splits
+To understand the changes in our number of counties over time, there are **two key changes** to note:
 
-In 2019, the Alaskan county of Valdez-Cordova was split into **Cugach Census Area** and **Copper River Census Area.** Therefore, the number of counties and county-equivalents is 3,143 for 2020 and 2021.
-
-#### Connecticut Planning Regions
+#### Connecticut Planning Regions {#sec-ct-planning-regions}
 
 The number of US counties increased in 2022 **due to a new county-equivalent map for Connecticut, which better reflected the state's governance system**. The new map divided Connecticut into nine counties, instead of the previous eight. 
 
-Connecticut’s historical eight counties stopped serving as functioning governmental or administrative units in 1960. Currently, Connecticut has nine [Regional Councils of Government](https://portal.ct.gov/OPM/IGPP/ORG/Planning-Regions/Planning-Regions---Overview) (COG) that carry out regional planning and service delivery activities similar to those performed by county-level governments in other states.Planning regions are administrative entities that have have the same boundaries as the state’s COGs.
+Connecticut’s historical eight counties stopped serving as functioning governmental or administrative units in 1960. Currently, Connecticut has nine [Regional Councils of Government](https://portal.ct.gov/OPM/IGPP/ORG/Planning-Regions/Planning-Regions---Overview) (COG) that carry out regional planning and service delivery activities similar to those performed by county-level governments in other states. Planning regions are administrative entities that have have the same boundaries as the state’s COGs.
 
-The Census Bureau used to release data based on Connecticut’s eight counties, but starting in 2023, it switched to reporting data for the nine planning regions, following a 2019 request from the state’s Office of Planning and Management. Since new data products will include planning regions, *we should make sure to use them instead of the historical counties moving forward*. 
+The Census Bureau used to release data based on Connecticut's eight counties, but starting in 2023, it switched to reporting data for the nine planning regions, following a 2019 request from the state’s Office of Planning and Management. Since new data products will include planning regions, *we should make sure to use them instead of the historical counties moving forward*.
 
 See the map below for the planning region boundaries, the towns within each planning region, and historical county boundaries (delineated by thick white borders)
 
-![](images/ct-planning-regions.png)
+![](images/connecticut-planning-region-boundaries.png)
 
 ::: callout-note
 County-equivalent planning regions will simply be referred to as “counties” in Census Bureau data products, although the geographic units will be labeled with the names of the planning regions instead of counties.
 :::
 
+Due to data quality concerns with crosswalking from the old historical counties to planning regions, we **drop any Connecticut data prior to 2022**. In particular, these concerns arise from the fact that the old counties are **not nested** within the new planning regions. Since tract or block-group level data isn't available for most metrics, we can't use a narrower geography to remediate this problem. This is particularly consequential for **non-count** variables. For more information, see [Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html#what-are-geographic-crosswalks).
 
-### How many places are in our data?
+#### Alaska county splits
 
-Our final data contains incorporated places with populations greater than 75,000. The number of places in our data is 485 for 2015-2017 and 486 from 2018-2022. This is because the Census Bureau [added South Fulton City, GA in 2017](https://www.census.gov/programs-surveys/acs/technical-documentation/table-and-geography-changes/2018/geography-changes.html).
+In 2019, the Alaskan county of Valdez-Cordova was split into **Cugach Census Area** and **Copper River Census Area.** Therefore, the number of counties increases by one after 2019 and we have **3,135** counties for 2020-2021.
+
+#### Summary
+
+In summary, we have
+
+-   3,134 counties for 2014-2019 (**due to removing 8 CT counties)**
+-   3,135 for 2020-2021 (**due to the Alaska county split)**
+-   3,144 counties for 2022-2023 **(due to the incorporation of 9 CT planning regions)**
+
+**Check:** Do we have the same number of counties for each year? Or any dropping in and out?
 
 ```{r}
-places_data <- read_csv(here::here("data/61_mobility-metrics_place_longitudinal.csv"))
+#| label: counties-by-year-check
 
-places_data |>
-  count(year)
+# Find unique places for each year
+counties_per_year <- county_data %>%
+  mutate(geoid = paste0(state, county), .after = "year") |>
+  group_by(year) %>%
+  summarize(counties = list(unique(geoid))) %>%
+  arrange(year)
+
+# Compare places between consecutive years
+counties_comparison <- counties_per_year %>%
+  mutate(
+    dropped = ifelse(year > min(year),
+      map2(counties, lag(counties), ~ setdiff(.y, .x)),
+      NA
+    ),
+    new = ifelse(year > min(year),
+      map2(counties, lag(counties), ~ setdiff(.x, .y)),
+      NA
+    )
+  )
+
+
+# Unnest the comparison results
+counties_dropped_new <- counties_comparison %>%
+  unnest(c(dropped, new), keep_empty = TRUE) %>%
+  pivot_longer(cols = c(dropped, new), names_to = "status", values_to = "county") %>%
+  filter(!is.na(county))
+
+number_of_counties_changed <-
+  counties_comparison |>
+  # Remove first year of our data since by definition there can't be changes
+  # from this period
+  filter(year != 2014) |>
+  mutate(
+    counties = map_int(counties, length),
+    dropped = map_int(dropped, length),
+    new = map_int(new, length)
+  )
+
+number_of_counties_changed
 ```
 
 
-## How reporting geographies relate to target geographies
 
-How geographies where data are reported (e.g. PUMAs and ZCTAs) relate to to our target geographies (counties and populous census places).
+**Check:** Only one county from 2020 is dropped from our data (Valdez-Cordova)
+```{r}
+assert_that(
+  all(
+    number_of_counties_changed %>%
+      filter(year != 2020) %>%
+      pull(dropped) == 0
+  )
+)
 
-TBD
+assert_that(
+  number_of_counties_changed %>%
+    filter(year == 2020) %>%
+    pull(dropped) == 1
+)
+```
+
+**Check:** 9 counties are added in 2022 (CT planning regions)
+```{r}
+assert_that(
+  number_of_counties_changed %>%
+    filter(year == 2022) %>%
+    pull(new) == 9
+)
+```
+
+### Places
+
+Our final data contains incorporated places with populations greater than 75,000 in 2020.
+
+The number of places in our data is
+
+-   485 for 2015-2017
+-   486 from 2018-2023
+
+This increase in our number of places is due to the [addition South Fulton City, GA in 2017](https://www.census.gov/programs-surveys/acs/technical-documentation/table-and-geography-changes/2018/geography-changes.html) by the Census Bureau.
+
+```{r}
+places_data <- read_csv(here::here("geographic-crosswalks/data/place-populations.csv"))
+
+number_of_years <- length(unique(places_data$year))
+
+places_data |>
+  group_by(year) |>
+  distinct(state, place) |>
+  count()
+```
+
+**Check:** Do we have the same number of places for each year? Or any dropping in and out?
+
+```{r}
+#| label: places-by-year-check
+
+# Find unique places for each year
+places_per_year <- places_data %>%
+  mutate(geoid = paste0(state, place), .after = "year") |>
+  group_by(year) %>%
+  summarize(places = list(unique(geoid))) %>%
+  arrange(year)
+
+# Compare places between consecutive years
+places_comparison <- places_per_year %>%
+  mutate(
+    dropped = ifelse(year > min(year),
+      map2(places, lag(places), ~ setdiff(.y, .x)),
+      NA
+    ),
+    new = ifelse(year > min(year),
+      map2(places, lag(places), ~ setdiff(.x, .y)),
+      NA
+    )
+  )
+
+# Unnest the comparison results
+places_dropped_new <- places_comparison %>%
+  unnest(c(dropped, new), keep_empty = TRUE) %>%
+  pivot_longer(cols = c(dropped, new), names_to = "status", values_to = "place") %>%
+  filter(!is.na(place))
+```
+
+We should only have one new place added which corresponds to South Fulton City, GA
+
+```{r}
+# Check that only South Fulton City, GA is added
+assertthat::assert_that(nrow(places_dropped_new) == 1)
+```
+
+
+## What are geographic crosswalks and when/how do I use them?  {#sec-what-are-crosswalks}
+
+When working with data containing geographic information, we might encounter some challenges:
+
+-   What should we do when we have multiple data sources at different geographic levels, such as census tract, zip code, place, or state?
+-   What if we have data at one level of geography but not at the geographic level we want represent?
+-   How do we standardize geographies that change spatially over time?
+
+We need a tool to transform data from one spatial level to another. That is, we need **a crosswalk**! Geographic crosswalks, also called correlation lists, equivalency files, or geographic correspondence files, allow us to approximate data from one geographic level to another.
+
+More specifically, a geographic crosswalk is a dataset containing at least these two columns:
+
+-   **Source or reporting geography**: the geographic scale of the source data
+-   **Target geography**: the geography of the data we want to end up with
+
+Each row in the crosswalk represents an **intersection** between the source and target geographies.
+
+If the geographies are **non-nested**, that is if they **don't** completely and neatly fit within the desired geography, there will be a few more relevant columns:
+
+-   **Size**: Some value to the size of an intersection, like population or land area
+-   **Weight / Allocation Factor:** the portion of the source area that is located in the target area
+
+To approximate data from one geography to another using a geographic crosswalk, follow these steps:
+
+1.  Join the crosswalk to your data using the source geography identifier.
+2.  Multiply your data values by the weights provided in the crosswalk.
+3.  Aggregate the results by summarizing the weighted data according to the target geography.
+
+This process estimates data for the target geography by appropriately weighting and reallocating data from the source geography.
+
+::: {.callout-note}
+
+This overview generally applies for crosswalking **count** variables like population. 
+There are some more nuances to consider when crosswalking **non-count** variables. To learn more
+about this see [Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html#what-are-geographic-crosswalks).
+:::
+
+## Which crosswalks do we use? {#sec-crosswalks-we-use}
+
+The following crosswalks are available in the `geographic-crosswalks/data` folder:
+
+| Source Geography | Target Geography | File | Notes |
+|-----------------|-----------------|-----------------------|-----------------|
+| PUMA | Place | `crosswalk-puma-to-place.csv` | For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 Place. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 Place. |
+| PUMA | County | `crosswalk-puma-to-county.csv` | For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 County. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 county. |
+| Tract | County | `tract-county-crosswalk_2018.csv`, `tract-county-crosswalk_2022.csv` |  |
+| Tract | Place | `tract_place_crosswalk_2018.csv` |  |
+
+## Are the geographies in our final data aligned with our population files? {#sec-are-geographies-aligned}
+
+### County
+
+```{r}
+#| label: county-comparison
+county_final <-
+  read_csv(here("data/11_mobility-metrics_county_longitudinal.csv"))
+
+county_pop <- read_csv(here("geographic-crosswalks/data/county-populations.csv"))
+
+count(county_final, year)
+count(county_pop, year)
+```
+
+
+**Check**: Are the counties in our final data aligned with our county population file?
+
+```{r}
+# Check that the counties are the same for each year
+counties_final_unique <- county_final %>% distinct(year, state, county)
+counties_pop_unique <- county_pop %>% distinct(year, state, county)
+
+mismatched_counties <- counties_final_unique %>%
+  anti_join(counties_pop_unique, by = c("year", "state", "county"))
+```
+
+```{r}
+#| eval: false
+# Compare the number of matching counties
+assert_that(nrow(mismatched_counties) == 0, msg = "Some county names do not match between the datasets.")
+```
+
+### Place
+
+```{r}
+#| label: places-comparison
+place_final <-
+  read_csv(here("data/61_mobility-metrics_place_longitudinal.csv"))
+
+place_pop <- read_csv(here("geographic-crosswalks/data/place-populations.csv"))
+
+count(place_final, year)
+count(place_pop, year)
+```
+
+
+**Check**: Are the places in our final data aligned with our place population file?
+
+```{r}
+places_final_unique <- place_final |> distinct(state, place, place_name)
+places_pop_unique <- place_pop |> distinct(state, place, place_name)
+
+mismatched_places <- places_pop_unique %>%
+  anti_join(places_final_unique, by = c("state", "place", "place_name"))
+```
+
+```{r}
+assert_that(nrow(mismatched_places) == 0, msg = "Some place names do not match between the datasets.")
+```
+
+## Resources
+
+[Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html)
