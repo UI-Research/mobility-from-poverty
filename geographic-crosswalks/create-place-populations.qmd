@@ -15,18 +15,20 @@ editor_options:
 ---
 
 ```{r}
+#| label: setup
 library(tidyverse)
 library(tidycensus)
 library(assertr)
 library(here)
-
-theme_set(theme_minimal())
+library(urbnthemes)
+set_urbn_defaults("print")
 options(scipen = 999)
 ```
 
 ## 2015-2019
 
 ```{r}
+#| label: get-pop-2015-2019
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
@@ -51,6 +53,7 @@ pep_2015_2019 <- map_dfr(
 ## 2020
 
 ```{r}
+#| label: get-pop-2020
 # pull the 2020 decennial census
 census2020 <- get_decennial(
   geography = "place",
@@ -64,8 +67,10 @@ census2020 <- get_decennial(
 
 ## Combine
 
+We combine the PEP data and decennial census data
 ```{r}
-# combine the PEP data and decennial census data
+#| label: combine-pop
+
 pop <- bind_rows(pep_2015_2019, census2020)
 
 # drop unnecessary variable and rename the useful variable
@@ -110,6 +115,12 @@ if (!file.exists(destfileplace)) {
 
 pep_2021_2023 <- read_csv(destfileplace) |>
   rename_with(tolower) |>
+  # Convert state to character and add a leading zero
+  mutate(
+    state = sprintf("%02d", state),
+    place = sprintf("%05d", place)
+  ) |>
+  mutate(across(c(state, place), as.character)) |>
   filter(sumlev == 162) |>
   select(
     state, place,
@@ -125,7 +136,9 @@ pep_2021_2023 <- read_csv(destfileplace) |>
     names_to = "year",
     values_to = "population"
   ) |>
-  mutate(year = as.numeric(str_remove(string = year, pattern = "popestimate"))) |>
+  mutate(
+    year = as.numeric(str_remove(string = year, pattern = "popestimate")),
+  ) |>
   filter(year > 2020)
 ```
 
@@ -154,14 +167,70 @@ final_population <- final_population |>
 We are only interested in incorporated places with more than 75,000 people in 2020. We use a specific file from PEP to create a list of 486 FIPS of interest. 
 
 ```{r}
-my_places <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
+# Specify URL where source data file is online
+placeurl <-
+  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv"
+
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2022.csv")
+
+# Import the data file & save locally
+if (!file.exists(destfileplace)) {
+  download.file(placeurl, destfileplace, mode = "wb")
+}
+
+pep_2022 <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
+  mutate(state_place = paste0(STATE, PLACE))
+
+my_places <- pep_2022 |>
   filter(POPESTIMATE2020 > 75000, SUMLEV == "162") |>
-  mutate(state_place = paste0(STATE, PLACE)) |>
   pull(state_place)
 
 final_population <- final_population |>
   filter(paste0(state, place) %in% my_places)
 ```
+
+**Check:** Are there places on the cutoff of our population threshold?
+
+```{r}
+# Plotting Population for All Places with Threshold Line
+places_near_threshold <-
+  pep_2022 |>
+  filter(SUMLEV == "162") |>
+  mutate(
+    distance_from_threshold = if_else(POPESTIMATE2020 < 75 * 1e3,
+      75 * 1e3 - POPESTIMATE2020,
+      0
+    )
+  ) |>
+  filter(distance_from_threshold > 0) |>
+  # filter(between(distance_from_threshold, 1, 10*1e3)) |>
+  select(state_place, POPESTIMATE2020, distance_from_threshold)
+
+ggplot(places_near_threshold, aes(x = distance_from_threshold)) +
+  geom_histogram(binwidth = 1000) +
+  labs(
+    title = "Distribution of Places by Distance from 75k Population Threshold",
+    x = "Distance from 75,000 Population Threshold",
+    y = "Number of Places"
+  )
+```
+
+Zooming in on places that are 10,000 below our cut-off
+```{r}
+places_near_threshold |>
+  filter(between(distance_from_threshold, 1, 10 * 1e3)) |>
+  ggplot(aes(x = distance_from_threshold)) +
+  geom_histogram(binwidth = 1000) +
+  labs(
+    title = "Distribution of Places by Distance from 75k Population Threshold",
+    x = "Distance from 75,000 Population Threshold",
+    y = "Number of Places"
+  )
+```
+
+
+There are `r places_near_threshold |>filter(between(distance_from_threshold, 1, 10*1e3)) |> count(state_place) |> nrow()` places that are within 10,000 of our 75,000 population threshold.
 
 ## Evaluation
 
