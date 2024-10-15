@@ -38,8 +38,8 @@ The checklist below outlines key steps that should be taken during the process o
 
 *Quality Control*
 -   [ ] The program includes visuals of the distribution of key analysis variables throughout the calculation steps
--   [ ] The program includes visualizations of the final data as well as summary statistic and a selection of assumptions tests (including count of rows by year, missing values and calculate outliers (min & max) plus any additional checks deemed necessary)
--   [ ] Assumption tests are applied to all years being created in the program. If a prior year of the metric data is not being recreated in this program, a version of that data is read in and evaluated for trends in differences with new years. 
+-   [ ] The program includes visualizations of the final data as well as summary statistic and a selection of assumptions tests (including count of rows by year, missing values and calculation of outliers (min & max) plus any additional checks deemed necessary)
+-   [ ] Assumption tests are applied to all years being created in the program. If a year in the historical version of the metric data is not being recreated in this program, that historical data is read in and differences with new years are visualized. 
 -   [ ] The program includes the creation of a quality variable for the metric and documents the method for assigning quality grades 
 
 *Reproducibility* 
