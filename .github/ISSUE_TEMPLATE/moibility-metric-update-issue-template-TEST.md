@@ -1,50 +1,55 @@
 ---
-name: Moibility Metric Update Issue Template (TEST)
+name: Moibility Metric Update Issue Template
 about: This template was designed as the default issue for updating and/or changing
   mobility metrics.
-title: iss###
+title: Metric Update Description
 labels: ''
 assignees: ''
 
 ---
 
-## Metric update issue
+## Metric Update
 
 This issue updates the \[enter mobility metric\]. Please read through the instructions below carefully. The check at the bottom of this issue should all be completed and marked off prior to creating a final PR for the metric update.
+
+[Enter update goals - column F from the UMF_Update_Tracker]
+
 
 Please review the instructions on the wiki before starting work on a metric update.
 
 ### Crosswalks
 
-Crosswalks were updated at the start of the 2024-25 metric update process. If you are editing an existing program please check that the crosswalk being used is the latest version. For more information on crosswalks, see the crosswalk page on the wiki.
-
-### Historical Data
-
-If you are changing the methodology for a metric or adding a new subgroup, consider how this will impact prior years of the metric and if the time series will be coherent. Please see the section on historical data and years page on the wiki.
-
-Please define the updates and/or changes being made as specifically as possible below:
+Crosswalks were updated prior to the 2024-25 metric update process. If you are editing an existing program please check that the crosswalk being used is the latest version. For more information on crosswalks, see the crosswalk page on the Wiki.
 
 ### Checklist
 
-*Code Reproducibility & Content*
+The checklist below outlines key steps that should be taken during the process of this metric update. These steps should all be checked off prior to finalizing the metric update.
 
--   [ ] All relevant code used to create this metric run start to finish without bugs or errors
--   [ ] The program includes thorough comments explaining all steps
--   [ ] All raw data that can be read into the code programmatically (i.e. via an API or web scraping) is done in the code
--   [ ] Any raw data used that cannot be read in programmatically is stored in the following (Box folder)\[[https://urbanorg.box.com/s/gpqd26sk5kqlymnfngyvjfs4qf9o2zvc\]](https://urbanorg.box.com/s/gpqd26sk5kqlymnfngyvjfs4qf9o2zvc])
+*Setup*
+-   [ ] Metric lead has checked out a new branch from the Version2025 repo that is named after the number associated with this issue, i.e. iss###
+-   [ ] Metric lead has filled out the final data expectations from located in the functions folder of the repo and saved this form in the metrics data folder for all relevant final output files 
+-   [ ] Metric lead has read through the existing version of the program and has located and overviewed the existing output files  
 
-*Back-updating*
+*Program Documentation* 
+-   [ ] The update program includes a description at the start with the date, the latest changes made and the author of the metric lead that made them
+-   [ ] If the program reads in raw data that is not available through an API, then the code includes a note on where this data is in Box (including the title of relevant files) 
+-   [ ] Each step taken in the calculation is clearly documented in the code using comments 
+-   [ ] The program is broken out into manageable steps and the code avoids using extensively long lines connected via pipes or pipe equivalents if not using R
 
--   [ ] If this update made substantive changes to the methodology of a metric the prior years of data were also reproduced or an alternative solution was found
--   [ ] Any additional subgroups were included in previous years made available for the metric
+*Quality Control*
+-   [ ] The program includes visuals of the distribution of key analysis variables throughout the calculation steps
+-   [ ] The program includes visualizations of the final data as well as summary statistic and a selection of assumptions tests (including count of rows by year, missing values, etc.)
+-   [ ] The program includes the creation of a quality variable for the metric and documents the method for assigning quality grades 
+
+*Reproducibility* 
+-   [ ] The program runs from start to finish without stopping due to errors or incompleteness 
+-   [ ] The program avoids hardcoding local file paths and instead uses global paths that will work regardless of where the program is being ran (i.e. here::here() for R users)
+-   [ ] The program includes a “House Keeping” section which loads all necessary packages at the top of the program
 
 *Final Data*
-
--   [ ] If this update changed the years, subgroup names or added new subgroups a completed/updated final data expectation form was completed
--   [ ] The final data went through the “Final Data Evaluation Function” and passed all tests
--   [ ] The final data includes all years and subgroups available/created for the metric. And if not, the final data folder includes historical versions that match the structure of the updated final files
+-   [ ] The program reads out a final file in the form of a CSV document or multiple CSVs into a data folder in the relevant metric folder
+-   [ ] Final files include the relevant years in title if the metric has multiple files separated by year
+-   [ ] All final files being read out by the update program are put through the evaluate final data function 
 
 *Review*
-
--   [ ] This code received a review from an approved reviewer
--   [ ] All comments and concerns raised by the reviewer have been addressed
+-   [ ] When ready for review the metric lead has submitted a PR to Version2025 using the PR template 
