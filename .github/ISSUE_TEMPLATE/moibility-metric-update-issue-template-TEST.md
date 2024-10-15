@@ -28,17 +28,18 @@ The checklist below outlines key steps that should be taken during the process o
 *Setup*
 -   [ ] Metric lead has checked out a new branch from the Version2025 repo that is named after the number associated with this issue, i.e. iss###
 -   [ ] Metric lead has filled out the final data expectations from located in the functions folder of the repo and saved this form in the metrics data folder for all relevant final output files 
--   [ ] Metric lead has read through the existing version of the program and has located and overviewed the existing output files  
+-   [ ] Metric lead has read through the existing version of the program and has located and examined the existing output files  
 
 *Program Documentation* 
 -   [ ] The update program includes a description at the start with the date, the latest changes made and the author of the metric lead that made them
--   [ ] If the program reads in raw data that is not available through an API, then the code includes a note on where this data is in Box (including the title of relevant files) 
+-   [ ] If the program reads in raw data that is not available through an API, then the code includes a note on where this data is in Box (including the title of relevant files)
 -   [ ] Each step taken in the calculation is clearly documented in the code using comments 
 -   [ ] The program is broken out into manageable steps and the code avoids using extensively long lines connected via pipes or pipe equivalents if not using R
 
 *Quality Control*
 -   [ ] The program includes visuals of the distribution of key analysis variables throughout the calculation steps
--   [ ] The program includes visualizations of the final data as well as summary statistic and a selection of assumptions tests (including count of rows by year, missing values, etc.)
+-   [ ] The program includes visualizations of the final data as well as summary statistic and a selection of assumptions tests (including count of rows by year, missing values and calculate outliers (min & max) plus any additional checks deemed necessary)
+-   [ ] Assumption tests are applied to all years being created in the program. If a prior year of the metric data is not being recreated in this program, a version of that data is read in and evaluated for trends in differences with new years. 
 -   [ ] The program includes the creation of a quality variable for the metric and documents the method for assigning quality grades 
 
 *Reproducibility* 
