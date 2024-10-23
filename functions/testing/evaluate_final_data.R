@@ -11,25 +11,27 @@
 #   subgroups (logical): a true or false value indicating if the final file has subgroups
 #   confidence_intervals  (logical): a true or false value indicating if the final file has confidence intervals
 # Returns:
-#   a series of test results that will throw an error is failed 
+#   a series of test results that will throw an error if failed 
 
 library(here)
 library(tidyverse)
 
 evaluate_final_data <- function(exp_form_path, data, 
-                            geography = "county", subgroups = FALSE, confidence_intervals = TRUE) {
+                            geography, subgroups = FALSE, confidence_intervals = TRUE) {
 
 #Read in the data expectation form
 exp_form <- read_csv(here::here(exp_form_path),
-                     col_names = FALSE, show_col_types = FALSE) %>% 
-  filter(!is.na(X2), !str_detect(X1, "Example")) 
+                     skip = 2, locale=locale(encoding="latin1"),
+                     show_col_types = FALSE) %>% 
+  janitor::clean_names() %>% 
+  filter(!is.na(metric_name_as_written_in_final_data_file), !str_detect(user_input, "Example")) 
 
 #Pull information for variable check from expectation form
 exp_form_variables <- exp_form %>% 
-  select(X1:X5) %>% 
-  mutate(quality_title = ifelse(X5 == "Yes", paste0(X2, "_", "quality"), NA_character_),
-         ci_low_title = ifelse(X4 == "Yes", paste0(X2, "_", "lb"), NA_character_),
-         ci_high_title = ifelse(X4 == "Yes", paste0(X2, "_", "up"), NA_character_),
+  select(user_input:quality_variables_available_yes_or_no) %>% 
+  mutate(quality_title = ifelse(quality_variables_available_yes_or_no == "Yes", paste0(metric_name_as_written_in_final_data_file, "_", "quality"), NA_character_),
+         ci_low_title = ifelse(confidence_intervals_yes_or_no == "Yes", paste0(metric_name_as_written_in_final_data_file, "_", "lb"), NA_character_),
+         ci_high_title = ifelse(confidence_intervals_yes_or_no == "Yes", paste0(metric_name_as_written_in_final_data_file, "_", "ub"), NA_character_),
          metric_geography = geography,
          state = "state", 
          year = "year",
@@ -38,21 +40,18 @@ exp_form_variables <- exp_form %>%
   )
 
 #For final data with multiple values expand the form results 
-if(exp_form_variables %>% 
-   nrow() > 1) {
-  
+if(exp_form_variables %>% nrow() > 1) {
   exp_form_variables <- exp_form_variables %>% 
-    pivot_wider(names_from = X1, values_from = c("X2", "quality_title", "ci_low_title", "ci_high_title"))
-  
+    pivot_wider(names_from = user_input, values_from = c("metric_name_as_written_in_final_data_file", "quality_title", "ci_low_title", "ci_high_title"))
 }
 
-  
+
 #Pull subgroup list from expectation form 
 
 if (isTRUE(subgroups)) {
   
 expected_subgroups <- exp_form %>% 
-  pull(X7) %>% 
+  pull(subgroup_values_include_all_and_use_no_space) %>% 
   strsplit(split = ";") %>% 
   .[[1]]
   
@@ -60,7 +59,7 @@ expected_subgroups <- exp_form %>%
 
 #Pull year list from expectation form
 expected_years <- exp_form %>% 
-  pull(X3) %>% 
+  pull(all_years_use_no_space) %>% 
   strsplit(split = ";") %>% 
   as.numeric() %>% 
   .[[1]]
@@ -84,8 +83,8 @@ if (isTRUE(subgroups)) {
 if (isTRUE(confidence_intervals)) {
   
   stopifnot(sum(is.na(select(data, ends_with("_lb")))) == sum(is.na(select(data, ends_with("_quality")))))
-  stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_quality")))))
-  stopifnot(sum(is.na(select(data, ends_with("_up")))) == sum(is.na(select(data, ends_with("_lb")))))
+  stopifnot(sum(is.na(select(data, ends_with("_ub")))) == sum(is.na(select(data, ends_with("_quality")))))
+  stopifnot(sum(is.na(select(data, ends_with("_ub")))) == sum(is.na(select(data, ends_with("_lb")))))
   
 }
 
@@ -93,34 +92,39 @@ if (isTRUE(confidence_intervals)) {
 if (geography == "county") {
   
   data_geoid <- data |>
-    dplyr::mutate(geoid = paste0(state, county)) |>
-    dplyr::mutate(geo_id_length = stringr::str_length(geoid))
+    dplyr::mutate(geoid = paste0(state, county),
+                  geoid_length = stringr::str_length(geoid)) 
   
 }
 
 if (geography == "place") {
   
   data_geoid <- data |>
-    dplyr::mutate(geoid = paste0(state, place)) |>
-    dplyr::mutate(geo_id_length = stringr::str_length(geoid))
+    dplyr::mutate(geoid = paste0(state, place),
+                  geoid_length = stringr::str_length(geoid))
   
 }
 
 # are there missing leading zeros?
-stopifnot(length(unique(dplyr::pull(data_geoid, geo_id_length))) == 1)
+stopifnot(length(unique(dplyr::pull(data_geoid, geoid_length))) == 1)
 
 #Compare final data and exp_form variable titles
 
 ##Variable names
 if (isTRUE(subgroups)) {
   exp_form_variables <- exp_form_variables %>%
-    select(-X3, -X4, -X5) %>% 
+    select(-all_years_use_no_space, 
+           -confidence_intervals_yes_or_no, 
+           -quality_variables_available_yes_or_no) %>% 
     pivot_longer(cols = everything()) %>%  
     pull(value) %>% 
     sort()
 } else {
   exp_form_variables <- exp_form_variables %>%
-    select(-X3, -X4, -X5, -subgroup_type, -subgroup) %>% 
+    select(-all_years_use_no_space, 
+           -confidence_intervals_yes_or_no, 
+           -quality_variables_available_yes_or_no, 
+           -subgroup_type, -subgroup) %>% 
     pivot_longer(cols = everything()) %>%   
     pull(value) %>% 
     sort()
