@@ -212,7 +212,7 @@ if (!file.exists(here("02_housing", "data", "temp", "crosswalked_pumas_place_202
     place_years = place_years)
 }
 
-geography = "place"
+geography = "county"
 temporary_data_path <- here("02_housing", "data", "temp")
 ```
 
@@ -268,31 +268,40 @@ Note: `ADJUST` standardizes income variables within a calendar year. See
 here for more information: <https://usa.ipums.org/usa/acsincadj.shtml>.
 
 ```{r}
-vacancy_microdata <- bind_rows(
-    read_csv(here(temporary_data_path, "vacancy_microdata_2022.csv")),
-    read_csv(here(temporary_data_path, "vacancy_microdata_2021.csv"))) %>% 
-  filter(
-    VACANCY %in% c(
-      1, # for rent
-      2, # for sale
-      3)) %>% # rented or sold but not yet occupied
-  # Convert 9999999 to NA and then multiply by ADJUST for all non-missing observations
-  mutate(
-    year = YEAR,
-    VALUEH = if_else(VALUEH == 9999999, NA,  VALUEH * ADJUST),
-    loan_amount = 0.9 * VALUEH,
-    monthly_mortgage_cost = .005, # monthly interest
-    # this calculates monthly compounding interest on a 30-year fixed-rate mortgage
-    monthly_principal_interest_cost = loan_amount * monthly_mortgage_cost * 
-      ((1 + monthly_mortgage_cost) ** 360) / (((1 + monthly_mortgage_cost) ** 360) - 1),
-    # typical annual private mortgage insurance is .007 of loan amount per year
-    monthly_private_mortgage_insurance_cost = (.007 * loan_amount) / 12, 
-    # taxes assumed to be 25% of monthly principal and interest
-    monthly_taxes_cost = .25 * monthly_principal_interest_cost, 
-    monthly_cost_total = monthly_principal_interest_cost + 
-      monthly_private_mortgage_insurance_cost + monthly_taxes_cost) %>%
-  # drop unneeded columns
-  select(year, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total)
+vacancy_microdata <- list.files(here(temporary_data_path), full.names = TRUE) %>%
+  # keep all file names that match the appropriate geography and one of the data years
+  keep(
+    ~ str_detect(
+        .x, 
+        str_c("vacancy_microdata_", 
+          str_c("[", paste0(get(str_c(geography, "_years")), collapse = "|"), "]")))) %>%
+  # for each filename, read in the data, add the year from the filename,
+  # filter to relevant records, calculate a total monthly cost variable,
+  # and drop unneeded columns
+  map_dfr(
+    ~ read_csv(.x) %>% 
+      filter(
+        VACANCY %in% c(
+          1, # for rent
+          2, # for sale
+          3)) %>% # rented or sold but not yet occupied
+      # Convert 9999999 to NA and then multiply by ADJUST for all non-missing observations
+      mutate(
+        year = YEAR,
+        VALUEH = if_else(VALUEH == 9999999, NA,  VALUEH * ADJUST),
+        loan_amount = 0.9 * VALUEH,
+        monthly_mortgage_cost = .005, # monthly interest
+        # this calculates monthly compounding interest on a 30-year fixed-rate mortgage
+        monthly_principal_interest_cost = loan_amount * monthly_mortgage_cost * 
+          ((1 + monthly_mortgage_cost) ** 360) / (((1 + monthly_mortgage_cost) ** 360) - 1),
+        # typical annual private mortgage insurance is .007 of loan amount per year
+        monthly_private_mortgage_insurance_cost = (.007 * loan_amount) / 12, 
+        # taxes assumed to be 25% of monthly principal and interest
+        monthly_taxes_cost = .25 * monthly_principal_interest_cost, 
+        monthly_cost_total = monthly_principal_interest_cost + 
+          monthly_private_mortgage_insurance_cost + monthly_taxes_cost) %>%
+      # drop unneeded columns
+      select(year, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total))
 ```
 
 `RENTGRS` provides a more comparable estimate of total rental costs than
@@ -335,7 +344,9 @@ puma_crosswalk <- read_csv(crosswalk_path) %>%
 rent_ratio <- housing_microdata %>%
   # Keep only renter households
   filter(OWNERSHP == 2) %>%
-  mutate(ratio_rentgrs_rent = RENTGRS / RENT) %>% 
+  mutate(
+    year = year %>% as.numeric,
+    ratio_rentgrs_rent = RENTGRS / RENT) %>% 
   # Calculate weighted mean ratio by geography x year - values are multiplied by 
   # afact in 0_housing_microdata.qmd so summarizing gets the place- or county-level value 
   group_by(statefip, .data[[geography]], year) %>% 
@@ -352,17 +363,27 @@ rent_ratio <- housing_microdata %>%
   # 2 rows in the rent_ratio data do not join to the joint data 
   #   (these don't have any vacant units, not an issue)
 ## place-level join summaries - 2021:2022
-  #   
+  # 26050 rows in the vacancy microdata don't join to the crosswalk because these
+  #   PUMAs fall outside of places of interest
+  # 11 rows in the crosswalk don't join to the vacancy microdata  
+  #   (PUMA-years without vacant units, not an issue)
+  # all rows in the joint data join to the rent ratio data
+  # 1 row in the rent_ratio data does not join to the joint data 
+  #   (this palce doesn't have any vacant units, not an issue)
 vacant_crosswalk <- tidylog::left_join(
     vacancy_microdata, 
     puma_crosswalk, 
     by = c("statefip", "puma", "year" = "crosswalk_period"),
     relationship = "many-to-many") %>%
-  mutate(GEOID = str_c(statefip, .data[[geography]])) %>%
+  mutate(
+    year = year %>% as.numeric,
+    GEOID = str_c(statefip, .data[[geography]])) %>%
   # limit only to places/counties of interest
   filter(GEOID %in% puma_crosswalk$GEOID) %>%
   tidylog::left_join(rent_ratio, by = c("statefip", geography, "year")) %>%
-  mutate(RENTGRS = RENT * weighted_mean_ratio_rentgrs_rent)
+  mutate(
+    across(.cols = c(year, statefip, !!geography), .fns = as.character),
+    RENTGRS = RENT * weighted_mean_ratio_rentgrs_rent)
 ```
 
 ### Import AMI data
@@ -439,7 +460,7 @@ county-level or the place-level). We do this as follows:
     weighting by population.
 
 ```{r}
-county_income_limits = fmr_income_limits %>%
+county_income_limits1 = fmr_income_limits %>%
   group_by(year, state, county) %>%
   summarize(
     across(
@@ -447,35 +468,18 @@ county_income_limits = fmr_income_limits %>%
       .fns = mean)) %>%
   ungroup()
   
-if (geography == "place") {
-  county_place_crosswalk <- read_csv(
-      here("geographic-crosswalks", "data", "geocorr2022_county_place.csv")) %>% 
-    mutate(
-      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
-      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"))
-  
-  place_income_limits = county_income_limits %>%
-    tidylog::left_join(county_place_crosswalk, by = c("state", "county")) %>%
-    group_by(state, place, year) %>%
-    summarize(
-      across(
-        .cols = matches("ami"),
-        .fns = ~ weighted.mean(x = .x, na.rm = TRUE, w = pop20))) %>%
-    ungroup()
-  
-  crosswalked_income_limits1 = place_income_limits
-} else { crosswalked_income_limits1 = county_income_limits }
-
 geography_pad_width = if_else(geography == "place", 5, 3)
 
-crosswalked_income_limits2 = crosswalked_income_limits1 %>%
+county_income_limits2 = county_income_limits1 %>%
   transmute(
-    GEOID = str_c(state, .data[[geography]]),
+    county,
+    GEOID = str_c(state, county),
     statefip = state,
-    "{geography}" := str_pad(
-      as.numeric(.data[[geography]]), side = "left", width = geography_pad_width, pad = "0"),
+    # "{geography}" := str_pad(
+    #   as.numeric(.data[[geography]]), side = "left", width = geography_pad_width, pad = "0"),
     year,
-    across(.cols = matches("ami")))
+    across(.cols = matches("ami"))) %>%
+  filter(!str_detect(statefip, "^72"))
 
 ## in 2017, Valdez-Cordova Census Area -- a county-equivalent geography -- is abolished
 ## and is replaced by Chugach Census Area and Copper River Census Area, both of which
@@ -484,11 +488,11 @@ crosswalked_income_limits2 = crosswalked_income_limits1 %>%
 ## Accordingly, we adjust our income limits data such that the AMI thresholds for 
 ## Valdez-Cordova are associated both with Chugach and Copper River Census Areas.
 
-crosswalked_income_limits3 = tibble(
+county_income_limits3 = tibble(
   county_current = c("063", "066"),
   county_old = c("261")) %>%
   left_join(
-    crosswalked_income_limits2 %>%
+    county_income_limits2 %>%
       filter(statefip == "02"),
     by = c("county_old" = "county"),
     relationship = "many-to-many") %>%
@@ -496,10 +500,38 @@ crosswalked_income_limits3 = tibble(
   rename(county = county_current) %>%
   mutate(GEOID = str_c(statefip, county))
   
-crosswalked_income_limits = crosswalked_income_limits2 %>%  
+county_income_limits = county_income_limits2 %>%  
   filter(!(statefip == "02" & county == "261")) %>%
-  bind_rows(crosswalked_income_limits3) %>%
-  filter(GEOID %in% puma_crosswalk$GEOID)
+  bind_rows(county_income_limits3) %>%
+  rename(state = statefip) %>%
+  # american samoa, guam, northern mariana islands, virgin islands
+  filter(!state %in% c("60", "66", "69", "78")) %>%
+  mutate(across(.cols = c(state, county, year), .fns = as.character))
+
+if (geography == "place") {
+  county_place_crosswalk <- read_csv(
+      here("geographic-crosswalks", "data", "geocorr2022_county_place.csv")) %>% 
+    mutate(
+      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
+      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"))
+  
+  ## place-level join summaries - 2021:2022
+  # 1 row only in county_income_limits - 29056 - but this isn't a valid county FIPS code
+  # 0 rows only in county_place crosswalk
+  place_income_limits = county_income_limits %>%
+    tidylog::left_join(county_place_crosswalk, by = c("state", "county")) %>%
+    group_by(state, place, year) %>%
+    summarize(
+      across(
+        .cols = matches("ami"),
+        .fns = ~ weighted.mean(x = .x, na.rm = TRUE, w = pop20))) %>%
+    ungroup() %>%
+    mutate(
+      across(.cols = c(state, place, year), .fns = as.character),
+      GEOID = str_c(state, place))
+  
+  crosswalked_income_limits = place_income_limits
+} else { crosswalked_income_limits = county_income_limits }
 ```
 
 ## Generate AMI indicators
@@ -515,11 +547,11 @@ housing cost, and for renters, we use the gross rent.
 ## these are data on occupied housing units
 ## county-level join summaries - 2021:2022
   # 0 rows only in housing_microdata 
-  # 0 rows only in crosswalked_income_limits
+  # 1 rows only in crosswalked_income_limits -- a nonexistent county in Missouri
 household_affordability <- tidylog::left_join(
     housing_microdata, 
     crosswalked_income_limits, 
-    by = c("statefip", geography, "year"),
+    by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
     ## all households below ami levels
@@ -544,12 +576,21 @@ household_affordability <- tidylog::left_join(
     ## renter households with affordable housing costs
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
-      .fns = ~ if_else(OWNERSHP == 2 & applicable_housing_cost * 12 <= .x * .3, 1, 0), 
+      .fns = ~ case_when(
+        OWNERSHP == 1 ~ NA, ## if it is a owner-occupied household, return NA
+        RENTGRS == 0 ~ 0, ## NOTE -- THIS IS FROM LAST YEAR'S CODE BUT DOESN'T MAKE SENSE TO ME (WILL)
+        ## HOUSEHOLDS THAT RENT AND HAVE RENTAL COSTS OF 0 SHOULD BY DEFINITION BE AFFORDING THEIR HOUSING, 
+        ## IF I UNDERSTAND THIS CORRECTLY
+        OWNERSHP == 2 & applicable_housing_cost * 12 <= .x * .3 ~ 1,
+        TRUE ~ 0), 
       .names = "renter_affordable_{.col}"),
     ## owner households with affordable housing costs
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
-      .fns = ~ if_else(OWNERSHP == 1 & applicable_housing_cost * 12 <= .x * .3, 1, 0), 
+      .fns = ~ case_when(
+        OWNERSHP == 2 ~ NA, ## if it is a renter-occupied household, return NA
+        OWNERSHP == 1 & applicable_housing_cost * 12 <= .x * .3 ~ 1,
+        TRUE ~ 0), 
       .names = "owner_affordable_{.col}"),
     ## any households with affordable housing costs
     across(
@@ -564,16 +605,18 @@ household_affordability <- tidylog::left_join(
       .fns = ~ if_else(
         .x == 1 & get(str_replace(cur_column(), "affordable_level", "below")) == 1, 1, 0),
       .names = "{.col %>% stringr::str_replace('affordable', 'available')}"))
+```
 
+```{r}
 ## these are data on vacant housing units
 ## county-level join summaries - 2021:2022
   # 0 rows only in vacant_microdata 
-  # 2 rows only in crosswalked_income_limits -- these areas don't have any vacant 
+  # 3 rows only in crosswalked_income_limits -- these areas don't have any vacant 
   #   units (no issue)
 vacant_affordability <- tidylog::left_join(
     vacant_crosswalk, 
     crosswalked_income_limits, 
-    by = c("statefip", geography, "year"),
+    by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
     ## binary indicators 
@@ -682,10 +725,10 @@ unreliable.
 puma_interpolation_quality <- bind_rows(
   read_csv(here(
     temporary_data_path, paste0("crosswalked_pumas_quality_", geography, "_2021.csv"))) %>% 
-    mutate(year = 2021), 
+    mutate(year = "2021"), 
   read_csv(here(
     temporary_data_path, paste0("crosswalked_pumas_quality_", geography, "_2022.csv"))) %>% 
-    mutate(year = 2022)) %>%
+    mutate(year = "2022")) %>%
   rename("state" = "statefip")
 
 # combine minimum cell size standards (n = 30) with the puma interpolation quality 
@@ -755,6 +798,11 @@ housing_subgroups <- housing_summed_quality %>%
   rename_with(
     .cols = matches("quality"),
     .fn = ~ str_remove(.x, "quality_") %>% str_c(., "_quality")) %>%
+  ## if the metric is missing, set the corresponding quality variable to missing
+  mutate(
+    across(
+      .cols = matches("quality"), 
+      .fns = ~ if_else(is.na(get(cur_column() %>% str_remove("_quality"))), NA, .x))) %>%
   select(year, state, !!geography, subgroup_type, subgroup, matches("ratio")) %>%
   arrange(state, .data[[geography]], subgroup, desc(year))
 
@@ -785,9 +833,10 @@ evaluate_final_data(
 
 The counts of observations align with expected counts for each geography for each year.
 ```{r}
-geography = "county"
 population_universe = read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
-  mutate(geoid = str_c(state, .data[[geography]])) %>%
+  mutate(
+    year = as.character(year),
+    geoid = str_c(state, .data[[geography]])) %>%
   group_by(year) %>%
   summarize(population_count = n_distinct(geoid)) 
 
@@ -800,7 +849,6 @@ stopifnot(
     mutate(check = population_count == geography_count) %>% 
     pull(check)))
 ```
-
 
 Both metrics are ratios and cannot be negative. We extend the assumption
 and assert that no ratios are equal to zero, which mathematically is

@@ -68,7 +68,7 @@ get_housing_microdata = function(
   
   # Function for querying the API - vacant unit data
   extract_vacancy_microdata <- function(year) {
-    define_extract_usa(
+    define_extract_micro(
       collection = "usa",
       description = "Vacancy microdata extract",
       samples = c(paste0("us", year, "a")),
@@ -134,7 +134,7 @@ get_housing_microdata = function(
   
   message(
     "2021 is missing data for place fips 72122 in Georgia. That city was incorporated 
-in 2016 and the pre-2022 crosswalk uses places from 2014 so it is not  captured. 
+in 2016 and the pre-2022 crosswalk uses places from 2014 so it is not captured. 
 Given the limitations from GeoCorr I (Amy Rogin) don't think we can manually add it back in.")
   
   # Quality-check the rows in each generate crosswalk
@@ -161,42 +161,47 @@ Given the limitations from GeoCorr I (Amy Rogin) don't think we can manually add
     puma_crosswalk <- read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
     
     # keep only vars we need
-    acs_data <- read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>%
+    acs_data <-  read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>% 
       select(
-        HHWT, 
-        ADJUST, 
-        statefip, 
-        puma, 
+        HHWT,
+        ADJUST,
+        statefip,
+        puma,
         GQ,
-        OWNERSHP, 
-        OWNCOST, 
-        RENT, 
-        RENTGRS, 
+        OWNERSHP,
+        OWNCOST,
+        RENT,
+        RENTGRS,
         HHINCOME,
-        VALUEH, 
-        VACANCY, 
-        PERNUM, 
-        PERWT, 
-        EDUC, 
-        EDUCD, 
+        VALUEH,
+        VACANCY,
+        PERNUM,
+        PERWT,
+        EDUC,
+        EDUCD,
         GRADEATT,
-        EMPSTAT, 
-        AGE) %>% 
+        EMPSTAT,
+        AGE) %>%
       mutate(
+        microdata_id = row_number(),
         statefip = str_pad(statefip, side = "left", width = 2, pad = "0"),
         puma = str_pad(puma, side = "left", width = 5, pad = "0")) %>% 
-      # Merge the microdata PUMAs to places
-      left_join(puma_crosswalk, by = c("statefip", "puma")) %>%  ## 3060 rows
-      { if (geography == "place") mutate(., geography_code = str_c(statefip, place)) else mutate(., geography_code = str_c(statefip, county)) } %>% 
-      ## Will: why is this necessary... this is a red flag
-      distinct()
-    
+      # Join our PUMA-to-place/county crosswalk to our PUMA-level microdata
+      tidylog::left_join(
+        puma_crosswalk, 
+        by = c("statefip", "puma"),
+        relationship = "many-to-many") %>%
+      { if (geography == "place") mutate(., geography_code = str_c(statefip, place)) else mutate(., geography_code = str_c(statefip, county)) } #%>% 
+      ## Will: this is code from the prior year. I believe this is incorrect.
+      ## distinct() drops observations that appear to be the same based on the selected columns,
+      ## but in fact they represent distinct respondents/households.
+      #tidylog::distinct()
+      
     # Drop any observations with NA or 0 for afact (i.e. there is no place of interest overlapping this PUMA)
     acs_data %>% 
-      # removed 1,839,362 rows (49%), 1,942,397 rows remaining
-      tidylog::filter(!is.na(afact)) %>% 
-      # no rows removed
-      tidylog::filter(afact > 0) %>%
+      filter(
+        !is.na(afact),
+        afact > 0) %>%
       mutate(
         # the weight of each person/household is adjusted by the area of the PUMA that falls into a given place
         across(.cols = c(PERWT , HHWT), .fns = ~ .x * afact), 

@@ -44,8 +44,7 @@ evaluate_final_data <- function(exp_form_path, data,
     exp_form_variables <- exp_form_variables %>% 
       pivot_wider(names_from = user_input, values_from = c("metric_name_as_written_in_final_data_file", "quality_title", "ci_low_title", "ci_high_title"))
   }
-  
-  exp_form_variables %>% View()
+
   #Pull subgroup list from expectation form 
   
   if (isTRUE(subgroups)) {
