@@ -1,0 +1,138 @@
+---
+title: "Generate Tract to County/PR Crosswalk"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*Program for the creation of the 2020 Tract to  2022 County and Planning Regions crosswalk for UMF predictors*
+
+Program: Written by JP Walsh 2024.
+
+This program combines the overall tract to county crosswalk with the tract to planning region file to bring in Connecticut Planning Regions for the 2025 metric update.
+
+Primary data derived from the University of Missouri's [geographic correspondence engine](https://mcdc.missouri.edu/applications/geocorr.html).
+
+Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+
+-   [Housekeeping](#housekeeping)
+-   [Read data](#read-data)
+-   [Clean crosswalks](#clean-crosswalks)
+-   [Create quality variable](#create-quality-variable)
+-   [Write files](#wite-files)
+
+
+## Housekeeping
+
+Read in packages for use. 
+
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+
+options(scipen = 999)
+```
+
+## Read data
+
+Read the Tract to County crosswalks from the data file in the geographic-crosswalks folder. This is the format many of the metric programs are built around so we will copy the format to avoid issues. 
+
+The GeoCorr website allows for a variety of selections in creating your crosswalk file. The selections used to create the files read here are detailed below:
+
+[Geocorr2022](https://mcdc.missouri.edu/applications/geocorr2022.html)
+Tract to County
+*States:* All
+*Source geography:* 2020 Tract
+*Target geography:* 2020 County
+*Weighting variable:* Population (2020 census)
+*Output Options:* Format CSV & Generate second allocation factor 
+Tract to Planning Regions
+*States:* Connecticut
+*Source geography:* 2020 Tract
+*Target geography:* Connecticut Planning Region
+*Weighting variable:* Population (2020 census)
+*Output Options:* Format CSV & Generate second allocation factor 
+
+Read in the crosswalk file from the data folder inside the geographic-crosswalk folder.
+```{r}
+tract_county_2020 <- read_csv(here::here("geographic-crosswalks", "data", "tract-county-crosswalk_2020.csv"))
+```
+
+Replace counties from the state of Connecticut with Planning Regions for the 2020 crosswalk.
+
+First read-in the PUMA to Connecticut Planning Regions crosswalk file and rename the variable so they align with the PUMA to County crosswalk files.
+```{r}
+ct_planning_regions <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2022_tract_to_planning_regions_2022.csv")) %>% 
+  rename_with(tolower) %>% 
+  mutate(tract = as.numeric(tract)*100,
+         tract = str_pad(tract, side = "left", pad = 0, width = 6),
+         state = paste0("0", str_sub(ctregion, 1, 1)),
+         county = str_sub(ctregion, 2, 4),
+         year = 2022) %>% 
+  select(year, state, county, tract)
+```
+
+Check number of unique Connecticut Planning Regions from the crosswalk file. The results show 9 which checks out with our expectations. 
+
+```{r}
+ct_planning_regions %>% 
+  select(county) %>% 
+  unique()
+```
+
+Next, bind the Connecticut planning regions file onto the 2020 PUMA to County crosswalk file. The program filters out Connecticut from the PUMA->County file so that when we join on the Planning Region file we are not including overlapping geographies for Connecticut. 
+
+```{r}
+tract_county_2022 <- tract_county_2020 %>% 
+  filter(state != "09") %>% 
+  bind_rows(ct_planning_regions)
+```
+
+Check again the number of unique geographies for Connecticut to confirm we have only planning regions (9). The results show 9 which checks out with our expectations. 
+
+```{r}
+tract_county_2022 %>% 
+  filter(state == "09") %>% 
+  select(county) %>% 
+  unique()
+```
+
+
+## Visualize
+
+Take a look at the count of tracts by state to check for any anomolies
+
+```{r}
+
+tract_county_2022 %>% 
+  group_by(state) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = factor(state), y = n)) +
+  geom_col(color = "blue", fill = alpha("blue", 0.3)) +
+   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_minimal() +
+  ggtitle("Tracts by State") +
+  labs(x = "State",
+       y = "Tracts (Count)") 
+```
+
+
+## Write file
+
+Save as "tract-county-crosswalk_2022.csv" in the data file folder.
+
+```{r}
+write_csv(tract_county_2022, here::here("geographic-crosswalks", "data", "tract-county-crosswalk_2022.csv"))
+```
