@@ -16,7 +16,9 @@ editor_options:
 
 *Program for the creation of the PUMA to County crosswalk for UMF predictors*
 
-Program: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+Program: Initially written by Tina Chelidze and updated by JP Walsh 2023-2024.
+
+Latest update to bring in Connecticut Planning Regions for the 2025 metric update.
 
 Primary data derived from the University of Missouri's [geographic correspondence engine](https://mcdc.missouri.edu/applications/geocorr.html).
 
@@ -56,9 +58,16 @@ The GeoCorr website allows for a variety of selections in creating your crosswal
 *Output Options:* Format CSV & Generate second allocation factor 
 
 [Geocorr2022](https://mcdc.missouri.edu/applications/geocorr2022.html)
+PUMA to County
 *States:* All
 *Source geography:* 2020 PUMA
 *Target geography:* 2020 County
+*Weighting variable:* Population (2020 census)
+*Output Options:* Format CSV & Generate second allocation factor 
+Puma to Planning Regions
+*States:* Connecticut
+*Source geography:* 2020 PUMA
+*Target geography:* Connecticut Planning Region
 *Weighting variable:* Population (2020 census)
 *Output Options:* Format CSV & Generate second allocation factor 
 
@@ -69,7 +78,6 @@ puma_county_2010 <- read_csv(here::here("geographic-crosswalks", "data", "raw", 
 ```
 
 Check that all states are present in the raw data and count the number of unique counties in each state.
-
 ```{r}
 state_county_20 <- puma_county_2020 %>% 
   select(state, county) %>% 
@@ -85,6 +93,43 @@ puma_county_2010 %>%
   left_join(state_county_20, by = c("state")) %>% 
     reactable()
 ```
+
+Replace counties from the state of Connecticut with Planning Regions for the 2020 crosswalk.
+
+First read-in the PUMA to Connecticut Planning Regions crosswalk file and rename the variable so they align with the PUMA to County crosswalk files.
+```{r}
+ct_planning_regions <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2022_puma_2020_planning_regions_2022.csv")) %>% 
+  rename(county = ctregion, CountyName = ctregname) %>% 
+  rename_with(tolower) %>% 
+  filter(!str_detect(state, "State")) %>% 
+  select(state, puma22, county, pop20, afact, afact2)
+```
+
+Check number of unique Connecticut Planning Regions from the crosswalk file. The results show 9 which checks out with our expectations. 
+
+```{r}
+ct_planning_regions %>% 
+  select(county) %>% 
+  unique()
+```
+
+Next, bind the Connecticut planning regions file onto the 2020 PUMA to County crosswalk file. The program filters out Connecticut from the PUMA->County file so that when we join on the Planning Region file we are not including overlapping geographies for Connecticut. 
+
+```{r}
+puma_county_2020 <- puma_county_2020 %>% 
+  filter(state != "09") %>% 
+  bind_rows(ct_planning_regions)
+```
+
+Check again the number of unique geographies for Connecticut to confirm we have only planning regions (9). The results show 9 which checks out with our expectations. 
+
+```{r}
+puma_county_2020 %>% 
+  filter(state == "09") %>% 
+  select(county) %>% 
+  unique()
+```
+
 
 ## Clean crosswalks
 
@@ -362,11 +407,12 @@ puma_county10 <- puma_county10 %>%
 
 ```
 
-Finally, bind the crosswalks together. 
+Finally, bind the crosswalks together and sort by cross-walk period, state, and county. 
 
 ```{r}
 puma_county <- puma_county20 %>% 
-  bind_rows(puma_county10)
+  bind_rows(puma_county10) %>% 
+  arrange(crosswalk_period, statefip, county)
 ```
 
 

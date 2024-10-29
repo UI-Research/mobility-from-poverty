@@ -2,7 +2,7 @@
 title: "Create Place Population File"
 author: "Aaron R. Williams"
 date: today
-abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of places with population estimates for 2015-2020. It then creates a stub file for putting together the population files."
+abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of places with population estimates for 2015-2023. It then creates a stub file for putting together the population files."
 format: 
   html:
     toc: true
@@ -15,19 +15,20 @@ editor_options:
 ---
 
 ```{r}
+#| label: setup
 library(tidyverse)
 library(tidycensus)
 library(assertr)
 library(here)
-
-theme_set(theme_minimal())
+library(urbnthemes)
+set_urbn_defaults("print")
 options(scipen = 999)
-
 ```
 
 ## 2015-2019
 
 ```{r}
+#| label: get-pop-2015-2019
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
@@ -35,50 +36,51 @@ options(scipen = 999)
 #' @return A data frame with estimate for all US counties
 #'
 get_pop <- function(year) {
-  
   pop <- tidycensus::get_estimates("place", year = year, variables = "POP") %>%
     mutate(year = year)
-  
+
   return(pop)
-  
 }
 
 
 # pull county population data for each year from the Population Estimates Program
 pep_2015_2019 <- map_dfr(
-  .x = 2015:2019, 
-  .f = ~get_pop(year = .x)
+  .x = 2015:2019,
+  .f = ~ get_pop(year = .x)
 )
-
 ```
 
 ## 2020
 
 ```{r}
+#| label: get-pop-2020
 # pull the 2020 decennial census
 census2020 <- get_decennial(
-  geography = "place", 
-  year = 2020, 
-  variables = "P1_001N", 
+  geography = "place",
+  year = 2020,
+  variables = "P1_001N",
   keep_geo_vars = TRUE
 ) |>
   select(NAME, GEOID, variable, value) |>
   mutate(year = 2020)
-
 ```
 
 ## Combine
 
+We combine the PEP data and decennial census data
 ```{r}
-# combine the PEP data and decennial census data
+#| label: combine-pop
+
 pop <- bind_rows(pep_2015_2019, census2020)
 
 # drop unnecessary variable and rename the useful variable
 pop <- pop %>%
   select(-variable) %>%
-  rename(population = value,
-         place_state_name = NAME,
-         state_place = GEOID)
+  rename(
+    population = value,
+    place_state_name = NAME,
+    state_place = GEOID
+  )
 
 pop <- pop |>
   separate(place_state_name, into = c("place_name", "state_name", "c", "d", "e"), sep = ",") |>
@@ -92,76 +94,60 @@ pop <- pop |>
   ) |>
   select(year, state, place, state_name, place_name, population) %>%
   arrange(year, state, place)
-
 ```
 
-## 2021-2022
+## 2021-2023
 
-The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later years. Ideally, we would download the files and use them. Unfortunately, the files have inconsitencies so we skip this step for now. 
+The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later years. Ideally, we would download the files and use them. Unfortunately, the files have inconsistencies so we skip this step for now. 
 
 ```{r}
 # Specify URL where source data file is online
-placeurl <- 
-  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv"
+placeurl <-
+  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/cities/totals/sub-est2023.csv"
 
 # Specify destination where file should be saved (the .gitignore folder for your local branch)
-destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2022.csv")
+destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2023.csv")
 
 # Import the data file & save locally
 if (!file.exists(destfileplace)) {
-
   download.file(placeurl, destfileplace, mode = "wb")
-  
 }
-  
-# Import the data file as a dataframe
-pep_2021_2022 <- read_csv(destfileplace) |>
+
+pep_2021_2023 <- read_csv(destfileplace) |>
   rename_with(tolower) |>
+  # Convert state to character and add a leading zero
+  mutate(
+    state = sprintf("%02d", state),
+    place = sprintf("%05d", place)
+  ) |>
+  mutate(across(c(state, place), as.character)) |>
+  filter(sumlev == 162) |>
   select(
-    state, place, 
+    state, place,
     state_name = stname,
-    place_name = name, 
-    popestimate2021, 
-    popestimate2022
-  )
-
-# remove unnecessary data before reshaping
-pep_2021_2022 <- pep_2021_2022 |>
-  filter(place != "00000")
-
-# reshape by place
-pep_2021_2022 <- pep_2021_2022 |> 
+    place_name = name,
+    starts_with("popestimate")
+  ) |>
+  # remove unnecessary data before reshaping
+  filter(place != "00000") |>
+  # reshape by place
   pivot_longer(
-    cols = c(popestimate2021, popestimate2022), 
+    cols = starts_with("popestimate"),
     names_to = "year",
     values_to = "population"
-  )
-
-pep_2021_2022 <- pep_2021_2022 |>
-  mutate(year = as.numeric(str_remove(string = year, pattern = "popestimate")))
-
+  ) |>
+  mutate(
+    year = as.numeric(str_remove(string = year, pattern = "popestimate")),
+  ) |>
+  filter(year > 2020)
 ```
 
 The PEP file includes disaggregations of places and duplicate places. We drop these. 
 
 ```{r}
-pep_2021_2022 <- pep_2021_2022 |>
+pep_2021_2023 <- pep_2021_2023 |>
   filter(!str_detect(place_name, pattern = "(pt\\.)")) |>
   distinct(year, state, place, state_name, place_name, population)
-
-
-```
-
-2023 data for census places wasn't available for [download](https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/). We use 2022 data for 2023 for now.
-
-```{r}
-pep_2021_2023 <- bind_rows(
-  pep_2021_2022,
-  pep_2021_2022 |>
-    filter(year == 2022) |>
-    mutate(year = 2023)
-)
-
 ```
 
 ## Combine Data
@@ -174,7 +160,6 @@ final_population <- bind_rows(
 
 final_population <- final_population |>
   arrange(year, state, place, state_name, place_name)
-
 ```
 
 ## Subset Data
@@ -182,15 +167,70 @@ final_population <- final_population |>
 We are only interested in incorporated places with more than 75,000 people in 2020. We use a specific file from PEP to create a list of 486 FIPS of interest. 
 
 ```{r}
-my_places <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
+# Specify URL where source data file is online
+placeurl <-
+  "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv"
+
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfileplace <- here("geographic-crosswalks", "data", "raw", "sub-est2022.csv")
+
+# Import the data file & save locally
+if (!file.exists(destfileplace)) {
+  download.file(placeurl, destfileplace, mode = "wb")
+}
+
+pep_2022 <- read_csv(here("geographic-crosswalks/data/raw/sub-est2022.csv")) |>
+  mutate(state_place = paste0(STATE, PLACE))
+
+my_places <- pep_2022 |>
   filter(POPESTIMATE2020 > 75000, SUMLEV == "162") |>
-  mutate(state_place = paste0(STATE, PLACE)) |>
   pull(state_place)
 
 final_population <- final_population |>
   filter(paste0(state, place) %in% my_places)
-
 ```
+
+**Check:** Are there places on the cutoff of our population threshold?
+
+```{r}
+# Plotting Population for All Places with Threshold Line
+places_near_threshold <-
+  pep_2022 |>
+  filter(SUMLEV == "162") |>
+  mutate(
+    distance_from_threshold = if_else(POPESTIMATE2020 < 75 * 1e3,
+      75 * 1e3 - POPESTIMATE2020,
+      0
+    )
+  ) |>
+  filter(distance_from_threshold > 0) |>
+  # filter(between(distance_from_threshold, 1, 10*1e3)) |>
+  select(state_place, POPESTIMATE2020, distance_from_threshold)
+
+ggplot(places_near_threshold, aes(x = distance_from_threshold)) +
+  geom_histogram(binwidth = 1000) +
+  labs(
+    title = "Distribution of Places by Distance from 75k Population Threshold",
+    x = "Distance from 75,000 Population Threshold",
+    y = "Number of Places"
+  )
+```
+
+Zooming in on places that are 10,000 below our cut-off
+```{r}
+places_near_threshold |>
+  filter(between(distance_from_threshold, 1, 10 * 1e3)) |>
+  ggplot(aes(x = distance_from_threshold)) +
+  geom_histogram(binwidth = 1000) +
+  labs(
+    title = "Distribution of Places by Distance from 75k Population Threshold",
+    x = "Distance from 75,000 Population Threshold",
+    y = "Number of Places"
+  )
+```
+
+
+There are `r places_near_threshold |>filter(between(distance_from_threshold, 1, 10*1e3)) |> count(state_place) |> nrow()` places that are within 10,000 of our 75,000 population threshold.
 
 ## Evaluation
 
@@ -201,7 +241,6 @@ final_population |>
     in_set(485, 486),
     n
   )
-
 ```
 
 ```{r}
@@ -217,15 +256,14 @@ population_test <- final_population |>
 population_test |>
   ggplot(aes(population, pop_change)) +
   geom_point(alpha = 0.1) +
-  facet_wrap(~ year) +
+  facet_wrap(~year) +
   labs(title = "Population change in different years")
 
 population_test |>
   ggplot(aes(population, prop_pop_change)) +
   geom_point(alpha = 0.1) +
-  facet_wrap(~ year) +
+  facet_wrap(~year) +
   labs(title = "Proportional population change in different years")
-
 ```
 
 We can look at the places with the largest proportion change. 
@@ -242,7 +280,6 @@ We can look at places with the largest absolute change in population.
 population_test |>
   slice_max(abs(pop_change), n = 30) |>
   print(n = Inf)
-
 ```
 
 We can look at places with FIPS that don't show up in every year. 
@@ -255,7 +292,6 @@ final_population |>
   ungroup() |>
   distinct(state, place, state_name, place_name) |>
   print(n = Inf)
-
 ```
 
 We can look at places with place names that don't show up in every year. 
@@ -268,7 +304,6 @@ final_population |>
   ungroup() |>
   distinct(state, place, state_name, place_name) |>
   print(n = Inf)
-
 ```
 
 ## Save Data

@@ -531,7 +531,7 @@ Both files will be [tidy data](https://vita.had.co.nz/papers/tidy-data.pdf) with
 
 # Data Dictionary
 
-The [data dictionary](https://ui-research.github.io/mobility-from-poverty/) is a website created with Quarto and hosted on GitHub pages.
+The [data dictionary](https://ui-research.github.io/mobility-from-poverty-dictionary/) is a website created with Quarto and hosted on GitHub pages.
 The Quarto documents are stored in `mobility-from-poverty-documentation/`.
 The folder contains its own `.Rproj` for Quarto reasons.
 The website is contained in `docs/`.

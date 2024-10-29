@@ -15,11 +15,14 @@ editor_options:
 ---
 
 ```{r}
+#| label: setup
 library(tidyverse)
 library(tidycensus)
 library(assertr)
 library(here)
+library(epoxy)
 
+use_epoxy_glue_engine()
 theme_set(theme_minimal())
 options(scipen = 999)
 
@@ -27,9 +30,11 @@ options(scipen = 999)
 
 ## 2015-2019
 
-In 2014-2019, there are 3,142 counties. In 2020, Valdez-Cordova Census Area split into Chugach Census Area and Copper River Census Area.
+In 2014-2019, there are 3,142 counties. In 2020, Valdez-Cordova Census Area
+split into Chugach Census Area and Copper River Census Area.
 
 ```{r}
+#| label: get-pop-2015-2019
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
@@ -57,6 +62,7 @@ pep_2015_2019 <- map_dfr(
 ## 2020
 
 ```{r}
+#| label: get-pop-2020
 # pull the 2020 decennial census
 census2020 <- get_decennial(geography = "county", year = 2020, variables = "P1_001N") |>
   select(NAME, GEOID, variable, value) |>
@@ -66,8 +72,8 @@ census2020 <- get_decennial(geography = "county", year = 2020, variables = "P1_0
 pop <- bind_rows(pep_2015_2019, census2020)
 
 # drop unnecessary variable and rename the useful variable
-pop <- pop|>
-  select(-variable)|>
+pop <- pop |>
+  select(-variable) |>
   rename(population = value)
 
 # split GEOID into state and county
@@ -77,7 +83,7 @@ pop <- pop %>%
   select(-GEOID)
 
 # drop PR
-pop <- pop|>
+pop <- pop |>
   filter(state != "72")
 
 # split the detailed county name into county_name and state_name
@@ -96,9 +102,13 @@ pop <- pop |>
 
 ## 2021-2023
 
-The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later year. Instead, we download and clean up the data.
+The [Population Estimates
+Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html)
+data isn't available through the Census Bureau API for later year. Instead, we
+download and clean up the data.
 
 ```{r}
+#| label: get-pop-2021-2023
 read_pep <- function(year) {
   
   file <- here("geographic-crosswalks", "data", "raw", paste0("pep", year, ".csv"))
@@ -135,16 +145,14 @@ pep_2021_2023 <- map_dfr(
 )
 
 pep_2021_2023 <- pep_2021_2023 |>
-  rename(state_name = stname, county_name = ctyname)
-
-pep_2021_2023 <- pep_2021_2023 |>
+  rename(state_name = stname, county_name = ctyname) |>
   mutate(county_name = if_else(county_name == "Do\xf1a Ana County", "Doña Ana County", county_name))
-
 ```
 
 ## 2014
 
 ```{r}
+#| label: add-county-names-to-2014
 # add 2014 county names with no population estimate
 # PEP isn't in tidycensus before 2015
 pep2014 <- pop |>
@@ -156,6 +164,7 @@ pep2014 <- pop |>
 ## Combine Data
 
 ```{r}
+#| label: combine-population-data
 final_population <- bind_rows(
   pep2014,
   pop,
@@ -164,19 +173,73 @@ final_population <- bind_rows(
 
 final_population <- final_population |>
   arrange(year, state, county)
-
 ```
 
+Fix a typo in the county name for "Lower Connecticut River Valley Planning
+Region"
+
+```{r}
+final_population <- final_population |>
+  mutate(county_name = if_else(state == "09" & county == "130",
+    "Lower Connecticut River Valley Planning Region", county_name
+  ))
+```
+
+## Remove Connecticut Counties
+
+Connecticut stopped using its **eight historical counties** as functional
+governmental units in 1960. In 2022, the Census Bureau updated its data
+reporting to align with Connecticut's governance structure, which divides the
+state into **nine planning regions** that reflect the state’s **nine**
+**Regional Councils of Government (COGs)**. These regions are now used for
+reporting, replacing the old **eight historical counties**. As new census data
+products will follow this structure, we will only report data for **planning
+regions**. Due to data quality concerns with crosswalking from the old
+historical counties to planning regions, we **drop any Connecticut data prior to 2022**.
+To learn more about this issue, see the [geographic harmonization guide](geographic-harmonization-guide.qmd#sec-ct-planning-regions).  
+
+```{r}
+#| label: remove-old-ct-counties
+
+final_population <- final_population |>
+  filter(!(state_name == "Connecticut" & year < 2022))
+```
+
+```{r}
+#| label: tally-counties-by-year
+
+get_n_counties <- function(data, filtering_expression) {
+  n_counties <-
+    filter(data, {{ filtering_expression }}) |>
+    count(year) |>
+    pull(n) |>
+    unique()
+
+  return(n_counties)
+}
+
+n_counties_2014_2019 <- get_n_counties(final_population, year <= 2019)
+n_counties_2020_2021 <- get_n_counties(final_population, between(year, 2020, 2021))
+n_counties_2022_2023 <- get_n_counties(final_population, year >= 2022)
+```
+
+```{epoxy}
+Removing these **eight counties** leaves us with:
+
+-   **{.comma n_counties_2014_2019}** counties in 2014-2019
+-   **{.comma n_counties_2020_2021}** counties in 2020-2021
+-   **{.comma n_counties_2022_2023}** counties in 2022-2023.
+```
 ## Evaluation
 
+**Check:** Do we have the expected number of counties?
 ```{r}
 final_population |>
   count(year) |>
   assert(
-    within_bounds(3142, 3144),
+    within_bounds(3134, 3144),
     n
   )
-
 ```
 
 ```{r}
