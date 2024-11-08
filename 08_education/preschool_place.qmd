@@ -16,7 +16,7 @@ editor_options:
 
 *Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the place-level*
 
-ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2024.
 
 Primary data derived from the IPUMS API.
 
@@ -51,17 +51,35 @@ source(here::here("08_education", "R", "calc_survey_mean.R"))
 source(here::here("08_education", "R", "calc_survey_mean_subgroup.R"))
 ```
 
+Measure time to render - capture start time.
+
+```{r}
+start.time.all <- Sys.time()
+```
+
+
 ### Person-Level Data
 
-Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two sets of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+```{r}
+read.time.start <- Sys.time()
+```
 
+
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
+
+```{r}
+acs_surveys <- list("us2014c", "us2016c")
+acs_year <- "2014_16"
+```
+
+Run extract. This will trigger an import process through IPUMS. It is encouraged to add detail to your extract description so it is clear what the extract was used for.
 ```{r}
 #| output: false
 
 acs <- extract_ipums(
-  extract_name = "umf_data_18_22",
-  extract_description = "Microdata pull for Access to Pre-K Metric Predictors. American Community Survey, years 2018 and 2021 (5-year).",
-  survey = list("us2018c", "us2021c")
+  extract_name = "umf_data_14_16",
+  extract_description = "Microdata pull for Access to Pre-K Metric Predictors. American Community Survey, 2014 and 2016 data (5-year).",
+  survey = acs_surveys
 ) 
 ```
 
@@ -83,8 +101,8 @@ Read in person-level replicate weights for the 3 and 4 year old population. Thes
 ```{r}
 repwts <- ipums_repwt_pre_k(
   extract_name = "preschool_replicate_weights",
-  extract_description = "Person replicate weights for Access to Preschool Metric Predictors. American Community Survey, years 2018 and 2021 (5-year).",
-  survey = list("us2018c", "us2021c")
+  extract_description = "Person replicate weights for Access to Preschool Metric Predictors. American Community Survey, 2014 and 2016 (5-year).",
+  survey = acs_surveys
 )  %>% 
   select(-cbserial, -cbpernum)
 ```
@@ -131,7 +149,18 @@ Check that the merge did not result in any missing values.
 stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
 ```
 
+Time for read and join.
+```{r}
+read.time.end <- Sys.time()
+
+round((read.time.end - read.time.start), 3)
+```
+
 ## Clean Data
+
+```{r}
+clean.time.start <- Sys.time()
+```
 
 Missing data is reported in a variety of ways by IPUMS data. This step walks through the missing values in key variables and checks that we are dealing with them appropriately. 
 
@@ -298,7 +327,20 @@ acs_clean %>%
   scale_x_discrete(labels = label_wrap(10))
 ```
 
+Time for clean.
+
+```{r}
+clean.time.end <- Sys.time()
+
+round((clean.time.end - clean.time.start), 3)
+```
+
 ## Crosswalk
+
+
+```{r}
+cw.time.start <- Sys.time()
+```
 
 Read in the PUMA to place crosswalk file. This file is created by the program generate_puma_place_crosswalks.rmd in the geographic-crosswalks folder. 
 
@@ -447,7 +489,24 @@ acs_crosswalked %>%
        y = NULL)
 ```
 
+
+Time for crosswalk.
+
+```{r}
+cw.time.end <- Sys.time()
+
+round((cw.time.end - cw.time.start), 3)
+```
+
 ## Create pre-K metric: All
+
+Time for clean.
+
+```{r}
+clean.time.end <- Sys.time()
+
+round((clean.time.end - clean.time.start), 3)
+```
 
 ### Pre-drop suppressed cells
 
@@ -493,6 +552,10 @@ acs_all <- acs_all %>%
 
 ### Calculate metric
 
+```{r}
+calc.time.start <- Sys.time()
+```
+
 Calculate the place-level metrics. 
 
 ```{r}
@@ -536,7 +599,8 @@ results_all_expand <- expanded_place_list %>%
   left_join(results_all, by = c("year", "statefip", "place")) %>% 
   filter(!is.na(year))
 
-stopifnot(nrow(results_all_expand) == 486 * 2)
+
+stopifnot(nrow(results_all_expand) == 486 * n_distinct(results_all_expand$year))
 ```
 
 ## Data Quality Flags
@@ -643,6 +707,14 @@ results_race_ethnicity_expanded <- expanded_place_list_race  %>%
   rename(subgroup = subgroup_race)
 ```
 
+Metric time calculation.
+
+```{r}
+calc.time.end <- Sys.time()
+
+round((calc.time.end - calc.time.start), 3)
+```
+
 ## Data Quality Flags
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
@@ -656,7 +728,7 @@ metrics_education_sub <-results_all_expand %>%
          subgroup_type = "all") %>% 
   bind_rows(results_race_ethnicity_expanded)
 
-stopifnot(nrow(metrics_education_sub) == 486 * 2 * 5)
+stopifnot(nrow(metrics_education_sub) == 486 * n_distinct(results_all_expand$year) * 5)
 
 ```
 
@@ -693,7 +765,7 @@ Look at distribution of pre-K attendance share by place for all and for subgroup
 ```{r}
 
 metrics_education_all %>% 
-  filter(year == 2021) %>% 
+  filter(year == 2016) %>% 
   select(share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
@@ -702,7 +774,7 @@ metrics_education_all %>%
   ylab("Density")
 
 metrics_education_sub %>% 
-  filter(year == 2021, subgroup != "All") %>% 
+  filter(year == 2016, subgroup != "All") %>% 
   select(share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
@@ -716,7 +788,7 @@ Look at distribution of prek_attendance share by place for each individual subgr
 
 ```{r}
 metrics_education_sub %>% 
-  filter(year == 2021) %>% 
+  filter(year == 2016) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
@@ -736,7 +808,7 @@ Compare trends for the share in preschool overtime for all years in the data.
 metrics_education_all %>%
   group_by(statefip, place) %>%
   mutate(share_in_preschool_change = share_in_preschool - lag(share_in_preschool)) %>%
-  filter(year == 2021) %>%
+  filter(year == 2016) %>%
   ggplot(aes(share_in_preschool, share_in_preschool_change)) +
   geom_point(alpha = 0.2)
 
@@ -746,7 +818,7 @@ metrics_education_all %>%
     names_from = year, 
     values_from = share_in_preschool
   ) %>%
-  ggplot(aes(`2018`, `2021`)) +
+  ggplot(aes(`2014`, `2016`)) +
   geom_abline() +
   geom_point(alpha = 0.1)
 
@@ -890,16 +962,21 @@ metrics_education_all %>%
   head(10)
 
 write_csv(metrics_education_all, 
-          here::here("08_education", "data", "final", "metrics_preschool_place_all_longitudinal.csv")
-)
+          here::here("08_education", "data", "final", paste0("metrics_preschool_place_all_longitudinal_", acs_year, ".csv")
+))
 
 metrics_education_sub %>% 
   head(10)
 
-write_csv(metrics_education_sub, here::here("08_education", "data", "final", "metrics_preschool_place_race-ethnicity_longitudinal.csv"))
+write_csv(metrics_education_sub, here::here("08_education", "data", "final", paste0("metrics_preschool_place_race-ethnicity_longitudinal_", acs_year, ".csv")))
 ```
 
 
+Measure time to render - capture end time and calculate duration.
 
+```{r}
+end.time.all <- Sys.time()
 
+round((end.time.all - start.time.all), 3)
+```
 
