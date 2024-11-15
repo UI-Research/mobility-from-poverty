@@ -106,7 +106,6 @@ tibble::tribble(
 ## Step 0: Configuration and setup
 
 ```{r}
-# Libraries you'll need
 library(tidyverse)
 library(ipumsr)
 library(readxl)
@@ -119,11 +118,10 @@ library(srvyr)
 options(scipen = 99999) ## no scientific notation
 
 geography = params$geography
-place_years = params$place_years
-county_years = params$county_years
+place_years = params$place_years %>% unlist()
+county_years = params$county_years %>% unlist()
 
 source(here("functions", "testing", "evaluate_final_data.R"))
-
 temporary_data_path = here("02_housing", "data", "temp")
 ```
 
@@ -315,10 +313,11 @@ walk(
   
 # Function for applying crosswalks to microdata
 crosswalk_microdata = function(year, geography) {
-  # read in appropriate crosswalk 
+  
+  # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
   
-  # keep only vars we need
+  # keep only the variables we need
   acs_data = read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>% 
     select(
       HHWT,
@@ -339,8 +338,8 @@ crosswalk_microdata = function(year, geography) {
       EDUCD,
       GRADEATT,
       EMPSTAT,
-      AGE,
-      matches("REPWT")) %>%
+      AGE) %>%
+      #matches("REPWT")) %>% ## integrate this if calculating CIs
     mutate(
       microdata_id = row_number(),
       statefip = str_pad(statefip, side = "left", width = 2, pad = "0"),
@@ -360,8 +359,6 @@ crosswalk_microdata = function(year, geography) {
       # adjusts dollar-denominated variables by the Census's 12-month adjustment factor
       across(.cols = c(HHINCOME, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
-  
-  print("complete")
 }
   
 # Apply crosswalks to all geography-year combinations
@@ -1229,5 +1226,3 @@ housing_subgroups %>%
     x = "Absolute difference between state average of Urban estimates and NLIHC estimate", 
     y = "Percent of geographies with valid Urban estimates")
 ```
-
-select
