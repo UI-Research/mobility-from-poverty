@@ -1,16 +1,16 @@
 ---
 title: "Create County Population File"
-author: "Aaron R. Williams"
+author: "Aaron R. Williams and Manu Alcalá Kovalski"
 date: today
 abstract: "This script pulls US Census Bureau Population Estimation Program and Decennial Census data to create a list of counties with population estimates for 2014-2023"
-format: 
+format:
   html:
     toc: true
 embed-resources: true
-execute: 
+execute:
   message: false
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -42,18 +42,18 @@ split into Chugach Census Area and Copper River Census Area.
 #' @return A data frame with estimate for all US counties
 #'
 get_pop <- function(year) {
-  
+
   pop <- get_estimates("county", year = year, variables = "POP") |>
     mutate(year = year)
-  
+
   return(pop)
-  
+
 }
 
 
 # pull county population data for each year from the Population Estimates Program
 pep_2015_2019 <- map_dfr(
-  .x = 2015:2019, 
+  .x = 2015:2019,
   .f = ~get_pop(year = .x)
 )
 
@@ -110,37 +110,37 @@ download and clean up the data.
 ```{r}
 #| label: get-pop-2021-2023
 read_pep <- function(year) {
-  
+
   file <- here("geographic-crosswalks", "data", "raw", paste0("pep", year, ".csv"))
-  
-  url <- 
+
+  url <-
     paste0("https://www2.census.gov/programs-surveys/popest/datasets/",
            "2020-", year, "/counties/totals/co-est", year, "-alldata.csv")
-  
+
   if (!file.exists(file)) {
-    
+
     download.file(
       url = url,
       destfile = file
     )
-    
-    
+
+
   }
-  
+
   pop_var <- paste0("popestimate", year)
-  
+
   pep <- read_csv(file) |>
     rename_with(tolower) |>
     filter(sumlev == "050") |>
     mutate(year = year) |>
     select(year, state, county, population = any_of(pop_var), any_of(c("stname", "ctyname")))
-  
+
   return(pep)
-  
+
 }
 
 pep_2021_2023 <- map_dfr(
-  .x = 2021:2023, 
+  .x = 2021:2023,
   .f = read_pep
 )
 
@@ -185,7 +185,7 @@ final_population <- final_population |>
   ))
 ```
 
-## Remove Connecticut Counties
+## Switch from Connecticut Counties to Planning Regions
 
 Connecticut stopped using its **eight historical counties** as functional
 governmental units in 1960. In 2022, the Census Bureau updated its data
@@ -195,14 +195,16 @@ state into **nine planning regions** that reflect the state’s **nine**
 reporting, replacing the old **eight historical counties**. As new census data
 products will follow this structure, we will only report data for **planning
 regions**. Due to data quality concerns with crosswalking from the old
-historical counties to planning regions, we **drop any Connecticut data prior to 2022**.
-To learn more about this issue, see the [geographic harmonization guide](geographic-harmonization-guide.qmd#sec-ct-planning-regions).  
+historical counties to planning regions, we **keep using the old counties from 2014-2021** and **switch to planning regions after and including 2022**
+To learn more about this issue, see the [geographic harmonization guide](geographic-harmonization-guide.qmd#sec-ct-planning-regions).
 
 ```{r}
-#| label: remove-old-ct-counties
+#| label: ct-counties-and-planning-regions
 
-final_population <- final_population |>
-  filter(!(state_name == "Connecticut" & year < 2022))
+final_population |>
+    filter(state_name == "Connecticut") |>
+    distinct(year, county_name)
+
 ```
 
 ```{r}
@@ -224,7 +226,7 @@ n_counties_2022_2023 <- get_n_counties(final_population, year >= 2022)
 ```
 
 ```{epoxy}
-Removing these **eight counties** leaves us with:
+Switching from the **eight counties** to **nine planning regions** leaves us with:
 
 -   **{.comma n_counties_2014_2019}** counties in 2014-2019
 -   **{.comma n_counties_2020_2021}** counties in 2020-2021
@@ -237,7 +239,7 @@ Removing these **eight counties** leaves us with:
 final_population |>
   count(year) |>
   assert(
-    within_bounds(3134, 3144),
+    within_bounds(3142, 3144),
     n
   )
 ```
@@ -266,7 +268,7 @@ population_test |>
 
 ```
 
-We can look at the counties with the largest proportion change. 
+We can look at the counties with the largest proportion change.
 
 ```{r}
 population_test |>
@@ -275,7 +277,7 @@ population_test |>
 
 ```
 
-We can look at counties with the largest absolute change in population. 
+We can look at counties with the largest absolute change in population.
 
 ```{r}
 population_test |>
@@ -319,10 +321,9 @@ final_population |>
 
 ## Save Data
 
-The PEP data are reported using the geographies at the time the estimates were generated. This means the 2023 data include Connecticut's planning regions in 2021 even though they didn't exist at that point. Accordingly, we will download earlier data. 
+The PEP data are reported using the geographies at the time the estimates were generated. This means the 2023 data include Connecticut's planning regions in 2021 even though they didn't exist at that point. Accordingly, we will download earlier data.
 
 ```{r}
 write_csv(final_population, here("geographic-crosswalks", "data", "county-populations.csv"))
 
 ```
-
