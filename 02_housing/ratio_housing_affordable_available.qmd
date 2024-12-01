@@ -5,9 +5,9 @@ date: today
 abstract: "This file produces two interrelated metrics describing housing affordability: 1) the ratio between housing units affordable at various income levels and the number of households at or below those income levels; and 2) the ratio between housing units affordable and available at various income levels and the number of households at or below those income levels."
 date-format: "MMM YYYY"
 params: 
-  geography: "place"
-  county_years: !expr c(2021, 2022)
-  place_years: !expr c(2021, 2022)
+  geography: "county"
+  county_years: !expr c(2014:2019)
+  place_years: !expr c(2014:2019)
 format: 
   html:
     toc: true
@@ -113,13 +113,20 @@ library(here)
 library(urbnthemes)
 library(openxlsx) 
 library(testthat)
-library(survey)
 library(srvyr)
 options(scipen = 99999) ## no scientific notation
 
 geography = params$geography
 place_years = params$place_years %>% unlist()
 county_years = params$county_years %>% unlist()
+
+place_years_check = all(place_years %>% as.numeric %in% c(2014:2019, 2021:2023))
+county_years_check = all(county_years %>% as.numeric %in% c(2014:2019, 2021:2023))
+
+## valid arguments for the geography parameter are "place" and "county"
+stopifnot(geography %in% c("place", "county"))
+## valid arguments for the place and county years parameters are 2014-2019 and 2021-2023
+stopifnot(all(c(place_years_check, county_years_check)))
 
 source(here("functions", "testing", "evaluate_final_data.R"))
 temporary_data_path = here("02_housing", "data", "temp")
@@ -128,6 +135,7 @@ temporary_data_path = here("02_housing", "data", "temp")
 ## Step 1: Download microdata
 
 -   Submit queries to the API, separately, for both occupied and vacant housing unit data
+  - Note that this will take approximately one hour if you have not downloaded these data previously.
 -   Crosswalk the microdata from PUMAs to the geography of interest
 
 ### Basic setup
@@ -149,7 +157,7 @@ More information on the API can be found here: <https://cran.r-project.org/web/p
 extract_housing_microdata = function(year) {
   define_extract_micro(
     collection = "usa",
-    description = "Housing microdata extract - with replicate weights", # description of extract
+    description = "Housing microdata extract", # description of extract
     samples = c(paste0("us", year, "a")), # use ACS data
     variables = c(
       "HHWT", ## household weight -- appropriate for statements about households
@@ -209,7 +217,7 @@ get_years_to_query = function(
 # by appplying our microdata function across all outstanding years
 years_to_query = get_years_to_query(years = county_years, geography = geography)
 if (length(years_to_query) > 0) {
-  walk(c("2021", "2022"), extract_housing_microdata)
+  walk(years_to_query, extract_housing_microdata)
 }
 ```
 
@@ -220,7 +228,7 @@ if (length(years_to_query) > 0) {
 extract_vacancy_microdata = function(year) {
   define_extract_micro(
     collection = "usa",
-    description = "Vacancy microdata extract - with replicate weights",
+    description = "Vacancy microdata extract",
     samples = c(paste0("us", year, "a")),
     variables = list( ## a list is necessary to accommodate the var_spec() object
       "HHWT", 
@@ -268,13 +276,20 @@ puma_geography_crosswalk = function(year, geography) {
   if (as.numeric(crosswalk_period) < 2022) {
     crosswalk_period = "pre-2022"
   } 
+  ## at a minimum for 2023, the period listed in the crosswalk is 2022
+  ## we adjust here accordingly
+  else if (as.numeric(crosswalk_period) >= 2022) {
+    crosswalk_period = 2022
+  }
   
   crosswalk = here("geographic-crosswalks", "data", paste0("crosswalk_puma_to_", geography, ".csv")) %>%
     read_csv() %>% 
     filter(
       statefip != 72, ## dropping PR-based records
       crosswalk_period == !!crosswalk_period,
-      afact != 0) 
+      afact != 0) %>%
+    ## we ensure we have an accurate record of the year for joining purposes later
+    { if (crosswalk_period %in% c(2022:2023)) mutate(., year = year) else . }
   
   crosswalk %>%
     write_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
@@ -294,26 +309,9 @@ message(
 in 2016 and the pre-2022 crosswalk uses places from 2014 so it is not captured. 
 Given the limitations from GeoCorr I (Amy Rogin) don't think we can manually add it back in.")
 
-# Quality-check the rows in each generate crosswalk
-# check number of unique places in data
-stopifnot(
-  # 2022 data
-  read_csv(here(temporary_data_path, "crosswalked_pumas_place_2022.csv")) %>% 
-    distinct(statefip, place) %>% nrow() == 486,
-  # 2021 data
-  read_csv(here(temporary_data_path, "crosswalked_pumas_place_2021.csv")) %>% 
-    distinct(statefip, place) %>% nrow() == 485)
-
-# check number of unique counties in data
-walk(
-  county_years,
-  ~ stopifnot(
-    read_csv(here(temporary_data_path, paste0("crosswalked_pumas_county_", .x, ".csv"))) %>% 
-      distinct(statefip, county) %>% nrow() == 3143))
-  
 # Function for applying crosswalks to microdata
 crosswalk_microdata = function(year, geography) {
-  
+
   # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
   
@@ -339,12 +337,12 @@ crosswalk_microdata = function(year, geography) {
       GRADEATT,
       EMPSTAT,
       AGE) %>%
-      #matches("REPWT")) %>% ## integrate this if calculating CIs
     mutate(
       microdata_id = row_number(),
       statefip = str_pad(statefip, side = "left", width = 2, pad = "0"),
       puma = str_pad(puma, side = "left", width = 5, pad = "0")) %>%
     # Join our PUMA-to-place/county crosswalk to our PUMA-level microdata
+    # All, or virtually all, rows should join from both dataframes
     tidylog::left_join(
       puma_crosswalk, 
       by = c("statefip", "puma"),
@@ -360,7 +358,7 @@ crosswalk_microdata = function(year, geography) {
       across(.cols = c(HHINCOME, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
 }
-  
+
 # Apply crosswalks to all geography-year combinations
 walk(county_years, ~ crosswalk_microdata(year = .x, geography = "county"))
 walk(place_years, ~ crosswalk_microdata(year = .x, geography = "place"))
@@ -382,13 +380,15 @@ housing_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
     ~ str_detect(
         .x, 
         str_c(geography, "_prepared_microdata_", 
-          str_c("[", paste0(get(str_c(geography, "_years")), collapse = "|"), "]")))) %>%
+          str_c("(", paste0(get(str_c(geography, "_years")), collapse = "|"), ")")))) %>%
   # for each filename, read in the data, add the year from the filename,
   # filter to relevant records, and drop unneeded columns
   map_dfr(
     ~ read_csv(.x) %>% 
         mutate(
           # "0" represents NA: https://usa.ipums.org/usa-action/variables/RENT#codes_section
+          # And, though not noted in IPUMS documentation, this also applies for the
+          # RENTGRS variable
           across(
             .cols = c(RENT, RENTGRS), 
             .fns = ~ if_else(.x == 0, NA, .x)),
@@ -400,6 +400,17 @@ housing_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
           GQ < 3) %>% # exclude group quarters
         ## dropping columns we don't use in this analysis
         select(-c(PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE)))
+
+test_that(
+  "All years are in housing data / no other years are in housing data",
+  {
+    expect_equal(
+      housing_microdata %>%
+        count(year) %>%
+        pull(year) %>%
+        as.numeric %>%
+        sort(),
+      years) })
 ```
 
 The housing microdata does not include vacant units, which we query separately from the IPUMS API. Here, we prepare the vacant unit-specific microdata. Later, we will combine vacant units with occupied units to produce estimates of the whole housing stock.
@@ -416,7 +427,7 @@ vacancy_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
     ~ str_detect(
         .x, 
         str_c("vacancy_microdata_", 
-          str_c("[", paste0(get(str_c(geography, "_years")), collapse = "|"), "]")))) %>%
+          str_c("(", paste0(get(str_c(geography, "_years")), collapse = "|"), ")")))) %>%
   # for each filename, read in the data, add the year from the filename,
   # filter to relevant records, calculate a total monthly cost variable,
   # and drop unneeded columns
@@ -442,9 +453,21 @@ vacancy_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
         # taxes assumed to be 25% of monthly principal and interest
         monthly_taxes_cost = .25 * monthly_principal_interest_cost, 
         monthly_cost_total = monthly_principal_interest_cost + 
-          monthly_private_mortgage_insurance_cost + monthly_taxes_cost) %>%
+          monthly_private_mortgage_insurance_cost + monthly_taxes_cost,
+        crosswalk_period = if_else(year < 2022, "pre-2022", "2022")) %>%
       # drop unneeded columns
-      select(year, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total))
+      select(year, crosswalk_period, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total))
+
+test_that(
+  "All years are in vacancy data / no other years are in vacancy data",
+  {
+    expect_equal(
+      vacancy_microdata %>%
+        count(year) %>%
+        pull(year) %>%
+        as.numeric %>%
+        sort(),
+      c(years)) })
 ```
 
 `RENTGRS` provides a more comparable estimate of total rental costs than does `RENT`, which may or may not include utilities and fuels. While `RENTGRS` is available for rented units, it is not available for vacant units. To improve the comparability of rental costs for vacant units, we:
@@ -465,11 +488,7 @@ crosswalk_path = if_else(
   here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"))
 
 puma_crosswalk = read_csv(crosswalk_path) %>%
-  # recode to match 2021 data
-  mutate(
-    crosswalk_period = if_else(
-      crosswalk_period == "pre-2022", "2021", crosswalk_period) %>% as.numeric(),
-    GEOID = str_c(statefip, .data[[geography]])) %>%
+  mutate(GEOID = str_c(statefip, .data[[geography]])) %>%
   # omitting Puerto Rico PUMAs, for which we do not calculate estimates
   filter(statefip != 72)
 
@@ -508,17 +527,13 @@ rent_ratio = housing_microdata %>%
 vacant_crosswalk = tidylog::left_join(
     vacancy_microdata, 
     puma_crosswalk, 
-    by = c("statefip", "puma", "year" = "crosswalk_period"),
+    by = c("statefip", "puma", "crosswalk_period"),
     relationship = "many-to-many") %>%
   mutate(
     year = year %>% as.numeric,
     GEOID = str_c(statefip, .data[[geography]])) %>%
   # limit only to places/counties of interest
-  filter(GEOID %in% puma_crosswalk$GEOID) %>%
-  tidylog::left_join(rent_ratio, by = c("statefip", geography, "year")) %>%
-  mutate(
-    across(.cols = c(year, statefip, !!geography), .fns = as.character),
-    RENTGRS = RENT * weighted_mean_ratio_rentgrs_rent)
+  filter(GEOID %in% puma_crosswalk$GEOID)
 ```
 
 ## Step 3: Import AMI data
@@ -542,7 +557,8 @@ urls_fmr_income_limits = c(
   "https://www.huduser.gov/portal/datasets/il/il19/Section8-FY19.xlsx",
 # "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY20.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx",
-  "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx")
+  "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx",
+  "https://www.huduser.gov/portal/datasets/il/il23/Section8-FY23.xlsx")
 
 download_hud_income_limits = function(year, url) {
   filename = str_split(url, "/") %>% .[[1]] %>% .[[length(.)]]
@@ -551,6 +567,8 @@ download_hud_income_limits = function(year, url) {
   # Import the data file as a dataframe
   fmr_income_limits = readxl::read_excel(path = here(temporary_data_path, filename)) %>% 
     janitor::clean_names() %>%
+    ## the name for the fips variable changes in the 2023 data
+    {if (year == 2023) rename(., fips2010 = fips) else (.)} %>%
     transmute(
       year = year,
       fips = fips2010,
@@ -573,7 +591,7 @@ download_hud_income_limits = function(year, url) {
 
 # download and combine income limits data into one file
 fmr_income_limits = map2_dfr(
-    county_years, urls_fmr_income_limits[7:8], 
+    county_years, urls_fmr_income_limits[1:6], 
     download_hud_income_limits) %>%
   filter(year %in% c(county_years, place_years))
 ```
@@ -742,8 +760,8 @@ stopifnot(
   # 3 rows only in crosswalked_income_limits -- these areas don't have any vacant 
   #   units (no issue)
 vacant_affordability = tidylog::left_join(
-    vacant_crosswalk, 
-    crosswalked_income_limits, 
+    vacant_crosswalk %>% mutate(year = as.character(year)), 
+    crosswalked_income_limits %>% mutate(year = as.character(year)), 
     by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
@@ -842,20 +860,28 @@ housing_summed = tidylog::left_join(
 
 ## Step 6: Finalize and export data
 
-If the unweighted sum of interpolated households (reflected in `afact`) is under 30, we suppress that cell because it is likely to be highly unreliable.
+If the unweighted sum of interpolated households (reflected in `afact`) is under 30, 
+we suppress that cell because it is likely to be highly unreliable.
 
 ```{r}
 # read in the puma interpolation quality files, which are calculated in 
 # 02_get_housing_microdata.R. these contain `puma_flag`, which provides a score
 # from 1-3 describing the mean geographic allocation quality for each 
-puma_interpolation_quality = bind_rows(
-  read_csv(here(
-    temporary_data_path, paste0("crosswalked_pumas_quality_", geography, "_2021.csv"))) %>% 
-    mutate(year = "2021"), 
-  read_csv(here(
-    temporary_data_path, paste0("crosswalked_pumas_quality_", geography, "_2022.csv"))) %>% 
-    mutate(year = "2022")) %>%
-  rename("state" = "statefip")
+years = if_else(
+  geography == "county", 
+  paste0(county_years, collapse = "|"), 
+  paste0(place_years, collapse = "_"))
+
+puma_interpolation_quality = list.files(here(temporary_data_path), full.names = TRUE) %>%
+  # keep all file names that match the appropriate geography and one of the data years
+  keep(
+    ~ str_detect(
+        .x, 
+        str_c("crosswalked_pumas_quality_", geography, "_", str_c("(", years, ")")))) %>%
+  map_dfr(
+    ~ read_csv(.x) %>%
+      mutate(year = str_extract(.x, "[0-9]{4}"))) %>%
+  rename(state = statefip)
 
 # combine minimum cell size standards (n = 30) with the puma interpolation quality 
 # scores to assign each cell a quality flag
@@ -978,7 +1004,11 @@ subsets of the total population of households.
 housing_subgroups %>% 
   group_by(year) %>%
   select(c(matches("ratio"), -matches("quality"))) %>%
-  summarize(across(everything(), ~ round(sum(is.na(.)) / n() * 100, 0)))
+  summarize(
+    across(
+      .cols = everything(), 
+      .fns = ~ round(sum(is.na(.)) / n() * 100, 0),
+      .names = "{.col}_percent_missing"))
 ```
 
 Distributions
@@ -1122,11 +1152,12 @@ Metrics generally should not exhibit huge year-over-year changes within the same
 -   The distribution of year-over-year changes in the 80% AMI ratios should show the least variation.
 
 -   Conversely, the 30% AMI ratios should show the most variation because this AMI threshold encompasses fewer households and housing units, leading to greater percentage variability year-over-year.
+
 ```{r, fig.height = 5, fig.width = 8}
 housing_subgroups %>%
   select(-matches("quality")) %>%
-  pivot_longer(cols = c(matches("ratio"), )) %>%
-  pivot_wider(names_from = year, values_from = value, names_prefix = "value_") %>%
+  pivot_longer(cols = c(matches("ratio"), )) #%>%
+  #pivot_wider(names_from = year, values_from = value, names_prefix = "value_") #%>%
   mutate(percent_annual_change = (value_2022 - value_2021) / value_2021 * 100) %>%
   arrange(desc(percent_annual_change)) %>%
   ggplot() +
