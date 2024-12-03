@@ -8,9 +8,9 @@ format:
     toc_float: true
     embed-resources: true
     code-fold: show
-execute: 
+execute:
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -44,8 +44,8 @@ Check out the Census's comphrensive [guide](https://www.census.gov/programs-surv
 
 We have:
 
--   3,134 counties for 2014-2019
--   3,135 for 2020-2021
+-   3,142 counties for 2014-2019
+-   3,143 for 2020-2021
 -   3,144 counties for 2022-2023
 
 ```{r}
@@ -67,7 +67,8 @@ The number of US counties increased in 2022 **due to a new county-equivalent map
 
 Connecticut’s historical eight counties stopped serving as functioning governmental or administrative units in 1960. Currently, Connecticut has nine [Regional Councils of Government](https://portal.ct.gov/OPM/IGPP/ORG/Planning-Regions/Planning-Regions---Overview) (COG) that carry out regional planning and service delivery activities similar to those performed by county-level governments in other states. Planning regions are administrative entities that have have the same boundaries as the state’s COGs.
 
-The Census Bureau used to release data based on Connecticut's eight counties, but starting in 2023, it switched to reporting data for the nine planning regions, following a 2019 request from the state’s Office of Planning and Management. Since new data products will include planning regions, *we should make sure to use them instead of the historical counties moving forward*.
+The Census Bureau used to release data based on Connecticut's eight counties, but starting in 2023, it switched to reporting data for the nine planning regions, following a 2019 request from the state’s Office of Planning and Management. Since new data products will include planning regions, *we should make sure to use them instead of the historical counties after and including 2022*.
+
 
 See the map below for the planning region boundaries, the towns within each planning region, and historical county boundaries (delineated by thick white borders)
 
@@ -77,7 +78,7 @@ See the map below for the planning region boundaries, the towns within each plan
 County-equivalent planning regions will simply be referred to as “counties” in Census Bureau data products, although the geographic units will be labeled with the names of the planning regions instead of counties.
 :::
 
-Due to data quality concerns with crosswalking from the old historical counties to planning regions, we **drop any Connecticut data prior to 2022**. In particular, these concerns arise from the fact that the old counties are **not nested** within the new planning regions. Since tract or block-group level data isn't available for most metrics, we can't use a narrower geography to remediate this problem. This is particularly consequential for **non-count** variables. For more information, see [Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html#what-are-geographic-crosswalks).
+Due to data quality concerns with crosswalking from the old historical counties to planning regions, we  we will keep using **Connecticut counties for 2014-2021** data and **switch to planning regions for data after and including 2022**. In particular, these concerns arise from the fact that the old counties are **not nested** within the new planning regions. Since tract or block-group level data isn't available for most metrics, we can't use a narrower geography to remediate this problem. This is particularly consequential for **non-count** variables. For more information, see [Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html#what-are-geographic-crosswalks).
 
 #### Alaska county splits
 
@@ -87,9 +88,9 @@ In 2019, the Alaskan county of Valdez-Cordova was split into **Cugach Census Are
 
 In summary, we have
 
--   3,134 counties for 2014-2019 (**due to removing 8 CT counties)**
--   3,135 for 2020-2021 (**due to the Alaska county split)**
--   3,144 counties for 2022-2023 **(due to the incorporation of 9 CT planning regions)**
+-   3,142 counties for 2014-2019
+-   3,143 for 2020-2021 (**due to the Alaska county split, which adds one county)**
+-   3,144 counties for 2022-2023 **(due to the incorporation of 9 CT planning regions and removal of eigh CT counties)**
 
 **Check:** Do we have the same number of counties for each year? Or any dropping in and out?
 
@@ -116,13 +117,6 @@ counties_comparison <- counties_per_year %>%
     )
   )
 
-
-# Unnest the comparison results
-counties_dropped_new <- counties_comparison %>%
-  unnest(c(dropped, new), keep_empty = TRUE) %>%
-  pivot_longer(cols = c(dropped, new), names_to = "status", values_to = "county") %>%
-  filter(!is.na(county))
-
 number_of_counties_changed <-
   counties_comparison |>
   # Remove first year of our data since by definition there can't be changes
@@ -135,36 +129,62 @@ number_of_counties_changed <-
   )
 
 number_of_counties_changed
+
+
 ```
 
 
 
-**Check:** Only one county from 2020 is dropped from our data (Valdez-Cordova)
+**Check:** Only one county 2020 is dropped from our data in 2020 (Valdez-Cordova)
 ```{r}
-assert_that(
-  all(
-    number_of_counties_changed %>%
-      filter(year != 2020) %>%
-      pull(dropped) == 0
-  )
-)
-
 assert_that(
   number_of_counties_changed %>%
     filter(year == 2020) %>%
     pull(dropped) == 1
 )
+
 ```
 
-**Check:** 9 counties are added in 2022 (CT planning regions)
+
+**Check:** 9 counties are added in 2022 (CT planning regions) and 8 counties are dropped (old CT counties)
 ```{r}
 assert_that(
   number_of_counties_changed %>%
     filter(year == 2022) %>%
     pull(new) == 9
 )
+
+
+assert_that(
+  all(
+    number_of_counties_changed %>%
+      filter(year == 2022) %>%
+      pull(dropped) == 8
+  )
+)
+
 ```
 
+**Check:** Besides the counties removed and added in 2020 and 2022, there are no other dropped or added counties
+
+```{r}
+assert_that(
+  all(
+    number_of_counties_changed %>%
+      filter(!(year %in% c(2020, 2022))) %>%
+      pull(dropped) == 0
+  )
+)
+
+assert_that(
+  all(
+    number_of_counties_changed %>%
+      filter(!(year %in% c(2020, 2022))) %>%
+      pull(new) == 0
+  )
+)
+
+```
 ### Places
 
 Our final data contains incorporated places with populations greater than 75,000 in 2020.
@@ -259,7 +279,7 @@ This process estimates data for the target geography by appropriately weighting 
 
 ::: {.callout-note}
 
-This overview generally applies for crosswalking **count** variables like population. 
+This overview generally applies for crosswalking **count** variables like population.
 There are some more nuances to consider when crosswalking **non-count** variables. To learn more
 about this see [Geographic Crosswalks at Urban](https://ui-research.github.io/code-library/crosswalk-guide/geographic-crosswalks-at-urban.html#what-are-geographic-crosswalks).
 :::
