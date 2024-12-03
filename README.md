@@ -68,8 +68,8 @@ Below is a table showing each predictor by pillar, and the domain it was previou
 
 |            Legacy Domain            |                      Pillar                      |          Predictors                  |
 |:----------------:|:-----------------------------:|:---------------------:|
-|        01_financial-well-being      |                    Rewarding Work                |     Opportunities for income <br/> Financial security |  
-|             02_housing              |   Opportunity-Rich & Inclusive Neighborhoods     | Wealth-building opportunities <br/> Housing affordability <br/>   Housing stability       |
+|        01_financial-well-being      |                    Rewarding Work                |     Opportunities for income <br/> Financial security <br/> Wealth-building opportunities    |  
+|             02_housing              |   Opportunity-Rich & Inclusive Neighborhoods     |  Housing affordability <br/>   Housing stability       |
 |              03_health              | Healthy Environment & Access to Good Health Care |   Access to health services <br/> Neonatal health <br/> Safety from trauma       |
 |        05_local-governments         |           Responsive & Just Governance           |    Political participation <br/> Descriptive representation          |
 |          06_neighborhoods           |    Opportunity-Rich & Inclusive Neighborhoods    |      Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality <br/> Social capital   |
