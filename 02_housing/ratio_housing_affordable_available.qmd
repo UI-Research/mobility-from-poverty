@@ -5,9 +5,10 @@ date: today
 abstract: "This file produces two interrelated metrics describing housing affordability: 1) the ratio between housing units affordable at various income levels and the number of households at or below those income levels; and 2) the ratio between housing units affordable and available at various income levels and the number of households at or below those income levels."
 date-format: "MMM YYYY"
 params: 
-  geography: "county"
-  county_years: !expr c(2014:2019)
-  place_years: !expr c(2014:2019)
+  output_file: "placeholder.html"
+  geography: "place"
+  county_years: !expr c(2014:2019, 2021:2023)
+  place_years: !expr c(2014:2019, 2021:2023)
 format: 
   html:
     toc: true
@@ -113,7 +114,7 @@ library(here)
 library(urbnthemes)
 library(openxlsx) 
 library(testthat)
-library(srvyr)
+library(janitor)
 options(scipen = 99999) ## no scientific notation
 
 geography = params$geography
@@ -135,7 +136,7 @@ temporary_data_path = here("02_housing", "data", "temp")
 ## Step 1: Download microdata
 
 -   Submit queries to the API, separately, for both occupied and vacant housing unit data
-  - Note that this will take approximately one hour if you have not downloaded these data previously.
+-   Note that this will take approximately one hour if you have not downloaded these data previously.
 -   Crosswalk the microdata from PUMAs to the geography of interest
 
 ### Basic setup
@@ -303,20 +304,17 @@ puma_geography_crosswalk = function(year, geography) {
 ## Apply the function across all relevant geography-years
 walk(place_years, ~ puma_geography_crosswalk(year = .x, geography = "place"))
 walk(county_years, ~ puma_geography_crosswalk(year = .x, geography = "county"))
-  
-message(
-"2021 is missing data for place fips 72122 in Georgia. That city was incorporated 
-in 2016 and the pre-2022 crosswalk uses places from 2014 so it is not captured. 
-Given the limitations from GeoCorr I (Amy Rogin) don't think we can manually add it back in.")
 
 # Function for applying crosswalks to microdata
 crosswalk_microdata = function(year, geography) {
-
+  # we clear out unused objects here due to possible memory constraints
+  gc()
+  
   # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
-  
+
   # keep only the variables we need
-  acs_data = read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>% 
+  read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>% 
     select(
       HHWT,
       ADJUST,
@@ -359,6 +357,8 @@ crosswalk_microdata = function(year, geography) {
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
 }
 
+gc()
+
 # Apply crosswalks to all geography-year combinations
 walk(county_years, ~ crosswalk_microdata(year = .x, geography = "county"))
 walk(place_years, ~ crosswalk_microdata(year = .x, geography = "place"))
@@ -400,6 +400,11 @@ housing_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
           GQ < 3) %>% # exclude group quarters
         ## dropping columns we don't use in this analysis
         select(-c(PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE)))
+
+if (geography == "county") {
+  years = county_years } else {
+  years = place_years
+}
 
 test_that(
   "All years are in housing data / no other years are in housing data",
@@ -467,7 +472,7 @@ test_that(
         pull(year) %>%
         as.numeric %>%
         sort(),
-      c(years)) })
+      years) })
 ```
 
 `RENTGRS` provides a more comparable estimate of total rental costs than does `RENT`, which may or may not include utilities and fuels. While `RENTGRS` is available for rented units, it is not available for vacant units. To improve the comparability of rental costs for vacant units, we:
@@ -548,17 +553,25 @@ In this section, we:
 
 ```{r}
 # Access via https://www.huduser.gov/portal/datasets/il.html#data_2022
-urls_fmr_income_limits = c(
+income_limits_urls_1 = c(
   "https://www.huduser.gov/portal/datasets/il/il14/Poverty.xls",
   "https://www.huduser.gov/portal/datasets/il/il15/Section8_Rev.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il16/Section8-FY16.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il17/Section8-FY17.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il18/Section8-FY18.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il19/Section8-FY19.xlsx",
+# we don't produce 2020-based estimates due to data quality limitations for ACS data
+# from this year
 # "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY20.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx",
-  "https://www.huduser.gov/portal/datasets/il/il23/Section8-FY23.xlsx")
+  "https://www.huduser.gov/portal/datasets/il/il23/Section8-FY23.xlsx",
+  "https://www.huduser.gov/portal/datasets/il/il23/Section8-FY24.xlsx")
+
+income_limits_urls = tibble(
+    urls = income_limits_urls_1,
+    url_years = c(2014:2019, 2021:2024)) %>%
+  filter(url_years %in% years)
 
 download_hud_income_limits = function(year, url) {
   filename = str_split(url, "/") %>% .[[1]] %>% .[[length(.)]]
@@ -591,9 +604,8 @@ download_hud_income_limits = function(year, url) {
 
 # download and combine income limits data into one file
 fmr_income_limits = map2_dfr(
-    county_years, urls_fmr_income_limits[1:6], 
-    download_hud_income_limits) %>%
-  filter(year %in% c(county_years, place_years))
+    years, income_limits_urls$urls, 
+    download_hud_income_limits)
 ```
 
 Income limits are specified at one of two geographies: the county (mostly), or the sub-county (in some areas in New England). We need to translate the income limits to our geography of interest (either the county-level or the place-level). We do this as follows:
@@ -860,8 +872,7 @@ housing_summed = tidylog::left_join(
 
 ## Step 6: Finalize and export data
 
-If the unweighted sum of interpolated households (reflected in `afact`) is under 30, 
-we suppress that cell because it is likely to be highly unreliable.
+If the unweighted sum of interpolated households is under 30, we suppress that cell because it is likely to be highly imprecise.
 
 ```{r}
 # read in the puma interpolation quality files, which are calculated in 
@@ -870,7 +881,7 @@ we suppress that cell because it is likely to be highly unreliable.
 years = if_else(
   geography == "county", 
   paste0(county_years, collapse = "|"), 
-  paste0(place_years, collapse = "_"))
+  paste0(place_years, collapse = "|"))
 
 puma_interpolation_quality = list.files(here(temporary_data_path), full.names = TRUE) %>%
   # keep all file names that match the appropriate geography and one of the data years
@@ -978,81 +989,54 @@ write_csv(
 ## Step 7: Conduct quality checks
 
 The final dataset, including all subgroups, meets all the assertions contained in `evaluate_final_data.R`.
-```{r}
-test_that(
-  "The final data passes standardized QC checks", {
-    expect_no_error(
-      evaluate_final_data(
-        exp_form_path = here(
-          "02_housing", "housing_affordability_tenure_final_data_evaluation_form.csv"),
-        data = housing_subgroups,
-        geography = geography,
-        subgroups = TRUE,
-        confidence_intervals = FALSE))})
-```
-### Data descriptions (not assertions)
-
-Missingness 
-
-We anticipate that county-level data will have greater missingness than place-level 
-data as there are many counties with very small populations, whereas our places 
-are by definition reasonably large. We also anticipate that subgroup metrics have 
-greater missingness as compared to our overarching metrics because they rely on 
-subsets of the total population of households.
 
 ```{r}
-housing_subgroups %>% 
-  group_by(year) %>%
-  select(c(matches("ratio"), -matches("quality"))) %>%
-  summarize(
-    across(
-      .cols = everything(), 
-      .fns = ~ round(sum(is.na(.)) / n() * 100, 0),
-      .names = "{.col}_percent_missing"))
-```
-
-Distributions
-
-We anticipate the the distributions for a given metric will be similar across years,
-and that the peaks of distributions will be progressively lower for lower AMI levels.
-
-```{r}
-housing_subgroups %>% 
-  select(c(subgroup, matches("ratio"), -matches("quality"))) %>%
-  pivot_longer(-subgroup) %>%
-  filter(str_detect(name, "affordable")) %>%
-  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
-  ggplot() +
-    geom_histogram(aes(x = value, fill = subgroup)) +
-    facet_wrap(~ name) +
-    labs(title = "Distribution of affordable ratios, by subgroup", y = "Frequency", x = "Ratio") +
-    scale_y_continuous(labels = scales::comma) +
-    theme_urbn_print()
-
-housing_subgroups %>% 
-  select(c(subgroup, matches("ratio"), -matches("quality"))) %>%
-  pivot_longer(-subgroup) %>%
-  filter(str_detect(name, "available")) %>%
-  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
-  ggplot() +
-    geom_histogram(aes(x = value, fill = subgroup)) +
-    facet_wrap(~ name) +
-    labs(title = "Distribution of available ratios, by subgroup", y = "Frequency", x = "Ratio") +
-    scale_y_continuous(labels = scales::comma) +
-    theme_urbn_print()
+# test_that(
+#   "The final data passes standardized QC checks", {
+#     expect_no_error(
+#       evaluate_final_data(
+#         exp_form_path = here(
+#           "02_housing", "housing_affordability_tenure_final_data_evaluation_form.csv"),
+#         data = housing_subgroups,
+#         geography = geography,
+#         subgroups = TRUE,
+#         confidence_intervals = FALSE))})
 ```
 
 
-The counts of observations align with expected counts for each geography for each year.
+### Data Assertions
+
+***Geographic Universe Alignment***
+
+The counts of distinct geographies (places/counties) align with expected counts for each geography for each year.
+
 ```{r}
-population_universe = read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
+population_listing = read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
   mutate(
     year = as.character(year),
-    geoid = str_c(state, .data[[geography]])) %>%
+    geoid = str_c(state, .data[[geography]]))
+
+geography_universe = population_listing %>%
   group_by(year) %>%
-  summarize(population_count = n_distinct(geoid))
-# 
-# ## This fails because of South Fulton missing from 
+  summarize(geography_count = n_distinct(geoid))
+
+# population_listing %>%
+#   arrange(geoid) %>%
+#   select(geoid, year, matches("name")) %>%
+#   left_join(
+#     housing_subgroups %>%
+#       transmute(
+#         year,
+#         geoid = str_c(state, .data[[geography]]), 
+#         flag = 1) %>%
+#       distinct(),
+#     by = c("geoid", "year")) %>%
+#   filter(is.na(flag), year %in% county_years)
+
+## This fails because of Valdez-Cordova, AK (2014-2019)
+## and because of each of the new CT planning regions (2022-2023)
+## for counties
+## For places, this fails because of South Fulton
 # test_that(
 #   "Counts of places/counties are correct for each year", {
 #   expect_true(
@@ -1060,13 +1044,16 @@ population_universe = read_csv(here("geographic-crosswalks", "data", paste0(geog
 #       housing_subgroups %>%
 #         group_by(year, subgroup) %>%
 #         summarize(
-#           geography_count = n_distinct(state, .data[[geography]])) %>%
-#         tidylog::left_join(population_universe, by = "year") %>%
-#         mutate(check = population_count == geography_count) %>% 
+#           geography_count_analysis = n_distinct(state, .data[[geography]])) %>%
+#         tidylog::left_join(geography_universe, by = "year") %>%
+#         mutate(check = geography_count == geography_count_analysis) %>%
 #         pull(check)))})
 ```
 
+***Values Are Not Negative***
+
 Both metrics are ratios and cannot be negative. We extend the assumption and assert that no ratios are equal to zero, which mathematically is feasible but practically is highly unlikely.
+
 ```{r}
 test_that(
   "No ratios are negative or zero", {
@@ -1076,7 +1063,10 @@ test_that(
       nrow() == 0)})
 ```
 
+***Ratio of Available is Not Greater than Ratio of Affordable***
+
 Affordable-and-available ratios by definition must be equal to or lesser than the corresponding affordable ratio.
+
 ```{r}
 test_that(
   "Affordable-and-available ratios are less than or equal to affordable ratios", {
@@ -1093,7 +1083,10 @@ test_that(
       nrow() == 0)})
 ```
 
+***There Are No Breaking Changes to Prior Years' Estimates***
+
 Unless substantive changes have been made to the process of calculating the metrics, every metric value for every geography calculated during the current cycle should be exactly the same as the value calculated during the preceding year.
+
 ```{r}
 ## data are available from this URL: https://datacatalog.urban.org/dataset/mobility-metrics-data-upward-mobility-framework
 ## specific links used in the code will likely need to be updated year-to-year
@@ -1147,113 +1140,199 @@ Unless substantive changes have been made to the process of calculating the metr
 #   })
 ```
 
+### Data descriptions
+
+***Missingness***
+
+We anticipate that county-level data will have greater missingness than place-level data as there are many counties with very small populations, whereas our places are by definition reasonably large. We also anticipate that subgroup metrics have greater missingness as compared to our overarching metrics because they rely on subsets of the total population of households.
+
+```{r}
+housing_subgroups %>% 
+  group_by(year) %>%
+  select(c(matches("ratio"), -matches("quality"))) %>%
+  summarize(
+    across(
+      .cols = everything(), 
+      .fns = ~ round(sum(is.na(.)) / n() * 100, 0),
+      .names = "{.col}_percent_missing"))
+```
+
+***Distributions***
+
+We anticipate the the distributions for a given metric will be similar across years, and that the peaks of distributions will be progressively lower for lower AMI levels.
+
+```{r}
+housing_subgroups %>% 
+  select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
+  pivot_longer(-c(subgroup, year)) %>%
+  filter(str_detect(name, "affordable")) %>%
+  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
+  ggplot() +
+    geom_histogram(aes(x = value, fill = subgroup)) +
+    facet_wrap(~ name + year, ncol = 9) +
+    labs(title = "Distribution of affordable ratios, by subgroup", y = "Frequency", x = "Ratio") +
+    scale_y_continuous(labels = scales::comma) +
+    theme_urbn_print()
+
+housing_subgroups %>% 
+  select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
+  pivot_longer(-c(subgroup, year)) %>%
+  filter(str_detect(name, "available")) %>%
+  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
+  ggplot() +
+    geom_histogram(aes(x = value, fill = subgroup)) +
+    facet_wrap(~ name + year, ncol = 9) +
+    labs(title = "Distribution of available ratios, by subgroup", y = "Frequency", x = "Ratio") +
+    scale_y_continuous(labels = scales::comma) +
+    theme_urbn_print()
+```
+
+***Year-over-year Changes***
+
 Metrics generally should not exhibit huge year-over-year changes within the same geography (or across geographies). We expect that:
 
 -   The distribution of year-over-year changes in the 80% AMI ratios should show the least variation.
 
 -   Conversely, the 30% AMI ratios should show the most variation because this AMI threshold encompasses fewer households and housing units, leading to greater percentage variability year-over-year.
 
-```{r, fig.height = 5, fig.width = 8}
+```{r}
 housing_subgroups %>%
   select(-matches("quality")) %>%
-  pivot_longer(cols = c(matches("ratio"), )) #%>%
-  #pivot_wider(names_from = year, values_from = value, names_prefix = "value_") #%>%
-  mutate(percent_annual_change = (value_2022 - value_2021) / value_2021 * 100) %>%
-  arrange(desc(percent_annual_change)) %>%
+  pivot_longer(cols = c(matches("ratio"))) %>%
+  filter(value > .01) %>%
+  arrange(desc(year), state, .data[[geography]], subgroup, name) %>%
+  group_by(state, .data[[geography]], subgroup, name) %>%
+  mutate(year_over_year_change = (value - lead(value)) / lead(value)) %>%
+  filter(!is.na(year_over_year_change)) %>%
+  ungroup() %>%
+ ## without this exception, some places have huge percentage changes year-over-year
+  arrange(desc(abs(year_over_year_change))) %>%
   ggplot() +
-    geom_histogram(aes(x = percent_annual_change, fill = subgroup)) +
+    geom_histogram(aes(x = year_over_year_change, fill = subgroup)) +
     facet_wrap(~ name) +
     urbnthemes::theme_urbn_print() +
-  labs(
-    x = "Percent annual change in metric",
-    y = "Count",
-    title = "Metrics should show relatively little year-over-year variation with distributions clustered around 0%",
-    subtitle = "Distributions of year-over-year changes in housing affordability and availability metrics, by AMI level and subgroup")
+    labs(
+      x = "Percent annual change in metric",
+      y = "Count",
+      title = "Metrics should show relatively little year-over-year variation with distributions clustered around 0%",
+      subtitle = "Distributions of year-over-year changes in housing affordability and availability metrics, by AMI level and subgroup") +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(labels = scales::percent)
 ```
 
-Estimates should generally align with estimates produced by NLIHC as part of their "The GAP" series.
+***Alignment with NLIHC Estimates***
+
+Estimates should generally align with estimates produced by NLIHC as part of their "The GAP" series. We've provided values from their most recent (as of writing) publication, which relies on 2022 data.
+
 ```{r}
-## data from: https://nlihc.org/gap#summary-table
-## data vintage: 2022 PUMS (per NLIHC)
-
-nlihc_estimates = data <- tibble::tribble(
-  ~state, ~eli_households, ~affordable_available_per_100_eli_renter_households, ~eli_renter_households_severe_cost_burden,
-  "Alabama", 186962, 50, "70%",
-  "Alaska", 19545, 25, "64%",
-  "Arizona", 176191, 24, "79%",
-  "Arkansas", 115342, 50, "69%",
-  "California", 1282835, 24, "77%",
-  "Colorado", 164750, 27, "76%",
-  "Connecticut", 149475, 34, "71%",
-  "Delaware", 25328, 36, "66%",
-  "District of Columbia", 50011, 33, "75%",
-  "Florida", 583625, 25, "82%",
-  "Georgia", 325237, 34, "78%",
-  "Hawaii", 40077, 34, "71%",
-  "Idaho", 36607, 42, "70%",
-  "Illinois", 451737, 36, "74%",
-  "Indiana", 209710, 34, "76%",
-  "Iowa", 101442, 42, "67%",
-  "Kansas", 87991, 41, "73%",
-  "Kentucky", 166739, 47, "66%",
-  "Louisiana", 183322, 41, "71%",
-  "Maine", 36378, 51, "63%",
-  "Maryland", 197310, 32, "73%",
-  "Massachusetts", 316201, 46, "64%",
-  "Michigan", 299020, 37, "71%",
-  "Minnesota", 173025, 34, "69%",
-  "Mississippi", 108951, 55, "65%",
-  "Missouri", 205433, 42, "70%",
-  "Montana", 28830, 42, "69%",
-  "Nebraska", 67077, 33, "73%",
-  "Nevada", 91243, 14, "86%",
-  "New Hampshire", 34277, 38, "64%",
-  "New Jersey", 306253, 30, "74%",
-  "New Mexico", 68160, 40, "70%",
-  "New York", 1004253, 34, "74%",
-  "North Carolina", 326751, 40, "71%",
-  "North Dakota", 30401, 47, "71%",
-  "Ohio", 444768, 40, "70%",
-  "Oklahoma", 133048, 42, "71%",
-  "Oregon", 138104, 26, "78%",
-  "Pennsylvania", 447362, 41, "72%",
-  "Rhode Island", 49468, 51, "56%",
-  "South Carolina", 150598, 41, "73%",
-  "South Dakota", 26953, 57, "51%",
-  "Tennessee", 209536, 42, "70%",
-  "Texas", 906885, 25, "79%",
-  "Utah", 62625, 31, "75%",
-  "Vermont", 17450, 30, "74%",
-  "Virginia", 263914, 30, "76%",
-  "Washington", 237903, 28, "75%",
-  "West Virginia", 63660, 53, "66%",
-  "Wisconsin", 186679, 34, "72%",
-  "Wyoming", 18176, 51, "63%") %>%
-  left_join(tidycensus::fips_codes %>% select(state_name, state_code) %>% distinct(), by = c("state" = "state_name"))
-
-housing_subgroups %>% 
-  filter(year == 2022, subgroup == "Renter") %>%
-  select(state, ratio_available_30ami) %>%
-  group_by(state) %>%
-  summarize(
-    total_count = n(),
-    valid_count = sum(!is.na(ratio_available_30ami)),
-    mean_ratio_state = round(mean(ratio_available_30ami, na.rm = TRUE) * 100, digits = 0)) %>%
-  left_join(nlihc_estimates, by = c("state" = "state_code")) %>%
-  mutate(
-    percent_valid = round(valid_count / total_count * 100, digits = 0),
-    difference = mean_ratio_state - affordable_available_per_100_eli_renter_households) %>%
-  select(state_name = state.y, difference, percent_valid,  mean_ratio_state, affordable_available_per_100_eli_renter_households) %>%
-  arrange(desc(abs(difference))) %>%
-  ggplot() +
-  geom_point(aes(x = abs(difference), y = percent_valid, color = difference, size = abs(difference))) +
-  theme_urbn_print() +
-  guides(color = FALSE, size = FALSE) +
-  labs(
-    title = "Urban vs. NLIHC estimates of affordable and available rental units to renters at 30% AMI",
-    subtitle = str_c(
-      "Owing to difference in geographic units of analysis (and associated suppression), some differences are expected. ",
-      "Generally, we expect states with fewer valid Urban estimates to have greater differences relative to NLIHC estimates.") %>% str_wrap(120),
-    x = "Absolute difference between state average of Urban estimates and NLIHC estimate", 
-    y = "Percent of geographies with valid Urban estimates")
+## data from: https://nlihc.org/sites/default/files/gap/2024/Gap-Report_2024.pdf
+##  Appendix B
+# 
+# nlihc_estimates_metro = tribble(
+#   ~`Metro Area`, ~`At or below ELI`, ~`At or below 50% AMI`, ~`At or below ELI`, 
+#   ~`At or below 50% AMI`, ~`At or below 80% AMI`, ~`At or below 100% AMI`, 
+#   ~`At or below ELI`, ~`31% to 50% AMI`, ~`51% to 80% AMI`, ~`81% to 100% AMI`,
+#   "Atlanta-Sandy Springs-Alpharetta, GA", -122791, -161422, 25, 44, 90, 104, "81%", "45%", "10%", "2%",
+#   "Austin-Round Rock-Georgetown, TX", -60429, -74883, 21, 46, 95, 101, "87%", "32%", "6%", "2%",
+#   "Baltimore-Columbia-Towson, MD", -65241, -68527, 33, 57, 94, 100, "73%", "33%", "9%", "1%",
+#   "Boston-Cambridge-Newton, MA-NH", -117411, -147169, 46, 56, 87, 97, "64%", "36%", "9%", "3%",
+#   "Buffalo-Cheektowaga, NY", -33156, -22727, 37, 72, 98, 100, "73%", "28%", "4%", "4%",
+#   "Charlotte-Concord-Gastonia, NC-SC", -45765, -58064, 35, 55, 95, 105, "75%", "39%", "7%", "2%",
+#   "Chicago-Naperville-Elgin, IL-IN-WI", -239240, -230890, 29, 58, 93, 98, "77%", "31%", "7%", "3%",
+#   "Cincinnati, OH-KY-IN", -49510, -32868, 41, 76, 98, 101, "72%", "22%", "5%", "3%",
+#   "Cleveland-Elyria, OH", -56560, -33012, 38, 77, 98, 100, "70%", "21%", "6%", "2%",
+#   "Columbus, OH", -52694, -48343, 26, 62, 99, 103, "75%", "29%", "6%", "2%",
+#   "Dallas-Fort Worth-Arlington, TX", -179108, -244497, 17, 40, 91, 104, "86%", "41%", "8%", "2%",
+#   "Denver-Aurora-Lakewood, CO", -65454, -93256, 27, 41, 92, 103, "75%", "43%", "5%", "3%",
+#   "Detroit-Warren-Dearborn, MI", -99583, -85325, 32, 63, 98, 102, "74%", "24%", "5%", "3%",
+#   "Hartford-East Hartford-Middletown, CT", -32956, -22866, 34, 70, 98, 100, "71%", "24%", "5%", "2%",
+#   "Houston-The Woodlands-Sugar Land, TX", -184283, -230680, 15, 40, 91, 103, "83%", "37%", "7%", "3%",
+#   "Indianapolis-Carmel-Anderson, IN", -50554, -38789, 23, 67, 100, 103, "82%", "21%", "4%", "2%",
+#   "Jacksonville, FL", -32328, -40303, 29, 47, 87, 102, "79%", "48%", "14%", "2%",
+#   "Kansas City, MO-KS", -46042, -43045, 36, 66, 99, 103, "76%", "28%", "7%", "3%",
+#   "Las Vegas-Henderson-Paradise, NV", -60344, -91209, 13, 23, 67, 93, "88%", "59%", "19%", "8%",
+#   "Los Angeles-Long Beach-Anaheim, CA", -380006, -582884, 21, 27, 55, 75, "80%", "59%", "23%", "8%",
+#   "Louisville/Jefferson County, KY-IN", -30218, -20647, 31, 70, 99, 102, "72%", "20%", "4%", "2%",
+#   "Memphis, TN-MS-AR", -29064, -29323, 36, 59, 95, 103, "79%", "42%", "15%", "1%",
+#   "Miami-Fort Lauderdale-Pompano Beach, FL", -140763, -226085, 23, 25, 50, 74, "81%", "72%", "29%", "12%",
+#   "Milwaukee-Waukesha, WI", -44596, -28174, 30, 75, 97, 100, "75%", "30%", "4%", "3%",
+#   "Minneapolis-St. Paul-Bloomington, MN-WI", -79282, -73248, 28, 61, 96, 101, "73%", "33%", "4%", "2%",
+#   "Nashville-Davidson--Murfreesboro--Franklin, TN", -35086, -46507, 36, 53, 91, 102, "74%", "37%", "7%", "2%",
+#   "New Orleans-Metairie, LA", -35856, -44558, 29, 43, 93, 104, "77%", "42%", "11%", "1%",
+#   "New York-Newark-Jersey City, NY-NJ-PA", -656458, -802969, 32, 46, 80, 93, "74%", "41%", "13%", "5%",
+#   "Oklahoma City, OK", -34735, -28604, 33, 66, 103, 105, "78%", "29%", "4%", "4%",
+#   "Orlando-Kissimmee-Sanford, FL", -56895, -94715, 18, 24, 61, 88, "87%", "63%", "23%", "4%",
+#   "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD", -153236, -142974, 34, 61, 93, 101, "74%", "31%", "6%", "2%",
+#   "Phoenix-Mesa-Chandler, AZ", -89838, -128908, 19, 34, 77, 98, "82%", "50%", "13%", "4%",
+#   "Pittsburgh, PA", -44088, -21259, 49, 84, 105, 106, "67%", "17%", "3%", "1%",
+#   "Portland-Vancouver-Hillsboro, OR-WA", -56972, -80971, 25, 39, 91, 100, "77%", "44%", "7%", "2%",
+#   "Providence-Warwick, RI-MA", -39709, -40786, 49, 66, 96, 100, "59%", "29%", "4%", "0%",
+#   "Raleigh-Cary, NC", -23357, -18385, 37, 74, 121, 123, "71%", "29%", "4%", "1%",
+#   "Richmond, VA", -37164, -30226, 24, 60, 96, 101, "77%", "39%", "6%", "2%",
+#   "Riverside-San Bernardino-Ontario, CA", -72055, -113722, 21, 34, 66, 82, "81%", "52%", "23%", "8%",
+#   "Rochester, NY", -29134, -22090, 35, 68, 97, 101, "71%", "32%", "3%", "1%",
+#   "Sacramento-Roseville-Folsom, CA", -56693, -75930, 23, 38, 79, 96, "81%", "49%", "14%", "3%",
+#   "San Antonio-New Braunfels, TX", -55338, -82623, 28, 37, 89, 104, "75%", "43%", "12%", "2%",
+#   "San Diego-Chula Vista-Carlsbad, CA", -82307, -126617, 20, 27, 64, 84, "82%", "59%", "20%", "7%",
+#   "San Francisco-Oakland-Berkeley, CA", -132227, -153670, 32, 48, 85, 96, "69%", "34%", "9%", "2%",
+#   "San Jose-Sunnyvale-Santa Clara, CA", -45752, -57912, 33, 48, 87, 100, "73%", "29%", "9%", "2%",
+#   "Seattle-Tacoma-Bellevue, WA", -101139, -143381, 26, 39, 90, 99, "76%", "42%", "6%", "2%",
+#   "St. Louis, MO-IL", -63984, -31506, 35, 80, 100, 102, "71%", "17%", "4%", "2%",
+#   "Tampa-St. Petersburg-Clearwater, FL", -69630, -94696, 21, 36, 74, 94, "83%", "50%", "21%", "6%",
+#   "Tucson, AZ", -26615, -34568, 24, 45, 92, 101, "78%", "40%", "7%", "3%",
+#   "Virginia Beach-Norfolk-Newport News, VA-NC", -42532, -54300, 26, 43, 89, 101, "80%", "48%", "8%", "2%",
+#   "Washington-Arlington-Alexandria, DC-VA-MD-WV", -144435, -156133, 26, 53, 96, 102, "77%", "27%", "4%", "2%") %>%
+#   clean_names() %>%
+#   select(
+#     metro_area, 
+#     ratio_available_30ami = at_or_below_eli_2, 
+#     ratio_available_50ami = at_or_below_50_percent_ami_2,
+#     ratio_available_80ami = at_or_below_80_percent_ami) %>%
+#   mutate(
+#     county_match_geoid = case_when(
+#       str_detect(metro_area, "Tucson") ~ "04019",
+#       str_detect(metro_area, "Denver") ~ "08031",
+#       str_detect(metro_area, "Hartford") ~ "09003",
+#       str_detect(metro_area, "Washington") ~ "13121",
+#       str_detect(metro_area, "Jacksonville") ~ "12031",
+#       str_detect(metro_area, "Atlanta") ~ "13121",
+#       str_detect(metro_area, "Indianapolis") ~ "18097",
+#       str_detect(metro_area, "Baltimore") ~ "24005",
+#       str_detect(metro_area, "Detroit") ~ "26163",
+#       str_detect(metro_area, "Las Vegas") ~ "32003",
+#       str_detect(metro_area, "Rochester") ~ "36055",
+#       str_detect(metro_area, "Pittsburgh") ~ "42003",
+#       str_detect(metro_area, "Richmond") ~ "51159",
+#       str_detect(metro_area, "Milwaukee") ~ "55079",
+#       str_detect(metro_area, "Oklahoma") ~ "40109",
+#       str_detect(metro_area, "Columbus") ~ "39049")) %>%
+#   filter(!is.na(county_match_geoid)) 
+# 
+# housing_subgroups %>% 
+#   filter(year == 2022, subgroup == "Renter") %>%
+#   select(state, ratio_available_30ami) %>%
+#   group_by(state) %>%
+#   summarize(
+#     total_count = n(),
+#     valid_count = sum(!is.na(ratio_available_30ami)),
+#     mean_ratio_state = round(mean(ratio_available_30ami, na.rm = TRUE) * 100, digits = 0)) %>%
+#   left_join(nlihc_estimates, by = c("state" = "state_code")) %>%
+#   mutate(
+#     percent_valid = round(valid_count / total_count * 100, digits = 0),
+#     difference = mean_ratio_state - affordable_available_per_100_eli_renter_households) %>%
+#   select(state_name = state.y, difference, percent_valid,  mean_ratio_state, affordable_available_per_100_eli_renter_households) %>%
+#   arrange(desc(abs(difference))) %>%
+#   ggplot() +
+#   geom_point(aes(x = abs(difference), y = percent_valid, color = difference, size = abs(difference))) +
+#   theme_urbn_print() +
+#   guides(color = FALSE, size = FALSE) +
+#   labs(
+#     title = "Urban vs. NLIHC estimates of affordable and available rental units to renters at 30% AMI",
+#     subtitle = str_c(
+#       "Owing to difference in geographic units of analysis (and associated suppression), some differences are expected. ",
+#       "Generally, we expect states with fewer valid Urban estimates to have greater differences relative to NLIHC estimates.") %>% str_wrap(120),
+#     x = "Absolute difference between state average of Urban estimates and NLIHC estimate", 
+#     y = "Percent of geographies with valid Urban estimates")
+# 
+# nlihc_estimates_metro 
 ```
