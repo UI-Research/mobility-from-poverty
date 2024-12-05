@@ -1,0 +1,681 @@
+---
+title: "neonatal-health-all"
+format: html
+editor: source
+---
+```{r}
+library(tidyverse)
+
+```
+
+
+# 2. Import, clean, and merge CDC WONDER files (All)
+
+## 2.1 Import all non-missing births
+```{r}
+paths <- list.files(here::here("04_health", "neonatal-health", "data", "all", "nomiss"),
+                    pattern = "[.]txt$", full.names = TRUE)
+
+test <- paths |> 
+  set_names(basename(paths)) |> 
+  map(utils::read.delim) |> 
+  list_rbind(names_to = "year") |> 
+  mutate(
+    year = parse_number(year),
+    subgroup = str_extract(basename(paths), "(?<=nomiss_)[a-z]+")
+    )
+
+test <- paths |> 
+  set_names(basename(paths)) |>  # Name elements of paths by their filenames
+  map_dfr(utils::read.delim, .id = "filename") |>  # Combine and add filename column
+  mutate(
+    year = parse_number(filename),  # Extract year from filename
+    subgroup = str_extract(filename, "(?<=nomiss_)[a-z]+")  # Extract subgroup from filename
+  )
+
+```
+
+
+```{r}
+nomiss_raw <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  mutate(
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  ) |>
+  filter(!is.na(county_fips))
+
+```
+
+## 2.2 Import low birthweight files
+```{r}
+lbw_raw <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  mutate(
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  ) |>
+  filter(!is.na(county_fips))
+
+```
+
+## 2.3 Join all births and low birthweight births
+```{r}
+all_births <- tidylog::full_join(
+  x = nomiss_raw,
+  y = lbw_raw,
+  by = c("county_name", "county_fips", "year", "state", "county")
+)
+
+# Remove obsolete files
+rm(nomiss_raw, lbw_raw)
+
+```
+
+# 3. Import, clean, and merge CDC WONDER files (Race/ethnicity)
+
+## 3.1 Import all non-missing births - race/ethnicity
+```{r, warning = FALSE}
+# NH White
+nomiss_raw_nhwhite <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_nhwhite_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhwhite",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# NH Black
+nomiss_raw_nhblack <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_nhblack_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips) | nomiss_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhblack",
+    nomiss_births = as.numeric(nomiss_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Hispanic
+nomiss_raw_hisp <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_hisp_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "hisp",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# NH Other
+nomiss_raw_nhother <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_nhother_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhother",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Append files
+nomiss_raw_raceth <- bind_rows(
+  nomiss_raw_nhwhite, nomiss_raw_nhblack, nomiss_raw_hisp, nomiss_raw_nhother
+)
+
+# Remove obsolete files
+rm(nomiss_raw_nhwhite, nomiss_raw_nhblack, nomiss_raw_hisp, nomiss_raw_nhother)
+
+```
+
+## 3.2 Import low birthweight files - race/ethnicity
+```{r, warning = FALSE}
+# NH White
+lbw_raw_nhwhite <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_nhwhite_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhwhite",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# NH Black
+lbw_raw_nhblack <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_nhblack_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhblack",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Hispanic
+lbw_raw_hisp <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_hisp_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "hisp",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# NH Other
+lbw_raw_nhother <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_nhother_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "race-ethnicity",
+    raceth = "nhother",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Append files
+lbw_raw_raceth <- bind_rows(
+  lbw_raw_nhwhite, lbw_raw_nhblack, lbw_raw_hisp, lbw_raw_nhother
+)
+
+# Remove obsolete files
+rm(lbw_raw_nhwhite, lbw_raw_nhblack, lbw_raw_hisp, lbw_raw_nhother)
+
+```
+
+## 3.2 Join all births and low birthweight births - race/ethnicity
+```{r}
+all_births_raceth <- tidylog::full_join(
+  x = nomiss_raw_raceth,
+  y = lbw_raw_raceth,
+  by = c("county_name", "county_fips", "subgroup_type", "raceth", "year", "state", "county")
+)
+
+# Remove obsolete files
+rm(nomiss_raw_raceth, lbw_raw_raceth)
+
+```
+
+# 4. Import, clean, and merge CDC WONDER files (Mother's education)
+
+## 4.1 Import all non-missing births - education
+```{r}
+# Less than high school
+nomiss_raw_lessthanhs <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_lessthanhs_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "education",
+    momed = "lessthanhs",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# High school graduate
+nomiss_raw_hsgrad <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_hsgrad_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips) | nomiss_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "education",
+    momed = "hsgrad",
+    nomiss_births = as.numeric(nomiss_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Some college
+nomiss_raw_somecollege <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_somecollege_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "education",
+    momed = "somecollege",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# College degree or greater
+nomiss_raw_collegedegrees <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "nomiss_bw_by_county_collegedegrees_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    nomiss_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "education",
+    momed = "collegedegrees",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Append files
+nomiss_raw_momed <- bind_rows(
+  nomiss_raw_lessthanhs, nomiss_raw_hsgrad, nomiss_raw_somecollege, nomiss_raw_collegedegrees
+)
+
+# Remove obsolete files
+rm(nomiss_raw_lessthanhs, nomiss_raw_hsgrad, nomiss_raw_somecollege, nomiss_raw_collegedegrees)
+
+```
+
+
+## 4.2 Import low birthweight files - education
+```{r}
+# Less than high school
+lbw_raw_lessthanhs <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_lessthanhs_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "education",
+    momed = "lessthanhs",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# High school graduate
+lbw_raw_hsgrad <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_hsgrad_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "education",
+    momed = "hsgrad",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Some college
+lbw_raw_somecollege <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_somecollege_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips) | lbw_births == "Suppressed") |>
+  mutate(
+    subgroup_type = "education",
+    momed = "somecollege",
+    lbw_births = as.numeric(lbw_births),
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# College degree or greater
+lbw_raw_collegedegrees <- readr::read_delim(
+  file = here::here("04_health", "neonatal-health", "data", "lbw_births_by_county_collegedegrees_22.txt"),
+  delim = "\t", 
+  escape_double = FALSE,
+  trim_ws = TRUE
+) |>
+  select(
+    county_name = 'County of Residence',
+    county_fips = 'County of Residence Code',
+    lbw_births = Births
+  ) |>
+  filter(!is.na(county_fips)) |>
+  mutate(
+    subgroup_type = "education",
+    momed = "collegedegrees",
+    year = 2022,
+    state = substr(county_fips, 1, 2),
+    county = substr(county_fips, 3, 5)
+  )
+
+# Append files
+lbw_raw_momed <- bind_rows(
+  lbw_raw_lessthanhs, lbw_raw_hsgrad, lbw_raw_somecollege, lbw_raw_collegedegrees
+)
+
+# Remove obsolete files
+rm(lbw_raw_lessthanhs, lbw_raw_hsgrad, lbw_raw_somecollege, lbw_raw_collegedegrees)
+
+```
+
+
+## 4.3 Join all births and low birthweight files - education
+```{r}
+all_births_momed <- tidylog::full_join(
+  x = nomiss_raw_momed,
+  y = lbw_raw_momed,
+  by = c("county_name", "county_fips", "subgroup_type", "momed", "year", "state", "county")
+)
+
+# Remove obsolete files
+rm(nomiss_raw_momed, lbw_raw_momed)
+
+```
+
+
+# 5. Use crosswalk to add missing counties to data
+
+## 5.1 Reshape data from long to wide
+We want the subgroups (for race/ethnicity and mother's education) for all births and low birthweight births to be wide, and for the data to only be long by county/year
+```{r}
+all_births_raceth_wide <- all_births_raceth |>
+  mutate(
+    raceth = case_when(
+      raceth=="nhwhite" ~ 1,
+      raceth=="nhblack" ~ 2,
+      raceth=="hisp" ~ 3,
+      raceth=="nhother" ~ 4
+    )
+  ) |>
+  select(-subgroup_type) |>
+  pivot_wider(
+    id_cols = c(year, state, county, county_fips, county_name),
+    names_from = raceth,
+    names_sep = "_",
+    values_from = c(nomiss_births, lbw_births)
+  )
+  
+```
+
+```{r}
+all_births_momed_wide <- all_births_momed |>
+  mutate(
+    momed = case_when(
+      momed=="lessthanhs" ~ 5,
+      momed=="hsgrad" ~ 6,
+      momed=="somecollege" ~ 7,
+      momed=="collegedegrees" ~ 8
+    )
+  ) |>
+  select(-subgroup_type) |>
+  pivot_wider(
+    id_cols = c(year, state, county, county_fips, county_name),
+    names_from = momed,
+    names_sep = "_",
+    values_from = c(nomiss_births, lbw_births)
+  )
+  
+```
+
+## 5.2 Join data together
+
+```{r}
+master_births <- tidylog::full_join(
+  x = all_births_raceth_wide,
+  y = all_births_momed_wide,
+  by = c("year", "state", "county", "county_fips", "county_name")
+) |>
+  tidylog::full_join(
+    y = all_births,
+    by = c("year", "state", "county", "county_fips", "county_name")
+  )
+  
+```
+
+### Bring in crosswalk containing all counties and join birhts
+```{r}
+county_pop <- read_csv(
+  file = here::here("geographic-crosswalks", "data", "county-populations.csv")
+) |>
+  filter(year==2022) |>
+  select(-c(state_name, county_name))
+
+```
+
+```{r}
+county_pop_births <- tidylog::full_join(
+  x = county_pop,
+  y = master_births,
+  by = c("year", "state", "county")
+)
+```
+
+Reshape the data to be long again by subgroup
+```{r}
+county_pop_births <- county_pop_births |>
+  rename(
+    nomiss_births_0 = nomiss_births,
+    lbw_births_0 = lbw_births
+  )
+
+county_pop_births_long <- county_pop_births |>
+  pivot_longer(
+    cols = starts_with(c("nomiss_births", "lbw_births")),
+    names_to = c(".value", "subgroup"),
+    names_pattern = "(.*)_(\\d+)"
+  )
+
+```
+
+
+# 6. Assign "unidentified county" values to counties with missing values
+
+Counties with a total population less than 100,000 report births under "Unidentified Counties" to protect personal privacy ([source](https://wonder.cdc.gov/wonder/help/natality.html)). Here, we want to replace every value from the total county populations that did not have a match in the births data with the "Unidentified Counties" value from that state.
+```{r}
+test <- county_pop_births_long
+
+test <- test |>
+  mutate(
+    unidentified_nomiss = ifelse(county=="999", nomiss_births, NA),
+    unidentified_lbw = ifelse(county=="999", lbw_births, NA)
+  )
+
+test <- test |>
+  group_by(state, subgroup) |>
+  mutate(
+    state_unidentified_nomiss = ifelse(any(county == 999),
+                                       unidentified_nomiss[county == 999],
+                                       NA),
+    
+    nomiss_births = ifelse(is.na(nomiss_births),
+                           state_unidentified_nomiss,
+                           nomiss_births),
+    
+    state_unidentified_lbw = ifelse(any(county == 999), 
+                                    unidentified_lbw[county == 999], 
+                                    NA),
+    
+    lbw_births = ifelse(is.na(lbw_births), 
+                        state_unidentified_lbw, 
+                        lbw_births)
+  ) |>
+  select(-c(state_unidentified_nomiss, unidentified_nomiss, state_unidentified_lbw, unidentified_lbw)) |>
+  ungroup() |>
+  filter(!county == 999)
+
+```
+
+# 7. Create neonatal health share low birthweight metric
+```{r}
+test <- test |>
+  mutate(
+    rate_low_birth_weight = lbw_births / nomiss_births
+  )
+
+```
+
+
+# 8. Data Quality
+
+
+# 9. Confidence Intervals
+
+```{r}
+test <- test |>
+  mutate(
+    rate_low_birth_weight_lb = (share_lbw_nomiss) -  (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births)),
+    
+    rate_low_birth_weight_ub = (share_lbw_nomiss) +  (1.96*sqrt(share_lbw_nomiss*(1-share_lbw_nomiss)/nomiss_births))
+  )
+```
+
+
+
+
+
+
