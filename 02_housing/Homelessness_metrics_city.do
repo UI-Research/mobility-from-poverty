@@ -144,7 +144,7 @@ foreach year in $years {
 	tostring leaid, replace
 	replace leaid = "0"+leaid if strlen(leaid)==6
 	gen fipst = substr(leaid,1,2)
-
+*left off 12/9/2024
 
 *Original code from Erica Blom
 	** Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed ** 
