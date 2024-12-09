@@ -12,8 +12,8 @@
 	
 clear all
 
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty"
-global years 2019 2020 2021 // refers to 2019-20 school year through most recent data
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+global years 2014 2015 // refers to 2014-15 and 2015-16 school years - still need to add 2022-23
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -27,7 +27,7 @@ cap n mkdir "built"
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-** Import city file **
+** Import city file to edit names of city crosswalk to match city location strings in CCD school district data
 import delimited ${cityfile}, clear
 
 tostring place, replace
@@ -57,9 +57,9 @@ rename city_name_edited city_name
 	replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
 	replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
 	replace city_name="Macon" if city_name=="Macon-Bibb County"
-	replace city_name="Honolulu" if city_name=="Urban Honolulu"
+	*replace city_name="Honolulu" if city_name=="Urban Honolulu"
 	replace city_name="Boise" if city_name=="Boise City"
-	replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
+	*replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
 	replace city_name="Lexington" if city_name=="Lexington-Fayette"
 	replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
 	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
@@ -72,7 +72,7 @@ rename city_name_edited city_name
 	
 	save "intermediate/cityfile.dta", replace
 
-** Get CCD district data - total enrollment and city & county codes**
+** Get CCD district data - total enrollment and city location & county codes**
 foreach year in $years {
 	clear
 	educationdata using "district ccd directory ", sub(year=`year') col(year leaid county_code city_location enrollment) csv
@@ -89,38 +89,31 @@ foreach year in $years {
 *Download EdDataExpress Data
 *https://eddataexpress.ed.gov/download/data-library
 *each zip file is named differently
-*2019-20
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_6526/SY1920_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2019.zip", replace
-*2020-21
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_8321/SY2021_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2020.zip", replace
-*2021-22
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/SY2122_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2021.zip", replace
+*2014-15 & 2015-16 are in the same file
+copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_1350/SY1018_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2010-18.zip", replace
 
-*unzips to current directory
-	cd "${gitfolder}\02_housing\data\raw"
-	foreach year in $years {
-	unzipfile "EdDataEx Homelessness `year'.zip", replace
-	}
-	cd "${gitfolder}\02_housing\data"
+*2022-23
+copy
 
-*import csvs
-	*2019
-	import delimited "raw/SY1920_FS118_DG655_LEA.csv", clear
-	gen year=2019
-	save "raw/edfacts_homelessness_2019.dta", replace
+*unzip each file
 
-	*2020
-	import delimited "raw/SY2021_FS118_DG655_LEA.csv", clear
-	gen year=2020
-	save "raw/edfacts_homelessness_2020.dta", replace
+	*2014
+	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
+	keep if schoolyear=="2014-2015"
+	gen year=2014
+	save "raw/edfacts_homelessness_2014.dta", replace
 
-	*2021
-	import delimited "raw/SY2122_FS118_DG655_LEA.csv", clear
-	gen year=2021
-	save "raw/edfacts_homelessness_2021.dta", replace
+	*2015
+	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
+	keep if schoolyear=="2015-2016"
+	gen year=2015
+	save "raw/edfacts_homelessness_2015.dta", replace
+
+	*2022
+
 
 *reshape long form 
-	foreach year in $years {
+	foreach year in 2014 2015 2022 {
 	use "raw/edfacts_homelessness_`year'.dta", clear
 		drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 		*these are missing because they have answers for characteristic (i.e., doubled up, etc.)
@@ -133,14 +126,14 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 		replace subgroup="twomore" if subgroup=="Two or more races" 
 		replace subgroup="nh_pi" if subgroup=="Native Hawaiian or Other Pacific Islander" 
 		replace subgroup="asian" if subgroup=="Asian" 
-		replace subgroup="homeless" if subgroup=="All Students in LEA" 
+		replace subgroup="homeless" if subgroup=="All Students in LEA" | subgroup=="All Students"
 		
 		reshape wide value,  i(state ncesleaid lea year) j(subgroup) string
 		ren value* *
 		ren ncesleaid leaid
 		save "raw/eddataex_homelessness_`year'.dta", replace
 	}
-
+	
 *Append eddataexpress data
 clear
 foreach year in $years {
