@@ -1,10 +1,14 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-*Updated September 2022 by Emily Gutierrez
-*Updated February 2024 by Emily  Gutierrez
+*Updated September 2022 by E Gutierrez
+*Updated February 2024 by E Gutierrez
 *Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
 	*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
+*Updated December 2024 by E Gutierrez
+*Creates the number and share of homeless students by city for 2014-15, 2015-16, and 2022-23 (2014-15 through 2019-20 completed in previous update)
+	*Creates the number and share of homeless by race/ethnicity for 2022-23 (recreates with each total student ethnicity as denominator)
+
 	
 clear all
 
@@ -22,7 +26,6 @@ cap n mkdir "built"
 ** install educationdata command **
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
-
 
 ** Import city file **
 import delimited ${cityfile}, clear
