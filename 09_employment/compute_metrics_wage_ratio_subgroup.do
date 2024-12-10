@@ -7,6 +7,9 @@ The overall county metric was originally programmed by Kevin Werner + this file 
 
 Current update date: 12/4/2024
 
+To dos:
+** fix industry coding error/assert?
+
 ****************************/
 
 *** uncomment command below to install package if needed
