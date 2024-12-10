@@ -10,8 +10,8 @@ The overall county metric was originally programmed by Kevin Werner + this file 
 Current update date: 12/10/2024
 
 To dos:
-** need 2023 data from MIT to finalize this update.
-** need to fix AK counties in 2020 and 2021, and CT in 2022.
+** Need 2023 data from MIT to finalize this update. For 2023, will need to make the CT planning region correction and possibly the Alaska correction.
+** Implement file deletion step
 
 ****************************/
 
@@ -87,13 +87,6 @@ foreach year in 2015 2016 2017 2018 2019 2020 2021 2022 {
 
 	destring state, replace // make numeric for merging with MIT data
 	
-		/* update fips codes that get changed -- from 2014 code and applicable to 2015 -- not needed
-		*if inlist("`year'", "2015") {
-			replace county = 158 if state == 2 & county == 270 
-			replace county = 102 if state == 46 & county == 113 
-		}
-		*/
-	
 	save "temp-qecw-`year'.dta", replace 
 	
 }
@@ -109,15 +102,15 @@ foreach year in 2015 2016 2017 2018 2019 2020 2021 2022 {
 	merge 1:m state county using "mit_living_wage-`year'.dta"
 
 	di `year'
-	tab county state if _merge == 1 /// two AK counties missing from MIT data in 2020 and 2021
+	tab county state if _merge == 1 
 
 	/* drop statewide obs because we are calculating metrics at the county level, 999 county is statewide observations */
-	drop if _merge == 1
+	drop if _merge == 1 & county == 999
 	
 	/* drop duplicates (first two counties repeated) */
-duplicates drop
+	duplicates drop
 
-	/* check observations and cross reference with the required numbers in the Wiki -- 2020 and 2021 have too few (by 1) because of Alaska counties!! */
+	/* check observations and cross reference with the required numbers in the Wiki -- there will be some inconsistencies at this stage until we make final county corrections in the next loop -- this is just to check what adjustments could be needed */
 	tab year
 	count 
 
@@ -180,50 +173,30 @@ foreach year in 2015 2016 2017 2018 2019 2020 2021 2022 {
 
 	keep if year == `year'
 	
-	/* connecticut adjustment in 2022 -- zero out CT counties because we don't have data on them */
-	if inlist("`year'", "2022") {
-			** correct CT counties -- this an issue since they switched to county equilvalents in 2022 -- and this data (QECW) uses the old (2020) FIPS
-			replace state_name = "Connecticut" if state == "09"
-			replace state_name = "Alaska" if state == "02"
-
-			replace county_name = "Fairfield County" if state == "09" & county == "001"
-			replace county_name = "Hartford County" if state == "09" & county == "003"
-			replace county_name = "Litchfield County" if state == "09" & county == "005"
-			replace county_name = "Middlesex County" if state == "09" & county == "007"
-			replace county_name = "New Haven County" if state == "09" & county == "009"
-			replace county_name = "New London County" if state == "09" & county == "011"
-			replace county_name = "Tolland County" if state == "09" & county == "013"
-			replace county_name = "Windham County" if state == "09" & county == "015"
-			replace county_name = "Valdez-Cordova Census Area" if state == "02" & county == "261"
-
-			drop if _merge == 1 & state != "09"
-
-			*** drop old counties that don't match 2022 units-- QCEW data does not use most up to date census units in 2022
-			drop if _merge == 2 & state == "09"
-
-			*** also want to drop old counties and impute missing values 
-			generate flag = 1 if state == "09" & ratio_living_wage == "NA"
-			drop if flag == 1
-
-			*** make missing
-			replace ratio_living_wage = "NA" if state == "09"
-			replace ratio_living_wage_quality = "NA" if state == "09"
-	}
-
+	/* connecticut adjustment in 2022 and 2023 -- zero out CT new planning regions because we don't have data on them, as MIT and QECW data is reported for old counties */
+	drop if state == "09" & (county == "001" | county == "003" | county == "005" | county == "007" | county == "009" | county == "011" | county == "013" | county == "015") & year == 2022
+	
+	replace ratio_living_wage = "NA" if ratio_living_wage == "" & state == "09"
+	replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "" & state == "09"
+	
+	/* Alaska adjustment in 2020 and 2021 and 2022 */
+	drop if state == "02" & county == "261" & (year == 2020 | year == 2021 | year == 2022) 
+	
+	replace ratio_living_wage = "NA" if ratio_living_wage == "" & state == "02" & (county == "063" | county == "066") & (year == 2021 | year == 2020 | year == 2022)
+	replace ratio_living_wage_quality = "NA" if ratio_living_wage_quality == "" & state == "02" & (county == "063" | county == "066") & (year == 2021 | year == 2020 | year == 2022)
 	
 	*** assert 
 	assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
 	
 	/* export final dataset -- by year */
 	keep year state county ratio_living_wage ratio_living_wage_quality
-
 	order year state county ratio_living_wage ratio_living_wage_quality
 
 	export delimited using "metrics_wage_ratio_`year'.csv", replace
 
 	save "wage_ratio_final_`year'.dta", replace
 
-	/* count obs */
+	/* count obs -- this should match the Wiki numbers for each year */
 	tab year
 	count
 	
@@ -240,6 +213,10 @@ use "wage_ratio_final_2015.dta", clear
 	append using "wage_ratio_final_2022.dta"
 
 save "wage_ratio_overall_allyears.dta", replace
+
+// final count
+count // should be 25,140 thru 2022 and 28,284 thru 2023
+
 export delimited using "metrics_wage_ratio_overall.csv", replace	
 	
 /* delete unneeded files -- do this as a last step */
