@@ -7,8 +7,8 @@ date-format: "MMM YYYY"
 params: 
   output_file: "placeholder.html"
   geography: "place"
-  county_years: !expr c(2014:2019, 2021:2023)
-  place_years: !expr c(2014:2019, 2021:2023)
+  county_years: !expr c(2022)
+  place_years: !expr c(2022)
 format: 
   html:
     toc: true
@@ -52,7 +52,7 @@ tibble::tribble(
 
 -   Some of the key features of this analysis include:
 
-    -   Microdata are provided for occupied and vacant housing units separately, so we need to submit two queries for microdata from IPUMS.
+    -   Microdata are available for occupied and vacant housing units separately, so we need to submit two queries for microdata from IPUMS.
 
     -   Housing costs are captured under multiple variables in the microdata, and some housing costs are not itemized in the microdata. Further, housing cost-related variables differ based on tenure. We standardize housing costs across vacant and occupied units and for rented and owned units so that we can compare annual housing costs to annual household incomes, which we benchmark against Department of Housing and Urban Development (HUD)-defined income thresholds.
 
@@ -96,6 +96,7 @@ tibble::tribble(
 -   Will Curran-Groome (2024-2025)
 
     -   Added estimates based on 2023 microdata.
+    -   Backfilled estimates for years 2014:2019, 2021:2022. 
     -   Reorganized scripts and added additional quality checks.
 
 -   Amy Rogin (2023-2024)
@@ -271,6 +272,7 @@ if (length(years_to_query) > 0) {
 
 ```{r}
 # Function for writing lightly tailored crosswalks to a temporary folder for subsequent use
+
 puma_geography_crosswalk = function(year, geography) {
   crosswalk_period = year
   
@@ -291,7 +293,7 @@ puma_geography_crosswalk = function(year, geography) {
       afact != 0) %>%
     ## we ensure we have an accurate record of the year for joining purposes later
     { if (crosswalk_period %in% c(2022:2023)) mutate(., year = year) else . }
-  
+
   crosswalk %>%
     write_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
   
@@ -309,7 +311,7 @@ walk(county_years, ~ puma_geography_crosswalk(year = .x, geography = "county"))
 crosswalk_microdata = function(year, geography) {
   # we clear out unused objects here due to possible memory constraints
   gc()
-  
+
   # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
 
@@ -350,15 +352,16 @@ crosswalk_microdata = function(year, geography) {
       !is.na(afact),
       afact > 0) %>%
     mutate(
+      ## these are NA codes that we recode to true missing values
+      OWNCOST = if_else(OWNCOST == 99999, NA, OWNCOST),
       # the weight of each person/household is adjusted by the area of the PUMA that falls into a given place
       across(.cols = c(PERWT, HHWT), .fns = ~ .x * afact), 
       # adjusts dollar-denominated variables by the Census's 12-month adjustment factor
-      across(.cols = c(HHINCOME, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
+      across(.cols = c(HHINCOME, RENT, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
 }
 
 gc()
-
 # Apply crosswalks to all geography-year combinations
 walk(county_years, ~ crosswalk_microdata(year = .x, geography = "county"))
 walk(place_years, ~ crosswalk_microdata(year = .x, geography = "place"))
@@ -446,7 +449,12 @@ vacancy_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
       # Convert 9999999 to NA and then multiply by ADJUST for all non-missing observations
       mutate(
         year = YEAR,
-        RENT = if_else(RENT == 0, NA, RENT),
+        # "0" represents NA: https://usa.ipums.org/usa-action/variables/RENT#codes_section
+        # And, though not noted in IPUMS documentation, this also applies for the
+        # RENTGRS variable
+        across(
+          .cols = c(RENT, RENTGRS), 
+          .fns = ~ if_else(.x == 0, NA, .x)),
         VALUEH = if_else(VALUEH == 9999999, NA, VALUEH * ADJUST),
         loan_amount = 0.9 * VALUEH,
         monthly_mortgage_cost = .005, # monthly interest
@@ -505,8 +513,7 @@ rent_ratio = housing_microdata %>%
   mutate(
     year = year %>% as.numeric,
     ratio_rentgrs_rent = RENTGRS / RENT) %>% 
-  # Calculate weighted mean ratio by geography x year - values are multiplied by 
-  # afact in 0_housing_microdata.qmd so summarizing gets the place- or county-level value 
+  # Calculate weighted mean ratio by geography x year
   group_by(statefip, .data[[geography]], year) %>% 
   summarize(
     weighted_mean_ratio_rentgrs_rent = weighted.mean(
@@ -514,21 +521,6 @@ rent_ratio = housing_microdata %>%
   ungroup()
 
 # join places/counties to pumas using the crosswalk
-## county-level join summaries - 2021:2022
-  # all rows in the vacancy microdata join to the puma crosswalk
-  # 32 rows in the crosswalk do not join to the microdata 
-  #   (PUMA-years without vacant units, not an issue)
-  # all rows in the joint data join to the rent ratio data
-  # 2 rows in the rent_ratio data do not join to the joint data 
-  #   (these don't have any vacant units, not an issue)
-## place-level join summaries - 2021:2022
-  # 26050 rows in the vacancy microdata don't join to the crosswalk because these
-  #   PUMAs fall outside of places of interest
-  # 11 rows in the crosswalk don't join to the vacancy microdata  
-  #   (PUMA-years without vacant units, not an issue)
-  # all rows in the joint data join to the rent ratio data
-  # 1 row in the rent_ratio data does not join to the joint data 
-  #   (this place doesn't have any vacant units, not an issue)
 vacant_crosswalk = tidylog::left_join(
     vacancy_microdata, 
     puma_crosswalk, 
@@ -538,7 +530,11 @@ vacant_crosswalk = tidylog::left_join(
     year = year %>% as.numeric,
     GEOID = str_c(statefip, .data[[geography]])) %>%
   # limit only to places/counties of interest
-  filter(GEOID %in% puma_crosswalk$GEOID)
+  filter(GEOID %in% puma_crosswalk$GEOID) %>%
+  tidylog::left_join(rent_ratio, by = c("statefip", geography, "year")) %>%
+  mutate(
+    across(.cols = c(year, statefip, !!geography), .fns = as.character),
+    RENTGRS = RENT * weighted_mean_ratio_rentgrs_rent)
 ```
 
 ## Step 3: Import AMI data
@@ -561,7 +557,6 @@ income_limits_urls_1 = c(
   "https://www.huduser.gov/portal/datasets/il/il18/Section8-FY18.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il19/Section8-FY19.xlsx",
 # we don't produce 2020-based estimates due to data quality limitations for ACS data
-# from this year
 # "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY20.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx",
   "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx",
@@ -612,9 +607,10 @@ Income limits are specified at one of two geographies: the county (mostly), or t
 
 -   We aggregate our income limits to the county level. For most counties, this doesn't require any work, because there's only a single income limit for the county. For counties with sub-county-level income limits, we take the mean of these limits.
 
--   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by population.
+-   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by 2020 population.
 
 ```{r}
+# stop("Connecticut data are at the former county level (n = 8), rather than the new county level for 2022 onwards (n = 9). This needs to be fixed, if possible...")
 county_income_limits1 = fmr_income_limits %>%
   group_by(year, state, county) %>%
   summarize(
@@ -670,9 +666,6 @@ if (geography == "place") {
       state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
       place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"))
   
-  ## place-level join summaries - 2021:2022
-  # 1 row only in county_income_limits - 29056 - but this isn't a valid county FIPS code
-  # 0 rows only in county_place crosswalk
   place_income_limits = county_income_limits %>%
     tidylog::left_join(county_place_crosswalk, by = c("state", "county")) %>%
     group_by(state, place, year) %>%
@@ -695,9 +688,6 @@ Here we calculate which units are affordable for a family of four at 80%, 50%, a
 
 ```{r}
 ## these are data on occupied housing units
-## county-level join summaries - 2021:2022
-  # 0 rows only in housing_microdata 
-  # 1 rows only in crosswalked_income_limits -- a nonexistent county in Missouri
 household_affordability = tidylog::left_join(
     housing_microdata, 
     crosswalked_income_limits, 
@@ -707,19 +697,29 @@ household_affordability = tidylog::left_join(
     ## all households below ami levels
     across(
       .cols = matches("ami$"),
-      # Note: I (Will) have changed this logic to be inclusive of the AMI threshold;
-      # previously, I think such values would have defaulted to NAs (an error) 
-      .fns = ~ if_else(HHINCOME <= .x, 1, 0),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA,
+        is.na(HHINCOME) ~ NA,
+        HHINCOME <= .x ~ 1, 
+        TRUE ~ 0),
       .names = "all_below_{.col %>% stringr::str_extract('[0-9]{2}ami')}"),
     ## renters below ami levels
     across(
       .cols = c(all_below_80ami, all_below_50ami, all_below_30ami),
-      .fns = ~ if_else(.x == 1 & OWNERSHP == 2, 1, 0),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA,
+        OWNERSHP == 1 ~ NA,
+        .x == 1 & OWNERSHP == 2 ~ 1, 
+        TRUE ~ .x),
       .names = "renter_{.col %>% stringr::str_remove('all_')}"),
     ## owners below ami levels
     across(
       .cols = c(all_below_80ami, all_below_50ami, all_below_30ami),
-      .fns = ~ if_else(.x == 1 & OWNERSHP == 1, 1, 0),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA,
+        OWNERSHP == 2 ~ NA,
+        .x == 1 & OWNERSHP == 1 ~ 1, 
+        TRUE ~ .x),
       .names = "owner_{.col %>% stringr::str_remove('all_')}"),
     ## this standardized cost variable simplifies subsequent calculations
     applicable_housing_cost = if_else(OWNERSHP == 2, RENTGRS, OWNCOST),
@@ -727,8 +727,9 @@ household_affordability = tidylog::left_join(
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
       .fns = ~ case_when(
+        is.na(applicable_housing_cost) ~ NA,
+        is.na(OWNERSHP) ~ NA,
         OWNERSHP == 1 ~ NA, ## if it is a owner-occupied household, return NA
-        RENTGRS == 0 ~ 99999999999,
         OWNERSHP == 2 & applicable_housing_cost * 12 <= .x * .3 ~ 1,
         TRUE ~ 0), 
       .names = "renter_affordable_{.col}"),
@@ -736,44 +737,38 @@ household_affordability = tidylog::left_join(
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
       .fns = ~ case_when(
+        is.na(applicable_housing_cost) ~ NA,
+        is.na(OWNERSHP) ~ NA,
         OWNERSHP == 2 ~ NA, ## if it is a renter-occupied household, return NA
         OWNERSHP == 1 & applicable_housing_cost * 12 <= .x * .3 ~ 1,
-        OWNERSHP == 1 & !is.na(applicable_housing_cost) ~ 0,
-        is.na(applicable_housing_cost) ~ 99999999999), 
+        TRUE ~ 0), 
       .names = "owner_affordable_{.col}"),
     ## any households with affordable housing costs
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
-      .fns = ~ if_else(
-        !is.na(applicable_housing_cost) & applicable_housing_cost * 12 <= .x * .3, 
-        1, 
-        0), 
+      .fns = ~ case_when(
+        is.na(applicable_housing_cost) ~ NA,
+        applicable_housing_cost * 12 <= .x * .3 ~ 1, 
+        TRUE ~ 0), 
       .names = "all_affordable_{.col}"),
     ## calculating affordable and available across all subgroups (and overall)
     across(
       .cols = matches("affordable"), # e.g., all_affordable_level_80ami
       # if the unit is affordable at the given AMI level and is occupied by a household 
       # at or below that AMI level
-      .fns = ~ if_else(
-        .x == 1 & get(str_replace(cur_column(), "affordable_level", "below")) == 1, 1, 0),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA,
+        is.na(get(str_replace(cur_column(), "affordable_level", "below"))) ~ NA,
+        .x == 1 & get(str_replace(cur_column(), "affordable_level", "below")) == 1 ~ 1,
+        TRUE ~ 0),
       .names = "{.col %>% stringr::str_replace('affordable', 'available')}"))
-
-## we check that no rows have this error placeholder value (none should)
-stopifnot(
-  household_affordability %>%
-    filter(if_any(.cols = everything(), .fn = ~ .x == 99999999999)) %>%
-    nrow == 0)
 ```
 
 ```{r}
 ## these are data on vacant housing units
-## county-level join summaries - 2021:2022
-  # 0 rows only in vacant_microdata 
-  # 3 rows only in crosswalked_income_limits -- these areas don't have any vacant 
-  #   units (no issue)
 vacant_affordability = tidylog::left_join(
-    vacant_crosswalk %>% mutate(year = as.character(year)), 
-    crosswalked_income_limits %>% mutate(year = as.character(year)), 
+    vacant_crosswalk, 
+    crosswalked_income_limits, 
     by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
@@ -816,7 +811,7 @@ household_affordability_summed = household_affordability %>%
     # get unweighted counts for quality flags, adjusting for spatial interpolation using afact
     across(
       .cols = matches("below"), 
-      .fns = ~ sum(.x * afact),
+      .fns = ~ sum(.x * afact, na.rm = TRUE),
       .names = "{.col}_quality"),
     # get weighted counts for actual statistics/estimates
     across(
@@ -836,10 +831,6 @@ vacant_affordability_summed = vacant_affordability %>%
   rename("state" = "statefip")
 
 ## here we (finally) combine our occupied and vacant data
-## county-level join summaries - 2021:2022
-  # 2 rows only in household_affordability_summed -- these areas don't have any 
-  #   vacant units (no issue)
-  # 0 rows only in vacant_affordability_summed
 housing_summed = tidylog::left_join(
     household_affordability_summed, 
     vacant_affordability_summed, 
@@ -875,9 +866,9 @@ housing_summed = tidylog::left_join(
 If the unweighted sum of interpolated households is under 30, we suppress that cell because it is likely to be highly imprecise.
 
 ```{r}
-# read in the puma interpolation quality files, which are calculated in 
-# 02_get_housing_microdata.R. these contain `puma_flag`, which provides a score
-# from 1-3 describing the mean geographic allocation quality for each 
+# read in the puma interpolation quality files, these contain `puma_flag`, 
+# which provides a score from 1-3 describing the mean geographic allocation quality 
+# for each 
 years = if_else(
   geography == "county", 
   paste0(county_years, collapse = "|"), 
@@ -896,9 +887,6 @@ puma_interpolation_quality = list.files(here(temporary_data_path), full.names = 
 
 # combine minimum cell size standards (n = 30) with the puma interpolation quality 
 # scores to assign each cell a quality flag
-## county-level join summaries - 2021:2022
-  # 0 rows only in housing_summed
-  # 0 rows only in puma_interpolation_quality
 housing_summed_quality =  tidylog::left_join(
     housing_summed,
     puma_interpolation_quality, 
@@ -1003,7 +991,6 @@ The final dataset, including all subgroups, meets all the assertions contained i
 #         confidence_intervals = FALSE))})
 ```
 
-
 ### Data Assertions
 
 ***Geographic Universe Alignment***
@@ -1020,34 +1007,20 @@ geography_universe = population_listing %>%
   group_by(year) %>%
   summarize(geography_count = n_distinct(geoid))
 
-# population_listing %>%
-#   arrange(geoid) %>%
-#   select(geoid, year, matches("name")) %>%
-#   left_join(
-#     housing_subgroups %>%
-#       transmute(
-#         year,
-#         geoid = str_c(state, .data[[geography]]), 
-#         flag = 1) %>%
-#       distinct(),
-#     by = c("geoid", "year")) %>%
-#   filter(is.na(flag), year %in% county_years)
-
-## This fails because of Valdez-Cordova, AK (2014-2019)
-## and because of each of the new CT planning regions (2022-2023)
-## for counties
-## For places, this fails because of South Fulton
-# test_that(
-#   "Counts of places/counties are correct for each year", {
-#   expect_true(
-#     all(
-#       housing_subgroups %>%
-#         group_by(year, subgroup) %>%
-#         summarize(
-#           geography_count_analysis = n_distinct(state, .data[[geography]])) %>%
-#         tidylog::left_join(geography_universe, by = "year") %>%
-#         mutate(check = geography_count == geography_count_analysis) %>%
-#         pull(check)))})
+# This fails because of Valdez-Cordova, AK (2014-2019)
+# for counties
+# For places, this fails because of South Fulton
+test_that(
+  "Counts of places/counties are correct for each year", {
+  expect_true(
+    all(
+      housing_subgroups %>%
+        group_by(year, subgroup) %>%
+        summarize(
+          geography_count_analysis = n_distinct(state, .data[[geography]])) %>%
+        tidylog::left_join(geography_universe, by = "year") %>%
+        mutate(check = geography_count == geography_count_analysis) %>%
+        pull(check)))})
 ```
 
 ***Values Are Not Negative***
@@ -1091,31 +1064,89 @@ Unless substantive changes have been made to the process of calculating the metr
 ## data are available from this URL: https://datacatalog.urban.org/dataset/mobility-metrics-data-upward-mobility-framework
 ## specific links used in the code will likely need to be updated year-to-year
 
-# if (geography == "place") {
-#   metrics_prior1 = read_csv(
-#     ## this corresponds to longitudinal, place-level metrics that are broken down by tenure
-#     "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2024/09/67_mobility-metrics_place_tenure_longitudinal.csv")
-# } else {
-#     metrics_prior1 = read_csv(
-#     ## this corresponds to longitudinal, place-level metrics that are broken down by tenure
-#     "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2024/09/17_mobility-metrics_county_tenure_longitudinal.csv")
-# }
-#   
-# metrics_prior = metrics_prior1 %>%
-#   select(
-#     state, state_name, year, any_of(c("place", "place_name", "county", "county_name")), 
-#     subgroup, subgroup_type, share_affordable_80_ami, share_affordable_50_ami, 
-#     share_affordable_30_ami, share_affordable_available_80_ami, share_affordable_available_50_ami, 
-#     share_affordable_available_30_ami) %>%
-#   ## just looking at the subgroups; if they pass these tests, then the "All" subgroup
-#   ## should as well
-#   filter(year %in% c(place_years, county_years), subgroup != "All") %>%
-#   rename_with(
-#     .cols = matches("share"), 
-#     .fn = ~ str_replace_all(
-#       .x, c("share" = "ratio", "affordable_available" = "available", "_ami" = "ami")) %>% str_c("_prior")) %>%
-#   mutate(year = as.character(year))
-# 
+if (geography == "place") {
+  metrics_prior1 = read_csv(
+    ## this corresponds to longitudinal, place-level metrics that are broken down by tenure
+    "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2024/09/67_mobility-metrics_place_tenure_longitudinal.csv")
+} else {
+    metrics_prior1 = read_csv(
+    ## this corresponds to longitudinal, county-level metrics that are broken down by tenure
+    "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2024/09/17_mobility-metrics_county_tenure_longitudinal.csv")
+}
+
+metrics_prior = metrics_prior1 %>%
+  select(
+    state, state_name, year, any_of(c("place", "place_name", "county", "county_name")),
+    subgroup, subgroup_type, share_affordable_80_ami, share_affordable_50_ami,
+    share_affordable_30_ami, share_affordable_available_80_ami, share_affordable_available_50_ami,
+    share_affordable_available_30_ami) %>%
+  ## just looking at the subgroups; if they pass these tests, then the "All" subgroup
+  ## should as well
+  filter(year %in% c(place_years, county_years), subgroup != "All") %>%
+  rename_with(
+    .cols = matches("share"),
+    .fn = ~ str_replace_all(
+      .x, c("share" = "ratio", "affordable_available" = "available", "_ami" = "ami")) %>% str_c("_prior")) %>%
+  mutate(year = as.character(year))
+
+metrics_differences_wide = metrics_prior %>%
+  tidylog::left_join(
+    housing_subgroups %>%
+      mutate(subgroup = subgroup %>% str_to_sentence) %>%
+      select(-subgroup_type, -matches("quality")),
+    by = c("state", geography, "year", "subgroup")) %>%
+  filter(year == 2022)
+
+metrics_differences_wide_plot = metrics_differences_wide %>%
+  transmute(
+    state, state_name, year, 
+    !!geography,
+    !!(str_c(geography, "_name")),
+    subgroup,
+    across(
+    .cols = matches("prior"),
+      .fns = ~ round((.x - get(cur_column() %>% str_remove("_prior"))), digits = 2),
+      .names = "{.col %>% stringr::str_remove('_prior')}_difference"),
+    across(
+      .cols = matches("_difference"),
+      .fns = ~ if_else(.x != 0, 1, 0),
+      .names = "{.col}_flag"))
+
+metrics_differences_wide_plot %>%
+  pivot_longer(cols = matches("difference_flag")) %>%
+  group_by(name, subgroup) %>%
+  summarize(
+    count = sum(!is.na(value)), 
+    value = sum(value, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(
+    name = name %>% str_replace_all("_", " ") %>% str_to_sentence %>% str_remove(" difference flag"),
+    percent = value / count) %>%
+  ggplot() +
+  geom_col(aes(x = name, y = percent, fill = subgroup), position = "dodge") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Share of non-missing geographies with differences in calculated values for 2022 data, 2024 vs. 2023" %>% str_wrap(90),
+    y = "", x = "") +
+  theme_urbn_print()
+
+metrics_differences_wide_plot %>%
+  pivot_longer(cols = matches("difference$")) %>%
+  arrange(value) %>%
+  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence) %>%
+  ggplot() +
+    geom_histogram(aes(x = value, fill = name)) +
+    facet_wrap(~ subgroup) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_urbn_print() +
+  labs(
+    title = "Differences in calculated values for 2022 data, 2023 vs. 2024",
+    x = "Difference in value, 2023 vs 2024",
+    y = "Count")
+```
+
+```{r}
 # test_that(
 #   "Values produced for the most recent year's data, using the current year's codebase,
 #   are the same as those produced the prior year", {
@@ -1159,7 +1190,7 @@ housing_subgroups %>%
 
 ***Distributions***
 
-We anticipate the the distributions for a given metric will be similar across years, and that the peaks of distributions will be progressively lower for lower AMI levels.
+We anticipate the the distributions for a given metric will be similar across years, and that the peaks of distributions will be generally be lower for lower AMI levels.
 
 ```{r}
 housing_subgroups %>% 
@@ -1196,6 +1227,8 @@ Metrics generally should not exhibit huge year-over-year changes within the same
 -   Conversely, the 30% AMI ratios should show the most variation because this AMI threshold encompasses fewer households and housing units, leading to greater percentage variability year-over-year.
 
 ```{r}
+if (length(c(county_years, place_years) %>% unique) > 1) {
+
 housing_subgroups %>%
   select(-matches("quality")) %>%
   pivot_longer(cols = c(matches("ratio"))) %>%
@@ -1218,6 +1251,7 @@ housing_subgroups %>%
       subtitle = "Distributions of year-over-year changes in housing affordability and availability metrics, by AMI level and subgroup") +
   scale_y_continuous(labels = scales::comma) +
   scale_x_continuous(labels = scales::percent)
+}
 ```
 
 ***Alignment with NLIHC Estimates***
@@ -1225,114 +1259,110 @@ housing_subgroups %>%
 Estimates should generally align with estimates produced by NLIHC as part of their "The GAP" series. We've provided values from their most recent (as of writing) publication, which relies on 2022 data.
 
 ```{r}
-## data from: https://nlihc.org/sites/default/files/gap/2024/Gap-Report_2024.pdf
-##  Appendix B
-# 
-# nlihc_estimates_metro = tribble(
-#   ~`Metro Area`, ~`At or below ELI`, ~`At or below 50% AMI`, ~`At or below ELI`, 
-#   ~`At or below 50% AMI`, ~`At or below 80% AMI`, ~`At or below 100% AMI`, 
-#   ~`At or below ELI`, ~`31% to 50% AMI`, ~`51% to 80% AMI`, ~`81% to 100% AMI`,
-#   "Atlanta-Sandy Springs-Alpharetta, GA", -122791, -161422, 25, 44, 90, 104, "81%", "45%", "10%", "2%",
-#   "Austin-Round Rock-Georgetown, TX", -60429, -74883, 21, 46, 95, 101, "87%", "32%", "6%", "2%",
-#   "Baltimore-Columbia-Towson, MD", -65241, -68527, 33, 57, 94, 100, "73%", "33%", "9%", "1%",
-#   "Boston-Cambridge-Newton, MA-NH", -117411, -147169, 46, 56, 87, 97, "64%", "36%", "9%", "3%",
-#   "Buffalo-Cheektowaga, NY", -33156, -22727, 37, 72, 98, 100, "73%", "28%", "4%", "4%",
-#   "Charlotte-Concord-Gastonia, NC-SC", -45765, -58064, 35, 55, 95, 105, "75%", "39%", "7%", "2%",
-#   "Chicago-Naperville-Elgin, IL-IN-WI", -239240, -230890, 29, 58, 93, 98, "77%", "31%", "7%", "3%",
-#   "Cincinnati, OH-KY-IN", -49510, -32868, 41, 76, 98, 101, "72%", "22%", "5%", "3%",
-#   "Cleveland-Elyria, OH", -56560, -33012, 38, 77, 98, 100, "70%", "21%", "6%", "2%",
-#   "Columbus, OH", -52694, -48343, 26, 62, 99, 103, "75%", "29%", "6%", "2%",
-#   "Dallas-Fort Worth-Arlington, TX", -179108, -244497, 17, 40, 91, 104, "86%", "41%", "8%", "2%",
-#   "Denver-Aurora-Lakewood, CO", -65454, -93256, 27, 41, 92, 103, "75%", "43%", "5%", "3%",
-#   "Detroit-Warren-Dearborn, MI", -99583, -85325, 32, 63, 98, 102, "74%", "24%", "5%", "3%",
-#   "Hartford-East Hartford-Middletown, CT", -32956, -22866, 34, 70, 98, 100, "71%", "24%", "5%", "2%",
-#   "Houston-The Woodlands-Sugar Land, TX", -184283, -230680, 15, 40, 91, 103, "83%", "37%", "7%", "3%",
-#   "Indianapolis-Carmel-Anderson, IN", -50554, -38789, 23, 67, 100, 103, "82%", "21%", "4%", "2%",
-#   "Jacksonville, FL", -32328, -40303, 29, 47, 87, 102, "79%", "48%", "14%", "2%",
-#   "Kansas City, MO-KS", -46042, -43045, 36, 66, 99, 103, "76%", "28%", "7%", "3%",
-#   "Las Vegas-Henderson-Paradise, NV", -60344, -91209, 13, 23, 67, 93, "88%", "59%", "19%", "8%",
-#   "Los Angeles-Long Beach-Anaheim, CA", -380006, -582884, 21, 27, 55, 75, "80%", "59%", "23%", "8%",
-#   "Louisville/Jefferson County, KY-IN", -30218, -20647, 31, 70, 99, 102, "72%", "20%", "4%", "2%",
-#   "Memphis, TN-MS-AR", -29064, -29323, 36, 59, 95, 103, "79%", "42%", "15%", "1%",
-#   "Miami-Fort Lauderdale-Pompano Beach, FL", -140763, -226085, 23, 25, 50, 74, "81%", "72%", "29%", "12%",
-#   "Milwaukee-Waukesha, WI", -44596, -28174, 30, 75, 97, 100, "75%", "30%", "4%", "3%",
-#   "Minneapolis-St. Paul-Bloomington, MN-WI", -79282, -73248, 28, 61, 96, 101, "73%", "33%", "4%", "2%",
-#   "Nashville-Davidson--Murfreesboro--Franklin, TN", -35086, -46507, 36, 53, 91, 102, "74%", "37%", "7%", "2%",
-#   "New Orleans-Metairie, LA", -35856, -44558, 29, 43, 93, 104, "77%", "42%", "11%", "1%",
-#   "New York-Newark-Jersey City, NY-NJ-PA", -656458, -802969, 32, 46, 80, 93, "74%", "41%", "13%", "5%",
-#   "Oklahoma City, OK", -34735, -28604, 33, 66, 103, 105, "78%", "29%", "4%", "4%",
-#   "Orlando-Kissimmee-Sanford, FL", -56895, -94715, 18, 24, 61, 88, "87%", "63%", "23%", "4%",
-#   "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD", -153236, -142974, 34, 61, 93, 101, "74%", "31%", "6%", "2%",
-#   "Phoenix-Mesa-Chandler, AZ", -89838, -128908, 19, 34, 77, 98, "82%", "50%", "13%", "4%",
-#   "Pittsburgh, PA", -44088, -21259, 49, 84, 105, 106, "67%", "17%", "3%", "1%",
-#   "Portland-Vancouver-Hillsboro, OR-WA", -56972, -80971, 25, 39, 91, 100, "77%", "44%", "7%", "2%",
-#   "Providence-Warwick, RI-MA", -39709, -40786, 49, 66, 96, 100, "59%", "29%", "4%", "0%",
-#   "Raleigh-Cary, NC", -23357, -18385, 37, 74, 121, 123, "71%", "29%", "4%", "1%",
-#   "Richmond, VA", -37164, -30226, 24, 60, 96, 101, "77%", "39%", "6%", "2%",
-#   "Riverside-San Bernardino-Ontario, CA", -72055, -113722, 21, 34, 66, 82, "81%", "52%", "23%", "8%",
-#   "Rochester, NY", -29134, -22090, 35, 68, 97, 101, "71%", "32%", "3%", "1%",
-#   "Sacramento-Roseville-Folsom, CA", -56693, -75930, 23, 38, 79, 96, "81%", "49%", "14%", "3%",
-#   "San Antonio-New Braunfels, TX", -55338, -82623, 28, 37, 89, 104, "75%", "43%", "12%", "2%",
-#   "San Diego-Chula Vista-Carlsbad, CA", -82307, -126617, 20, 27, 64, 84, "82%", "59%", "20%", "7%",
-#   "San Francisco-Oakland-Berkeley, CA", -132227, -153670, 32, 48, 85, 96, "69%", "34%", "9%", "2%",
-#   "San Jose-Sunnyvale-Santa Clara, CA", -45752, -57912, 33, 48, 87, 100, "73%", "29%", "9%", "2%",
-#   "Seattle-Tacoma-Bellevue, WA", -101139, -143381, 26, 39, 90, 99, "76%", "42%", "6%", "2%",
-#   "St. Louis, MO-IL", -63984, -31506, 35, 80, 100, 102, "71%", "17%", "4%", "2%",
-#   "Tampa-St. Petersburg-Clearwater, FL", -69630, -94696, 21, 36, 74, 94, "83%", "50%", "21%", "6%",
-#   "Tucson, AZ", -26615, -34568, 24, 45, 92, 101, "78%", "40%", "7%", "3%",
-#   "Virginia Beach-Norfolk-Newport News, VA-NC", -42532, -54300, 26, 43, 89, 101, "80%", "48%", "8%", "2%",
-#   "Washington-Arlington-Alexandria, DC-VA-MD-WV", -144435, -156133, 26, 53, 96, 102, "77%", "27%", "4%", "2%") %>%
-#   clean_names() %>%
-#   select(
-#     metro_area, 
-#     ratio_available_30ami = at_or_below_eli_2, 
-#     ratio_available_50ami = at_or_below_50_percent_ami_2,
-#     ratio_available_80ami = at_or_below_80_percent_ami) %>%
-#   mutate(
-#     county_match_geoid = case_when(
-#       str_detect(metro_area, "Tucson") ~ "04019",
-#       str_detect(metro_area, "Denver") ~ "08031",
-#       str_detect(metro_area, "Hartford") ~ "09003",
-#       str_detect(metro_area, "Washington") ~ "13121",
-#       str_detect(metro_area, "Jacksonville") ~ "12031",
-#       str_detect(metro_area, "Atlanta") ~ "13121",
-#       str_detect(metro_area, "Indianapolis") ~ "18097",
-#       str_detect(metro_area, "Baltimore") ~ "24005",
-#       str_detect(metro_area, "Detroit") ~ "26163",
-#       str_detect(metro_area, "Las Vegas") ~ "32003",
-#       str_detect(metro_area, "Rochester") ~ "36055",
-#       str_detect(metro_area, "Pittsburgh") ~ "42003",
-#       str_detect(metro_area, "Richmond") ~ "51159",
-#       str_detect(metro_area, "Milwaukee") ~ "55079",
-#       str_detect(metro_area, "Oklahoma") ~ "40109",
-#       str_detect(metro_area, "Columbus") ~ "39049")) %>%
-#   filter(!is.na(county_match_geoid)) 
-# 
-# housing_subgroups %>% 
-#   filter(year == 2022, subgroup == "Renter") %>%
-#   select(state, ratio_available_30ami) %>%
-#   group_by(state) %>%
-#   summarize(
-#     total_count = n(),
-#     valid_count = sum(!is.na(ratio_available_30ami)),
-#     mean_ratio_state = round(mean(ratio_available_30ami, na.rm = TRUE) * 100, digits = 0)) %>%
-#   left_join(nlihc_estimates, by = c("state" = "state_code")) %>%
-#   mutate(
-#     percent_valid = round(valid_count / total_count * 100, digits = 0),
-#     difference = mean_ratio_state - affordable_available_per_100_eli_renter_households) %>%
-#   select(state_name = state.y, difference, percent_valid,  mean_ratio_state, affordable_available_per_100_eli_renter_households) %>%
-#   arrange(desc(abs(difference))) %>%
-#   ggplot() +
-#   geom_point(aes(x = abs(difference), y = percent_valid, color = difference, size = abs(difference))) +
-#   theme_urbn_print() +
-#   guides(color = FALSE, size = FALSE) +
-#   labs(
-#     title = "Urban vs. NLIHC estimates of affordable and available rental units to renters at 30% AMI",
-#     subtitle = str_c(
-#       "Owing to difference in geographic units of analysis (and associated suppression), some differences are expected. ",
-#       "Generally, we expect states with fewer valid Urban estimates to have greater differences relative to NLIHC estimates.") %>% str_wrap(120),
-#     x = "Absolute difference between state average of Urban estimates and NLIHC estimate", 
-#     y = "Percent of geographies with valid Urban estimates")
-# 
-# nlihc_estimates_metro 
+# data from: https://nlihc.org/sites/default/files/gap/2024/Gap-Report_2024.pdf
+#  Appendix B
+
+if (geography == "county") {
+
+nlihc_estimates_metro = tribble(
+  ~`Metro Area`, ~`At or below ELI`, ~`At or below 50% AMI`, ~`At or below ELI`,
+  ~`At or below 50% AMI`, ~`At or below 80% AMI`, ~`At or below 100% AMI`,
+  ~`At or below ELI`, ~`31% to 50% AMI`, ~`51% to 80% AMI`, ~`81% to 100% AMI`,
+  "Atlanta-Sandy Springs-Alpharetta, GA", -122791, -161422, 25, 44, 90, 104, "81%", "45%", "10%", "2%",
+  "Austin-Round Rock-Georgetown, TX", -60429, -74883, 21, 46, 95, 101, "87%", "32%", "6%", "2%",
+  "Baltimore-Columbia-Towson, MD", -65241, -68527, 33, 57, 94, 100, "73%", "33%", "9%", "1%",
+  "Boston-Cambridge-Newton, MA-NH", -117411, -147169, 46, 56, 87, 97, "64%", "36%", "9%", "3%",
+  "Buffalo-Cheektowaga, NY", -33156, -22727, 37, 72, 98, 100, "73%", "28%", "4%", "4%",
+  "Charlotte-Concord-Gastonia, NC-SC", -45765, -58064, 35, 55, 95, 105, "75%", "39%", "7%", "2%",
+  "Chicago-Naperville-Elgin, IL-IN-WI", -239240, -230890, 29, 58, 93, 98, "77%", "31%", "7%", "3%",
+  "Cincinnati, OH-KY-IN", -49510, -32868, 41, 76, 98, 101, "72%", "22%", "5%", "3%",
+  "Cleveland-Elyria, OH", -56560, -33012, 38, 77, 98, 100, "70%", "21%", "6%", "2%",
+  "Columbus, OH", -52694, -48343, 26, 62, 99, 103, "75%", "29%", "6%", "2%",
+  "Dallas-Fort Worth-Arlington, TX", -179108, -244497, 17, 40, 91, 104, "86%", "41%", "8%", "2%",
+  "Denver-Aurora-Lakewood, CO", -65454, -93256, 27, 41, 92, 103, "75%", "43%", "5%", "3%",
+  "Detroit-Warren-Dearborn, MI", -99583, -85325, 32, 63, 98, 102, "74%", "24%", "5%", "3%",
+  "Hartford-East Hartford-Middletown, CT", -32956, -22866, 34, 70, 98, 100, "71%", "24%", "5%", "2%",
+  "Houston-The Woodlands-Sugar Land, TX", -184283, -230680, 15, 40, 91, 103, "83%", "37%", "7%", "3%",
+  "Indianapolis-Carmel-Anderson, IN", -50554, -38789, 23, 67, 100, 103, "82%", "21%", "4%", "2%",
+  "Jacksonville, FL", -32328, -40303, 29, 47, 87, 102, "79%", "48%", "14%", "2%",
+  "Kansas City, MO-KS", -46042, -43045, 36, 66, 99, 103, "76%", "28%", "7%", "3%",
+  "Las Vegas-Henderson-Paradise, NV", -60344, -91209, 13, 23, 67, 93, "88%", "59%", "19%", "8%",
+  "Los Angeles-Long Beach-Anaheim, CA", -380006, -582884, 21, 27, 55, 75, "80%", "59%", "23%", "8%",
+  "Louisville/Jefferson County, KY-IN", -30218, -20647, 31, 70, 99, 102, "72%", "20%", "4%", "2%",
+  "Memphis, TN-MS-AR", -29064, -29323, 36, 59, 95, 103, "79%", "42%", "15%", "1%",
+  "Miami-Fort Lauderdale-Pompano Beach, FL", -140763, -226085, 23, 25, 50, 74, "81%", "72%", "29%", "12%",
+  "Milwaukee-Waukesha, WI", -44596, -28174, 30, 75, 97, 100, "75%", "30%", "4%", "3%",
+  "Minneapolis-St. Paul-Bloomington, MN-WI", -79282, -73248, 28, 61, 96, 101, "73%", "33%", "4%", "2%",
+  "Nashville-Davidson--Murfreesboro--Franklin, TN", -35086, -46507, 36, 53, 91, 102, "74%", "37%", "7%", "2%",
+  "New Orleans-Metairie, LA", -35856, -44558, 29, 43, 93, 104, "77%", "42%", "11%", "1%",
+  "New York-Newark-Jersey City, NY-NJ-PA", -656458, -802969, 32, 46, 80, 93, "74%", "41%", "13%", "5%",
+  "Oklahoma City, OK", -34735, -28604, 33, 66, 103, 105, "78%", "29%", "4%", "4%",
+  "Orlando-Kissimmee-Sanford, FL", -56895, -94715, 18, 24, 61, 88, "87%", "63%", "23%", "4%",
+  "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD", -153236, -142974, 34, 61, 93, 101, "74%", "31%", "6%", "2%",
+  "Phoenix-Mesa-Chandler, AZ", -89838, -128908, 19, 34, 77, 98, "82%", "50%", "13%", "4%",
+  "Pittsburgh, PA", -44088, -21259, 49, 84, 105, 106, "67%", "17%", "3%", "1%",
+  "Portland-Vancouver-Hillsboro, OR-WA", -56972, -80971, 25, 39, 91, 100, "77%", "44%", "7%", "2%",
+  "Providence-Warwick, RI-MA", -39709, -40786, 49, 66, 96, 100, "59%", "29%", "4%", "0%",
+  "Raleigh-Cary, NC", -23357, -18385, 37, 74, 121, 123, "71%", "29%", "4%", "1%",
+  "Richmond, VA", -37164, -30226, 24, 60, 96, 101, "77%", "39%", "6%", "2%",
+  "Riverside-San Bernardino-Ontario, CA", -72055, -113722, 21, 34, 66, 82, "81%", "52%", "23%", "8%",
+  "Rochester, NY", -29134, -22090, 35, 68, 97, 101, "71%", "32%", "3%", "1%",
+  "Sacramento-Roseville-Folsom, CA", -56693, -75930, 23, 38, 79, 96, "81%", "49%", "14%", "3%",
+  "San Antonio-New Braunfels, TX", -55338, -82623, 28, 37, 89, 104, "75%", "43%", "12%", "2%",
+  "San Diego-Chula Vista-Carlsbad, CA", -82307, -126617, 20, 27, 64, 84, "82%", "59%", "20%", "7%",
+  "San Francisco-Oakland-Berkeley, CA", -132227, -153670, 32, 48, 85, 96, "69%", "34%", "9%", "2%",
+  "San Jose-Sunnyvale-Santa Clara, CA", -45752, -57912, 33, 48, 87, 100, "73%", "29%", "9%", "2%",
+  "Seattle-Tacoma-Bellevue, WA", -101139, -143381, 26, 39, 90, 99, "76%", "42%", "6%", "2%",
+  "St. Louis, MO-IL", -63984, -31506, 35, 80, 100, 102, "71%", "17%", "4%", "2%",
+  "Tampa-St. Petersburg-Clearwater, FL", -69630, -94696, 21, 36, 74, 94, "83%", "50%", "21%", "6%",
+  "Tucson, AZ", -26615, -34568, 24, 45, 92, 101, "78%", "40%", "7%", "3%",
+  "Virginia Beach-Norfolk-Newport News, VA-NC", -42532, -54300, 26, 43, 89, 101, "80%", "48%", "8%", "2%",
+  "Washington-Arlington-Alexandria, DC-VA-MD-WV", -144435, -156133, 26, 53, 96, 102, "77%", "27%", "4%", "2%") %>%
+  clean_names() %>%
+  select(
+    metro_area,
+    ratio_available_30ami_nlihc = at_or_below_eli_2,
+    ratio_available_50ami_nlihc = at_or_below_50_percent_ami_2,
+    ratio_available_80ami_nlihc = at_or_below_80_percent_ami) %>%
+  mutate(
+    county_match_geoid = case_when(
+      str_detect(metro_area, "Tucson") ~ "04019",
+      str_detect(metro_area, "Denver") ~ "08031",
+      str_detect(metro_area, "Hartford") ~ "09003",
+      str_detect(metro_area, "Washington") ~ "13121",
+      str_detect(metro_area, "Jacksonville") ~ "12031",
+      str_detect(metro_area, "Atlanta") ~ "13121",
+      str_detect(metro_area, "Indianapolis") ~ "18097",
+      str_detect(metro_area, "Baltimore") ~ "24005",
+      str_detect(metro_area, "Detroit") ~ "26163",
+      str_detect(metro_area, "Las Vegas") ~ "32003",
+      str_detect(metro_area, "Rochester") ~ "36055",
+      str_detect(metro_area, "Pittsburgh") ~ "42003",
+      str_detect(metro_area, "Richmond") ~ "51159",
+      str_detect(metro_area, "Milwaukee") ~ "55079",
+      str_detect(metro_area, "Oklahoma") ~ "40109",
+      str_detect(metro_area, "Columbus") ~ "39049")) %>%
+  filter(!is.na(county_match_geoid))
+
+nlihc_estimates_metro %>%
+  tidylog::left_join(
+    housing_subgroups %>% 
+      filter(year == 2022, subgroup == "Renter") %>%
+      mutate(geoid = str_c(state, county)) %>%
+      select(c(matches("ratio_available"), -matches("quality")), geoid),
+    by = c("county_match_geoid" = "geoid")) %>%
+  filter(!is.na(ratio_available_30ami)) %>%
+  mutate(
+    across(matches("nlihc"), ~ .x / 100),
+    across(matches("nlihc"), .fns = ~ .x - get(cur_column() %>% str_remove("_nlihc")), .names = "{.col}_diff")) %>%
+  select(metro_area, matches("diff")) %>%
+  pivot_longer(matches("diff")) %>%
+  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence %>% str_remove_all(" nlihc diff")) %>%
+  ggplot() +
+    geom_point(aes(x = metro_area, y = value, color = name)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+    coord_flip() +
+    labs(x = "Metro area", y = "Ratio difference (NLIHC - Urban)") +
+    theme_urbn_print()
+}
 ```
