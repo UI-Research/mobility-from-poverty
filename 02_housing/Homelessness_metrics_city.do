@@ -16,8 +16,8 @@
 			and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
 			subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.*/
 *Updated December 2024 by E Gutierrez
-	*Creates the number and share of homeless students by city for 2014-15, 2015-16, and 2022-23 (2014-15 through 2019-20 completed in previous update)
-		*Creates the number and share of homeless by race/ethnicity for 2022-23 (recreates with each total student ethnicity as denominator)
+	*Creates the number and share of homeless students by city for 2014-15 through 2018-19 (2014-2018)
+
 
 **Housekeeping: install educationdata command **
 cap n ssc install libjson
@@ -27,7 +27,7 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global years 2015 2016 2017 2018 // refers to 2015-16 school years through 2018-19 school years
+global years 2014 2015 2016 2017 2018 
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -95,28 +95,30 @@ foreach year in $years {
 
 *Append 
 clear
-use "intermediate/ccd_lea_2015_city.dta"
-forvalues year == 2016/2018 {
+use "intermediate/ccd_lea_2014_city.dta"
+forvalues year == 2015/2018 {
 	append using "intermediate/ccd_lea_`year'_city.dta" 
 		} 
-	save "intermediate/ccd_lea_2015-2018_city.dta", replace // gitignore
+	save "intermediate/ccd_lea_2014-2018_city.dta", replace // gitignore
 
 
 *Download EdDataExpress Data from
 *https://eddataexpress.ed.gov/download/data-library
-*each zip file is named differently, but use Level: LEA" & "Data Group": 655
-*2015-16, 2016-17, 2017-18, 2018-19 are in the same file
+*each zip file is named differently, but use Level: "LEA" & "Data Group": 655
+*2014-15, 2015-16, 2016-17, 2017-18 are in the same file
 copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_1350/SY1018_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2010-17.zip", replace
+*2018-19
 copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY1819_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2018-19.zip", replace
 *Manually unzip each file to the raw data folder
 
-	*2015-2017
+	*2014-2017
 	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
-	gen year=2015 if schoolyear=="2015-2016"
+	gen year=2014 if schoolyear=="2014-2015"
+	replace year=2015 if schoolyear=="2015-2016"
 	replace year=2016 if schoolyear=="2016-2017"
 	replace year=2017 if schoolyear=="2017-2018"
 	keep if year!=.
-	save "raw/edfacts_homelessness_2015-2017.dta", replace // gitignore
+	save "raw/edfacts_homelessness_2014-2017.dta", replace // gitignore
 
 	*2018	
 	import delimited "raw/SY1819_FS118_DG655_LEA.csv", clear
@@ -253,6 +255,11 @@ collapse (sum) *homeless* enrollment, by(year state city_name)
 	*2022 foreach var in homeless black white hispanic other {
 	rename `var' `var'_count
 	rename `var'_lower_ci `var'_count_lb
+	foreach var in homeless {
+	*2022* foreach var in homeless black white hispanic other {
+	gen enroll_nonsupp_`var' = enrollment if supp_`var'!=1
+	gen enroll_supp_`var' = enrollment if supp_`var'==1
+	}
 	rename `var'_upper_ci `var'_count_ub
 	rename supp_`var' `var'_districts_suppress
 	}

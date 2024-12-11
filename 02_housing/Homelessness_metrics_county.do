@@ -1,15 +1,32 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-*Updated September 2022 by Emily Gutierrez
-*Updated February 2024 by Emily  Gutierrez
-*Creates the number and share of homeless students by county for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
-	*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
+	*Original code from E Blom
+	** Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed ** 
+	** Original code replaced all suppressed data with the midpoint (1) but this does not yield numbers (for 2017) that align perfectly with this report: 
+	** https://nche.ed.gov/wp-content/uploads/2020/01/Federal-Data-Summary-SY-15.16-to-17.18-Published-1.30.2020.pdf (Tables 5 and 6)
+	** Note also that data are unduplicated * by LEA * which does not mean they will necessarily be unduplicated * by county * if students switch between LEAs in a county **
+*Updated September 2022 by E Gutierrez
+*Updated February 2024 by E Gutierrez
+	*Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
+		*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
+			/*Raw data is now posted on EdDataExpress instead of EdFacts. 
+			The data posted on EdDataExpress does not include the subgrant_status variable. 
+			According to EdFacts documentation, the variable is used to determine suppression information through 2018-19, 
+			and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
+			subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.*/
+*Updated December 2024 by E Gutierrez
+	*Creates the number and share of homeless students by city for 2015-16 through 2018-19
 
+**Housekeeping: install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+*Set up globals and directories
 clear all
 
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty"
-global years 2019 2020 2021 // refers to 2019-20 school year through most recent data
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+global years 2014 2015 2016 2017 2018 // refers to 2015-16 school years through 2018-19 school years
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -18,10 +35,6 @@ cd "${gitfolder}\02_housing\data"
 cap n mkdir "raw"
 cap n mkdir "intermediate"
 cap n mkdir "built"
-
-** install educationdata command **
-cap n ssc install libjson
-net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
 	** Import county file **
 	import delimited ${countyfile}, clear
@@ -52,89 +65,90 @@ foreach year in $years {
 	drop county_code
 
 	save "intermediate/ccd_lea_`year'.dta", replace
-}
-
-*Download EdDataExpress Data
-*https://eddataexpress.ed.gov/download/data-library
-*each zip file is named differently
-*2019-20
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_6526/SY1920_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2019.zip", replace
-*2020-21
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_8321/SY2021_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2020.zip", replace
-*2021-22
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/SY2122_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2021.zip", replace
-
-*unzips to current directory
-	cd "${gitfolder}\02_housing\data\raw"
-	foreach year in $years {
-	unzipfile "EdDataEx Homelessness `year'.zip", replace
 	}
-	cd "${gitfolder}\02_housing\data"
+	
+*Append 
+clear
+use "intermediate/ccd_lea_2014.dta"
+forvalues year == 2015/2018 {
+	append using "intermediate/ccd_lea_`year'.dta"
+		} 
+	save "intermediate/ccd_lea_2014-2018.dta", replace // gitignore
 
-*import csvs
-	*2019
-	import delimited "raw/SY1920_FS118_DG655_LEA.csv", clear
-	gen year=2019
-	save "raw/edfacts_homelessness_2019.dta", replace
 
-	*2020
-	import delimited "raw/SY2021_FS118_DG655_LEA.csv", clear
-	gen year=2020
-	save "raw/edfacts_homelessness_2020.dta", replace
 
-	*2021
-	import delimited "raw/SY2122_FS118_DG655_LEA.csv", clear
-	gen year=2021
-	save "raw/edfacts_homelessness_2021.dta", replace
+*Download EdDataExpress Data from
+*https://eddataexpress.ed.gov/download/data-library
+*each zip file is named differently, but use Level: LEA" & "Data Group": 655
+*2014-15, 2015-16, 2016-17, 2017-18 are in the same file
+copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_1350/SY1018_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2010-17.zip", replace
+*2018-19
+copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY1819_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2018-19.zip", replace
+*Manually unzip each file to the raw data folder
+
+	*2014-2017
+	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
+	gen year=2014 if schoolyear=="2014-2015"
+	replace year=2015 if schoolyear=="2015-2016"
+	replace year=2016 if schoolyear=="2016-2017"
+	replace year=2017 if schoolyear=="2017-2018"
+	keep if year!=.
+	save "raw/edfacts_homelessness_2014-2017.dta", replace // gitignore
+
+	*2018	
+	import delimited "raw/SY1819_FS118_DG655_LEA.csv", clear
+	gen year=2018 
+	append using "raw/edfacts_homelessness_2014-2017.dta"
 
 *reshape long form 
-	foreach year in $years {
-	use "raw/edfacts_homelessness_`year'.dta", clear
+	*foreach year in $years {
+	*use "raw/edfacts_homelessness_`year'.dta", clear
 		drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 		*these are missing because they have answers for characteristic (i.e., doubled up, etc.)
 		drop if subgroup=="" | subgroup=="Children with disabilities" | subgroup=="English Learner" | subgroup=="Migratory students" | subgroup=="Unaccompanied Youth" | subgroup=="Children with one or more disabilities (IDEA)"
 		
-		replace subgroup="amin_an" if subgroup=="American Indian or Alaska Native" 
+		/*replace subgroup="amin_an" if subgroup=="American Indian or Alaska Native" 
 		replace subgroup="black" if subgroup=="Black or African American" 
 		replace subgroup="hispanic" if subgroup=="Hispanic/Latino" 
 		replace subgroup="white" if subgroup=="White" 
 		replace subgroup="twomore" if subgroup=="Two or more races" 
 		replace subgroup="nh_pi" if subgroup=="Native Hawaiian or Other Pacific Islander" 
-		replace subgroup="asian" if subgroup=="Asian" 
-		replace subgroup="homeless" if subgroup=="All Students in LEA" 
+		replace subgroup="asian" if subgroup=="Asian" */
+		replace subgroup="homeless" if subgroup=="All Students in LEA"  | subgroup=="All Students"
 		
 		reshape wide value,  i(state ncesleaid lea year) j(subgroup) string
 		ren value* *
 		ren ncesleaid leaid
-		save "raw/eddataex_homelessness_`year'.dta", replace
-	}
+		*save "raw/eddataex_homelessness_`year'.dta", replace
+	
 
-*Append eddataexpress data
+/*Append eddataexpress data
 clear
 foreach year in $years {
 	append using "raw/eddataex_homelessness_`year'.dta" 
-		}
+		} */
 
 *create fips variable from nces_lea variable
 	tostring leaid, replace
 	replace leaid = "0"+leaid if strlen(leaid)==6
 	gen fipst = substr(leaid,1,2)
 
-*Original code from Erica Blom	
-	** Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed ** 
-	** Oiginal code replaced all suppressed data with the midpoint (1) but this does not yield numbers (for 2017) that align perfectly with this report: 
-	** https://nche.ed.gov/wp-content/uploads/2020/01/Federal-Data-Summary-SY-15.16-to-17.18-Published-1.30.2020.pdf (Tables 5 and 6)
-	** Note also that data are unduplicated * by LEA * which does not mean they will necessarily be unduplicated * by county * if students switch between LEAs in a county **
+foreach var in homeless { 
+	di "`var'"
+	gen supp_`var' = 1 if `var'=="S"
+	replace `var'="1" if `var'=="S"
+	destring `var', replace
+	bysort year fipst : egen min_`var' = min(`var')
+	bysort year fipst : egen count_supp_`var' = total(supp_`var')
+	gen `var'_lower_ci = `var'
+	replace `var'_lower_ci = 0 if supp_`var'==1
+	gen `var'_upper_ci = `var'
+	replace `var'_upper_ci = 2 if supp_`var'==1
+	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
+}
 
-/*
-*2/8/24
-Raw data is now posted on EdDataExpress instead of EdFacts. 
-The data posted on EdDataExpress does not include the subgrant_status variable. 
-According to EdFacts documentation, the variable is used to determine suppression information through 2018-19, 
-and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
-subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.
-*/
-		
+
+/*2022	
 *Destring/Create variables needed for data quality check variables 
 foreach var in homeless black hispanic white twomore nh_pi asian amin_an { // 
 	di "`var'"
@@ -170,70 +184,78 @@ foreach var in other { //
 	replace `var'_upper_ci = 2 if supp_`var'==1
 	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
 }
-
+*/
 *keep varibales we need 
-	keep year leaid *homeless* *black* *hispanic* *white* *other* 
+	keep year leaid *homeless* 
+	*keep year leaid *homeless* *black* *hispanic* *white* *other* 
 	tostring leaid, replace
 	replace leaid = "0" + leaid if strlen(leaid)!=7
 	assert strlen(leaid)==7
-	save "intermediate/homelessness_all_years.dta", replace
+	*save "intermediate/homelessness_all_years.dta", replace
 
 ** Using district office location to locate LEAs into counties and calculate homelessness share **
-use "intermediate/homelessness_all_years.dta", clear
-foreach year in $years {
-	merge m:1 year leaid using "intermediate/ccd_lea_`year'.dta", update
+*use "intermediate/homelessness_all_years.dta", clear
+*foreach year in $years {
+	merge m:1 year leaid using "intermediate/ccd_lea_2014-2018.dta", update
 	drop if _merge==2 //  don't need ccd data that doesn't match eddataexpress data
 	drop _merge
-	}
+	
 	drop if county==""
 
 *replaces missing enrollments with zeros
 	replace enrollment=0 if enrollment<0 | enrollment==.
-	foreach var in homeless black white hispanic other {
+	foreach var in homeless {
+	*2022 *foreach var in homeless black white hispanic other {
 	replace `var'=0 if enrollment==0
 	replace `var'_upper_ci=0 if enrollment==0
 	replace `var'_lower_ci=0 if enrollment==0
 	replace supp_`var'=0 if enrollment==0
 	}
 
-	foreach var in homeless black white hispanic other {
+	foreach var in homeless {
+	*2022* foreach var in homeless black white hispanic other {
 	gen enroll_nonsupp_`var' = enrollment if supp_`var'!=1
 	gen enroll_supp_`var' = enrollment if supp_`var'==1
 	}
 
-collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state county)
+collapse (sum) *homeless* enrollment , by(year state county)	
+*2022 collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(year state county)
 
 *rename variables to count/lb/ub/etc
-	foreach var in homeless black white hispanic other {
+	foreach var in homeless  {
+	*2022 foreach var in homeless black white hispanic other {
 	rename `var' `var'_count
 	rename `var'_lower_ci `var'_count_lb
 	rename `var'_upper_ci `var'_count_ub
 	rename supp_`var' `var'_districts_suppress
 	}
-
+	
 *create shares variables
 	gen homeless_share = homeless_count/enrollment
 	gen coverage_homeless = enroll_nonsupp_homeless/enrollment
 
+/*2022	
 	*2/8/24 - changed the denominator from ex: enroll_black to total homelesss
 	foreach var in black white hispanic other{
 	gen `var'_share = `var'_count/homeless_count
 	gen coverage_`var' = enroll_nonsupp_`var'/enroll_nonsupp_homeless
 	}
-
+*/
 *Quality check variables - use homeless/total
-	foreach var in homeless black white hispanic other {
+	foreach var in homeless {
+	*2022 foreach var in homeless black white hispanic other {
 	gen `var'_quality_count = 1 if `var'_count_ub / `var'_count_lb <=1.05
 	replace `var'_quality = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_count_ub / `var'_count_lb <=1.1
 	replace `var'_quality = 3 if `var'_quality==. & `var'_count!=.
 	}
-
+	
 *new as of 4/13/23 - updated 2/8/24 - in ACS-based metrics, if it was less than 30, it's set to NA
 	replace homeless_quality = 3 if enrollment<30 
 
 	*replace subgroup metrics =1 (will be NA in string form) for homeless_count<10
 	*2/8/24 subgroup enrollments are no longer the denominators - instead use total homeless counts
-	foreach var in black white hispanic other {
+	foreach var in homeless {
+	*2022 foreach var in homeless black white hispanic other {
 	replace `var'_count=-1  if homeless_count<10
 	replace `var'_count_lb=-1 if homeless_count<10
 	replace `var'_count_ub=-1 if homeless_count<10
@@ -246,7 +268,8 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 	
 	*foreach subgroup and total homeless metric, set all = -1 (NA) if share>1 
 	*2/8/24 - in future, reconsider to look at lower and upper bounds and change quality variables instead of just setting to NA
-	foreach var in homeless black white hispanic other {
+	foreach var in homeless {
+	*2022 foreach var in homeless black white hispanic other {
 	replace `var'_count=-1  if `var'_share>1 & `var'_share!=.
 	replace `var'_count_lb=-1 if `var'_share>1 & `var'_share!=.
 	replace `var'_count_ub=-1 if `var'_share>1 & `var'_share!=.
@@ -254,7 +277,7 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 	replace `var'_quality=-1 if `var'_share>1 & `var'_share!=.
 	}
 	
-*new as of 3/4/2024
+/*new as of 3/4/2024
 		*When the subgroup summed total is <70% or >110% of total homeless, replace with -1 or N/A
 		*create a variable set to . instead of -1 so we can sum & find the share of subgroup out of total homeless
 		*we have to do this now bc we want it based on the -1s/NAs we changed in the section above
@@ -275,9 +298,10 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 		replace `var'_share=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
 		replace `var'_quality=-1 if (share_race_total<70 | share_race_total>110) & share_race_total!=.
 		}
-
+*/
 		*for cell sizes <=2, set all variables to N/A
-		foreach var in homeless black white hispanic other {
+		foreach var in homeless  {
+		*2022 foreach var in homeless black white hispanic other {
 		replace `var'_count_lb=-1 if `var'_count<=2
 		replace `var'_count_ub=-1 if `var'_count<=2
 		replace `var'_share=-1 if `var'_count<=2
@@ -291,18 +315,20 @@ sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
 
-drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* total_race *missing
+drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* 
+*2022 drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* *_missing total_race 
 
-order year state county *homeless* black* hispanic* other* white*
+order year state county *homeless* 
+*2022 order year state county *homeless* black* hispanic* other* white*
 
 gsort -year state county
 
 merge 1:1 year state county using "intermediate/countyfile.dta"
 tab year _merge 
 	drop if _merge==1 // Puerto Rico
-	keep if year>=2019 & year<=2021 // only updating 2019-2021 years
-	drop _merge
-/*
+	keep if year<=2018
+	drop _merge 
+	/*
 bysort year: egen maxmerge=max(_merge)
 keep if maxmerge==3
 drop _merge maxmerge
@@ -315,7 +341,7 @@ tab year // total of counties possible
 tab year if homeless_count==.
 * 2019: 295/3142, 2020: 308/3143, 2021: 296/3144
 
-
+/* 2022
 *check for race/ethnicity 
 		sum share_race_total, detail
 		sum share_race_total if black_count!=-1, detail
@@ -324,6 +350,7 @@ tab year if homeless_count==.
 		tab year missing, row
 
 drop share_race_total missing		
+*/
 order year state county 
 gsort -year state county
 
@@ -340,7 +367,8 @@ drop check*
 	tostring *share, replace force
 	tostring *count* *share *quality*, replace
 
-foreach group in homeless black white hispanic other {
+	foreach group in homeless {
+*2022 foreach group in homeless black white hispanic other {
 	foreach var in count count_lb count_ub quality share {
 	replace `group'_`var' = "NA" if  `group'_`var'=="-1"
 	replace `group'_`var' = "" if  `group'_`var'=="."
@@ -350,12 +378,13 @@ foreach group in homeless black white hispanic other {
 /*2/8/24 create share quality variable - 
 right now it is equal to the quality count variable since both refer to the quality of the numerator 
 */
-foreach var in homeless black white hispanic other {
+foreach var in homeless  {
+*2022 foreach var in homeless black white hispanic other {
 	gen `var'_quality_share = `var'_quality_count
 }	
 	
 *save "all" separately
-preserve
+*preserve
 *2/8/24 - rename variables
 foreach var in homeless  {
 	ren `var'_count count_`var'
@@ -367,9 +396,9 @@ foreach var in homeless  {
 }
 keep year state county count_homeless count_homeless_lb count_homeless_ub share_homeless count_homeless_quality share_homeless_quality
 *2019 was already calculated, 2020-21 and 2021-22 are the new data
-keep if year==2020 | year==2021
-export delimited using "final/homelessness_2020_21_county.csv", replace
-restore
+*keep if year==2020 | year==2021
+export delimited using "final/homelessness_2014-2018_county.csv", replace
+*restore
 
 *rename variables for reshape
 rename homeless* all*
