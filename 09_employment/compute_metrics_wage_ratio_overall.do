@@ -12,6 +12,8 @@ Current update date: 12/10/2024
 To dos:
 ** Need 2023 data from MIT to finalize this update. For 2023, will need to make the CT planning region correction and possibly the Alaska correction.
 ** Implement file deletion step
+** Add QC code
+** Combine overall and subgroup do files? -- REQUIRES HARMONIZATION
 
 ****************************/
 
