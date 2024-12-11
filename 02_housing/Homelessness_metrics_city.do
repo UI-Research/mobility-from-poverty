@@ -8,22 +8,26 @@
 	** Note also that data are unduplicated * by LEA * which does not mean they will necessarily be unduplicated * by county * if students switch between LEAs in a county **
 *Updated September 2022 by E Gutierrez
 *Updated February 2024 by E Gutierrez
-*Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
-	*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
-		/*Raw data is now posted on EdDataExpress instead of EdFacts. 
-		The data posted on EdDataExpress does not include the subgrant_status variable. 
-		According to EdFacts documentation, the variable is used to determine suppression information through 2018-19, 
-		and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
-		subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.*/
+	*Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
+		*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
+			/*Raw data is now posted on EdDataExpress instead of EdFacts. 
+			The data posted on EdDataExpress does not include the subgrant_status variable. 
+			According to EdFacts documentation, the variable is used to determine suppression information through 2018-19, 
+			and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
+			subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.*/
 *Updated December 2024 by E Gutierrez
-*Creates the number and share of homeless students by city for 2014-15, 2015-16, and 2022-23 (2014-15 through 2019-20 completed in previous update)
-	*Creates the number and share of homeless by race/ethnicity for 2022-23 (recreates with each total student ethnicity as denominator)
+	*Creates the number and share of homeless students by city for 2014-15, 2015-16, and 2022-23 (2014-15 through 2019-20 completed in previous update)
+		*Creates the number and share of homeless by race/ethnicity for 2022-23 (recreates with each total student ethnicity as denominator)
 
-	
+**Housekeeping: install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+*Set up globals and directories
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global years 2014 2015 // refers to 2014-15 and 2015-16 school years - still need to add 2022-23
+global years 2015 2016 2017 2018 // refers to 2015-16 school years through 2018-19 school years
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -33,11 +37,10 @@ cap n mkdir "raw"
 cap n mkdir "intermediate"
 cap n mkdir "built"
 
-** install educationdata command **
-cap n ssc install libjson
-net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
-
-** Import city file to edit names of city crosswalk to match city location strings in CCD school district data
+*****************************
+*Import and save needed data*
+*****************************
+** Import city crosswalk file to edit names of city crosswalk to match city location strings in CCD school district data
 import delimited ${cityfile}, clear
 
 tostring place, replace
@@ -76,7 +79,7 @@ rename city_name_edited city_name
 	
 	save "intermediate/cityfile.dta", replace // gitignore
 
-** Download CCD district data - total enrollment, city location, & county codes**
+** Download CCD district data from Urban's Education Data Portal - total enrollment, city location, & county codes**
 foreach year in $years {
 	clear
 	educationdata using "district ccd directory ", sub(year=`year') col(year leaid county_code city_location enrollment) csv
@@ -90,59 +93,64 @@ foreach year in $years {
 	save "intermediate/ccd_lea_`year'_city.dta", replace // gitignore
 }
 
+*Append 
+clear
+use "intermediate/ccd_lea_2015_city.dta"
+forvalues year == 2016/2018 {
+	append using "intermediate/ccd_lea_`year'_city.dta" 
+		} 
+	save "intermediate/ccd_lea_2015-2018_city.dta", replace // gitignore
+
+
 *Download EdDataExpress Data from
 *https://eddataexpress.ed.gov/download/data-library
 *each zip file is named differently, but use Level: LEA" & "Data Group": 655
-*2014-15 & 2015-16 are in the same file
-copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_1350/SY1018_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2010-18.zip", replace
-
-*2022-23
-copy
-
+*2015-16, 2016-17, 2017-18, 2018-19 are in the same file
+copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_1350/SY1018_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2010-17.zip", replace
+copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY1819_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2018-19.zip", replace
 *Manually unzip each file to the raw data folder
 
-	*2014
+	*2015-2017
 	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
-	keep if schoolyear=="2014-2015"
-	gen year=2014
-	save "raw/edfacts_homelessness_2014.dta", replace // gitignore
+	gen year=2015 if schoolyear=="2015-2016"
+	replace year=2016 if schoolyear=="2016-2017"
+	replace year=2017 if schoolyear=="2017-2018"
+	keep if year!=.
+	save "raw/edfacts_homelessness_2015-2017.dta", replace // gitignore
 
-	*2015
-	import delimited "raw/SY1018_FS118_DG655_LEA.csv", clear
-	keep if schoolyear=="2015-2016"
-	gen year=2015
-	save "raw/edfacts_homelessness_2015.dta", replace // gitignore
+	*2018	
+	import delimited "raw/SY1819_FS118_DG655_LEA.csv", clear
+	gen year=2018 
+	append using "raw/edfacts_homelessness_2015-2017.dta"
+	
 
-	*2022
-
-
-*reshape long form 
-	foreach year in $years {
-	use "raw/edfacts_homelessness_`year'.dta", clear
+*reshape from long form to wide form
+	*foreach year in $years {
+	*use "raw/edfacts_homelessness_2015-2018.dta", clear
 		drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 		*these are missing because they have answers for characteristic (i.e., doubled up, etc.)
 		drop if subgroup=="" | subgroup=="Children with disabilities" | subgroup=="English Learner" | subgroup=="Migratory students" | subgroup=="Unaccompanied Youth" | subgroup=="Children with one or more disabilities (IDEA)"
 		
-		replace subgroup="amin_an" if subgroup=="American Indian or Alaska Native" 
+		/*replace subgroup="amin_an" if subgroup=="American Indian or Alaska Native" 
 		replace subgroup="black" if subgroup=="Black or African American" 
 		replace subgroup="hispanic" if subgroup=="Hispanic/Latino" 
 		replace subgroup="white" if subgroup=="White" 
 		replace subgroup="twomore" if subgroup=="Two or more races" 
 		replace subgroup="nh_pi" if subgroup=="Native Hawaiian or Other Pacific Islander" 
-		replace subgroup="asian" if subgroup=="Asian" 
+		replace subgroup="asian" if subgroup=="Asian" */
 		replace subgroup="homeless" if subgroup=="All Students in LEA" | subgroup=="All Students"
 		
 		reshape wide value,  i(state ncesleaid lea year) j(subgroup) string
 		ren value* *
 		ren ncesleaid leaid
-		save "raw/eddataex_homelessness_`year'.dta", replace // gitignore
-	}
+		*save "raw/eddataex_homelessness_2015-2018.dta", replace // gitignore
 	
-*Append any years of new data
+	
+/*Append any years of new data
 clear
 foreach year in $years {
 	append using "raw/eddataex_homelessness_`year'.dta" 
-		}
+		} */
 
 *create fips variable from nces_lea variable
 	tostring leaid, replace
@@ -150,7 +158,6 @@ foreach year in $years {
 	gen fipst = substr(leaid,1,2)
 
 
-*2014 & 2015
 foreach var in homeless { 
 	di "`var'"
 	gen supp_`var' = 1 if `var'=="S"
@@ -207,15 +214,15 @@ egen other = rowtotal(twomore nh_pi asian amin_an) , missing
 	tostring leaid, replace
 	replace leaid = "0" + leaid if strlen(leaid)!=7
 	assert strlen(leaid)==7
-	save "intermediate/homelessness_all_years.dta", replace // gitignore
+	*save "intermediate/homelessness_all_years.dta", replace // gitignore
 
 ** Using district office location to locate LEAs into cities/counties and calculate homelessness share **
-use "intermediate/homelessness_all_years.dta", clear
-foreach year in $years {
-	merge m:1 year leaid using "intermediate/ccd_lea_`year'_city.dta", update
+*use "intermediate/homelessness_all_years.dta", clear
+*foreach year in $years {
+	merge m:1 year leaid using "intermediate/ccd_lea_2015-2018_city.dta", update
 	drop if _merge==2 //  don't need ccd data that doesn't match eddataexpress data
 	drop _merge
-	}
+	
 
 *replaces missing enrollments with zeros
 	replace enrollment=0 if enrollment<0 | enrollment==.
@@ -348,7 +355,7 @@ merge 1:1 year state city_name using "intermediate/cityfile.dta"
 tab year _merge
 	*drop cities that don't merge to the urban-provided file
 	drop if _merge==1
-	keep if year>2014 & year<=2015 // only updating 2019-2021 years
+	keep if year<=2018
 	drop _merge 
 
 *summary stats to see possible outliers
@@ -405,7 +412,7 @@ foreach var in homeless  {
 }
 
 *save "all" or total homeless data separately
-preserve
+*preserve
 *2/8/24 - rename variables
 foreach var in homeless  {
 	ren `var'_count count_`var'
@@ -417,8 +424,9 @@ foreach var in homeless  {
 }
 keep year state place count_homeless count_homeless_lb count_homeless_ub share_homeless count_homeless_quality share_homeless_quality
 *2019 was already calculated, 2020-21 and 2021-22 are the new data
-keep if year==2020 | year==2021
-export delimited using "final/homelessness_2014_2015_city.csv", replace
+*keep if year==2020 | year==2021
+export delimited using "final/homelessness_2015-2018_city.csv", replace
+
 restore
 
 *rename variables for reshape
