@@ -80,6 +80,13 @@ rename city_name_edited city_name
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
 	
+*duplicate 2015 to create 2014 place
+	expand 2 if year==2015
+	bysort year state place state_name city_name: gen obs=_n
+	replace year = 2014 if obs==2
+	drop obs
+	sort year state place state_name city_name
+	
 	save "intermediate/cityfile.dta", replace // gitignore
 
 *****************************
@@ -278,8 +285,8 @@ gsort -year state city_name
 	bysort year: sum // Beaumont TX in 2017 had really high share homeless (Hurricane Harvey)
 	bysort state: sum
 
-bysort year: count // total of 2015-2017:485 2018:486 cities possible
-tab year if homeless_count==. // 2014:  2015:62/485 2016:59/485 2017:60/485 2018:58/486
+bysort year: count // total of 2014-2017:485 2018:486 cities possible
+tab year if homeless_count==. // 2014:62/485 2015:62/485 2016:59/485 2017:60/485 2018:58/486
 
 drop city_name state_name
 order year state place
