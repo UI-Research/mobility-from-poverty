@@ -261,7 +261,7 @@ foreach var in homeless {
 		keep if year<=2018
 		drop _merge
 		
-**************
+****************
 *Quality Checks
 ****************
 
