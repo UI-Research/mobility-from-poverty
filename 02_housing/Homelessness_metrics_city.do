@@ -1,15 +1,33 @@
 ** HOMELESSNESS **
 ** E Blom **
 ** 2020/08/04 **
-*Updated September 2022 by Emily Gutierrez
-*Updated February 2024 by Emily  Gutierrez
-*Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
-	*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
-	
+	*Original code from E Blom
+	** Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed ** 
+	** Original code replaced all suppressed data with the midpoint (1) but this does not yield numbers (for 2017) that align perfectly with this report: 
+	** https://nche.ed.gov/wp-content/uploads/2020/01/Federal-Data-Summary-SY-15.16-to-17.18-Published-1.30.2020.pdf (Tables 5 and 6)
+	** Note also that data are unduplicated * by LEA * which does not mean they will necessarily be unduplicated * by county * if students switch between LEAs in a county **
+*Updated September 2022 by E Gutierrez
+*Updated February 2024 by E Gutierrez
+	*Creates the number and share of homeless students by city for 2020-21 & 2021-22 (2014-15 through 2019-20 completed in previous update)
+		*Creates the number and share of homeless by race/ethnicity for 2020-21 & 2021-22 (recreates 2019-20 with total homeless as denominator)
+			/*Raw data is now posted on EdDataExpress instead of EdFacts. 
+			The data posted on EdDataExpress does not include the subgrant_status variable. 
+			According to EdFacts documentation, the variable is used to determine suppression information through 2018-19, 
+			and is therefore used in our own suppression determinations for data up through 2018-19. Starting in 2019-20, 
+			subgrant_status is no longer used to determine suppression information, and is therefore not necessary for this or future updates.*/
+*Updated December 2024 by E Gutierrez
+	*Creates the total number and share of homeless students by city for 2019-20 through 2022-23 (2019-2022)
+	*Alters denominator for subgroup share (race/ethnicity) from total homeless  to enrolled students of that race
+
+**Housekeeping: install educationdata command **
+cap n ssc install libjson
+net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+
+*Set up globals and directories
 clear all
 
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty"
-global years 2019 2020 2021 // refers to 2019-20 school year through most recent data
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
+global years 2019 2020 2021 2022 
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -19,12 +37,14 @@ cap n mkdir "raw"
 cap n mkdir "intermediate"
 cap n mkdir "built"
 
-** install educationdata command **
-cap n ssc install libjson
-net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
+************************************
+*Import, edit, and save needed data*
+************************************
 
-
-** Import city file **
+*****************************
+****City/Place Crosswalk*****
+*****************************
+** Import city crosswalk file to edit names of city crosswalk to match city location strings in CCD school district data
 import delimited ${cityfile}, clear
 
 tostring place, replace
@@ -54,20 +74,22 @@ rename city_name_edited city_name
 	replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
 	replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
 	replace city_name="Macon" if city_name=="Macon-Bibb County"
-	replace city_name="Honolulu" if city_name=="Urban Honolulu"
 	replace city_name="Boise" if city_name=="Boise City"
-	replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
 	replace city_name="Lexington" if city_name=="Lexington-Fayette"
 	replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
 	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
 	
-	*changes specific to this data
-	replace city_name="Port St Lucie" if city_name=="Port St. Lucie"
-	replace city_name="Saint Paul" if city_name=="St. Paul"
+*duplicate 2015 to create 2014 place
+	expand 2 if year==2015
+	bysort year state place state_name city_name: gen obs=_n
+	replace year = 2014 if obs==2
+	drop obs
+	sort year state place state_name city_name
 	
-	save "intermediate/cityfile.dta", replace
+	save "intermediate/cityfile.dta", replace // gitignore
+
 
 ** Get CCD district data - total enrollment and city & county codes**
 foreach year in $years {
@@ -85,7 +107,7 @@ foreach year in $years {
 
 *Download EdDataExpress Data
 *https://eddataexpress.ed.gov/download/data-library
-*each zip file is named differently
+*each zip file is named differently, but use Level: "LEA" & "Data Group": 655
 *2019-20
 copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_6526/SY1920_FS118_DG655_LEA_data_files.zip" "raw/EdDataEx Homelessness 2019.zip", replace
 *2020-21
@@ -100,7 +122,13 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 	}
 	cd "${gitfolder}\02_housing\data"
 
-*import csvs
+*Due to changes in EdDataExpress website, 2022-23 data must be manually downloaded. Please follow the following steps.
+	*Source: https://eddataexpress.ed.gov/download/data-builder/data-download-tool?f%5B1%5D=population%3AHomeless%20Students&f%5B2%5D=school_year%3A2022-2023&f%5B0%5D=level%3ALocal%20Education%20Agency 
+	*go to the left-side menu and “deselect all” of the filters
+	*
+	
+
+	*import csvs
 	*2019
 	import delimited "raw/SY1920_FS118_DG655_LEA.csv", clear
 	gen year=2019
