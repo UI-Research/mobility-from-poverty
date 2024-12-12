@@ -36,8 +36,10 @@ cap n mkdir "raw"
 cap n mkdir "intermediate"
 cap n mkdir "built"
 
-*****************************
-*Import and save needed data*
+************************************
+*Import, edit, and save needed data*
+************************************
+
 *****************************
 ****City/Place Crosswalk*****
 *****************************
@@ -137,9 +139,9 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY
 	gen year=2018 
 	append using "raw/edfacts_homelessness_2014-2017.dta"
 	
-*****************************
-*Clean Homeless Student Data
-*****************************
+**********************************
+*Clean EdDataExporess Student Data
+**********************************
 *reshape from long form to wide form
 	drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 	*subgroup== missing because they have answers for characteristic (i.e., doubled up, etc.)
@@ -155,6 +157,7 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY
 	gen fipst = substr(leaid,1,2)
 
 *create/interpret suppression variables
+	*suppressed observations have between 1 or 2 students, replacing here with 1 so that when aggregated to the city level, we have the best estimate
 foreach var in homeless { 
 	di "`var'"
 	gen supp_`var' = 1 if `var'=="S"
@@ -214,16 +217,16 @@ foreach var in homeless {
 	gen homeless_share = homeless_count/enrollment
 	gen coverage_homeless = enroll_nonsupp_homeless/enrollment
 
-*Quality check variables - use homeless/total
+*Create quality variables with aggregated data - use homeless/total
 	foreach var in homeless {
-	gen `var'_quality_count = 1 if `var'_count_ub / `var'_count_lb <=1.05
-	replace `var'_quality = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_count_ub / `var'_count_lb <=1.1
-	replace `var'_quality = 3 if `var'_quality==. & `var'_count!=.
+	gen `var'_quality_count = 1 if `var'_count_ub / `var'_count_lb <=1.05 // ratio of upperbound vs lowerbound is less than or equal to 1.05
+	replace `var'_quality_count = 2 if `var'_count_ub / `var'_count_lb > 1.05 & `var'_count_ub / `var'_count_lb <=1.1 // ratio of upperbound vs lowerbound is between 1.05 and 1.1 than or equal to 1.05
+	replace `var'_quality_count = 3 if `var'_quality==. & `var'_count!=. // if remaining counts are missing
 	}
-	*if enrollment is less than 30, it's set to NA
+	*if aggregated enrollment is less than 30, quality of the variable is 3
 	replace homeless_quality = 3 if enrollment<30 
 	
-*replace total and subgroup metrics =-1 (will be NA in string form) for homeless_count<10
+*replace total homeless =-1 (NA) for homeless_count<10 
 	foreach var in homeless {
 	replace `var'_count=-1  if homeless_count<10 
 	replace `var'_count_lb=-1 if homeless_count<10
@@ -233,7 +236,7 @@ foreach var in homeless {
 	replace `var'_quality=3 if homeless_count>=10 & homeless_count<30 
 	}
 	
-*foreach homeless metric, set all = -1 (NA) if share>1 
+*foreach homeless metric, set all = -1 (NA) if share>1 and isn't missing
 	foreach var in homeless {
 	replace `var'_count=-1  if `var'_share>1 & `var'_share!=.
 	replace `var'_count_lb=-1 if `var'_share>1 & `var'_share!=.
@@ -242,7 +245,7 @@ foreach var in homeless {
 	replace `var'_quality=-1 if `var'_share>1 & `var'_share!=.
 	}
 	
-*for cell sizes <=2, set all variables to N/A
+*for cell sizes <=2, set all variables to -1 (N/A) - reapplies suppression rules from before
 	foreach var in homeless  {
 	replace `var'_count_lb=-1 if `var'_count<=2
 	replace `var'_count_ub=-1 if `var'_count<=2
@@ -251,7 +254,18 @@ foreach var in homeless {
 	replace `var'_count=-1 if `var'_count<=2
 	}
 		
-*check quality
+*merge to crosswalk of places/cities
+	merge 1:1 year state city_name using "intermediate/cityfile.dta"
+	tab year _merge
+		drop if _merge==1 // drop cities that don't merge to the crosswalk
+		keep if year<=2018
+		drop _merge
+		
+**************
+*Quality Checks
+****************
+
+*check quality - how good is coverage of homeless students (based on nonsuppresion) by quality variables
 	sum coverage*, d, if homeless_quality==1
 	sum coverage*, d, if homeless_quality==2
 	sum coverage*, d, if homeless_quality==3
@@ -259,31 +273,38 @@ foreach var in homeless {
 drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* 
 order year state city_name *homeless* 
 gsort -year state city_name
-
-*merge to crosswalk of places/cities
-	merge 1:1 year state city_name using "intermediate/cityfile.dta"
-	tab year _merge
-		drop if _merge==1 // drop cities that don't merge to the crosswalk
-		keep if year<=2018
-		drop _merge 
-
+		
 *summary stats to see possible outliers
-	bysort year: sum
+	bysort year: sum // Beaumont TX in 2017 had really high share homeless (Hurricane Harvey)
 	bysort state: sum
 
-tab year // total of 485/486 cities possible
+bysort year: count // total of 2015-2017:485 2018:486 cities possible
 tab year if homeless_count==. // 2014:  2015:62/485 2016:59/485 2017:60/485 2018:58/486
 
 drop city_name state_name
 order year state place
 gsort -year state place
 
-*data quality check 
+*data quality check - is homeless count ever less than lower bound or higher than upperbound
 	gen check1 = 1 if homeless_count<homeless_count_lb
 	gen check2 = 1 if homeless_count>homeless_count_ub
 	tab check1, m
 	tab check2, m 
 	drop check*
+
+*are all quality flags missing if metric is missing
+tab homeless_quality if homeless_share==.
+tab homeless_quality if homeless_count==.
+
+**************
+*Visual Checks
+**************
+twoway histogram homeless_share, frequency by(year)
+twoway histogram homeless_share  if homeless_quality==1, frequency by(year)
+twoway histogram homeless_share  if homeless_quality==2, frequency by(year)
+twoway histogram homeless_share  if homeless_quality==3, frequency by(year)
+
+bysort year: tab homeless_share if homeless_quality==-1
 
 *tostring variables, and replace -1 with NA & . with blank	
 	*tostring the rest of the variables
@@ -308,9 +329,7 @@ gsort -year state place
 		ren `var'_quality_count count_`var'_quality
 		ren `var'_quality_share share_`var'_quality
 	}
-**************
-*Visual Checks
-**************
+
 keep year state place count_homeless count_homeless_lb count_homeless_ub share_homeless count_homeless_quality share_homeless_quality
 
 export delimited using "final/homelessness_2014-2018_city.csv", replace
