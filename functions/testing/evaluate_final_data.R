@@ -64,6 +64,7 @@ expected_subgroups <- exp_form %>%
 expected_years <- exp_form %>% 
   pull(all_years_use_no_space) %>% 
   strsplit(split = ";") %>% 
+  as.numeric() %>% 
   .[[1]]
 
 # check that the file has the necessary columns
