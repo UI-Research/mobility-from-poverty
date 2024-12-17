@@ -56,31 +56,6 @@ cap n mkdir "built"
 
 	save "intermediate/countyfile.dta", replace
 	
-
-***************************************************************
-*Download CT county planning region crosswalk beginning 2022-23
-***************************************************************
-copy "https://nces.ed.gov/programs/edge/data/GRF23.zip" "raw/CT_crosswalk_2022.zip", replace
-*unzips to current directory
-	cd "${gitfolder}\02_housing\data\raw"
-	unzipfile "CT_crosswalk_2022.zip", replace
-	cd "${gitfolder}\02_housing\data"
-	
-	*import relevant CSVs
-	import excel "raw/grf23_lea_county", firstrow clear
-	gen year=2022
-	gen state=substr(LEAID,1,2)
-	keep if substr(LEAID,1,2)=="09"
-	gen county=substr(STCOUNTY,3,3)
-	bysort year state county: gen obs=_n
-	keep if obs==1
-	drop obs
-	merge 1:1 year state county using "intermediate/countyfile.dta"
-	gen leaid=lower(LEAID)
-	drop COUNT LAND WATER LEAID
-	save "raw/CT_2022-23_crosswalk", replace
-
-
 *****************************
 *****CCD District Data*******
 *****************************
