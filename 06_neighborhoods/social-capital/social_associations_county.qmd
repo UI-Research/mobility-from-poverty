@@ -32,6 +32,7 @@ library(here)
 library(sf)
 library(censusapi)
 library(tigris)
+library(naniar)
 options(tigris_use_cache = TRUE)
 ```
 
@@ -52,45 +53,79 @@ We pull our data from `library(censusapi)`.
 #| label: source-census-api-key
 source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
-
-
-```{r}
-#| label: get-social-organization-data
-
-years <- c(2020, 2021)
-cbp_county <-
-  map(
-    years,
-    ~ getCensus(
-      name = "cbp",
-      vintage = .x,
-      vars = c("EMP", "ESTAB", "NAICS2017"),
-      region = "county:*"
-    ) %>%
-      as_tibble() %>%
-      mutate(year = .x)
-  ) %>%
-  list_rbind()
-
-head(cbp_county)
-```
-
 Below are the codes/associations included in the County Health Rankings metric. See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) for more
 
 Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, and 813920
 
+**Note:** Running the chunk below can take some time, avoid re-running it to 
+prevent hitting API rate limits. The file is exported and read in once again
+to avoid re-running API requests.
 ```{r}
-#| label: import-and-clean
+#| label: get-social-organization-data
+
+
+fetch_cbp_data <- function(year, naics_codes_to_keep) {
+  tryCatch(
+    {
+      Sys.sleep(2) # Add a delay to avoid rate limiting
+
+      # Determine NAICS variable and dataset name based on the year
+      naics_var <- if_else(year >= 2014 & year <= 2016, "NAICS2012", "NAICS2017")
+      print(paste0("Retrieving year:", year))
+
+      cbp_data <- getCensus(
+        name = "cbp",
+        vintage = year,
+        vars = c("EMP", "ESTAB", naics_var),
+        region = "county:*"
+      ) %>%
+        as_tibble() |>
+        mutate(year = year) |>
+        filter(!!sym(naics_var) %in% naics_codes_to_keep) %>%
+        select(state, county, year, orgs = ESTAB) %>%
+        drop_na(orgs) %>%
+        summarize(count_orgs = sum(orgs), .by = c("year", "state", "county"))
+
+      return(cbp_data)
+    },
+    error = function(e) {
+      message("Error fetching data for year ", year, ": ", e$message)
+      return(NULL) # Return NULL for failed requests
+    }
+  )
+}
+
+
+# Fetch and combine data
+years <- c(2014:2022)
 naics_codes_to_keep <- c("813410", "713950", "713910", "713940", "711211", "813110", "813940", "813930", "813910", "813920")
 
-cbp_county <-
-  cbp_county %>%
-  filter(NAICS2017 %in% naics_codes_to_keep) %>%
-  select(year, state, county, orgs = ESTAB) %>%
-  drop_na(orgs) %>%
-  summarise(count_orgs = sum(orgs), .by = c("year", "state", "county"))
+cbp_county <- map(years, ~ fetch_cbp_data(.x, naics_codes_to_keep)) %>%
+  compact() %>% # Remove NULLs from failed requests
+  list_rbind() # Combine into a single tibble
+
+# Test if all expected years are present in the resulting data
+test_years <- cbp_county %>%
+  pull(year) %>% # Extract the years column
+  unique() %>% # Get unique years
+  sort() # Sort the years
+
+# Check if the expected years match the test years
+if (all(years %in% test_years)) {
+  message("Test passed: All expected years are present in the data.")
+} else {
+  missing_years <- setdiff(years, test_years)
+  message("Test failed: Missing years - ", paste(missing_years, collapse = ", "))
+}
+
+
+head(cbp_county)
+write_csv(cbp_county, here("06_neighborhoods/social-capital/data/cbp_county.csv"))
 ```
 
+```{r}
+cbp_county <- read_csv(here("06_neighborhoods/social-capital/data/cbp_county.csv"))
+```
 
 ## Download population data from ACS (denominator)
 
@@ -98,6 +133,16 @@ cbp_county <-
 pop <- read_csv(here("geographic-crosswalks/data/county-populations.csv")) %>%
   filter(year %in% years) %>%
   select(year, state, county, population)
+
+pop_2014 <- pop %>%
+  filter(year == 2015) %>% # Take only rows for year 2015
+  mutate(
+    year = 2014, # Set year to 2014
+    population = NA
+  ) %>% # Set population to NA
+  distinct(state, county, year, population) # Ensure no duplicates
+
+pop <- bind_rows(pop, pop_2014) |> arrange(year)
 ```
 
 ## Merge the data file(s) & construct the ratio (Numerator/Denominator)
@@ -148,12 +193,67 @@ merged_sa <-
   )
 ```
 
-**Check:** Are there exactly 306 missing values?
+**Check:** Are there exactly 925 missing values (excluding 2014 since population for that year is NA)?
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa$count_membership_associations_per_10k)) == 306
+  sum(is.na(merged_sa |>
+    filter(year != 2014) %>%
+    .[["count_membership_associations_per_10k"]])) == 925
 )
+```
+
+
+## Visualize Metric
+
+```{r}
+ggplot(merged_sa, aes(x = count_membership_associations_per_10k)) +
+  geom_histogram(bins = 30, color = "black", fill = "lightblue") +
+  labs(
+    title = "Distribution of Membership Associations per 10k",
+    x = "Membership Associations per 10k", y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(merged_sa, aes(y = count_membership_associations_per_10k)) +
+  geom_boxplot() +
+  labs(
+    title = "Boxplot of Membership Associations per 10k",
+    y = "Membership Associations per 10k"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+# Visualize missing data
+gg_miss_var(merged_sa |> filter(year != 2014)) +
+  labs(title = "Missing Values by Variable")
+```
+
+```{r}
+yearly_avg <- merged_sa %>%
+  group_by(year) %>%
+  summarise(avg_associations = mean(count_membership_associations_per_10k, na.rm = TRUE))
+
+ggplot(yearly_avg, aes(x = year, y = avg_associations)) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    title = "Trend of Average Membership Associations per 10k Over Years",
+    x = "Year", y = "Average Associations per 10k"
+  ) +
+  theme_minimal()
+```
+
+## Run Final Tests
+
+```{r}
+source(here("functions/testing/evaluate_final_data.R"))
+
+evaluate_final_data(here("06_neighborhoods/social-capital/data/final_data_evaluation_form.csv"), merged_sa, "county", subgroups = FALSE, confidence_intervals = FALSE)
 ```
 
 ## Save the final file
@@ -162,10 +262,4 @@ stopifnot(
 merged_sa %>%
   arrange(year, state, county) %>%
   write_csv(here("06_neighborhoods/social-capital/data/social_associations_all_county.csv"))
-
-merged_sa %>%
-  filter(year == 2021) %>%
-  select(-year) %>%
-  arrange(state, county) %>%
-  write_csv(here("06_neighborhoods/social-capital/data/social_associations_2021_county.csv"))
 ```
