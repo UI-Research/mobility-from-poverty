@@ -407,6 +407,8 @@ foreach var in homeless black white hispanic other {
 tab `var'_quality if `var'_share==.
 tab `var'_quality if `var'_count==.
 }
+*To reviewer: in 2019, state 17 and county 061 there is an instance where black enrollment is 0 but homeless count is 3. 
+*This means that black_quality flag==3 but the black_share==. because 3/0 == . This is the only instance and I'm not sure how to address.
 
 **************
 *Visual Checks
