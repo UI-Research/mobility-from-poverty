@@ -376,9 +376,9 @@ gsort -year state county
 bysort year: sum // other_share is a lot higher than others... 
 bysort state: sum
 
-bysort year: count // total of 486 cities possible
-tab year if homeless_count==. // 2019:58/486 2020:56/486 2021:55/486 2022:50/486
-foreach var in black white hispanic other {
+bysort year: count // total county possible 2019:3,134 2020:3,135 2121:3,135 2022:3,144
+tab year if homeless_count==. //  2019:295/3,134 2020:308/3,135 2021:2873,135 2022:255/3,144
+foreach var in black white hispanic other { // same missingness across races
 tab year if `var'_count==.
 }
 
