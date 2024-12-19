@@ -1,9 +1,11 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
-** Updated by: Emily Gutierrez **
-** 2020/08/04 **
-** this file creates METRO LEVEL learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
-** however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
-** 2017-18 is most recently available year from SEDA as of 9/12/22
+** Updated 2020/08/04 by E Gutierrez **
+	** this file creates METRO LEVEL learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
+	** however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
+	** 2017-18 is most recently available year from SEDA as of 9/12/22
+** Updated 12/19/2024 by E Gutierrez **
+	** SEDA Version 5.0 provides years 2009-2019
+	
 
 clear all
 set maxvar 32767
@@ -11,7 +13,7 @@ set matsize 11000
 set emptycells drop
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global year=2018 // refers to spring of the school year (2017-2018)
+global year=2019 // refers to spring of the school year (2017-2018)
 
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
@@ -84,10 +86,10 @@ local latestyear 2017
 **********************************************
 
 ** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
-** exact file: "https://stacks.stanford.edu/file/druid:db586ns4974/seda_county_long_gcs_4.1.dta" for 2009-2018 **
+** exact file: "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long_gcs_5.0_updated_20240319.dta" for 2009-2019 **
 ** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
-cap n copy "https://stacks.stanford.edu/file/druid:db586ns4974/seda_geodist_long_gcs_4.1.dta" "raw/seda_geodist_long_gcs_4.1.dta"
-use "raw/seda_geodist_long_gcs_4.1.dta", clear
+cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long_gcs_5.0_updated_20240319.dta" "raw/seda_geodist_long_gcs_5.0.dta"
+use "raw/seda_geodist_long_gcs_5.0.dta", clear
 
 keep if subject=="rla"
 
