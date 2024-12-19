@@ -137,18 +137,24 @@ cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long
 	tab year _merge // crosswalk only goes back to 2015
 	keep if cohort >=2014  // earliest cohort starts with 2014
 
+	
 *hard code/look for accidental missmataches
 	sort state city_name year
 	*brow state city_name _merge year if _merge!=3  // _merge=2 means its in city but not seda
 	*searched the _merge column for 2s and look above and below to see if cities are spelled differently 
 
-	drop _merge
+	gen final_files = 1 if _merge!=1
+	bysort leaid: egen final=max(final_files)
+	keep if final==1
+	drop if year>2018
+
+	drop _merge final*
 	destring leaid, replace
 
 *******************************************************************
 *Clean and Calculate Growth Estimates for each subgroup
 ******************************************************************
-	** NOTE: This loop takes a long time to run (4-8+ hours or more).
+	** NOTE: This loop takes a about 25 minutes to run.
 foreach subgroup in all wht blk hsp nec ecd mal fem {
 	gen learning_rate_`subgroup'=.
 	gen se_`subgroup'=.
@@ -193,7 +199,6 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	drop min_sample_size_`subgroup' num_grades_included_`subgroup'
 	
 }
-*EG: start here once have crosswalk
 save "intermediate/seda_race_postreg_sedalea.dta", replace
 use "intermediate/seda_race_postreg_sedalea.dta", clear
 
@@ -233,8 +238,8 @@ drop if _merge==1 // drop anything that doesn't match city crosswalk
 gsort -year state place
 order year state place
 
-*2016 because that is the earliest year we have for the city crosswalk
-drop if year<2016 | year>$year - 1
+*2015 because that is the earliest year we have for the city crosswalk
+drop if year<2015 | year>$year -1
 drop state_name  _merge city_name
 
 ** make the data long **
