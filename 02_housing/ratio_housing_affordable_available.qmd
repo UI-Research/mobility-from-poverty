@@ -6,7 +6,7 @@ abstract: "This file produces two interrelated metrics describing housing afford
 date-format: "MMM YYYY"
 params: 
   output_file: "placeholder.html"
-  geography: "place"
+  geography: "county"
   county_years: !expr c(2022)
   place_years: !expr c(2022)
 format: 
@@ -269,6 +269,181 @@ if (length(years_to_query) > 0) {
 ```
 
 ### Crosswalk microdata from PUMAs to geography of interest
+```{r, update county-place crosswalk}
+#| include: false
+#| eval: false
+
+## this addresses two issues:
+##  - CT counties change in 2022
+##  - pre-2020 county-place crosswalk does not exist, but is needed for back-filling
+
+####----CT Counties Change in 2022----####
+## Obtain a dedicated CT Planning Region to Place Crosswalk from GeoCorr
+# *Crosswalk type*: Planning Regions to Places
+# *States:* Connecticut
+# *Source geography:* 2022 Connecticut Planning Region
+# *Target geography:* 2020 Places
+# *Weighting variable:* Population (2020 census)
+# *Output Options:* CSV w/ second allocation factor (AFACT2)
+
+## Read in the dedicated crosswalk for CT Planning regions
+ct_planning_region_crosswalk = read_csv(
+  here("geographic-crosswalks", "data", "geocorr2022_ct_planning_region_to_place.csv"),
+  skip = 1) %>%
+  select(
+    countyfip = `Connecticut planning region`,
+    CountyName = `Connecticut planning region name`,
+    state = `State code`,
+    place = `Place code`,
+    PlaceName = `Place name`,
+    stab = `State abbr.`,
+    population = `Total population (2020 Census)`,
+    afact = `ctregion-to-place allocation factor`,
+    afact2 = `place-to-ctregion allocation factor`) %>%
+  mutate(population_vintage = 2020)
+
+## Read in the existing county-place crosswalk
+county_place_crosswalk_2020_2021 = read_csv(
+  here("geographic-crosswalks", "data", "geocorr2022_county_place_2020_2021.csv")) %>% 
+    mutate(
+      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
+      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
+      countyfip = str_pad(as.character(countyfip), side = "left", width = 5, pad = "0"),
+      population_vintage = 2020,
+      crosswalk_period = "2020-2021") %>%
+  rename(population = pop20) %>%
+  select(-county)
+
+## all places should be in both crosswalks
+stopifnot(
+  county_place_crosswalk_2020_2021 %>%
+    filter(state == "09", !place %in% ct_planning_region_crosswalk$place) %>%
+    nrow == 0)
+
+## remove old CT counties, add new CT planning regions
+county_place_crosswalk_2022_2029 = county_place_crosswalk_2020_2021 %>%
+  filter(state != "09") %>%
+  bind_rows(ct_planning_region_crosswalk) %>%
+  arrange(countyfip, PlaceName) %>%
+  mutate(crosswalk_period = "2022-2029")
+
+## there should be exactly nine distinct county-level records for the state of CT
+stopifnot(
+  county_place_crosswalk_2022_2029 %>%
+    filter(state == "09") %>%
+    distinct(CountyName) %>%
+    nrow() == 9)
+
+county_place_crosswalk_2022_2029 %>%
+  write_csv(here("geographic-crosswalks", "data", "geocorr2022_county_place_2022_onwards.csv"))
+
+####----Pre-2020 County-Place Crosswalk is Needed for Back-Filling----####
+# *Crosswalk type*: County to Place
+# *States:* All
+# *Source geography:* 2014 Counties
+# *Target geography:* 2014 Places
+# *Weighting variable:* Population (2010 census)
+# *Output Options:* CSV w/ second allocation factor (AFACT2)
+county_place_crosswalk_pre_2020 = read_csv(
+  here("geographic-crosswalks", "data", "geocorr2018_county_place_2014_thru_2019.csv"),
+  skip = 1) %>%
+  clean_names() %>%
+  rename_with( ~ str_remove_all(.x, "x2014_|_2014$|14")) %>%
+  select(
+    countyfip = county_code,
+    CountyName = county_name,
+    state = state_code,
+    place,
+    PlaceName = place_name,
+    stab = state_abbreviation,
+    population = population_2010,
+    afact = county_to_placefp_allocation_factor,
+    afact2 = placefp_to_county_allocation_factor) %>%
+  mutate(
+    population_vintage = 2010,
+    crosswalk_period = "pre-2020")
+
+## this crosswalk is from 2014 vintage geographies, but effective beginning in 2018
+## we have a new city - South Fulton GA
+## we add the records from the post-2020
+
+####----Create Longitudinal County-Place Crosswalk----####
+crosswalk_years = tibble(
+  year = c(2010:2029),
+  crosswalk_period = c(rep("pre-2020", 10), rep("2020-2021", 2), rep("2022-2029", 8)))
+
+county_place_crosswalk_longitudinal = bind_rows(
+  county_place_crosswalk_pre_2020,
+  county_place_crosswalk_2020_2021,
+  county_place_crosswalk_2022_2029) %>%
+  left_join(crosswalk_years, by = "crosswalk_period", relationship = "many-to-many") %>%
+  filter(stab != "PR")
+
+## there should be 20 years per county
+stopifnot(
+  county_place_crosswalk_longitudinal %>%
+    filter(countyfip == "01001") %>%
+    distinct(year) %>%
+    nrow == 20)
+
+place_populations = read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  mutate(place_fip = str_c(state, place))
+
+county_populations = read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>%
+  mutate(county_fip = str_c(state, county))
+
+county_benchmarking = county_place_crosswalk_longitudinal %>%
+  group_by(year, crosswalk_period) %>%
+  summarize(
+    distinct_counties = n_distinct(countyfip)) %>%
+  left_join(
+    county_populations %>%
+      group_by(year) %>%
+      summarize(distinct_counties_benchmark = n_distinct(county_fip))) %>%
+  mutate(
+    distinct_counties_benchmark = case_when(
+      year < 2022 ~ distinct_counties_benchmark + 8, ## addressing missing CT counties
+      TRUE ~ distinct_counties_benchmark)) %>%
+  filter(!is.na(distinct_counties_benchmark), distinct_counties != distinct_counties_benchmark)
+
+stopifnot(
+  nrow(county_benchmarking) == 0)
+
+place_benchmark = county_place_crosswalk_longitudinal %>%
+  mutate(place_fip = str_c(state, place)) %>%
+  filter(
+    ## addressing South Fulton GA -- due to crosswalk availability, we don't
+    ## produce estimates for South Fulton for these years
+    place_fip %in% place_populations$place_fip,
+    !(str_detect(PlaceName, "South Fulton") & year %in% c(2018:2021))) %>%
+  group_by(year, crosswalk_period) %>%
+  summarize(
+    distinct_places = n_distinct(place_fip)) %>%
+  left_join(
+    place_populations %>%
+      group_by(year) %>%
+      summarize(distinct_places_benchmark = n_distinct(place_fip))) %>%
+  mutate(
+    distinct_places_benchmark = case_when(
+      ## addressing South Fulton GA -- due to crosswalk availability, we don't
+      ## produce estimates for South Fulton for these years
+      year < 2022 & year > 2017 ~ distinct_places_benchmark - 1, 
+      TRUE ~ distinct_places_benchmark)) %>%
+  filter(!is.na(distinct_places_benchmark), distinct_places != distinct_places_benchmark)
+
+stopifnot(
+  nrow(place_benchmark) == 0)
+
+## Some place names are missing (and corresponding place codes are effectively NA)
+## This is fine. These are where counties don't overlap with places. We retain these
+## because there are a few (n = ~10) counties that don't overlap with any places,
+## and if we drop these, we can't benchmark to our total expected county population
+## numbers as easily/accurately 
+# county_place_crosswalk_longitudinal %>%
+#   skimr::skim()
+
+write_csv(county_place_crosswalk_longitudinal, here("geographic-crosswalks", "data", "county_place_crosswalk_longitudinal.csv"))
+```
 
 ```{r}
 # Function for writing lightly tailored crosswalks to a temporary folder for subsequent use
@@ -310,7 +485,7 @@ walk(county_years, ~ puma_geography_crosswalk(year = .x, geography = "county"))
 # Function for applying crosswalks to microdata
 crosswalk_microdata = function(year, geography) {
   # we clear out unused objects here due to possible memory constraints
-  gc()
+  gc(verbose = FALSE)
 
   # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
@@ -360,8 +535,7 @@ crosswalk_microdata = function(year, geography) {
       across(.cols = c(HHINCOME, RENT, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
 }
-
-gc()
+gc(verbose = FALSE)
 # Apply crosswalks to all geography-year combinations
 walk(county_years, ~ crosswalk_microdata(year = .x, geography = "county"))
 walk(place_years, ~ crosswalk_microdata(year = .x, geography = "place"))
@@ -598,26 +772,55 @@ download_hud_income_limits = function(year, url) {
 }
 
 # download and combine income limits data into one file
-fmr_income_limits = map2_dfr(
+fmr_income_limits_1 = map2_dfr(
     years, income_limits_urls$urls, 
     download_hud_income_limits)
 ```
 
 Income limits are specified at one of two geographies: the county (mostly), or the sub-county (in some areas in New England). We need to translate the income limits to our geography of interest (either the county-level or the place-level). We do this as follows:
 
--   We aggregate our income limits to the county level. For most counties, this doesn't require any work, because there's only a single income limit for the county. For counties with sub-county-level income limits, we take the mean of these limits.
+-   We aggregate our income limits to the county level. For most counties, this doesn't require any work, because there's only a single income limit for the county. For counties with sub-county-level income limits, we take the mean of these limits. For revised CT counties (beginning in 2022), we draw in a special
+crosswalk to go from sub-counties to counties.
 
--   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by 2020 population.
+-   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by population.
 
 ```{r}
-# stop("Connecticut data are at the former county level (n = 8), rather than the new county level for 2022 onwards (n = 9). This needs to be fixed, if possible...")
-county_income_limits1 = fmr_income_limits %>%
-  group_by(year, state, county) %>%
-  summarize(
-    across(
-      .cols = matches("ami"),
-      .fns = mean)) %>%
-  ungroup()
+## addressing revised (starting in 2022) CT counties
+if (as.numeric(max(c(county_years, place_years)) >= 2022)) {
+  
+  ## a crosswalk that links CT subcounties to revised CT counties
+  ct_county_crosswalk = read_csv(
+    "https://raw.githubusercontent.com/CT-Data-Collaborative/ct-town-to-planning-region/refs/heads/main/ct-town-to-planning-region.csv") %>%
+    transmute(
+      fips = str_pad(as.character(town_fips_2020), side = "left", width = 10, pad = "0"),
+      county_adjusted = str_sub(as.character(ce_fips_2022), 2, 4))
+  
+  ## subset our HUD-published crosswalk to CT records from 2022 onward
+  ## then join these to the CT-published crosswalk
+  ct_county_income_limits = fmr_income_limits_1 %>%
+    filter(year >= 2022, state == "09") %>%
+    tidylog::left_join(
+      ct_county_crosswalk, 
+      by = "fips",
+      relationship = "many-to-many") %>%
+    mutate(county = county_adjusted) %>%
+    select(-county_adjusted)
+
+  fmr_income_limits_2 = fmr_income_limits_1 %>%
+    ## add our modified CT income limits to our original HUD income limits
+    ## dropping the original records for CT from 2022 onward
+    filter(!(fips %in% ct_county_income_limits$fips & as.numeric(year) >= 2022)) %>%
+    bind_rows(ct_county_income_limits) } else { 
+  ## if we're not dealing with 2022-onwards CT, no need to make adjustments
+  fmr_income_limits_2 = fmr_income_limits_1 }
+
+county_income_limits1 = fmr_income_limits_2 %>%
+    group_by(year, state, county) %>%
+    summarize(
+      across(
+        .cols = matches("ami"),
+        .fns = mean)) %>%
+    ungroup()
   
 geography_pad_width = if_else(geography == "place", 5, 3)
 
@@ -660,19 +863,25 @@ county_income_limits = county_income_limits2 %>%
   mutate(across(.cols = c(state, county, year), .fns = as.character))
 
 if (geography == "place") {
+  
   county_place_crosswalk = read_csv(
-      here("geographic-crosswalks", "data", "geocorr2022_county_place.csv")) %>% 
-    mutate(
+      here("geographic-crosswalks", "data", "county_place_crosswalk_longitudinal.csv")) %>% 
+    transmute(
+      county = str_sub(countyfip, 3, 5),
+      year = as.character(year),
       state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
-      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"))
+      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
+      afact,
+      population) %>%
+    filter(year %in% years)
   
   place_income_limits = county_income_limits %>%
-    tidylog::left_join(county_place_crosswalk, by = c("state", "county")) %>%
+    left_join(county_place_crosswalk, by = c("state", "county", "year"), relationship = "many-to-many") %>%
     group_by(state, place, year) %>%
     summarize(
       across(
         .cols = matches("ami"),
-        .fns = ~ weighted.mean(x = .x, na.rm = TRUE, w = pop20))) %>%
+        .fns = ~ weighted.mean(x = .x, na.rm = TRUE, w = population))) %>%
     ungroup() %>%
     mutate(
       across(.cols = c(state, place, year), .fns = as.character),
@@ -955,7 +1164,9 @@ housing_subgroups = housing_summed_quality %>%
       .cols = matches("quality"), 
       .fns = ~ if_else(is.na(get(cur_column() %>% str_remove("_quality"))), NA, .x))) %>%
   select(year, state, !!geography, subgroup_type, subgroup, matches("ratio")) %>%
-  arrange(state, .data[[geography]], subgroup, desc(year))
+  arrange(state, .data[[geography]], subgroup, desc(year)) %>%
+  ## due to crosswalking non-alignment, we drop south fulton georgia for 2018-2021
+  { if (geography == "place") filter(., ! (place == "72122" & state == "13" & (year %in% c(2018:2021)))) else . }
 
 housing_overall = housing_subgroups %>% 
   filter(subgroup == "All")
@@ -979,16 +1190,24 @@ write_csv(
 The final dataset, including all subgroups, meets all the assertions contained in `evaluate_final_data.R`.
 
 ```{r}
-# test_that(
-#   "The final data passes standardized QC checks", {
-#     expect_no_error(
-#       evaluate_final_data(
-#         exp_form_path = here(
-#           "02_housing", "housing_affordability_tenure_final_data_evaluation_form.csv"),
-#         data = housing_subgroups,
-#         geography = geography,
-#         subgroups = TRUE,
-#         confidence_intervals = FALSE))})
+## we modify the expectations form to contain the same years for which we're running
+## this script:
+data_form_path = here("02_housing", "housing_affordability_tenure_final_data_evaluation_form.csv")
+read_csv(data_form_path) %>%
+  mutate(
+    row_number = row_number(),
+    `...3` = if_else(row_number > 3, years %>% str_replace_all("_", ";"), `...3`)) %>%
+  write_csv(data_form_path)
+
+test_that(
+  "The final data passes standardized QC checks", {
+    expect_no_error(
+      evaluate_final_data(
+        exp_form_path = data_form_path,
+        data = housing_subgroups,
+        geography = geography,
+        subgroups = TRUE,
+        confidence_intervals = FALSE))})
 ```
 
 ### Data Assertions
@@ -1007,9 +1226,6 @@ geography_universe = population_listing %>%
   group_by(year) %>%
   summarize(geography_count = n_distinct(geoid))
 
-# This fails because of Valdez-Cordova, AK (2014-2019)
-# for counties
-# For places, this fails because of South Fulton
 test_that(
   "Counts of places/counties are correct for each year", {
   expect_true(
@@ -1035,7 +1251,26 @@ test_that(
       filter(if_any(.cols = c(matches("ratio"), -matches("quality")), .fns = ~ .x <= 0)) %>%
       nrow() == 0)})
 ```
+***No State Comprises Only NA Values***
 
+In particular, this is a check for Connecticut due to changing counties (pre-post 2022),
+
+```{r}
+test_that(
+  "No state comprises only NA values", {
+  expect_true(
+    housing_subgroups %>%
+      filter(subgroup == "All") %>%
+      select(c(year, state, !!geography, matches("ratio"), -matches("quality"))) %>%
+      group_by(state, year) %>%
+      summarize(
+        across(
+          .cols = where(is.numeric), 
+          .fns = ~ sum(!is.na(.x)))) %>%
+      pivot_longer(cols = matches("ratio")) %>%
+      filter(value == 0) %>%
+      nrow() == 0) })
+```
 ***Ratio of Available is Not Greater than Ratio of Affordable***
 
 Affordable-and-available ratios by definition must be equal to or lesser than the corresponding affordable ratio.
@@ -1175,12 +1410,12 @@ metrics_differences_wide_plot %>%
 
 ***Missingness***
 
-We anticipate that county-level data will have greater missingness than place-level data as there are many counties with very small populations, whereas our places are by definition reasonably large. We also anticipate that subgroup metrics have greater missingness as compared to our overarching metrics because they rely on subsets of the total population of households.
+We anticipate that missingness is greater for the more restrictive income subgroups (e.g., missingness for 30 AMI is greater than missingness for 80 AMI).
 
 ```{r}
 housing_subgroups %>% 
+  select(year, c(matches("ratio"), -matches("quality"))) %>%
   group_by(year) %>%
-  select(c(matches("ratio"), -matches("quality"))) %>%
   summarize(
     across(
       .cols = everything(), 
