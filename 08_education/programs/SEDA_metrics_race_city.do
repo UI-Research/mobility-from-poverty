@@ -89,7 +89,7 @@ save "intermediate/cityfile.dta", replace
 
 	gen state = substr(leaid, 1, 2)  // create string fips variable
 	
-	save "intermediate/ccd_lea_city_2008-2018.dta", replace
+	save "intermediate/ccd_lea_city_2008-$latestyear.dta", replace
 
 *****************************
 *****Download SEDA Data******
@@ -206,9 +206,6 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	drop min_sample_size_`subgroup' num_grades_included_`subgroup'
 	
 }
-save "intermediate/seda_race_postreg_sedalea.dta", replace
-use "intermediate/seda_race_postreg_sedalea.dta", clear
-
 *drop year and rename cohort to year (reminder cohort is the ELA rate for 3-8th grade for 8th graders in that year)	
 	drop year
 	rename cohort year
@@ -269,7 +266,19 @@ reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quali
 	replace subgroup = "Economically Disadvantaged" if subgroup=="_ecd"
 	replace subgroup = "Not Economically Disadvantaged" if subgroup=="_nec"
 
+****************
+*Quality Checks
+****************
+sum learning_rate, d, if learning_rate_quality==1
+sum learning_rate, d, if learning_rate_quality==2
+sum learning_rate, d, if learning_rate_quality==3
+sum learning_rate, d, if learning_rate_quality==.
+
+bysort year: sum
+bysort state: sum
+
 *missingness
+bysort year: count // 3,880:2014-2017 3,888:2018
 	tab year if subgroup=="All" & learning_rate==.
 	tab year if subgroup=="Black, Non-Hispanic" & learning_rate==.
 	tab year if subgroup=="Economically Disadvantaged" & learning_rate==.
@@ -281,6 +290,29 @@ reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quali
 
 	order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
 	gsort -year state place subgroup_type subgroup
+
+*data quality check - is learning rate ever less than lower bound or higher than upperbound
+	gen check1 = 1 if learning_rate<learning_rate_lb
+	gen check2 = 1 if learning_rate>learning_rate_ub
+	tab check1, m
+	tab check2, m 
+	drop check*
+
+*are quality flags missing if metric is missing
+	tab learning_rate_quality if learning_rate==.
+	
+**************
+*Visual Checks
+**************
+	twoway histogram learning_rate if subgroup=="All", frequency by(year)
+	twoway histogram learning_rate if subgroup=="All" & learning_rate_quality==1, frequency by(year)
+	twoway histogram learning_rate if subgroup=="All" & learning_rate_quality==2, frequency by(year)
+	twoway histogram learning_rate if subgroup=="All" & learning_rate_quality==3, frequency by(year)
+
+	twoway histogram learning_rate if subgroup=="Black, Non-Hispanic", frequency by(year)
+	twoway histogram learning_rate if subgroup=="Black, Non-Hispanic" & learning_rate_quality==1, frequency by(year)
+	twoway histogram learning_rate if subgroup=="Black, Non-Hispanic" & learning_rate_quality==2, frequency by(year)
+	twoway histogram learning_rate if subgroup=="Black, Non-Hispanic" & learning_rate_quality==3, frequency by(year)
 
 ** export subgroup data **
 export delimited using "built/SEDA_all_subgroups_city_2014-2018.csv", replace 
