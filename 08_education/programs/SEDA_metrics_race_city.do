@@ -158,9 +158,9 @@ cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long
 	drop _merge final*
 	destring leaid, replace
 
-*******************************************************************
+*******************************************************
 *Clean and Calculate Growth Estimates for each subgroup
-******************************************************************
+*******************************************************
 	** NOTE: This loop takes a about 25 minutes to run.
 foreach subgroup in all wht blk hsp nec ecd mal fem {
 	gen learning_rate_`subgroup'=.
@@ -209,90 +209,86 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 save "intermediate/seda_race_postreg_sedalea.dta", replace
 use "intermediate/seda_race_postreg_sedalea.dta", clear
 
-////////////////////////////////
-*collapse district data to city level by weighting by each subgroup total individualy
-///////////////////////////////
-	
-drop year
-rename cohort year
-replace year = year - 1 // changed so that the year reflects the fall of the academic year  - did this previously with year variable, not cohort
-
-keep year fips city_name state place leaid learning_rate_* tot*
-
+*drop year and rename cohort to year (reminder cohort is the ELA rate for 3-8th grade for 8th graders in that year)	
+	drop year
+	rename cohort year
+	replace year = year - 1 // changed so that the year reflects the fall of the academic year  - did this previously with year variable, not cohort
+	keep year fips city_name state place leaid learning_rate_* tot*
 
 *collapse to city level and weight by each subgroups total subgroup count
-foreach var in _all _blk _hsp _wht _mal _fem _ecd _nec {
-preserve
-collapse learning_rate`var' learning_rate_lb`var' learning_rate_ub`var' learning_rate_quality`var' [fw=tot_asmt`var'], by(state city_name year)
-*round to flag to nearest integer
-replace learning_rate_quality`var'=round(learning_rate_quality`var',1)
-save "intermediate/collapse_city`var'_weighted.dta", replace
-restore
-}
+	foreach var in _all _blk _hsp _wht _mal _fem _ecd _nec {
+	preserve
+	collapse learning_rate`var' learning_rate_lb`var' learning_rate_ub`var' learning_rate_quality`var' [fw=tot_asmt`var'], by(state city_name year)
+	*round to flag to nearest integer
+	replace learning_rate_quality`var'=round(learning_rate_quality`var',1)
+	save "intermediate/collapse_city`var'_weighted.dta", replace
+	restore
+	}
 
 *merge subgroup data together
-use "intermediate/collapse_city_all_weighted.dta", clear
-foreach var in _blk _hsp _wht _mal _fem _ecd _nec {
-merge 1:1 state city_name year using "intermediate/collapse_city`var'_weighted.dta"
-drop _merge
-}
+	use "intermediate/collapse_city_all_weighted.dta", clear
+	foreach var in _blk _hsp _wht _mal _fem _ecd _nec {
+	merge 1:1 state city_name year using "intermediate/collapse_city`var'_weighted.dta"
+	drop _merge
+	}
 
 *merge one more time to city crosswalk to get the stplacefps
-merge 1:1 city_name state year using "intermediate/cityfile.dta"
-tab year _merge
-drop if _merge==1 // drop anything that doesn't match city crosswalk
+	merge 1:1 city_name state year using "intermediate/cityfile.dta"
+	tab year _merge
+	drop if _merge==1 // drop anything that doesn't match city crosswalk (these were used to create the city data but not needed in the final year
 
-gsort -year state place
-order year state place
 
-*2015 because that is the earliest year we have for the city crosswalk
-drop if year<2015 | year>$year -1
-drop state_name  _merge city_name
+*2014 because that is the earliest year we have for the city crosswalk
+	drop if year<2014 | year>$year -1
+	drop state_name  _merge city_name
+	gsort -year state place
+	order year state place
 
 ** make the data long **
 reshape long learning_rate learning_rate_lb learning_rate_ub learning_rate_quality, i(year state place ) j(subgroup) string
 
 ** label subgroups **
-gen subgroup_type=""
-replace subgroup_type = "all" if subgroup=="_all"
-replace subgroup_type = "race-ethnicity" if subgroup=="_wht"
-replace subgroup_type = "race-ethnicity" if subgroup=="_blk"
-replace subgroup_type = "race-ethnicity" if subgroup=="_hsp"
-replace subgroup_type = "race-ethnicity" if subgroup=="_oth"
-replace subgroup_type = "gender" if subgroup=="_mal"
-replace subgroup_type = "gender" if subgroup=="_fem"
-replace subgroup_type = "income" if subgroup=="_ecd"
-replace subgroup_type = "income" if subgroup=="_nec"
+	gen subgroup_type=""
+	replace subgroup_type = "all" if subgroup=="_all"
+	replace subgroup_type = "race-ethnicity" if subgroup=="_wht"
+	replace subgroup_type = "race-ethnicity" if subgroup=="_blk"
+	replace subgroup_type = "race-ethnicity" if subgroup=="_hsp"
+	replace subgroup_type = "race-ethnicity" if subgroup=="_oth"
+	replace subgroup_type = "gender" if subgroup=="_mal"
+	replace subgroup_type = "gender" if subgroup=="_fem"
+	replace subgroup_type = "income" if subgroup=="_ecd"
+	replace subgroup_type = "income" if subgroup=="_nec"
 
-replace subgroup = "All" if subgroup=="_all"
-replace subgroup = "White, Non-Hispanic" if subgroup=="_wht"
-replace subgroup = "Black, Non-Hispanic" if subgroup=="_blk"
-replace subgroup = "Hispanic" if subgroup=="_hsp"
-replace subgroup = "Asian, API, Native American, Other" if subgroup=="_oth"
-replace subgroup = "Male" if subgroup=="_mal"
-replace subgroup = "Female" if subgroup=="_fem"
-replace subgroup = "Economically Disadvantaged" if subgroup=="_ecd"
-replace subgroup = "Not Economically Disadvantaged" if subgroup=="_nec"
+	replace subgroup = "All" if subgroup=="_all"
+	replace subgroup = "White, Non-Hispanic" if subgroup=="_wht"
+	replace subgroup = "Black, Non-Hispanic" if subgroup=="_blk"
+	replace subgroup = "Hispanic" if subgroup=="_hsp"
+	replace subgroup = "Asian, API, Native American, Other" if subgroup=="_oth"
+	replace subgroup = "Male" if subgroup=="_mal"
+	replace subgroup = "Female" if subgroup=="_fem"
+	replace subgroup = "Economically Disadvantaged" if subgroup=="_ecd"
+	replace subgroup = "Not Economically Disadvantaged" if subgroup=="_nec"
 
 *missingness
-tab year if subgroup=="All" & learning_rate==.
-tab year if subgroup=="Black, Non-Hispanic" & learning_rate==.
-tab year if subgroup=="Economically Disadvantaged" & learning_rate==.
-tab year if subgroup=="Female" & learning_rate==.
-tab year if subgroup=="Hispanic" & learning_rate==.
-tab year if subgroup=="Male" & learning_rate==.
-tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
-tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
+	tab year if subgroup=="All" & learning_rate==.
+	tab year if subgroup=="Black, Non-Hispanic" & learning_rate==.
+	tab year if subgroup=="Economically Disadvantaged" & learning_rate==.
+	tab year if subgroup=="Female" & learning_rate==.
+	tab year if subgroup=="Hispanic" & learning_rate==.
+	tab year if subgroup=="Male" & learning_rate==.
+	tab year if subgroup=="Not Economically Disadvantaged" & learning_rate==.
+	tab year if subgroup=="White, Non-Hispanic" & learning_rate==.
 
-order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
-gsort -year state place subgroup_type subgroup
+	order year state place subgroup_type subgroup learning_rate learning_rate_lb learning_rate_ub
+	gsort -year state place subgroup_type subgroup
 
-** export data **
-export delimited using "built/SEDA_all_subgroups_city.csv", replace 
+** export subgroup data **
+export delimited using "built/SEDA_all_subgroups_city_2014-2018.csv", replace 
 
 keep if subgroup_type=="all"
 drop subgroup_type subgroup
 
-export delimited using "built/SEDA_all_city.csv", replace
+** export "all data data **
+export delimited using "built/SEDA_all_city_2014-2018.csv", replace
 
 
