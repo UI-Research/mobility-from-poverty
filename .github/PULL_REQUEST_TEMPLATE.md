@@ -1,3 +1,3 @@
-Please go to the `Preview` tab and select the appropriate sub-template:
+If this is a PR for a Metric Update please go to the `Preview` tab above and select the appropriate sub-template:
 
-* [Group A](?expand=1&template=metric_update_pr.md)
+* [Metric Update PR Template](?expand=1&template=metric_update_pr.md)
