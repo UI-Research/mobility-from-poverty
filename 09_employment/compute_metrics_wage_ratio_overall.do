@@ -23,6 +23,19 @@ global raw "C:\Users\KMartinchek\Documents\upward-mobility-2025\mobility-from-po
 global wages "C:\Users\KMartinchek\Documents\upward-mobility-2025\mobility-from-poverty\09_employment"
 global crosswalk "C:\Users\KMartinchek\Documents\upward-mobility-2025\mobility-from-poverty\geographic-crosswalks\data"
 
+/*
+Read data  
+
+The data from MIT and QECW cannot be easily read directly into this program. 
+
+Before running, please download the files below from the following [Box folder] https://urbanorg.app.box.com/folder/298586735341 into the repository folder  
+
+"mobility-from-poverty\09_employment"
+
+Import all the files in the Box folder here.
+
+*/
+
 /***** save living wage as .dta *****/
 
 foreach year in 2015 2016 2017 2018 2019 2020 2021 {
@@ -216,11 +229,21 @@ use "wage_ratio_final_2015.dta", clear
 
 save "wage_ratio_overall_allyears.dta", replace
 
-// final count
+// final counts
 count // should be 25,140 thru 2022 and 28,284 thru 2023
+bysort year: count
 
-export delimited using "metrics_wage_ratio_overall.csv", replace	
-	
+// export final file
+export delimited using "living_wage_county_all_longitudinal.csv", replace
+
+// summarize the final variable -- need to make some changes before doing so
+gen living_wage_test = ratio_living_wage
+	replace living_wage_test = "" if ratio_living_wage == "NA"
+	destring living_wage_test, replace
+
+hist living_wage_test
+summarize living_wage_test, detail	
+
 /* delete unneeded files -- do this as a last step */
 /*
 erase "wage_ratio_final_*.dta"

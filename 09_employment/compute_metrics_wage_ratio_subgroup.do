@@ -348,8 +348,18 @@ save "$wages/wage_ratio_overall_allyears_subgroup.dta", replace
 // final counts
 distinct state county subgroup, joint // to confirm there are 8 obs for county
 count // should be 25,140 thru 2022 and 28,284 thru 2023 (times 8!) so 201,120 thru 2022 and 226,272 thru 2023
+bysort year: count
 
-export delimited using "$wages/metrics_wage_ratio_subgroup.csv", replace	
+// export final dataset
+export delimited using "$wages/living_wage_county_industry_longitudinal.csv", replace	
+
+// summarize the final variable -- need to make some changes before doing so
+gen living_wage_test = ratio_living_wage
+	replace living_wage_test = "" if ratio_living_wage == "NA"
+	destring living_wage_test, replace
+
+hist living_wage_test
+bysort subgroup: summarize living_wage_test, detail	
 	
 /* delete unneeded files -- do this as a last step */
 /*
