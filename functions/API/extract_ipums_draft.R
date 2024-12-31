@@ -76,34 +76,58 @@
       here(folder_path, extract_xml_filename)
     ))
 
-  # Set AWS folder path, .gz, and .xml variables
-  bucket <- "mobility-from-poverty-test"
     
-aws.s3::put_object(paste0(folder_path, "/", extract_gz_filename),
-                       bucket = bucket, 
-                       object = paste0(s3_dir, "/", extract_gz_filename),
-                       multipart = TRUE,
-                       show_progress = TRUE)  
-print(paste0("The following object was successfully upload to AWS S3 bucket ", 
-                 bucket, "at location: ",
-                 s3_dir, "/", extract_gz_filename))
+    # Read extract file
+    ddi <-
+      read_ipums_ddi(here(folder_path, extract_xml_filename))
+    
+    micro_data <-
+      read_ipums_micro(
+        ddi,
+        data_file = here(folder_path, extract_gz_filename)
+      )
+    
+    #DDI is a codebook that is used by IPUMSR to format the micro data downloaded
+    #Lower variable names and get rid of unnecessary variables
+    acs_imported <- micro_data %>%
+      rename_with(tolower) %>% 
+      select(-serial, -raced, -strata, - cluster, -hispand, -empstatd)
+    
+    rm(micro_data)
+    
+    #Zap labels and reformat State and PUMA variable
+    acs_imported <- acs_imported %>%
+      mutate(  
+        across(c(sample, gq, race, hispan), ~as_factor(.x)),
+        across(c(sample, gq, race, hispan, sex, diffcare, diffsens, diffmob, diffphys, diffrem), ~as_factor(.x)),
+        across(c(statefip, puma, hhincome, vacancy, age, empstat), ~zap_labels(.x)),
+        statefip = sprintf("%0.2d", as.numeric(statefip)),
+        puma = sprintf("%0.5d", as.numeric(puma)),
+        unique_person_id = paste0(sample, cbserial, cbpernum)
+      )
+    
+    # my-bucket 
+    my_bucket <- "mobility-from-poverty-test"
+    
+    # write file to S3
+    tmp <- tempfile()
+    on.exit(unlink(tmp))
+    saveRDS(acs_imported, file = tmp)
+    
+    # put object with an upload progress bar
+    put_object(tmp, object = paste0(s3_dir, "/", extract_name, ".rds"), bucket = my_bucket, 
+               show_progress = TRUE, multipart = TRUE)
+    
+    aws.s3::object_exists(paste0(s3_dir, "/", extract_name, ".rds"), bucket=my_bucket)
+    aws.s3::bucket_exists(bucket = my_bucket)
+    
+    
+    # save an in-memory R object into S3
+    s3save(acs_imported, bucket = "bucket", object = paste0(s3_dir, "/", extract_name, ".rds"))
+    
+ 
+    #Return the ACS data set
+    return(acs_imported)
+    
+    
 
-
-aws.s3::put_object(paste0(folder_path, "/", extract_xml_filename),
-                   bucket = bucket, 
-                   object = paste0(s3_dir, "/", extract_xml_filename),
-                   multipart = TRUE,
-                   show_progress = TRUE)  
-print(paste0("The following object was successfully upload to AWS S3 bucket ", 
-             bucket, "at location: ",
-             s3_dir, "/", extract_xml_filename ))
-
-if (file.exists(paste0(folder_path, "/", extract_xml_filename))) {
-  #Delete file if it exists
-  file.remove(paste0(folder_path, "/", extract_xml_filename))
-}
-
-if (file.exists(paste0(folder_path, "/", extract_gz_filename))) {
-  #Delete file if it exists
-  file.remove(paste0(folder_path, "/", extract_gz_filename))
-}

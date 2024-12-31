@@ -10,8 +10,11 @@ format:
     code-fold: show
 execute: 
   warning: false
+params: 
+  year: "2014"
 editor_options: 
   chunk_output_type: console
+
 ---
 
 *Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the place-level*
@@ -26,8 +29,6 @@ Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
 ## Housekeeping
 
-## Housekeeping
-
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
 
 ```{r, results='hide'}
@@ -38,33 +39,29 @@ library(reactable)
 library(srvyr)
 library(scales)
 
+
 options(scipen = 999)
 
 
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
 
+s3_dir <- "metric_name/data/acs"
+
 source(here::here("functions", "API", "extract_ipums.R"))
 source(here::here("functions", "API", "ipums_repwt_pre-k.R"))
 source(here::here("08_education", "R", "finalize_metric.R"))
 source(here::here("08_education", "R", "calc_survey_mean.R"))
 source(here::here("08_education", "R", "calc_survey_mean_subgroup.R"))
-source(here::here("functions", "aws", "aws_s3.R"))
 ```
 
 
 ### Person-Level Data
 
-```{r}
-read.time.start <- Sys.time()
-```
-
-
 Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
 
 ```{r}
-acs_surveys <- list("us2014c", "us2016c")
-acs_year <- "2014_16"
+acs_surveys <- list(paste0("us", params$year, "c"))
 ```
 
 Run extract. This will trigger an import process through IPUMS. It is encouraged to add detail to your extract description so it is clear what the extract was used for.
@@ -72,16 +69,20 @@ Run extract. This will trigger an import process through IPUMS. It is encouraged
 #| output: false
 
 acs <- extract_ipums(
-  extract_name = "umf_data_14_16",
+  extract_name = "umf_data_14_preschool",
   extract_description = "Microdata pull for Access to Pre-K Metric Predictors. American Community Survey, 2014 and 2016 data (5-year).",
   survey = acs_surveys
 ) 
+
+obj_key <- paste0(s3_dir, "/", "umf_data_14_preschool.rds")
+
+
 ```
 
 Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
 
 ```{r}
-count(acs, sample)
+count(acs_imported, sample)
 ```
 
 Isolate the data to 3 and 4 year-olds. This is the age-range included in the pre-K calculation. Note: the replicate weights are limited to these ages during the data pull. 
@@ -259,7 +260,7 @@ Evaluate the values in the RACE and HISPAN variables.
 Look at the distribution of values for the race and hispan variables.
 
 ```{r}
-acs_clean %>% 
+acs_imported %>% 
   count(race) %>% 
   ggplot(mapping = aes(x = race, y = n)) +
   geom_col() +
@@ -741,7 +742,6 @@ metrics_education_sub <- metrics_education_sub %>%
 ```
 
 
-## Bind years
 
 ## Result Validation
 

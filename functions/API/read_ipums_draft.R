@@ -1,5 +1,9 @@
 # Read extract file
-library(xml2)
+library(here)
+library(ipumsr)
+library(aws.s3)
+library(tidyverse)
+
 
 bucket <- "mobility-from-poverty-test"
 s3_dir <- "metric_name/data/acs"
@@ -7,17 +11,22 @@ filename_gz <- "umf_data_14_preschool_umf.dat.gz"
 filename_xml <- "umf_data_14_preschool_umf.xml"
 
 
-aws.s3::object_exists(paste0(s3_dir, "/", filename_gz), bucket=bucket)
+aws.s3::object_exists(paste0(s3_dir, "/", filename_xml), bucket=bucket)
   
 obj_key <- paste0(s3_dir, "/", filename_xml)
 
-xml_data <- s3read_using(FUN=read_xml, 
+## Try putting the read_ipums_ddi function directly into the FUN argument below!!
+
+ddi <- s3read_using(FUN=read_ipums_ddi, 
              bucket = bucket, 
              object=obj_key)
 
-xml2::write_xml(xml_data, here::here("data", "temp", "raw", "umf_xml.xml"))
+obj_key <- paste0(s3_dir, "/", filename_gz)
 
-ddi <- read_ipums_ddi(here::here("data", "temp", "raw", "umf_xml.xml"))
+micro_data <- s3read_using(FUN=read_ipums_micro(ddi, .x), 
+                           bucket = bucket, 
+                           object=obj_key)
+
     
     
     temp_file <- tempfile()
