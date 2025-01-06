@@ -26,7 +26,7 @@ net install educationdata, replace from("https://urbaninstitute.github.io/educat
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global years 2014 2015 2016 2017 2018 
+global years 2014 2015 2016 2017 2018 // these refer to the fall of the school i.e. 2014 = 2014-15
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
 cap n mkdir "${gitfolder}\02_housing\data"
@@ -163,17 +163,22 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_2111/SY
 	replace leaid = "0"+leaid if strlen(leaid)==6
 	gen fipst = substr(leaid,1,2)
 
-*create/interpret suppression variables
+*create/interpret suppressed variables
 	*suppressed observations have between 1 or 2 students, replacing here with 1 so that when aggregated to the city level, we have the best estimate
 foreach var in homeless { 
 	di "`var'"
+	*create variable indicating if originally suppressed
 	gen supp_`var' = 1 if `var'=="S"
+	*replace the original variable with 1 if it originally was suppressed
 	replace `var'="1" if `var'=="S"
 	destring `var', replace
+	*create the minimum value for suppressed data by state and year
 	bysort year fipst : egen min_`var' = min(`var')
 	bysort year fipst : egen count_supp_`var' = total(supp_`var')
+	*create lower confidence interval
 	gen `var'_lower_ci = `var'
 	replace `var'_lower_ci = 0 if supp_`var'==1
+	*create upper confidence interval
 	gen `var'_upper_ci = `var'
 	replace `var'_upper_ci = 2 if supp_`var'==1
 	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
@@ -281,7 +286,7 @@ drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_*
 order year state city_name *homeless* 
 gsort -year state city_name
 		
-*summary stats to see possible outliers
+*summary stats to see possible outliers across years/times, comaring means and min/max values across years
 	bysort year: sum // Beaumont TX in 2017 had really high share homeless (Hurricane Harvey)
 	bysort state: sum
 
@@ -295,23 +300,24 @@ gsort -year state place
 *data quality check - is homeless count ever less than lower bound or higher than upperbound
 	gen check1 = 1 if homeless_count<homeless_count_lb
 	gen check2 = 1 if homeless_count>homeless_count_ub
-	tab check1, m
-	tab check2, m 
+	assert check1==.
+	assert check2==.
 	drop check*
 
 *are all quality flags missing if metric is missing
-tab homeless_quality if homeless_share==.
-tab homeless_quality if homeless_count==.
+assert homeless_quality==. if homeless_share==.
+assert homeless_quality==. if homeless_count==.
 
 **************
 *Visual Checks
 **************
+*look to see if, by homeless quality, the distributions are relatively normal
 twoway histogram homeless_share, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==1, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==2, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==3, frequency by(year)
 
-bysort year: tab homeless_share if homeless_quality==-1
+bysort year: assert homeless_share==-1 if homeless_quality==-1
 
 *tostring variables, and replace -1 with NA & . with blank	
 	*tostring the rest of the variables
