@@ -1,10 +1,10 @@
 ** ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade **
 ** Updated 2020/08/04 by E Gutierrez **
-	** this file creates METRO LEVEL learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
+	** this file creates city/places level learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. 
 	** however, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. **
 	** 2017-18 is most recently available year from SEDA as of 9/12/22
 ** Updated 12/19/2024 by E Gutierrez **
-	** SEDA Version 5.0 provides years 2009-2019
+	** SEDA Version 5.0 provides years 2009-2019 (2008-09 through 2018-19)
 	
 **Housekeeping: install educationdata command **
 cap n ssc install libjson
@@ -234,7 +234,6 @@ foreach subgroup in all wht blk hsp nec ecd mal fem {
 	tab year _merge
 	drop if _merge==1 // drop anything that doesn't match city crosswalk (these were used to create the city data but not needed in the final year
 
-
 *2014 because that is the earliest year we have for the city crosswalk
 	drop if year<2014 | year>$year -1
 	drop state_name  _merge city_name
@@ -322,5 +321,3 @@ drop subgroup_type subgroup
 
 ** export "all data data **
 export delimited using "built/SEDA_all_city_2014-2018.csv", replace
-
-
