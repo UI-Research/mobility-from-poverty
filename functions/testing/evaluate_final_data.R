@@ -43,6 +43,9 @@ exp_form_variables <- exp_form %>%
 if(exp_form_variables %>% nrow() > 1) {
   exp_form_variables <- exp_form_variables %>% 
     pivot_wider(names_from = user_input, values_from = c("metric_name_as_written_in_final_data_file", "quality_title", "ci_low_title", "ci_high_title"))
+} else{
+  exp_form_variables <- exp_form_variables %>% 
+    select(-user_input)
 }
 
 
