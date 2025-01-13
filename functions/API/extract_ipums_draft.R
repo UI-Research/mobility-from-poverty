@@ -3,17 +3,23 @@
   library(ipumsr)
   library(aws.s3)
   library(tidyverse)
-  
-  extract_name = "umf_data_14_preschool"
-  extract_description = "Microdata pull for Access to Pre-K Metric Predictors. American Community Survey, 2014 (5-year)."
-  survey = "us2014c"
-  s3_dir = "metric_name/data/acs"
-  
+
+  extract_ipums_draft <- function(extract_name, extract_date, extract_description, survey){
   
   # Set folder path, .gz, and .xml variables
   folder_path <- here("data", "temp", "raw")
   extract_gz_filename <- paste0(extract_name, "_umf.dat.gz")
   extract_xml_filename <- paste0(extract_name, "_umf.xml")
+  
+  
+  #Check if file exists in AWS
+  
+  if (aws.s3::object_exists(paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"), bucket = my_bucket)){
+    
+    acs_imported <- s3read_using(FUN=readRDS, 
+                                 bucket = my_bucket, 
+                                 object=paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"))
+  } else{
 
   # Create the folder path if it doesn't exist
   if (!dir.exists(folder_path)) {
@@ -112,22 +118,15 @@
     # write file to S3
     tmp <- tempfile()
     on.exit(unlink(tmp))
-    saveRDS(acs_imported, file = tmp)
+    saveRDS(acs_imported, file = tmp, compress = TRUE)
     
     # put object with an upload progress bar
-    put_object(tmp, object = paste0(s3_dir, "/", extract_name, ".rds"), bucket = my_bucket, 
+    put_object(tmp, object = paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"), bucket = my_bucket, 
                show_progress = TRUE, multipart = TRUE)
     
-    aws.s3::object_exists(paste0(s3_dir, "/", extract_name, ".rds"), bucket=my_bucket)
-    aws.s3::bucket_exists(bucket = my_bucket)
-    
-    
-    # save an in-memory R object into S3
-    s3save(acs_imported, bucket = "bucket", object = paste0(s3_dir, "/", extract_name, ".rds"))
-    
- 
+  }
     #Return the ACS data set
     return(acs_imported)
     
-    
+  }
 
