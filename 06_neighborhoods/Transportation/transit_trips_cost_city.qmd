@@ -41,6 +41,8 @@ The data from HUD cannot be easily read directly into this program.
 Before running, please download the entirety of the folders listed below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
+You will need to create the data folder before writing anything to it, as it is included in the
+gitignore, and therefore can only exist locally as you run this code.
 `"mobility-from-poverty\06_neighborhoods\Transportation\data"`
 
 -   2015_tract
@@ -91,7 +93,32 @@ transit_trips_tracts_2015 <- transport_tracts_2015 %>%
 transit_cost_tracts_2015 <- transport_tracts_2015 %>%
   select(GEOID, state, county, tract, blkgrps, population, households, t_80ami)
 
+cat("Number of rows in transport_tracts_2015:", nrow(transport_tracts_2015), "\n")
+
 ```
+
+72,739 observations. Checking for duplicates and distribution:
+
+```{r}
+duplicate_rows <- transport_tracts_2015[duplicated(transport_tracts_2015), ]
+cat("Number of duplicate rows:", nrow(duplicate_rows), "\n")
+
+ggplot(transport_tracts_2015, aes(x = t_80ami)) +
+  geom_density(fill = "yellow", alpha = 0.4, color = "darkblue") +
+  labs(
+    title = "Density Distribution of T_80AMI for Transit Cost Tracts (2015)",
+    x = "T_80AMI",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+```
+
+No duplicates - good to go. Distribution looks normal.
+
 
 ### 2019
 
@@ -123,9 +150,11 @@ transport_tracts_2019 <- transport_tracts_2019 %>%
     county = substr(GEOID, start = 4, stop = 6),
     tract = substr(GEOID, start = 7, stop = 12)
   )
+cat("Number of rows in transport_tracts_2019:", nrow(transport_tracts_2019), "\n")
+
 ```
 
-Keep only variables of interest
+Keep only variables of interest:
 
 ```{r}
 transit_trips_tracts_2019 <- transport_tracts_2019 %>%
@@ -133,7 +162,31 @@ transit_trips_tracts_2019 <- transport_tracts_2019 %>%
 
 transit_cost_tracts_2019 <- transport_tracts_2019 %>%
   select(GEOID, state, county, tract, blkgrps, population, households, t_80ami)
+
+cat("Number of rows in transport_tracts_2019:", nrow(transport_tracts_2019), "\n")
 ```
+
+74,742 observations. Checking for duplicates and distribution:
+
+```{r}
+duplicate_rows <- transport_tracts_2019[duplicated(transport_tracts_2019), ]
+cat("Number of duplicate rows:", nrow(duplicate_rows), "\n")
+
+ggplot(transport_tracts_2019, aes(x = t_80ami)) +
+  geom_density(fill = "red", alpha = 0.4, color = "darkblue") +
+  labs(
+    title = "Density Distribution of T_80AMI for Transit Cost Tracts (2019)",
+    x = "T_80AMI",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+```
+
+No duplicates - good to go. Distribution looks normal.
 
 
 ### 2020
@@ -154,6 +207,7 @@ tractpath20 = file.path(here::here("06_neighborhoods",
 print(tractpath20)
 
 transport_tracts_2020 <- map_df(tractpath20, read_csv)
+
 ```
 
 Create correct FIPS columns
@@ -176,9 +230,31 @@ transit_trips_tracts_2020 <- transport_tracts_2020 %>%
 
 transit_cost_tracts_2020 <- transport_tracts_2020 %>%
   select(GEOID, state, county, tract, blkgrps, population, households, t_80ami)
+
+cat("Number of rows in transport_tracts_2020:", nrow(transport_tracts_2020), "\n")
 ```
 
+84095 observations. Checking for duplicates and look at distribution:
 
+```{r}
+duplicate_rows <- transit_cost_tracts_2020[duplicated(transit_cost_tracts_2020), ]
+cat("Number of duplicate rows:", nrow(duplicate_rows), "\n")
+
+ggplot(transit_cost_tracts_2020, aes(x = t_80ami)) +
+  geom_density(fill = "blue", alpha = 0.4, color = "darkblue") +
+  labs(
+    title = "Density Distribution of T_80AMI for Transit Cost Tracts (2020)",
+    x = "T_80AMI",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+```
+
+No duplicates - good to go. Distribution looks normal.
 
 
 ## Crosswalk to the cities (from tracts) & aggregate data
@@ -274,7 +350,10 @@ transit_cost_city_2019 <- left_join(transit_cost_tracts_2019, tract_place, by=c(
 
 ```
 
-Collapse to places and also create data quality marker
+Collapse to places and also create data quality marker. To do this we take the weighted mean of t_80ami, and weight it 
+by 2 factors: households, or the number of households in each tract (how representative it is in terms of population), and afact, or the amount of the tract that geographically falls into that Place (how representative it is in terms of area). 
+By using these weights, we can approximate how much the transportation value in that tract should be contributing to the
+aggregated mean for the whole place/city.
 
 ```{r}
 transit_cost_city_2019 <- transit_cost_city_2019 %>% 
@@ -496,20 +575,21 @@ transit_trips_city_2020 <- transit_trips_city_2020 %>%
 
 Create a histogram plot and summary stats for each dataframe
 Check that all values are non-negative & count missing values
-
+0.1
 Examine outliers
 
 ### City-Level Transportation Cost
 
 ```{r}
-ggplot(transit_cost_city_2015, aes(x=index_transportation_cost)) + geom_histogram(binwidth=10) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2015")
+ggplot(transit_cost_city_2015, aes(x=index_transportation_cost)) + geom_histogram(binwidth=0.01) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2015")
 
-ggplot(transit_cost_city_2019, aes(x=index_transportation_cost)) + geom_histogram(binwidth=10) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2019")
+ggplot(transit_cost_city_2019, aes(x=index_transportation_cost)) + geom_histogram(binwidth=0.01) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2019")
 
-ggplot(transit_cost_city_2020, aes(x=index_transportation_cost)) + geom_histogram(binwidth=10) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2020")
+ggplot(transit_cost_city_2020, aes(x=index_transportation_cost)) + geom_histogram(binwidth=0.01) + labs(y="number of places", x="Annual Transit Cost for the Regional Moderate Income Household, 2020")
 ```
 
-look at summary stats
+The distributions look similar, with the cost increasing each year chronologically. This looks rational.
+Now, look at summary stats:
 
 ```{r}
 summary(transit_cost_city_2015$index_transportation_cost)  
@@ -560,6 +640,9 @@ if (length(missing_indices15) > 0) {
 ```
 
 3 missing values.
+State 06 Place 37692
+State 13 Place 49008
+State 13 Place 72122
 
 ```{r}
 if (length(missing_indices19) > 0) {
@@ -571,9 +654,13 @@ if (length(missing_indices19) > 0) {
 ```
 
 3 missing values.
+State 06 Place 37692
+State 13 Place 49008
+State 13 Place 72122
+Same places as above - makes sense.
 
 ```{r}
-if (length(missing_indices19) > 0) {
+if (length(missing_indices20) > 0) {
   cat("Observations with missing values for index_transportation_cost:\n")
   print(transit_cost_city_2020[missing_indices20, , drop = FALSE])
 } else {
@@ -582,6 +669,11 @@ if (length(missing_indices19) > 0) {
 ```
 
 4 missing values.
+State 06 Place 37692
+State 13 Place 49008
+State 13 Place 72122
+State 16 Place 52120 (this place was added in 2020 missing).
+
 
 ## Export final files
 
