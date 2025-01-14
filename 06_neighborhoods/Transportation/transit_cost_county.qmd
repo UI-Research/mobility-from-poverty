@@ -41,7 +41,10 @@ library(purrr)
 The data from HUD cannot be easily read directly into this program.
 Before running, please download the files below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
-repository folder
+repository folder. To do this, you will have to create a "data" folder within
+the transportation folder. This data folder will not be published outside your 
+branch as it is gitignored (to preserve the file structure as only for code, not
+raw data files).
 `"mobility-from-poverty\06_neighborhoods\Transportation\data"`
 
 -   htaindex2015_data_counties.csv
@@ -153,15 +156,18 @@ counties <- read_csv(here::here("geographic-crosswalks",
 
 counties_2015 <- counties %>%
   filter(year == 2015)
+cat("Number of rows in counties_2015:", nrow(counties_2015), "\n")
 
 counties_2019 <- counties %>%
   filter(year == 2019)
+cat("Number of rows in counties_2019:", nrow(counties_2019), "\n")
 
 counties_2020 <- counties %>%
   filter(year == 2020)
+cat("Number of rows in counties_2020:", nrow(counties_2020), "\n")
 ```
 
-The 2015 and 2019 files have the same number of observations (3134, down from 3142 due to removing the 8 CT counties). 2020 file has 3,143 for due to the Alaska county split. Checking that's the case below:
+The 2015 and 2019 files have the same number of observations (3142, because we still include the 8 CT counties). 2020 file has 3,143 for due to the Alaska county split. Checking that's the case below:
 
 ```{r}
 unique_to_2020 <- counties_2020 %>%
@@ -314,7 +320,7 @@ if (length(missing_indices) > 0) {
 }
 ```
 
-No missing values for 2020.
+One missing value - state 48 (TX), county 243 (Jeff Davis County) - for 2020 data.
 
 
 ## Data quality marker
@@ -351,6 +357,7 @@ transportation_cost_county_2015 <- transportation_cost_county_2015 %>%
     year = 2015,
     transit_cost = transit_cost/100
   )
+cat("Number of rows in transportation_cost_county_2015:", nrow(transportation_cost_county_2015), "\n")
 ```
 
 ```{r}
@@ -359,6 +366,7 @@ transportation_cost_county_2019 <- transportation_cost_county_2019 %>%
     year = 2019,
     transit_cost = transit_cost/100
   )
+cat("Number of rows in transportation_cost_county_2019:", nrow(transportation_cost_county_2019), "\n")
 ```
 
 ```{r}
@@ -367,16 +375,53 @@ transportation_cost_county_2020 <- transportation_cost_county_2020 %>%
     year = 2020,
     transit_cost = transit_cost/100
   )
+cat("Number of rows in transportation_cost_county_2020:", nrow(transportation_cost_county_2020), "\n")
 ```
 
 Combine the three years into one overall file for both variables
 
 ```{r}
-transit_cost_county <- rbind(transportation_cost_county_2015, transportation_cost_county_2019, transportation_cost_county_2020)
+transit_cost_county <- rbind(
+  transportation_cost_county_2015,
+  transportation_cost_county_2019,
+  transportation_cost_county_2020
+)
+
+cat("Number of rows in transit_cost_county:", nrow(transit_cost_county), "\n")
 ```
 
 Combined file has 9427 observations, which is correct (3142+3142+3143)
 Keep variables of interest and order them appropriately also rename to correct var names
+
+Let's check how the distributions look over time across counties:
+
+```{r}
+ggplot(transit_cost_county, aes(x = factor(year), y = index_transportation_cost, fill = factor(year))) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 1, alpha = 0.7) +
+  labs(
+    title = "Distribution of Transit Costs by County (2015, 2019, 2020)",
+    x = "Year",
+    y = "Transit Cost",
+    fill = "Year"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+ggplot(transit_cost_county, aes(x = index_transportation_cost, fill = factor(year), color = factor(year))) +
+  geom_density(alpha = 0.4) +
+  labs(
+    title = "Density Distribution of Transit Costs by County (2015, 2019, 2020)",
+    x = "Transit Cost",
+    y = "Density",
+    fill = "Year",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+The distributions are comparable, which is promising. Costs increased from 2015 to 2019, and then decreased a lot in 2020 to below 2015 levels, which is all rational given what we know about how COVID affected human movement.
+
 
 ```{r}
 transit_cost_county <- transit_cost_county %>%
