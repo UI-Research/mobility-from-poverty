@@ -7,8 +7,8 @@ date-format: "MMM YYYY"
 params: 
   output_file: "placeholder.html"
   geography: "county"
-  county_years: !expr c(2022)
-  place_years: !expr c(2022)
+  county_years: !expr c(2014:2019, 2021:2023)
+  place_years: !expr c(2014:2019, 2021:2023)
 format: 
   html:
     toc: true
@@ -56,7 +56,7 @@ tibble::tribble(
 
     -   Housing costs are captured under multiple variables in the microdata, and some housing costs are not itemized in the microdata. Further, housing cost-related variables differ based on tenure. We standardize housing costs across vacant and occupied units and for rented and owned units so that we can compare annual housing costs to annual household incomes, which we benchmark against Department of Housing and Urban Development (HUD)-defined income thresholds.
 
-    -   These income thresholds are defined by HUD relative to the area median income (AMI). Generally, HUD calculates AMI thresholds at the county level, but in some states in New England, AMI thresholds vary at the sub-county level. We need to interpolate these AMI threshold to our geography of interest (either places or counties).
+    -   These income thresholds are defined by HUD relative to the area median income (AMI). Generally, HUD calculates AMI thresholds at the county level, but in some states in New England, AMI thresholds vary at the sub-county level. We need to interpolate these AMI thresholds to our geography of interest (either places or counties).
 
     -   Our estimates of affordable and available units are by definition a subset of our estimate affordable units. That is to say: every affordable and available unit is affordable, but not every affordable unit is available.
 
@@ -96,8 +96,8 @@ tibble::tribble(
 -   Will Curran-Groome (2024-2025)
 
     -   Added estimates based on 2023 microdata.
-    -   Backfilled estimates for years 2014:2019, 2021:2022. 
-    -   Reorganized scripts and added additional quality checks.
+    -   Backfilled estimates for years 2014:2019, 2021:2022.
+    -   Reorganized/consolidated scripts and added additional quality checks.
 
 -   Amy Rogin (2023-2024)
 
@@ -131,18 +131,7 @@ stopifnot(geography %in% c("place", "county"))
 stopifnot(all(c(place_years_check, county_years_check)))
 
 source(here("functions", "testing", "evaluate_final_data.R"))
-temporary_data_path = here("02_housing", "data", "temp")
-```
 
-## Step 1: Download microdata
-
--   Submit queries to the API, separately, for both occupied and vacant housing unit data
--   Note that this will take approximately one hour if you have not downloaded these data previously.
--   Crosswalk the microdata from PUMAs to the geography of interest
-
-### Basic setup
-
-```{r}
 ####----Setup-----####
 temporary_data_path = here("02_housing", "data", "temp")
 
@@ -150,6 +139,12 @@ if (!dir.exists(temporary_data_path)) {
   dir.create(temporary_data_path, recursive = TRUE)
 }
 ```
+
+## Step 1: Download microdata
+
+-   Submit queries to the API, separately, for both occupied and vacant housing unit data
+-   Note that this will take approximately one hour if you have not downloaded these data previously.
+-   Crosswalk the microdata from PUMAs to the geography of interest
 
 ### Download occupied housing microdata from the IPUMS API
 
@@ -164,26 +159,23 @@ extract_housing_microdata = function(year) {
     variables = c(
       "HHWT", ## household weight -- appropriate for statements about households
       "PERWT", ## person weight -- appropriate for statements about individuals
-      "REPWT",
-      "PERNUM", 
-      "ADJUST", 
+      "REPWT", ## replicate weights
+      "PERNUM", ## unique individual
+      "ADJUST", ## a factor for adjusting within-calendar-year costs
       "STATEFIP", ## 2-character state FIPS code
       "PUMA", ## code identifying the public-use microdata area (PUMA)
       "GQ", ## "general quarters"--identifies the household type
-      "OWNERSHP", 
-      "OWNCOST", 
-      "RENT", 
-      "RENTGRS", 
-      "HHINCOME",
-      "VALUEH", 
-      "VACANCY", 
-      "EDUC", 
-      "EDUCD", 
-      "GRADEATT", 
-      "EMPSTAT", 
-      "AGE", 
-      "KITCHEN", 
-      "PLUMBING"),
+      "OWNERSHP", ## tenure 
+      "OWNCOST", ## monthly owner costs
+      "RENT", ## monthly rent
+      "RENTGRS", ## monthly rent plus utilities
+      "HHINCOME", ## household income
+      "VALUEH", ## housing unit value
+      "VACANCY", ## vacancy status of the housing unit
+      "BEDROOMS"#, ## number of bedrooms
+      # "KITCHEN", ## presence of cooking facilities
+      # "PLUMBING"
+      ), ## presence of plumbing facilities
     data_structure = "rectangular") %>% 
     submit_extract() %>% 
     wait_for_extract() %>% 
@@ -243,8 +235,10 @@ extract_vacancy_microdata = function(year) {
       "VACANCY",
       "RENTGRS",
       "RENT", 
-      "KITCHEN", 
-      "PLUMBING"),
+      "BEDROOMS"#,
+      # "KITCHEN", 
+      # "PLUMBING"
+      ),
     data_structure = "hierarchical") %>% 
     submit_extract() %>% 
     wait_for_extract() %>% 
@@ -269,6 +263,7 @@ if (length(years_to_query) > 0) {
 ```
 
 ### Crosswalk microdata from PUMAs to geography of interest
+
 ```{r, update county-place crosswalk}
 #| include: false
 #| eval: false
@@ -489,10 +484,12 @@ crosswalk_microdata = function(year, geography) {
 
   # read in the appropriate crosswalk 
   puma_crosswalk = read_csv(here(temporary_data_path, paste0("crosswalked_pumas_", geography, "_", year, ".csv")))
-
+  
   # keep only the variables we need
   read_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))) %>% 
     select(
+      SAMPLE, 
+      SERIAL,
       HHWT,
       ADJUST,
       statefip,
@@ -507,15 +504,13 @@ crosswalk_microdata = function(year, geography) {
       VACANCY,
       PERNUM,
       PERWT,
-      EDUC,
-      EDUCD,
-      GRADEATT,
-      EMPSTAT,
-      AGE) %>%
+      BEDROOMS)  %>%
     mutate(
       microdata_id = row_number(),
+      household_id = str_c(SAMPLE, SERIAL),
       statefip = str_pad(statefip, side = "left", width = 2, pad = "0"),
       puma = str_pad(puma, side = "left", width = 5, pad = "0")) %>%
+    add_count(household_id, name = "household_size") %>%
     # Join our PUMA-to-place/county crosswalk to our PUMA-level microdata
     # All, or virtually all, rows should join from both dataframes
     tidylog::left_join(
@@ -529,12 +524,18 @@ crosswalk_microdata = function(year, geography) {
     mutate(
       ## these are NA codes that we recode to true missing values
       OWNCOST = if_else(OWNCOST == 99999, NA, OWNCOST),
-      # the weight of each person/household is adjusted by the area of the PUMA that falls into a given place
+      ## due to coding NAs as zero, every other value is one too high
+      BEDROOMS = case_when(
+        BEDROOMS == 0 ~ NA,
+        TRUE ~ BEDROOMS - 1), 
+      # the weight of each person/household is adjusted by the area of the PUMA 
+      # that falls into a given place
       across(.cols = c(PERWT, HHWT), .fns = ~ .x * afact), 
       # adjusts dollar-denominated variables by the Census's 12-month adjustment factor
       across(.cols = c(HHINCOME, RENT, RENTGRS, OWNCOST), .fns = ~ .x * ADJUST)) %>%
     write_csv(here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv")))
 }
+
 gc(verbose = FALSE)
 # Apply crosswalks to all geography-year combinations
 walk(county_years, ~ crosswalk_microdata(year = .x, geography = "county"))
@@ -576,7 +577,9 @@ housing_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
           PERNUM == 1, # one observation per household
           GQ < 3) %>% # exclude group quarters
         ## dropping columns we don't use in this analysis
-        select(-c(PERWT, EDUC, EDUCD, GRADEATT, EMPSTAT, AGE)))
+        select(
+          -c(PERWT, PERNUM, SAMPLE, SERIAL, GQ, products, afact2, sum_products, 
+             sum_products, microdata_id)))
 
 if (geography == "county") {
   years = county_years } else {
@@ -643,7 +646,7 @@ vacancy_microdata = list.files(here(temporary_data_path), full.names = TRUE) %>%
           monthly_private_mortgage_insurance_cost + monthly_taxes_cost,
         crosswalk_period = if_else(year < 2022, "pre-2022", "2022")) %>%
       # drop unneeded columns
-      select(year, crosswalk_period, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total))
+      select(year, crosswalk_period, puma, statefip, HHWT, ADJUST, RENT, RENTGRS, VALUEH, monthly_cost_total, BEDROOMS))
 
 test_that(
   "All years are in vacancy data / no other years are in vacancy data",
@@ -751,6 +754,7 @@ download_hud_income_limits = function(year, url) {
     janitor::clean_names() %>%
     ## the name for the fips variable changes in the 2023 data
     {if (year == 2023) rename(., fips2010 = fips) else (.)} %>%
+    #rename_with(.cols = everything(), .fn = ~ .x %>% str_replace_all(c("eli" = "l30", "^l" = "level_"))) %>%
     transmute(
       year = year,
       fips = fips2010,
@@ -760,14 +764,13 @@ download_hud_income_limits = function(year, url) {
       state = str_pad(state, side = "left", width = 2, pad = "0"), 
       county = str_pad(county, side = "left", width = 3, pad = "0"),
       sub_county = str_sub(fips, 6, 10) %>% if_else(. == "99999", NA, .),
-      # _4 denotes the level applies to a four-person household
-      # ELI_4 is 30% of median rent: Extremely low-income
-      # l50_4 is 50% of median rent: Very low-income
-      # l80_4 is 80% of median rent: Low-income
+      # ELI_4 is 30% of median rent for a four-person household: Extremely low-income
+      # l50_4 is 50% of median rent for a four-person household: Very low-income
+      # l80_4 is 80% of median rent for a four-person household: Low-income
       level_30ami = eli_4,
       level_50ami = l50_4,
       level_80ami = l80_4)
-  
+
   return(fmr_income_limits)
 }
 
@@ -779,8 +782,7 @@ fmr_income_limits_1 = map2_dfr(
 
 Income limits are specified at one of two geographies: the county (mostly), or the sub-county (in some areas in New England). We need to translate the income limits to our geography of interest (either the county-level or the place-level). We do this as follows:
 
--   We aggregate our income limits to the county level. For most counties, this doesn't require any work, because there's only a single income limit for the county. For counties with sub-county-level income limits, we take the mean of these limits. For revised CT counties (beginning in 2022), we draw in a special
-crosswalk to go from sub-counties to counties.
+-   We aggregate our income limits to the county level. For most counties, this doesn't require any work, because there's only a single income limit for the county. For counties with sub-county-level income limits, we take the mean of these limits. For revised CT counties (beginning in 2022), we draw in a special crosswalk to go from sub-counties to counties.
 
 -   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by population.
 
@@ -835,7 +837,7 @@ county_income_limits2 = county_income_limits1 %>%
     across(.cols = matches("ami"))) %>%
   filter(!str_detect(statefip, "^72"))
 
-## in 2017, Valdez-Cordova Census Area -- a county-equivalent geography -- is abolished
+## in 2019, Valdez-Cordova Census Area -- a county-equivalent geography -- is abolished
 ## and is replaced by Chugach Census Area and Copper River Census Area, both of which
 ## are also county-equivalent geographies. While Valdez-Cordova is listed in the HUD
 ## AMI limits data, our ACS microdata are crosswalked to the current Census Areas.
@@ -847,7 +849,11 @@ county_income_limits3 = tibble(
   county_old = c("261")) %>%
   left_join(
     county_income_limits2 %>%
-      filter(statefip == "02"),
+      filter(
+        statefip == "02",
+        ## change happens in 2019, so we only want to apply new census areas
+        ## for 2020 onwards
+        year > 2019), 
     by = c("county_old" = "county"),
     relationship = "many-to-many") %>%
   select(-county_old) %>%
@@ -855,7 +861,7 @@ county_income_limits3 = tibble(
   mutate(GEOID = str_c(statefip, county))
   
 county_income_limits = county_income_limits2 %>%  
-  filter(!(statefip == "02" & county == "261")) %>%
+  filter(!(statefip == "02" & county == "261" & year > 2019)) %>%
   bind_rows(county_income_limits3) %>%
   rename(state = statefip) %>%
   # american samoa, guam, northern mariana islands, virgin islands
@@ -893,7 +899,15 @@ if (geography == "place") {
 
 ## Step 4: Generate AMI indicators
 
-Here we calculate which units are affordable for a family of four at 80%, 50%, and 30% of AMI (regardless of the actual unit size). We also create variables for total population at 80% AMI, 50% AMI, and 30% AMI, including breakdowns for renter and owner subgroups. "Affordable" means costs are \<= 30% of the household's income. For owners, we use the housing cost, and for renters, we use the gross rent.
+Here we calculate indicator variables that designate which units are affordable at 80%, 50%, and 30% of AMI and which households--including breakdowns for renter and owner subgroups--fall below those same AMI levels.
+
+The base AMI level is for a four-person household living in a three-bedroom unit (technically, 2.67 bedrooms, because it is assumed that each bedroom houses 1.5 people). We adjust AMI levels based on the number of bedrooms in each unit and the number of people in each household.
+
+This means that for a household with fewer members, the AMI level is lower. For example, if the base level of 50% AMI is \$35,000, then the modified 50% AMI level for a three-person household would be \$31,500 (discounted by 10%).
+
+This means that for a unit with fewer bedrooms, the AMI level is lower. For example, if the base level of 50% AMI is \$35,000, then the modified 50% AMI level for a two-bedroom unit would be \$31,500 (discounted by 10%).
+
+These adjustments are applied for each unit and household. For a three-person household in a five-bedroom unit, a base AMI of \$35,000 would be adjusted down by 10% and up by 16%, respectively, resulting in an AMI of \$36,540.
 
 ```{r}
 ## these are data on occupied housing units
@@ -901,8 +915,32 @@ household_affordability = tidylog::left_join(
     housing_microdata, 
     crosswalked_income_limits, 
     by = c("statefip" = "state", geography, "year"),
-    relationship = "many-to-one") %>%
+    relationship = "many-to-one") %>% 
   mutate(
+    # ## adjusting AMI levels to account for household size, per Worst
+    # ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
+    # across(
+    #   .cols = matches("level_[0-9]{2}ami"),
+    #   .fns = ~ case_when(
+    #     household_size == 1 ~ .x * .7,
+    #     household_size == 2 ~ .x * .8,
+    #     household_size == 3 ~ .x * .9,
+    #     household_size == 4 ~ .x,
+    #     ## for all household sizes greater than four, we add 8% of the AMI threshold per
+    #     ## household member above four
+    #     household_size > 4 ~ .x * (1 + ((household_size - 4) * .08)))),
+    ## adjusting AMI levels to account for the number of bedrooms per unit, per Worst
+    ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
+    across(
+      .cols = matches("level_[0-9]{2}ami"),
+      .fns = ~ case_when(
+        BEDROOMS == 0 ~ .x * .7,
+        BEDROOMS == 1  ~ .x * .75,
+        BEDROOMS == 2  ~ .x * .9,
+        BEDROOMS == 3  ~ .x * 1.04,
+        ## for all household sizes greater than four, we add 8% of the AMI threshold per 
+        ## household member above four
+        BEDROOMS >= 4 ~ .x * (1.04 + ((BEDROOMS - 4) * .12)))),
     ## all households below ami levels
     across(
       .cols = matches("ami$"),
@@ -932,7 +970,7 @@ household_affordability = tidylog::left_join(
       .names = "owner_{.col %>% stringr::str_remove('all_')}"),
     ## this standardized cost variable simplifies subsequent calculations
     applicable_housing_cost = if_else(OWNERSHP == 2, RENTGRS, OWNCOST),
-    ## renter households with affordable housing costs
+    ## renter-occupied households with affordable housing costs
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
       .fns = ~ case_when(
@@ -942,7 +980,7 @@ household_affordability = tidylog::left_join(
         OWNERSHP == 2 & applicable_housing_cost * 12 <= .x * .3 ~ 1,
         TRUE ~ 0), 
       .names = "renter_affordable_{.col}"),
-    ## owner households with affordable housing costs
+    ## owner-occupied households with affordable housing costs
     across(
       .cols = c(level_30ami, level_50ami, level_80ami),
       .fns = ~ case_when(
@@ -981,8 +1019,20 @@ vacant_affordability = tidylog::left_join(
     by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
+    ## adjusting AMI levels to account for the number of bedrooms per unit, per Worst
+    ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
+    across(
+      .cols = matches("level_[0-9]{2}ami"),
+      .fns = ~ case_when(
+        BEDROOMS == 0 ~ .x * .7,
+        BEDROOMS == 1  ~ .x * .75,
+        BEDROOMS == 2  ~ .x * .9,
+        BEDROOMS == 3  ~ .x * 1.04,
+        ## for all household sizes greater than four, we add 8% of the AMI threshold per 
+        ## household member above four
+        BEDROOMS >= 4 ~ .x * (1.04 + ((BEDROOMS - 4) * .12)))),
     ## binary indicators 
-    ## for rental units, if adjusted annual rent is less than or equal to the given 
+    ## for rental units, if adjusted annual rent is less than or equal to the given
       ## AMI level
     ## for ownership units, if estimated annual housing cost is less than or equal
       ## to the given AMI level for all units
@@ -1077,7 +1127,7 @@ If the unweighted sum of interpolated households is under 30, we suppress that c
 ```{r}
 # read in the puma interpolation quality files, these contain `puma_flag`, 
 # which provides a score from 1-3 describing the mean geographic allocation quality 
-# for each 
+# for each geography
 years = if_else(
   geography == "county", 
   paste0(county_years, collapse = "|"), 
@@ -1178,10 +1228,20 @@ years = if_else(
 
 # export the final data
 write_csv(
-  housing_overall, 
+  ## renaming to maintain consistency with prior productions / external references to
+  ## this metric historically (though this is a ratio, not a percentage)
+  housing_overall %>% 
+    rename_with(
+      .cols = everything(),
+      .fn = ~ str_replace(.x, "ratio", "share")), 
   here("02_housing", "data", "final", str_c("housing_", geography, "_", years, ".csv")))
 write_csv(
-  housing_subgroups, 
+  ## renaming to maintain consistency with prior productions / external references to
+  ## this metric historically (though this is a ratio, not a percentage)
+  housing_subgroups %>% 
+    rename_with(
+      .cols = everything(),
+      .fn = ~ str_replace(.x, "ratio", "share")),
   here("02_housing", "data", "final", str_c("housing_", geography, "_", years, "_subgroups.csv")))
 ```
 
@@ -1192,22 +1252,36 @@ The final dataset, including all subgroups, meets all the assertions contained i
 ```{r}
 ## we modify the expectations form to contain the same years for which we're running
 ## this script:
-data_form_path = here("02_housing", "housing_affordability_tenure_final_data_evaluation_form.csv")
-read_csv(data_form_path) %>%
-  mutate(
-    row_number = row_number(),
-    `...3` = if_else(row_number > 3, years %>% str_replace_all("_", ";"), `...3`)) %>%
-  write_csv(data_form_path)
+data_form_paths = list.files(
+  here("10a_final-evaluation"),
+  full.names = TRUE) %>%
+  keep(~ str_detect(.x, "housing.*(affordability|availability).*tenure"))
+
+walk(
+  data_form_paths,
+  ~ read_csv(.x) %>%
+      mutate(
+        row_number = row_number(),
+        `...3` = if_else(row_number > 3, years %>% str_replace_all("_", ";"), `...3`)) %>%
+      write_csv(.x))
 
 test_that(
   "The final data passes standardized QC checks", {
     expect_no_error(
-      evaluate_final_data(
-        exp_form_path = data_form_path,
-        data = housing_subgroups,
-        geography = geography,
-        subgroups = TRUE,
-        confidence_intervals = FALSE))})
+      walk(
+        data_form_paths,
+        ~ evaluate_final_data(
+            exp_form_path = .,
+            data = housing_subgroups %>%
+              { if (str_detect(.x, "availability")) 
+                  select(., -matches("affordable")) 
+                else select(., -matches("available"))} %>%
+              rename_with(
+                .cols = everything(),
+                .fn = ~ str_replace(.x, "ratio", "share")),
+            geography = geography,
+            subgroups = TRUE,
+            confidence_intervals = FALSE)))})
 ```
 
 ### Data Assertions
@@ -1217,14 +1291,63 @@ test_that(
 The counts of distinct geographies (places/counties) align with expected counts for each geography for each year.
 
 ```{r}
-population_listing = read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
+population_listing1 = read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
   mutate(
     year = as.character(year),
     geoid = str_c(state, .data[[geography]]))
 
+if (geography == "county") {
+  ## though Chugach and Copper River Census Areas don't exist until 2020,
+  ## we create metrics for these counties in the years 2014:2019 for continuity
+  ## as reflected in the PUMA-county crosswalk. accordingly, we adjust the population
+  ## listing here to capture this
+  adjusted_ak_counties = data.frame(
+      year = rep(c(2014:2019) %>% as.character, 2),
+      geoid = c(rep("02063", 6), rep("02066", 6))) %>%
+    left_join(
+      population_listing1 %>% 
+        distinct(geoid, .keep_all = TRUE) %>% 
+        select(-year), 
+      by = "geoid") %>%
+      mutate(population = NA) %>%
+    arrange(geoid, year)
+  
+  population_listing = population_listing1 %>%
+    filter(geoid != "02261") %>%
+    bind_rows(adjusted_ak_counties)
+} else {
+  ## this file doesn't have place-level data for 2014, so we duplicate records
+  ## from 2015, and assign population values to NA (we don't use these, but...
+  ## just in case)
+  population_listing = population_listing1 %>%
+    bind_rows(
+      population_listing1 %>%
+        filter(year == "2015") %>%
+        mutate(
+          year = "2014",
+          population = NA))
+}
+
+warning("This geography universe listing is modified here because, at the time
+        of writing, it had not been updated to include the eight CT county-equivalents
+        that were used in years preceding 2022. However, in future updates, the original
+        universe file should be updated, and this manual modification should be removed.")
+
 geography_universe = population_listing %>%
   group_by(year) %>%
-  summarize(geography_count = n_distinct(geoid))
+  summarize(geography_count = n_distinct(geoid)) %>%
+  {if (geography == "county") 
+    mutate(.,
+      geography_count = case_when(
+        year < 2022 ~ geography_count + 8,
+        TRUE ~ geography_count)) 
+    else mutate(.,
+      ## we don't have a valid crosswalk for South Fulton, GA for 2018-2021
+      ## accordingly, we intentionally don't produce estimates for this geography
+      ## during those years
+      geography_count = case_when(
+        year %in% c(2018:2021) ~ geography_count - 1,
+        TRUE ~ geography_count))}
 
 test_that(
   "Counts of places/counties are correct for each year", {
@@ -1234,9 +1357,25 @@ test_that(
         group_by(year, subgroup) %>%
         summarize(
           geography_count_analysis = n_distinct(state, .data[[geography]])) %>%
-        tidylog::left_join(geography_universe, by = "year") %>%
+        left_join(geography_universe, by = "year") %>%
         mutate(check = geography_count == geography_count_analysis) %>%
         pull(check)))})
+
+####----to identify geography non-alignment----####
+# housing_year_geographies = housing_subgroups %>%
+#   transmute(year, geoid = str_c(state, .data[[geography]]), flag = 1) %>%
+#   distinct()
+# 
+# ## geographies in the official universe of geographies
+# ## where we don't have a matching record in our metric data
+# population_listing %>%
+#   filter(!year == "2020") %>%
+#   anti_join(housing_year_geographies, by = c("year", "geoid"))
+# 
+# ## geographies in our metric data where we don't have a matching record in the
+# ## official universe of geographies
+# housing_year_geographies %>%
+#   anti_join(population_listing %>% filter(year != "2020"))
 ```
 
 ***Values Are Not Negative***
@@ -1251,6 +1390,7 @@ test_that(
       filter(if_any(.cols = c(matches("ratio"), -matches("quality")), .fns = ~ .x <= 0)) %>%
       nrow() == 0)})
 ```
+
 ***No State Comprises Only NA Values***
 
 In particular, this is a check for Connecticut due to changing counties (pre-post 2022),
@@ -1271,6 +1411,7 @@ test_that(
       filter(value == 0) %>%
       nrow() == 0) })
 ```
+
 ***Ratio of Available is Not Greater than Ratio of Affordable***
 
 Affordable-and-available ratios by definition must be equal to or lesser than the corresponding affordable ratio.
@@ -1427,12 +1568,12 @@ housing_subgroups %>%
 
 We anticipate the the distributions for a given metric will be similar across years, and that the peaks of distributions will be generally be lower for lower AMI levels.
 
-```{r}
+```{r, fig.width = 10}
 housing_subgroups %>% 
   select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
   pivot_longer(-c(subgroup, year)) %>%
   filter(str_detect(name, "affordable")) %>%
-  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
+  mutate(name = name %>% str_replace_all(c("_" = " ", "ratio" = "", "affordable" = "aff.", "available" = "avail.")) %>% str_to_sentence()) %>%
   ggplot() +
     geom_histogram(aes(x = value, fill = subgroup)) +
     facet_wrap(~ name + year, ncol = 9) +
@@ -1444,7 +1585,7 @@ housing_subgroups %>%
   select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
   pivot_longer(-c(subgroup, year)) %>%
   filter(str_detect(name, "available")) %>%
-  mutate(name = name %>% str_replace_all("_", " ") %>% str_to_sentence()) %>%
+  mutate(name = name %>% str_replace_all(c("_" = " ", "ratio" = "", "affordable" = "aff.", "available" = "avail.")) %>% str_to_sentence()) %>%
   ggplot() +
     geom_histogram(aes(x = value, fill = subgroup)) +
     facet_wrap(~ name + year, ncol = 9) +
@@ -1464,7 +1605,7 @@ Metrics generally should not exhibit huge year-over-year changes within the same
 ```{r}
 if (length(c(county_years, place_years) %>% unique) > 1) {
 
-housing_subgroups %>%
+year_over_year_changes = housing_subgroups %>%
   select(-matches("quality")) %>%
   pivot_longer(cols = c(matches("ratio"))) %>%
   filter(value > .01) %>%
@@ -1473,8 +1614,10 @@ housing_subgroups %>%
   mutate(year_over_year_change = (value - lead(value)) / lead(value)) %>%
   filter(!is.na(year_over_year_change)) %>%
   ungroup() %>%
- ## without this exception, some places have huge percentage changes year-over-year
   arrange(desc(abs(year_over_year_change))) %>%
+  mutate(geoid = str_c(state, .data[[geography]]))
+
+year_over_year_changes %>%
   ggplot() +
     geom_histogram(aes(x = year_over_year_change, fill = subgroup)) +
     facet_wrap(~ name) +
@@ -1484,8 +1627,8 @@ housing_subgroups %>%
       y = "Count",
       title = "Metrics should show relatively little year-over-year variation with distributions clustered around 0%",
       subtitle = "Distributions of year-over-year changes in housing affordability and availability metrics, by AMI level and subgroup") +
-  scale_y_continuous(labels = scales::comma) +
-  scale_x_continuous(labels = scales::percent)
+    scale_y_continuous(labels = scales::comma) +
+    scale_x_continuous(labels = scales::percent)
 }
 ```
 
@@ -1600,4 +1743,5 @@ nlihc_estimates_metro %>%
     labs(x = "Metro area", y = "Ratio difference (NLIHC - Urban)") +
     theme_urbn_print()
 }
+
 ```
