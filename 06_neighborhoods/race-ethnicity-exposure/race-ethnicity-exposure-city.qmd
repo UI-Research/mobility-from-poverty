@@ -14,6 +14,7 @@ execute:
   message: false
 ---
 
+# Racial/ethnic Exposure 
 
 This metric measures the exposure of a given race/ethnicity group to other race/ethnicity groups. The metric is calculated at the census tract level and then aggregated to the place level. We are interested in Hispanic, non-Hispanic Black, non-Hispanic white, and Other Races and Ethnicities.
 
@@ -39,88 +40,161 @@ This metric measures the exposure of a given race/ethnicity group to other race/
 
 ## Housekeeping
 
-```{r setup}
+```{r}
+#| label: setup
 options(scipen = 999)
 
 library(tidyverse)
 library(censusapi)
 library(urbnthemes)
 library(reactable)
+library(tidylog)
 
 set_urbn_defaults(style = "print")
 
-source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 source(here::here("06_neighborhoods", "R", "get_vars.R"))
 source(here::here("functions", "testing", "evaluate_final_data.R"))
-
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
 ## 1. Pull all non-overlapping race/enthnicity groups needed to create Hispanic, non-Hispanic Black, non-Hispanic white, and Other Races and Ethnicities.
 
 The American Community Survey reports detailed race and ethnicity by the following table.
 
-```{r acs-race-ethnicity-table, echo = FALSE}
+```{r}
+#| label: acs-race-ethnicity-table
+#| echo: false
 knitr::include_graphics(here::here("06_neighborhoods", "www", "images", "race-ethnicity.png"))
-
 ```
 
 We pull all of the race/ethnicity counts for 2021 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced above.
 
-```{r load-tract-data}
-# variables of interest
-vars <- c(
-  # Hispanic or Latino
-  hispanic = "DP05_0071E", # Estimate!!HISPANIC OR LATINO AND RACE!!Total population!!Hispanic or Latino (of any race)
-  hispanic_moe = "DP05_0071M",
-  # Not Hispanic or Latino
-  white_nh = "DP05_0077E", # White alone
-  white_nh_moe = "DP05_0077M", # White alone MOE
-  black_nh = "DP05_0078E", # Black or African American alone
-  black_nh_moe = "DP05_0078M", # Black or African American alone MOE
-  aian_nh = "DP05_0079E", # American Indian and Alaska Native alone
-  aian_nh_moe = "DP05_0079M", # American Indian and Alaska Native alone MOE
-  asian_nh = "DP05_0080E", # Asian alone
-  asian_nh_moe = "DP05_0080M", # Asian alone MOE
-  nhpi_nh = "DP05_0081E", # Native Hawaiian and Other Pacific Islander alone
-  nhpi_nh_moe = "DP05_0081M", # Native Hawaiian and Other Pacific Islander alone MOE
-  census_other_nh = "DP05_0082E", # Some other race alone
-  census_other_nh_moe = "DP05_0082M", # Some other race alone
-  two_or_more_nh = "DP05_0083E", # Two or more races
-  two_or_more_nh_moe = "DP05_0083M"  # Two or more races MOE
+The variable codes for population by race/ethnicity are different for different years. Therefore, we construct a tribble with the variable-year combinations
+
+```{r}
+#| label: load-tract-data
+
+# Tribble with year-specific ACS codes and corresponding labels
+variable_mapping <- tribble(
+  ~year, ~code, ~label,
+  # 2016 Codes
+  2016, "DP05_0066E", "hispanic",
+  2016, "DP05_0066M", "hispanic_moe",
+  2016, "DP05_0072E", "white_nh",
+  2016, "DP05_0072M", "white_nh_moe",
+  2016, "DP05_0073E", "black_nh",
+  2016, "DP05_0073M", "black_nh_moe",
+  2016, "DP05_0074E", "aian_nh",
+  2016, "DP05_0074M", "aian_nh_moe",
+  2016, "DP05_0075E", "asian_nh",
+  2016, "DP05_0075M", "asian_nh_moe",
+  2016, "DP05_0076E", "nhpi_nh",
+  2016, "DP05_0076M", "nhpi_nh_moe",
+  2016, "DP05_0077E", "census_other_nh",
+  2016, "DP05_0077M", "census_other_nh_moe",
+  2016, "DP05_0078E", "two_or_more_nh",
+  2016, "DP05_0078M", "two_or_more_nh_moe",
+  2018, "DP05_0071E", "hispanic",
+  2018, "DP05_0071M", "hispanic_moe",
+  2018, "DP05_0077E", "white_nh",
+  2018, "DP05_0077M", "white_nh_moe",
+  2018, "DP05_0078E", "black_nh",
+  2018, "DP05_0078M", "black_nh_moe",
+  2018, "DP05_0079E", "aian_nh",
+  2018, "DP05_0079M", "aian_nh_moe",
+  2018, "DP05_0080E", "asian_nh",
+  2018, "DP05_0080M", "asian_nh_moe",
+  2018, "DP05_0081E", "nhpi_nh",
+  2018, "DP05_0081M", "nhpi_nh_moe",
+  2018, "DP05_0082E", "census_other_nh",
+  2018, "DP05_0082M", "census_other_nh_moe",
+  2018, "DP05_0083E", "two_or_more_nh",
+  2018, "DP05_0083M", "two_or_more_nh_moe",
+  2021, "DP05_0071E", "hispanic",
+  2021, "DP05_0071M", "hispanic_moe",
+  2021, "DP05_0077E", "white_nh",
+  2021, "DP05_0077M", "white_nh_moe",
+  2021, "DP05_0078E", "black_nh",
+  2021, "DP05_0078M", "black_nh_moe",
+  2021, "DP05_0079E", "aian_nh",
+  2021, "DP05_0079M", "aian_nh_moe",
+  2021, "DP05_0080E", "asian_nh",
+  2021, "DP05_0080M", "asian_nh_moe",
+  2021, "DP05_0081E", "nhpi_nh",
+  2021, "DP05_0081M", "nhpi_nh_moe",
+  2021, "DP05_0082E", "census_other_nh",
+  2021, "DP05_0082M", "census_other_nh_moe",
+  2021, "DP05_0083E", "two_or_more_nh",
+  2021, "DP05_0083M", "two_or_more_nh_moe",
+  2023, "DP05_0076E", "hispanic",
+  2023, "DP05_0076M", "hispanic_moe",
+  2023, "DP05_0082E", "white_nh",
+  2023, "DP05_0082M", "white_nh_moe",
+  2023, "DP05_0083E", "black_nh",
+  2023, "DP05_0083M", "black_nh_moe",
+  2023, "DP05_0084E", "aian_nh",
+  2023, "DP05_0084M", "aian_nh_moe",
+  2023, "DP05_0085E", "asian_nh",
+  2023, "DP05_0085M", "asian_nh_moe",
+  2023, "DP05_0086E", "nhpi_nh",
+  2023, "DP05_0086M", "nhpi_nh_moe",
+  2023, "DP05_0087E", "census_other_nh",
+  2023, "DP05_0087M", "census_other_nh_moe",
+  2023, "DP05_0088E", "two_or_more_nh",
+  2023, "DP05_0088M", "two_or_more_nh_moe"
 )
 
-# pull Census tracts for 2021
-# note: get_vars also pulls people counts for tracts
+pull_and_rename <- function(year, geography = "tract") {
+  vars <- variable_mapping %>%
+    filter(year == {{ year }}) %>%
+    pull(code)
+
+  tracts_raw <-
+    get_vars(
+      year = year, vars = vars,
+      geography = geography, source = "acs/acs5/profile"
+    ) |>
+    mutate(year = {{ year }})
+
+
+  rename_lookup <- variable_mapping %>%
+    filter(year == {{ year }}) %>%
+    select(code, label) %>%
+    distinct() %>%
+    deframe()
+
+  # Rename columns using the lookup
+  tracts <- tracts_raw %>%
+    rename_with(~ rename_lookup[.x], .cols = names(rename_lookup)) |>
+    rename(people = B01003_001E) # from get_vars()
+
+
+  return(tracts)
+}
 
 years <- c(2016, 2018, 2021, 2023)
+tracts_raw <- map(years, ~ pull_and_rename(.x)) |>
+  list_rbind() |>
+  relocate(year, .before = everything())
 
-tracts_raw <- map(years, ~get_vars(year = .x,
-                               vars = vars,
-                               geography = "tract",
-                               source = "acs/acs5/profile") |>
-                      mutate(year = .x)) |>
-          list_rbind()
+write_csv(tracts_raw, here::here("06_neighborhoods/race-ethnicity-exposure/data/tracts.csv"))
+```
 
-write_csv(tracts_raw, here("06_neighborhoods/race-ethnicity-exposure/data/tracts.csv"))
+Since the code chunk above takes roughly 30 minutes to run, we export and import
+the data back
 
-tracts_raw <- read_csv(here("06_neighborhoods/race-ethnicity-exposure/data/tracts.csv"))
-# rename the variables
-tracts <- tracts_raw %>%
-  rename(
-    people = B01003_001E,
-    all_of(vars)
-  ) |>
-    relocate(year, .before = everything())
+```{r}
+#| label: export-and-import-tract-data
 
+tracts_raw <- read_csv(here::here("06_neighborhoods/race-ethnicity-exposure/data/tracts.csv"))
 ```
 
 Some tracts don't have any population. We drop those tracts.
 
 ```{r}
 #| label: drop-empty-tracts
-tracts <- tracts %>%
+tracts <- tracts_raw %>%
   tidylog::filter(people > 0)
-
 ```
 
 Certain estimates are controlled. The margins of errors for these estimates will appear as `-555555555` but [can be treated as zero](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf). [Here are all of the special codes.](https://www.census.gov/data/developers/data-sets/acs-1year/data-notes.html)
@@ -128,7 +202,6 @@ Certain estimates are controlled. The margins of errors for these estimates will
 ```{r}
 tracts <- tracts %>%
   mutate(hispanic_moe = if_else(hispanic_moe == -555555555, 0, hispanic_moe))
-
 ```
 
 We calculate the coefficients of variation for each variable.
@@ -137,19 +210,22 @@ We calculate the coefficients of variation for each variable.
 tracts_cv <- tracts %>%
   mutate(
     hispanic_cv = (hispanic_moe / 1.645) / hispanic,
-    black_nh_cv = (black_nh_moe / 1.645)  / black_nh,
-    white_nh_cv = (white_nh_moe / 1.645)  / white_nh,
-    aian_nh_cv = (aian_nh_moe / 1.645)  / aian_nh,
-    nhpi_nh_cv = (nhpi_nh_moe / 1.645)  / nhpi_nh,
-    census_other_nh_cv = (census_other_nh_moe / 1.645)  / census_other_nh,
-    two_or_more_nh_cv = (two_or_more_nh_moe / 1.645)  / two_or_more_nh
+    black_nh_cv = (black_nh_moe / 1.645) / black_nh,
+    white_nh_cv = (white_nh_moe / 1.645) / white_nh,
+    aian_nh_cv = (aian_nh_moe / 1.645) / aian_nh,
+    nhpi_nh_cv = (nhpi_nh_moe / 1.645) / nhpi_nh,
+    census_other_nh_cv = (census_other_nh_moe / 1.645) / census_other_nh,
+    two_or_more_nh_cv = (two_or_more_nh_moe / 1.645) / two_or_more_nh
   )
-
 ```
 
 Most tracts have very large coefficients of variation. Some of these tracts will be in census places that we suppress. Others will be included in calculations but have lower quality scores.
 
 We also combine AIAN, NHPI, Other, and Two or More races to reduce the CVs. Finally, averaging on the place level will reduce some of the imprecision. The following table shows the share of tracts with coefficients of variation greater than 0.4, a very poor CV for each race/ethnicity group. The shares are very high.
+
+**Note:** The share of tracts with coefficients of variation greater than 0.4
+for `hispanic` and `nhpi_nh` in 2016 are actually really small. Not sure why
+or if this is a problem!
 
 ```{r}
 tracts_cv %>%
@@ -161,9 +237,9 @@ tracts_cv %>%
     aian_nh = mean(aian_nh_cv >= 0.4),
     nhpi_nh = mean(nhpi_nh_cv >= 0.4),
     census_other_nh = mean(census_other_nh_cv >= 0.4),
-    two_or_more_nh = mean(two_or_more_nh_cv >= 0.4)
+    two_or_more_nh = mean(two_or_more_nh_cv >= 0.4),
+    .by = c(year)
   )
-
 ```
 
 ## 2. Collapse the detailed groups to the three groups of interest.
@@ -175,20 +251,19 @@ tracts <- tracts %>%
   mutate(
     other_nh =
       aian_nh +
-      asian_nh +
-      nhpi_nh +
-      census_other_nh +
-      two_or_more_nh,
+        asian_nh +
+        nhpi_nh +
+        census_other_nh +
+        two_or_more_nh,
     other_nh_moe =
       sqrt(
-        aian_nh_moe ^ 2 +
-          asian_nh_moe ^ 2  +
-          nhpi_nh_moe ^ 2  +
-          census_other_nh_moe ^ 2  +
-          two_or_more_nh_moe ^ 2
+        aian_nh_moe^2 +
+          asian_nh_moe^2 +
+          nhpi_nh_moe^2 +
+          census_other_nh_moe^2 +
+          two_or_more_nh_moe^2
       )
   )
-
 ```
 
 [This Census presentation](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf) recommends using the maximum margin of error when aggregating multiple zero estimates.
@@ -236,7 +311,7 @@ moes <- tracts %>%
   mutate(group = str_replace(group, "_moe", ""))
 
 # combine the point estimates and margins of error
-other_moe <- left_join(values, moes, by = c("year","state", "county", "tract", "group"))
+other_moe <- left_join(values, moes, by = c("year", "state", "county", "tract", "group"))
 
 rm(moes, values)
 
@@ -252,12 +327,11 @@ other_moe <- other_moe %>%
 
 # combine the margins of error
 other_moe <- other_moe %>%
-  summarize(other_nh_moe_reduced = sqrt(sum(moe ^ 2))) %>%
+  summarize(other_nh_moe_reduced = sqrt(sum(moe^2))) %>%
   ungroup()
 
 # append to the original data set
 tracts <- left_join(tracts, other_moe, by = c("year", "state", "county", "tract"))
-
 ```
 
 We convert margins of error to standard errors using 1.645 as the critical value ([page 3](https://www2.census.gov/programs-surveys/acs/tech_docs/accuracy/2018_ACS_Accuracy_Document_Worked_Examples.pdf?))
@@ -271,7 +345,6 @@ tracts <- tracts %>%
     white_nh_se = white_nh_moe / 1.645,
     other_nh_se_reduced = other_nh_moe_reduced / 1.645
   )
-
 ```
 
 ```{r}
@@ -297,12 +370,10 @@ tracts <- tracts %>%
     other_nh_moe_reduced,
     white_nh_moe
   )
-
 ```
 
 **Check:** Do the pulled race/ethnicity counts sum to the tract populations?
 
-**Note** : This is not true for 2016 and 2023, why?
 ```{r check-tract-sums}
 stopifnot(
   tracts %>%
@@ -310,11 +381,11 @@ stopifnot(
     filter(people != people2) %>%
     nrow() == 0
 )
-
 ```
 
 After combining the detailed race/ethnicity groups into Other Races and Ethnicities, we expect the share of Census tracts with coefficients of variation greater than 0.4 to decline. A large share of the Other Races and Ethnicities have coefficients of variation greater than 0.4. The first value uses the CV without adjustment and the second value uses the CV with adjustment.
 
+**Note:** 2016 and 2023 have very small values for `original` and `reduced`. I'm not sure why.
 ```{r}
 tracts %>%
   summarize(
@@ -322,7 +393,6 @@ tracts %>%
     reduced = mean((other_nh_se_reduced / other_nh) > 0.4),
     .by = "year"
   )
-
 ```
 
 Let's keep the adjusted margin of error for Other Races and Ethnicities.
@@ -334,7 +404,6 @@ tracts <- tracts %>%
     other_nh_se = other_nh_se_reduced,
     other_nh_moe = other_nh_moe_reduced
   )
-
 ```
 
 Let's plot the relationship between the margins of error and the number of people who identify as the four different race/ethnicity groups in each county. Points that appear above and to the left of the black line have coefficients of variation greater than 0.4.
@@ -383,7 +452,6 @@ tracts %>%
   ) +
   scatter_grid() +
   facet_wrap(. ~ year)
-
 ```
 
 ## 3. Crosswalk census tracts to census places.
@@ -415,6 +483,9 @@ We need to know which census places have any overlap with each census tract. We 
 Then click "Run request" at the bottom of the screen. After the crosswalk finished processing we downloaded it, renamed it, and moved it to the `geographic-crosswalks` folder for this project.
 
 Now we read in the tract to place crosswalk and clean it.
+
+For years 2016 and 2018 we use the [Geocorr 2014](https://mcdc.missouri.edu/applications/geocorr2014.html) with the same options and step as above but pulling 2010 geographies for the source and target 
+as well as for population.
 
 ```{r}
 crosswalk_20 <- read_csv(
@@ -460,48 +531,6 @@ crosswalk_10 <- read_csv(
   filter(place != 99999)
 ```
 
-We are only interested in places with large populations. We load the crosswalk containing those places and filter to the places of interest.
-
-```{r}
-places_of_interest <-
-  read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
-  mutate(state_place = paste0(state, place))
-
-crosswalk_20 <- crosswalk_20 %>%
-  filter(state_place %in% places_of_interest$state_place)
-
-crosswalk_10 <- crosswalk_10 %>%
-  filter(state_place %in% places_of_interest$state_place)
-
-crosswalk_20 <-
-  inner_join(
-    crosswalk_20,
-    distinct(places_of_interest, state_place, place_name),
-    by = "state_place"
-  )
-
-crosswalk_10 <-
-  inner_join(
-    crosswalk_10,
-    distinct(places_of_interest, state_place, place_name),
-    by = "state_place"
-  )
-
-```
-
-The crosswalk contains an allocation factor variable, `afact`, which indicates the proportion of the source geographies (tracts) contained within the target geography (place). It also contains `afact2`, which is the proportion of the target geogrpahy (place) included in each source geography (tract).
-
-We can use `afact` to allocate census tract data to places. The allocation is based on 2020 data and the ACS data uses 2021 data. We will use the product of `afact` and `afact2` for a quality measure later.
-
-```{r}
-crosswalk_20 <- crosswalk_20 %>%
-  mutate(afact_product = afact * afact2)
-
-crosswalk_10 <- crosswalk_10 %>%
-  mutate(afact_product = afact * afact2)
-
-```
-
 Expand the crosswalks to include a column with the years in `tracts` the crosswalk
 can apply to
 ```{r}
@@ -513,33 +542,57 @@ crosswalk_20 <- crosswalk_20 %>%
   crossing(years_20)
 
 crosswalk_10 <- crosswalk_10 |>
-    crossing(years_10)
+  crossing(years_10)
 
 crosswalk <- bind_rows(crosswalk_10, crosswalk_20) |>
-    relocate(year, .before = everything())
+  relocate(year, .before = everything())
 ```
+
+We are only interested in places with large populations. We load the crosswalk containing those places and filter to the places of interest.
+
+```{r}
+places_of_interest <-
+  read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
+  mutate(state_place = paste0(state, place))
+
+crosswalk <- crosswalk %>%
+  filter(state_place %in% places_of_interest$state_place)
+
+crosswalk <-
+  inner_join(
+    crosswalk,
+    distinct(places_of_interest, year, state_place, place_name),
+    by = c("year", "state_place")
+  )
+```
+
+The crosswalk contains an allocation factor variable, `afact`, which indicates the proportion of the source geographies (tracts) contained within the target geography (place). It also contains `afact2`, which is the proportion of the target geogrpahy (place) included in each source geography (tract).
+
+We can use `afact` to allocate census tract data to places. The allocation is based on 2020 data and the ACS data uses 2021 data. We will use the product of `afact` and `afact2` for a quality measure later.
+
+```{r}
+crosswalk <- crosswalk %>%
+  mutate(afact_product = afact * afact2)
+```
+
+
 
 Join data to match each census tract with every census place that the tract overlaps with.
 
 ```{r}
- tracts_joined <- left_join(tracts, crosswalk, by = c("state", "county", "tract")) %>%
+tracts_joined <- left_join(tracts, crosswalk, by = c("year", "state", "county", "tract")) %>%
   arrange(state_place)
-
-
-
 ```
 
 Many tracts are missing place because they do not overlap with any place of interest.
 
 ```{r}
 sum(is.na(tracts_joined$state_place))
-
 ```
 
 ```{r}
 tracts_joined <- tracts_joined %>%
   filter(!is.na(state_place))
-
 ```
 
 ## 4. Calculate the share of a place's racial/ethnic group in each tract
@@ -548,15 +601,13 @@ We weight each census tract in the numerator because only part of the tract may 
 
 ```{r place-shares-in-tracts}
 indices <- tracts_joined %>%
-  group_by(state, place, state_place, place_name) %>%
   mutate(
     share_of_black_nh = (black_nh * afact) / sum(black_nh * afact),
     share_of_hispanic = (hispanic * afact) / sum(hispanic * afact),
     share_of_other_nh = (other_nh * afact) / sum(other_nh * afact),
-    share_of_white_nh = (white_nh * afact) / sum(white_nh * afact)
-  ) %>%
-  ungroup()
-
+    share_of_white_nh = (white_nh * afact) / sum(white_nh * afact),
+    .by = c(year, state, place, state_place, place_name)
+  )
 ```
 
 **Check:** Do the shares in each tract sum to one in a place?
@@ -564,7 +615,7 @@ indices <- tracts_joined %>%
 ```{r check-place-sums}
 stopifnot(
   indices %>%
-    group_by(state, place, state_place) %>%
+    group_by(year, state, place, state_place) %>%
     summarize(
       share_of_black_nh = sum(share_of_black_nh),
       share_of_hispanic = sum(share_of_hispanic),
@@ -572,12 +623,11 @@ stopifnot(
       share_of_white_nh = sum(share_of_white_nh)
     ) %>%
     filter(!near(share_of_white_nh, 1) |
-             !near(share_of_black_nh, 1) |
-             !near(share_of_hispanic, 1) |
-             !near(share_of_other_nh, 1)) %>%
+      !near(share_of_black_nh, 1) |
+      !near(share_of_hispanic, 1) |
+      !near(share_of_other_nh, 1)) %>%
     nrow() == 0
 )
-
 ```
 
 ## 5. Calculate exposure to other racial/ethnic groups
@@ -599,7 +649,6 @@ indices <- indices %>%
     non_hispanic = (afact * (white_nh + black_nh + other_nh)) / (afact * people),
     non_other_nh = (afact * (hispanic + white_nh + black_nh)) / (afact * people)
   )
-
 ```
 
 > We would then take the weighted average across tracts with the weight being the percentage of a place's whites living in each tract. So in a place with only 2 tracts, one tract has 80 whites and only 10 percent of that residents are non-white and in the second tract there are 20 white residents but 50% of the tract is non-white, the white to non-white index would be 0.8 * 0.1 + 0.2 * 0.5 = 0.18. In other words the average white resident lives in a neighborhood in which 18% of his neighbors are non-white
@@ -610,7 +659,6 @@ We account for `afact` for tracts, people, counts, and standard errors. We do no
 
 ```{r calc-metrics}
 place_data <- indices %>%
-  group_by(state, place, state_place, place_name) %>%
   summarize(
     tracts = sum(afact),
     people = sum(people * afact),
@@ -620,48 +668,44 @@ place_data <- indices %>%
     other_nh = sum(other_nh * afact),
     white_nh = sum(white_nh * afact),
     # standard errors
-    black_nh_se = sqrt(sum(afact * (black_nh_moe ^ 2))) / 1.645,
-    hispanic_se = sqrt(sum(afact * (hispanic_moe ^ 2))) / 1.645,
-    other_nh_se = sqrt(sum(afact * (other_nh_moe ^ 2))) / 1.645,
-    white_nh_se = sqrt(sum(afact * (white_nh_moe ^ 2))) / 1.645,
+    black_nh_se = sqrt(sum(afact * (black_nh_moe^2))) / 1.645,
+    hispanic_se = sqrt(sum(afact * (hispanic_moe^2))) / 1.645,
+    other_nh_se = sqrt(sum(afact * (other_nh_moe^2))) / 1.645,
+    white_nh_se = sqrt(sum(afact * (white_nh_moe^2))) / 1.645,
     # exposures
     share_black_nh_exposure = weighted.mean(non_black_nh, w = share_of_black_nh),
     share_hispanic_exposure = weighted.mean(non_hispanic, w = share_of_hispanic),
     share_other_nh_exposure = weighted.mean(non_other_nh, w = share_of_other_nh),
     share_white_nh_exposure = weighted.mean(non_white_nh, w = share_of_white_nh),
-    afact_sum_product = sum(afact_product)
-  ) %>%
-  ungroup()
+    afact_sum_product = sum(afact_product),
+    .by = c(year, state, place, state_place, place_name)
+  )
 
+places_of_interest |>
+  filter(year %in% years) |>
+  anti_join(place_data, by = c("year", "state", "place"))
 
-stopifnot(nrow(place_data) == 486)
-
+stopifnot(nrow(place_data) == 486 * length(years))
 ```
 
 We pull in the place-level data and compare it to the calculated place-level data. The demographic breakdowns should be identical.
 
 ```{r}
-places_test <- tracts <- get_vars(year = 2021,
-                   vars = vars,
-                   geography = "place",
-                   source = "acs/acs5/profile") %>%
-  rename(
-    people = B01003_001E,
-    all_of(vars)
-  ) %>%
-  mutate(state_place = paste0(state, place))
+places_test <- map(years, ~ pull_and_rename(.x, geography = "place")) |>
+  list_rbind() |>
+  relocate(year, .before = everything())
 
 places_test <- places_test %>%
+  mutate(state_place = paste0(state, place)) %>%
   filter(state_place %in% places_of_interest$state_place)
 
 # join data
 test_joined <- inner_join(
   place_data,
   places_test,
-  by = c("state", "place", "state_place"),
+  by = c("year", "state", "place", "state_place"),
   suffix = c("_interpolated", "_reported")
 )
-
 ```
 
 We can look at places with more interpolated people than reported people.
@@ -669,12 +713,11 @@ We can look at places with more interpolated people than reported people.
 ```{r}
 test_joined %>%
   filter(people_interpolated > people_reported) %>%
-  select(state, place, place_name, people_reported, people_interpolated) %>%
+  select(year, state, place, place_name, people_reported, people_interpolated) %>%
   mutate(diff = people_reported - people_interpolated) %>%
   arrange(diff) %>%
   mutate(across(where(is.numeric), round)) %>%
   reactable()
-
 ```
 
 We can look at places with fewer interpolated people than reported people.
@@ -682,56 +725,59 @@ We can look at places with fewer interpolated people than reported people.
 ```{r}
 test_joined %>%
   filter(people_interpolated < people_reported) %>%
-  select(state, place, place_name, people_reported, people_interpolated) %>%
+  select(year, state, place, place_name, people_reported, people_interpolated) %>%
   mutate(diff = people_reported - people_interpolated) %>%
   arrange(desc(diff)) %>%
   mutate(across(where(is.numeric), round)) %>%
   reactable()
-
 ```
 
 We visualize to compare.
 
 ```{r}
 test_joined <- test_joined %>%
-    mutate(
+  mutate(
     pop_lt_200000 = if_else(people_interpolated < 200000,
-                            "Pop. < 200,000",
-                            "Pop. > 200,000")
+      "Pop. < 200,000",
+      "Pop. > 200,000"
+    )
   )
 
 test_joined %>%
   ggplot(aes(people_reported, people_interpolated)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  facet_wrap(~ pop_lt_200000, scales = "free") +
+  facet_wrap(~pop_lt_200000, scales = "free") +
   scatter_grid() +
-  labs(title = "Reported population and interpolated population are similar")
+  labs(title = "Reported population and interpolated population are similar") +
+  facet_wrap(. ~ year)
 
 test_joined %>%
   ggplot(aes(black_nh_reported, black_nh_interpolated)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  facet_wrap(~ pop_lt_200000, scales = "free") +
+  facet_wrap(~pop_lt_200000, scales = "free") +
   scatter_grid() +
-  labs(title = "Black population and interpolated Black population are similar")
+  labs(title = "Black population and interpolated Black population are similar") +
+  facet_wrap(. ~ year)
 
 test_joined %>%
   ggplot(aes(hispanic_reported, hispanic_interpolated)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  facet_wrap(~ pop_lt_200000, scales = "free") +
+  facet_wrap(~pop_lt_200000, scales = "free") +
   scatter_grid() +
-  labs(title = "Hispanic population and interpolated Hispanic population are similar")
+  labs(title = "Hispanic population and interpolated Hispanic population are similar") +
+  facet_wrap(. ~ year)
 
 test_joined %>%
   ggplot(aes(white_nh_reported, white_nh_interpolated)) +
   geom_abline() +
   geom_point(alpha = 0.2) +
-  facet_wrap(~ pop_lt_200000, scales = "free") +
+  facet_wrap(~pop_lt_200000, scales = "free") +
   scatter_grid() +
-  labs(title = "White population and interpolated white population are similar")
-
+  labs(title = "White population and interpolated white population are similar") +
+  facet_wrap(. ~ year)
 ```
 
 ## 6. Validation
@@ -741,6 +787,7 @@ The table shows the calculated metrics. Click on the variable columns to sort th
 ```{r table, echo = FALSE}
 place_data %>%
   select(
+    year,
     state,
     place,
     place_name,
@@ -761,7 +808,6 @@ place_data %>%
     defaultPageSize = 10,
     highlight = TRUE
   )
-
 ```
 
 **Check:** Is the metric bounded by 0 and 1?
@@ -770,12 +816,11 @@ place_data %>%
 stopifnot(
   place_data %>%
     filter(share_white_nh_exposure > 1 | share_white_nh_exposure < 0 |
-             share_black_nh_exposure > 1 | share_black_nh_exposure < 0 |
-             share_hispanic_exposure > 1 | share_hispanic_exposure < 0 |
-             share_other_nh_exposure > 1 | share_other_nh_exposure < 0) %>%
+      share_black_nh_exposure > 1 | share_black_nh_exposure < 0 |
+      share_hispanic_exposure > 1 | share_hispanic_exposure < 0 |
+      share_other_nh_exposure > 1 | share_other_nh_exposure < 0) %>%
     nrow() == 0
 )
-
 ```
 
 **Check:** Do groups with zero representation in a place have an `NA` for the exposure metric?
@@ -784,7 +829,7 @@ stopifnot(
 stopifnot(
   place_data %>%
     filter(black_nh == 0 & !is.na(share_black_nh_exposure)) %>%
-    nrow == 0
+    nrow() == 0
 )
 
 stopifnot(
@@ -804,7 +849,6 @@ stopifnot(
     filter(white_nh == 0 & !is.na(share_white_nh_exposure)) %>%
     nrow() == 0
 )
-
 ```
 
 **Check:** How many missing values are there?
@@ -812,8 +856,7 @@ stopifnot(
 Values are missing where the count in the racial group is 0. For example, `share_black_nh_exposure` is `NA` when `black_nh == 0`.
 
 ```{r count-missingness}
-map_dbl(place_data, ~sum(is.na(.)))
-
+map_dbl(place_data, ~ sum(is.na(.)))
 ```
 
 Let's visualize the relationship between a group's share of the population in a place and the calculated exposure metric.
@@ -821,44 +864,71 @@ Let's visualize the relationship between a group's share of the population in a 
 ```{r visualize}
 place_data %>%
   ggplot(aes(black_nh / people, share_black_nh_exposure)) +
-  geom_point(alpha = 0.2,
-             size = 1) +
-  scale_y_continuous(expand = c(0, 0),
-                     limits = c(0, 1)) +
-  labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "Black non-Hispanic share vs. Black non-Hispanic exposure") +
-  scatter_grid()
+  geom_point(
+    alpha = 0.2,
+    size = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "There is negative relationship between a group's share and exposure",
+    subtitle = "Black non-Hispanic share vs. Black non-Hispanic exposure"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(hispanic / people, share_hispanic_exposure)) +
-  geom_point(alpha = 0.2,
-             size = 1) +
-  scale_y_continuous(expand = c(0, 0),
-                     limits = c(0, 1)) +
-  labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "Hispanic share vs. non-Hispanic exposure") +
-  scatter_grid()
+  geom_point(
+    alpha = 0.2,
+    size = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "There is negative relationship between a group's share and exposure",
+    subtitle = "Hispanic share vs. non-Hispanic exposure"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(other_nh / people, share_other_nh_exposure)) +
-  geom_point(alpha = 0.2,
-             size = 1) +
-  scale_y_continuous(expand = c(0, 0),
-                     limits = c(0, 1)) +
-  labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "Other Races and Etnicities' share vs. Other Races and Etnicities exposure") +
-  scatter_grid()
+  geom_point(
+    alpha = 0.2,
+    size = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "There is negative relationship between a group's share and exposure",
+    subtitle = "Other Races and Etnicities' share vs. Other Races and Etnicities exposure"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(white_nh / people, share_white_nh_exposure)) +
-  geom_point(alpha = 0.2,
-             size = 1) +
-  scale_y_continuous(expand = c(0, 0),
-                     limits = c(0, 1)) +
-  labs(title = "There is negative relationship between a group's share and exposure",
-       subtitle = "White non-Hispanic share vs. white non-Hispanic exposure") +
-  scatter_grid()
-
+  geom_point(
+    alpha = 0.2,
+    size = 1
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "There is negative relationship between a group's share and exposure",
+    subtitle = "White non-Hispanic share vs. white non-Hispanic exposure"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 ```
 
 ## 7. Add Data Quality Flags
@@ -883,11 +953,9 @@ First, we suppress exposure indices for groups in places with 30 or fewer indivi
 #' @return
 #'
 suppress_place <- function(race, exposure, threshold) {
-
   exposure <- if_else(race <= threshold, as.numeric(NA), exposure)
 
   return(exposure)
-
 }
 
 place_data %>%
@@ -895,7 +963,8 @@ place_data %>%
     share_black_nh_exposure = sum(is.na(share_black_nh_exposure)),
     share_hispanic_exposure = sum(is.na(share_hispanic_exposure)),
     share_other_nh_exposure = sum(is.na(share_other_nh_exposure)),
-    share_white_nh_exposure = sum(is.na(share_white_nh_exposure))
+    share_white_nh_exposure = sum(is.na(share_white_nh_exposure)),
+    .by = c(year)
   )
 
 place_data <- place_data %>%
@@ -911,9 +980,9 @@ place_data %>%
     black_nh = sum(is.na(share_black_nh_exposure)),
     hispanic = sum(is.na(share_hispanic_exposure)),
     other_nh = sum(is.na(share_other_nh_exposure)),
-    white_nh = sum(is.na(share_white_nh_exposure))
+    white_nh = sum(is.na(share_white_nh_exposure)),
+    .by = c(year)
   )
-
 ```
 
 ### 2. Coefficient of variation
@@ -934,31 +1003,42 @@ place_data <- place_data %>%
 place_data %>%
   ggplot(aes(black_nh, black_nh_cv, color = black_nh <= 30)) +
   geom_point(alpha = 0.2) +
-  labs(title = "Black, non-Hispanic: The Worst CVs Will be Dropped for n <= 30",
-       subtitle = "black_nh <= 30 in yellow") +
-  scatter_grid()
+  labs(
+    title = "Black, non-Hispanic: The Worst CVs Will be Dropped for n <= 30",
+    subtitle = "black_nh <= 30 in yellow"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(hispanic, hispanic_cv, color = hispanic <= 30)) +
   geom_point(alpha = 0.2) +
-  labs(title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
-       subtitle = "hispanic <= 30 in yellow") +
-  scatter_grid()
+  labs(
+    title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
+    subtitle = "hispanic <= 30 in yellow"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(other_nh, other_nh_cv, color = other_nh <= 30)) +
   geom_point(alpha = 0.2) +
-  labs(title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
-       subtitle = "other_nh <= 30 in yellow") +
-  scatter_grid()
+  labs(
+    title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
+    subtitle = "other_nh <= 30 in yellow"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 place_data %>%
   ggplot(aes(white_nh, white_nh_cv, color = white_nh <= 30)) +
   geom_point(alpha = 0.2) +
-  labs(title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
-       subtitle = "white_nh <= 30 in yellow") +
-  scatter_grid()
-
+  labs(
+    title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
+    subtitle = "white_nh <= 30 in yellow"
+  ) +
+  scatter_grid() +
+  facet_wrap(. ~ year)
 ```
 
 ### 3. Overlap between census tracts and census places
@@ -978,7 +1058,6 @@ All proportions exceed 0.75. This indicates that there is a tight connection bet
 
 ```{r}
 summary(place_data$afact_sum_product)
-
 ```
 
 We need to add data quality flags with `1`, `2`, or `3`. The values are outlined in the [data standards](https://github.com/UI-Research/gates-mobility-metrics).
@@ -997,7 +1076,6 @@ We need to add data quality flags with `1`, `2`, or `3`. The values are outlined
 #' @return A numeric data quality flag
 #'
 set_quality <- function(cv, exposure) {
-
   quality <- case_when(
     cv < 0.2 ~ 1,
     cv < 0.4 ~ 2,
@@ -1006,7 +1084,6 @@ set_quality <- function(cv, exposure) {
   quality <- if_else(is.na(exposure), as.numeric(NA), quality)
 
   return(quality)
-
 }
 
 place_data <- place_data %>%
@@ -1021,7 +1098,6 @@ count(place_data, share_black_nh_exposure_quality)
 count(place_data, share_hispanic_exposure_quality)
 count(place_data, share_other_nh_exposure_quality)
 count(place_data, share_white_nh_exposure_quality)
-
 ```
 
 There are no missing values.
@@ -1033,32 +1109,43 @@ missing <- place_data %>%
       is.na(share_hispanic_exposure) |
       is.na(share_other_nh_exposure) |
       is.na(share_white_nh_exposure)
-    )
+  )
 
 nrow(missing)
 max(missing$people_interpolated)
 max(missing$tracts_interpolated)
-
 ```
 
 ## 8. Save the Data
 
 ```{r save-data}
 place_data %>%
-  mutate(year = 2021) %>%
-  select(year,
-         state,
-         place,
-         state_place,
-         share_black_nh_exposure,
-         share_black_nh_exposure_quality,
-         share_hispanic_exposure,
-         share_hispanic_exposure_quality,
-         share_other_nh_exposure,
-         share_other_nh_exposure_quality,
-         share_white_nh_exposure,
-         share_white_nh_exposure_quality
+  select(
+    year,
+    state,
+    place,
+    state_place,
+    share_black_nh_exposure,
+    share_black_nh_exposure_quality,
+    share_hispanic_exposure,
+    share_hispanic_exposure_quality,
+    share_other_nh_exposure,
+    share_other_nh_exposure_quality,
+    share_white_nh_exposure,
+    share_white_nh_exposure_quality
   ) %>%
-  write_csv(here::here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-city-2021.csv"))
+  write_csv(here::here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-city.csv"))
+```
 
+
+## Testing
+
+```{r}
+final_data <- read_csv(here::here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-city.csv"), show_col_types = FALSE)
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_share_race_exposure_overall_county.csv",
+  data = final_data, geography = "city",
+  subgroups = FALSE, confidence_intervals = FALSE
+)
 ```
