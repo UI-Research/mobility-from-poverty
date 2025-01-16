@@ -13,7 +13,7 @@ execute:
 editor_options: 
   chunk_output_type: console
 params:
-  year: "2014"
+  year: "2016"
 ---
 
 *Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the place-level*
@@ -322,6 +322,73 @@ acs_clean %>%
   scale_x_discrete(labels = label_wrap(10))
 
 ```
+
+### Create poverty variable
+
+* **HHINCOME:** N/As reported as "9999999".
+
+There are several cases of records missing HHINCOME, which extends the density distribution tail out to 9999999. 
+
+```{r}
+acs_clean %>% 
+  ggplot(aes(x = hhincome)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Household Income Variable Results") +
+  ylab("Density")
+```
+
+Turn the missing/"not in universe" values for the `hhincome` variable into NAs. Rename to the more meaningful "household_income". 
+
+```{r}
+
+acs_clean <- acs_clean %>%
+  mutate(household_income = ifelse(hhincome == 9999999, NA_integer_,
+                          hhincome)
+  )
+
+```
+
+Look at distribution of `household_income` after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
+
+```{r}
+
+acs_clean %>% 
+  ggplot(aes(x = household_income)) +
+  geom_density(adjust = 5, color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Household Income Variable Results") +
+  ylab("Density")
+
+```
+
+For the poverty subgroup we want to put each respondent into two groups: those that live in households earning more than 50,000 dollars a year and those in households earning less than 50,000 dollars a year. 
+
+First, create a binary variable indicating whether household income falls above or below 50,000 dollars a year.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_income = case_when(household_income >= 50000 ~ "$50,000 or More",
+                                     household_income < 50000 ~ "Less than $50,000",
+         TRUE ~ NA_character_))
+```
+
+Visualize the distribution of the income category. There are significantly more respondents in households earning above 50,000 dollars a year and relatively few NAs.
+
+```{r}
+acs_clean %>% 
+  count(subgroup_income) %>% 
+  ggplot(mapping = aes(x = factor(subgroup_income), y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("Income subgroup, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Household income subgroup",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
 
 ## Crosswalk
 
@@ -689,6 +756,92 @@ results_race_ethnicity_expanded <- expanded_place_list_race  %>%
   rename(subgroup = subgroup_race)
 ```
 
+## Create pre-K metric: Income subgroup
+
+To save time when processing the metric, calculate the effective sample count for each income group in each place, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include places with less than 30 effective samples.
+
+```{r}
+#| label: income-effective-samples
+
+acs_income <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, place, subgroup_income) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_income %>%
+  group_by(year, sample, crosswalk_period, statefip, place, subgroup_income) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+
+```
+
+Create the pre-K metric for the income subgroup. 
+
+Remove records from places below the size quality cutoff. 
+
+```{r}
+#| label: subset-income
+
+acs_income <- acs_income %>% 
+  filter(effective_sample >= 30)
+
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-income
+
+results_income <- acs_income %>%
+  group_split(statefip) %>% 
+  map_dfr(
+    .f = ~ calc_survey_mean_subgroup(
+      .data = .x,
+      .geo_level = place,
+      .subgroup = subgroup_income
+    )
+  )
+```
+
+```{r}
+#| label: finalize-income
+
+results_income <- finalize_metric(results_income)
+
+```
+
+```{r}
+rm(acs_income)
+```
+
+## Add Suppressed Rows to Data
+
+To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
+
+Create expanded version for the income subgroup.
+
+```{r}
+expanded_place_list_income <- place_list %>% 
+  left_join(results_income, by = c("statefip", "place"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, place)) %>% 
+  expand(year, geoid, subgroup_income) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         place = str_sub(geoid, 3, 7)) 
+
+results_income_expanded <- expanded_place_list_income %>% 
+  left_join(results_income, by = c("year", "statefip", "place", "subgroup_income")) %>% 
+  filter(!is.na(year), !is.na(subgroup_income)) %>% 
+  mutate(subgroup_type = "income") %>% 
+  rename(subgroup = subgroup_income)
+```
+
 ## Data Quality Flags
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
@@ -700,9 +853,9 @@ First combine the subgroup data sets. Provide the all results a subgroup and sub
 metrics_education_sub <-results_all_expand %>% 
   mutate(subgroup = "All",
          subgroup_type = "all") %>% 
-  bind_rows(results_race_ethnicity_expanded)
+  bind_rows(results_race_ethnicity_expanded, results_income_expanded)
 
-stopifnot(nrow(metrics_education_sub) == 486 * n_distinct(results_all_expand$year) * 5)
+stopifnot(nrow(metrics_education_sub) == 486 * n_distinct(results_all_expand$year) * 7)
 
 ```
 
@@ -733,6 +886,287 @@ metrics_education_sub <- metrics_education_sub %>%
     put_object(tmp, object = paste0(s3_dir, "/metrics_education_sub", "_", params$year, ".csv"), bucket = my_bucket, 
                show_progress = TRUE, multipart = FALSE)
     
+ }
+
+```
+
+If updating a single year the program ends here. To see validation results re-run with selection that all years of intermediate data are available.
+
+## Result Validation
+
+Validate results for all years of available output.
+
+### Read intermediate files
+
+Read in the intermediate files created for each ACS year available. You can check which 
+
+Define existing intermediate years and read them into function to combine. 
+
+```{r}
+existing_years <- c("2014", "2016")
+```
+
+Function reads the CSVs from intermediate folder or from AWS if the user has access.
+
+```{r}
+read_intermediate <- function(year, file_type){
+  
+  if(isTRUE(bucket_exists(bucket = my_bucket))) {
+    
+    s3read_using(FUN=read_csv, 
+                 bucket = my_bucket, 
+                 object=paste0(s3_dir, "/metrics_education_", file_type, "_", year, ".csv"))
+  
   }
+  else{
+  
+  read_csv(paste0(here::here("08_education", "data", "intermediate", "preschool"), 
+                  "/", "metrics_education_", file_type, "_", year, ".csv"))
+  }
+  
+}
+```
+
+```{r}
+
+metrics_education_all <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
+                                                                          file_type = "all"))
+metrics_education_sub <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
+                                                                          file_type = "sub"))
+  
+```
+
+Create summary tables for the values from the results for both all and for subgroups.
+
+```{r}
+metrics_education_all %>% 
+  select(share_in_preschool:share_in_preschool_quality) %>% 
+  summary()
+
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  select(share_in_preschool:share_in_preschool_quality) %>% 
+  summary()
+```
+
+Look at distribution of pre-K attendance share by place for all and for subgroups in latest year (set by the program parameter).
+
+```{r}
+
+metrics_education_all %>% 
+  filter(year == params$year) %>% 
+  select(share_in_preschool) %>% 
+  ggplot(aes(x = share_in_preschool)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share prek_attendance, by place 2021 (5-year data)") +
+  ylab("Density")
+
+metrics_education_sub %>% 
+  filter(year == params$year, subgroup != "All") %>% 
+  select(share_in_preschool) %>% 
+  ggplot(aes(x = share_in_preschool)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Distribution of share prek_attendance, subgroups, by place 2021 (5-year data)") +
+  ylab("Density")
+
+```
+
+Look at distribution of prek_attendance share by place for each individual subgroup.
+
+```{r}
+metrics_education_sub %>% 
+  filter(year == params$year) %>% 
+  ggplot(aes(x = share_in_preschool)) +
+  geom_density(alpha = 0.15) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = "Distribution of share prek_attendance, subgroups, by place 2021 (5-year data)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+```
+
+### Time trends
+
+Compare trends for the share in preschool overtime for all years in the data.
+
+```{r}
+metrics_education_all %>%
+  group_by(statefip, place) %>%
+  mutate(share_in_preschool_change = share_in_preschool - lag(share_in_preschool)) %>%
+  filter(year == params$year) %>%
+  ggplot(aes(share_in_preschool, share_in_preschool_change)) +
+  geom_point(alpha = 0.2)
+
+metrics_education_all %>%
+  select(year, statefip, place, share_in_preschool) %>%
+  pivot_wider(
+    names_from = year, 
+    values_from = share_in_preschool
+  ) %>%
+  ggplot(aes(`2014`, `2016`)) +
+  geom_abline() +
+  geom_point(alpha = 0.1)
+
+```
+
+### Confidence intervals
+
+Check the missingness pattern for confidence intervals.
+
+```{r}
+nonmissing <- metrics_education_all |>
+  filter(!is.na(share_in_preschool) & !is.na(share_in_preschool_lb) & !is.na(share_in_preschool_ub))
+
+missing <- metrics_education_all |>
+  filter(is.na(share_in_preschool) & is.na(share_in_preschool_lb) & is.na(share_in_preschool_ub))
+
+stopifnot(nrow(nonmissing) + nrow(missing) == nrow(metrics_education_all))
+```
+
+Check the order. There are three variables and we are interested in pairwise comparisons, we can test that these line up. The upper-bound value should always be greater than the value and the lower-bound value. The value should always be greater than the lower-bound value.
+
+```{r}
+# upper bound is always greater than the estimate
+stopifnot(all(nonmissing$share_in_preschool_ub > nonmissing$share_in_preschool))
+
+# upper bound is always greater than the lower bound
+stopifnot(all(nonmissing$share_in_preschool_ub > nonmissing$share_in_preschool_lb))
+
+# estimate is always greater than the lower bound
+stopifnot(all(nonmissing$share_in_preschool > nonmissing$share_in_preschool_lb))
+```
+
+Look at confidence intervals.
+
+```{r}
+metrics_education_all %>%
+  ggplot(aes(share_in_preschool, share_in_preschool_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the lower bound is sensible")
+
+metrics_education_all %>%
+  ggplot(aes(share_in_preschool_ub, share_in_preschool)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the estimate and the upper bound is sensible")
+
+metrics_education_all %>%
+  ggplot(aes(share_in_preschool_ub, share_in_preschool_lb)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "The relationship between the upper bound and the lower bound is sensible")
+```
+
+Distribution of confidence interval widths.
+```{r}
+metrics_education_all %>%
+  mutate(ci_width = share_in_preschool_ub - share_in_preschool_lb) %>%
+  pull(ci_width) %>%
+  summary(na.rm = TRUE)
+```
+
+### Quality and suppression
+Look at the counts of the quality flag.
+```{r}
+metrics_education_all %>% 
+  select(share_in_preschool_quality) %>% 
+  ggplot(aes(x = share_in_preschool_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag, All (5-year data)") +
+  ylab("Count")
+
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  select(share_in_preschool_quality) %>% 
+  ggplot(aes(x = share_in_preschool_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag, subgroups (5-year data") +
+  ylab("Count")
+```
+
+Look at quality by  each individual subgroup.
+
+```{r}
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  ggplot(aes(x = share_in_preschool_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  facet_wrap(~subgroup) +
+  ggtitle("Quality Flag, subgroups (5-year data)") +
+  ylab("Count")
+```
+
+
+Tabulate share of data suppressed by year.
+```{r}
+
+metrics_education_all %>% 
+  group_by(year) %>% 
+  summarise(suppressed = sum(is.na(share_in_preschool)),
+            total = n(),
+            suppressed_share = suppressed/total)
+
+metrics_education_sub %>% 
+  filter(subgroup != "All") %>% 
+  group_by(year, subgroup) %>% 
+  summarise(suppressed = sum(is.na(share_in_preschool)),
+            total = n(),
+            suppressed_share = suppressed/total)
+
+```
+
+
+## Export 
+
+Rename state.
+```{r}
+metrics_education_all <- metrics_education_all %>% 
+  rename("state" = "statefip")
+
+metrics_education_sub <- metrics_education_sub %>% 
+  rename("state" = "statefip")
+```
+
+Order the variables how we want.
+```{r}
+metrics_education_all <- metrics_education_all %>% 
+  select(year, state, place, share_in_preschool, 
+         share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality) %>% 
+  arrange(year, state, place)
+
+metrics_education_sub <- metrics_education_sub %>% 
+  select(year, state, place, subgroup_type, subgroup, share_in_preschool,
+         share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality) %>%
+  arrange(year, state, place, subgroup_type, subgroup)
+
+```
+
+Export as CSV
+
+```{r}
+
+write_csv(metrics_education_all, 
+          here::here("08_education", "data", "final", paste0("metrics_preschool_place_all_longitudinal_", acs_year, ".csv")
+          ))
+
+metrics_education_race <- metrics_education_sub %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity")) %>% 
+  arrange(year, state, place, subgroup)
+
+
+write_csv(metrics_education_race, here::here("08_education", "data", "final",
+                                             "metrics_preschool_place_race-ethnicity_longitudinal.csv"))
+
+
+metrics_education_income <- metrics_education_sub %>% 
+  filter(subgroup_type %in% c("all", "income")) %>% 
+  arrange(year, state, county, subgroup)
+
+write_csv(metrics_education_income, here::here("08_education", "data", "final",
+                                               "metrics_preschool_place_race-ethnicity_longitudinal.csv"))
 ```
 
