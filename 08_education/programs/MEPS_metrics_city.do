@@ -105,6 +105,7 @@ use "intermediate/combined_2014-${year}.dta", clear
 
 drop if enrollment==. | enrollment==0
 
+
 *Using MEPS
 gen meps_share = meps_poverty_pct/100
 gen meps_20 = (meps_share>=.20) if meps_share!=.
