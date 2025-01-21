@@ -9,7 +9,7 @@
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global year=2018
+global year=2021
 
 global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
 
@@ -54,15 +54,18 @@ save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
 educationdata using "school ccd directory", sub(year=2014:${year}) csv clear
 save "raw\ccd_dir_2014-${year}.dta", replace
 
-** get MEPS data**
-educationdata using "school meps", sub(year=2014:${year}) csv clear
-save "raw\ccd_meps_2014-${year}.dta", replace
+** get MEPS data** not available yet the education data portal
+*educationdata using "school meps", sub(year=2014:${year}) csv clear
+*save "raw\ccd_meps_2014-${year}.dta", replace
 
 *Merge Data together
 use "raw\ccd_dir_2014-${year}.dta", clear
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
+tab year _merge 
 drop _merge
-merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta"
+merge 1:1 year ncessch using "raw\Abrv Set of Portal Variables.dta"
+tab year _merge 
+drop if year==2013 | year==2022
 drop _merge
 
 save "intermediate/combined_2014-${year}.dta", replace
@@ -128,8 +131,9 @@ meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispa
 duplicates drop
 
 merge 1:1 year state county using "Intermediate/countyfile.dta"
-	drop if _merge==1 & year>=2014 & year<=2018 // drops territories 
-	drop if year>2018
+tab year _merge
+	drop if _merge==1 & year>=2014 & year<=2021 // drops territories 
+	drop if year>2021
 	drop _merge
 
 
@@ -149,4 +153,4 @@ gsort -year state county
 
 drop meps20_total meps20_total_quality
 
-export delimited using "built/MEPS_2014-2018_county.csv", replace
+export delimited using "built/MEPS_2014-2021_county.csv", replace

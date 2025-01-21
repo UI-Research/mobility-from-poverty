@@ -9,7 +9,7 @@
 clear all
 
 global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty"
-global year=2018
+global year=2021
 
 global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
 
@@ -84,15 +84,18 @@ save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
 educationdata using "school ccd directory", sub(year=2014:${year}) csv clear
 save "raw\ccd_dir_2014-${year}.dta", replace
 
-** get MEPS data**
-educationdata using "school meps", sub(year=2014:${year}) csv clear
-save "raw\ccd_meps_2014-${year}.dta", replace
-
+** get MEPS data** not available yet the education data portal
+*educationdata using "school meps", sub(year=2014:${year}) csv clear
+*save "raw\ccd_meps_2014-${year}.dta", replace
+	
 *Merge Data together
 use "raw\ccd_dir_2014-${year}.dta", clear
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
+tab year _merge 
 drop _merge
-merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta"
+merge 1:1 year ncessch using "raw\Abrv Set of Portal Variables.dta"
+tab year _merge 
+drop if year==2013 | year==2022
 drop _merge
 
 save "intermediate/combined_2014-${year}.dta", replace
@@ -161,9 +164,9 @@ meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispa
 duplicates drop
 
 *city data only available for 2016+ and MEPS only available up to 2018
-keep if year>=2016 & year<=2018
+*keep if year>=2016 & year<=2018
 merge 1:1 year state city_name using "Intermediate/cityfile.dta"
-drop if year>=2019
+drop if year>=2022
 tab year _merge
 *2 from city file (south fulton georgia & mount pleasant south carolina) don't exist in school dataset
 brow if _merge==2 // Honolulu doesn't match well
@@ -191,4 +194,4 @@ gsort -year state place
 
 drop meps20_total meps20_total_quality
 
-export delimited using "built/MEPS_2016-2018_city.csv", replace
+export delimited using "built/MEPS_2014-2021_city.csv", replace
