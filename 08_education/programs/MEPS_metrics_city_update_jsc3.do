@@ -1,52 +1,41 @@
-** Previously Free and Reduce Price Lunch: the share of students attending schools where 40% or more students receive FRPL **
-** Now uses MEPS: the share of students attending schools where 20% or more students are in Poverty **
-*https://oese.ed.gov/offices/office-of-discretionary-grants-support-services/well-rounded-education-programs/innovative-approaches-to-literacy/eligibility/
-** E Blom ** Updated by E Gutierez
-** 2022/11/28 ** Update 9/14/23 with MEPS through 2020-21
-** Produces city level data 
+* SHARE OF STUDENTS IN HIGH POVERTY SCHOOLS BY RACE/ETHNICITY **
+** E Blom ** 
+	** Previously Free and Reduce Price Lunch: the share of students attending schools where 40% or more students receive FRPL **
+*Updated by E Gutierrez
+	** 11/28/2022 **
+		** Now uses MEPS: the share of students attending schools where 20% or more students are in Poverty **
+		** Uses 2014-2018 data
+		** Produces city level data
+	* 1/22/2025 **
+		**Produces data for 2014-2021 (School Years 2014-15 through 2021-22)
 
-/*
-Update City-level MEPS through 2020 and reformat for Mobility Metrics - Jay Carter 2/23/2024 & Emily Gutierrez 3/6/2024
-
-*/
-
-clear all
-
-global year=2020
-
-
-global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github2\mobility-from-poverty\"
-global education "${gitfolder}08_education\"
-
-global raw_data "${education}data\raw\"
-global intermediate_data "${education}\data\intermediate\"
-global built_data "${education}data\built\"
-global final_data "${education}data\final_data\"
-
-*Updated MEPS data is not currently available on the portal, so using the file in Box - Box is an internal folder at Urban & public does not have access
-*Once it is available on the portal, can comment out lines 28 and 127, and uncomment/run lines 117-118 and 126
-global box "C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\"
-
-
-// Files
-global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
-global countyfile "${gitfolder}\geographic-crosswalks\data\county-populations.csv"
-
-cd "${gitfolder}\08_education\data"
-
-cap n mkdir ${raw_data}
-cap n mkdir ${intermediate_data}
-cap n mkdir ${final_data}
-
-
-global rebuild_portal_data = 1
-
-** install educationdata command **
+**Housekeeping: install educationdata command **
 cap n ssc install libjson
 net install educationdata, replace from("https://urbaninstitute.github.io/education-data-package-stata/")
 
-** Import city file ** 
-import delimited using "${cityfile}", clear // edited 9_13_23
+*Set up globals and directories
+clear all
+
+global gitfolder "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\"
+global year=2021 // most recent school year - refers to school year 2021-22
+global cityfile "${gitfolder}\geographic-crosswalks\data\place-populations.csv"
+
+cap n mkdir "${gitfolder}\08_education\data"
+cd "${gitfolder}\08_education\data"
+
+cap n mkdir "raw"
+cap n mkdir "intermediate"
+cap n mkdir "built"
+
+************************************
+*Import, edit, and save needed data*
+************************************
+
+*****************************
+****City/Place Crosswalk*****
+*****************************
+** Import city crosswalk file to edit names of city crosswalk to match city location strings in CCD school district data
+import delimited using "${cityfile}", clear 
 
 tostring place, replace
 replace place = "0" + place if strlen(place)==4
@@ -70,63 +59,63 @@ replace city_name_edited = subinstr(city_name_edited, " city", "", .)
 drop city_name
 rename city_name_edited city_name
 
-*hardcode fixes so names merge
-replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
-replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
-replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
-replace city_name="Macon" if city_name=="Macon-Bibb County"
-replace city_name="Honolulu" if city_name=="Urban Honolulu"
-replace city_name="Boise" if city_name=="Boise City"
-replace city_name="Indianapolis" if city_name=="Indianapolis city (balance)"
-replace city_name="Lexington" if city_name=="Lexington-Fayette"
-replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
-replace city_name="Lees Summit" if city_name=="Lee's Summit"
-replace city_name="Ofallon" if city_name=="O'Fallon"
-replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
-replace city_name="Ofallon" if city_name=="O'Fallon"
-replace city_name="Mcallen" if city_name=="McAllen"
-replace city_name="Mckinney" if city_name=="McKinney"
-replace city_name="Anchorage" if city_name=="Anchorage municipality"
+	*hardcode fixes so names merge
+	replace city_name="Ventura" if city_name=="San Buenaventura (Ventura)"
+	replace city_name="Athens" if city_name=="Athens-Clarke County unified government (balance)"
+	replace city_name="Augusta" if city_name=="Augusta-Richmond County consolidated government (balance)"
+	replace city_name="Macon" if city_name=="Macon-Bibb County"
+	replace city_name="Boise" if city_name=="Boise City"
+	replace city_name="Lexington" if city_name=="Lexington-Fayette"
+	replace city_name="Louisville" if city_name=="Louisville/Jefferson County metro government (balance)"
+	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
+	replace city_name="Mcallen" if city_name=="McAllen"
+	replace city_name="Mckinney" if city_name=="McKinney"
+	
+*duplicate 2015 to create 2014 place
+	expand 2 if year==2015
+	bysort year state place state_name city_name: gen obs=_n
+	replace year = 2014 if obs==2
+	drop obs
+	sort year state place state_name city_name
+	
+	save "intermediate/cityfile.dta", replace // gitignore
 
-save "intermediate/cityfile.dta", replace
-
-** get CCD enrollment **
-*add if, else command once decide how to deal with future iterations
-if $rebuild_portal_data == 1 {
+*****************************
+*****CCD District Data*******
+*****************************
+** Download CCD school level enrollment by race/ethnicity data from Urban's Education Data Portal **
 educationdata using "school ccd enrollment race", sub(year=2014:${year}) csv clear
 save "raw\ccd_enr_2014-${year}.dta", replace
-}
-if $rebuild_portal_data == 0 {
-	use "${raw_data}ccd_enr_2014-${year}.dta", clear
-}
 
 keep if grade==99 & sex==99
 drop leaid ncessch_num grade sex fips
 
 replace enrollment = 0 if enrollment < 0
 
-reshape wide enrollment, i(year ncessch) j(race)
-*1-white, 2-black, 3-hispanic
+reshape wide enrollment, i(year ncessch) j(race) // 1-white, 2-black, 3-hispanic
 save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
 
-** get CCD directory data county/city **
+** Download CCD district data from Urban's Education Data Portal - total enrollment, city location, & county codes**
 educationdata using "school ccd directory", sub(year=2014:${year}) csv clear
 save "raw\ccd_dir_2014-${year}.dta", replace
 
-/* edited 9_14_23 - already have the .dta file in C:\Users\ekgut\Box\My Box Notes\Mobility Metrics - MEPS\Abrv Set of Portal Variables
-educationdata using "school meps", sub(year=2014:${year}) csv clear
-save "raw\ccd_meps_2014-${year}.dta", replace
-*/
+**Download MEPS school level data from Urban's Education Data Portal
+	*This data is not available yet on the portal and therefore is kept in the raw data folder 
+	/* 
+	educationdata using "school meps", sub(year=2014:${year}) csv clear
+	save "raw\ccd_meps_2014-${year}.dta", replace
+	*/
 
+*********************
 *Merge Data together
+*********************
 use "raw\ccd_dir_2014-${year}.dta", clear
 replace enrollment = 0 if enrollment < 0
 merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 drop _merge
-*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 9_13_23 using .dta file C:\Users\ekgut\Box\Metrics_2024_round\Student_Poverty_MEPS\Abrv Set of Portal Variables
-merge 1:1 year ncessch using "${box}Abrv Set of Portal Variables"
+*merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 
+merge 1:1 year ncessch using "raw\Abrv Set of Portal Variables.dta"
 tab year _merge
-drop if year==2013
 drop _merge
 
 save "intermediate/combined_2014-${year}.dta", replace
@@ -139,7 +128,6 @@ drop if missing(enrollment) | enrollment==0
 forvalues n = 1/3 {
 replace enrollment`n' = . if enrollment`n'<0
 }
-
 
 *Using MEPS
 gen meps_share = meps_poverty_pct/100 // ./# == . and 0/# == 0
@@ -210,6 +198,11 @@ drop if year > $year
 tab _merge if missing(place)
 drop if _merge==1 // drop district data that doesn't match 
 	drop _merge state_name 
+	
+****************
+*Quality Checks
+****************
+
 
 *summary stats to see possible outliers
 bysort year: sum
