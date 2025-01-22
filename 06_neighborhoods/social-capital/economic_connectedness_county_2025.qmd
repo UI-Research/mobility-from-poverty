@@ -1,0 +1,193 @@
+---
+title: "Economic Connectedness (county)"
+author: "Ridhi Purohit"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+*Creating the second Social Capital metric, Economic Connectedness*
+
+This program creates the county-level Economic Connectedness metric which is one of the two Social Capital UMF Metrics.
+
+Author: This code was initially written by Tina Chelidze and updated by Ridhi Purohit in January, 2025.
+
+Data: \[gitfolder\]/06_neighborhoods/social-capital/data/ .csv (won't be on Github). 
+
+Data downloaded from the [Opportunity Insights Social Capital Atlas](https://socialcapital.org/).
+
+## Housekeeping
+
+This update will change the way the metric is calculated to align with the changed way economic connectedness is displayed through the Social Capital Atlas. 
+
+The new Social Capital Atlas displays economic connectedness as both **the percentage of friends of those with low SES (Socio-Economic Status) that have high SES** and the **standardized percentile of that ratio nationwide**.
+
+The process to create the metric will follow these steps:
+
+  (1) download data from socialcapital.org
+
+  (2) import and clean the data file
+
+  (3) use crosswalk to check any missing counties
+
+  (4) create a data quality tag
+
+  (5) final file cleaning and export to csv file
+
+
+Load the packages used in this program.
+
+```{r}
+#| label: setup
+
+options(scipen = 999)
+
+librarian::shelf(
+  sf,
+  tidyverse,
+  here,
+  UrbanInstitute / urbnthemes
+  )
+
+set_urbn_defaults(style = "print")
+
+```
+
+## Download data from the Social Capital Atlas
+
+The is accessed from the Social Capital [website](https://data.humdata.org/dataset/social-capital-atlas).
+
+```{r}
+#| label: download-data
+
+# Specify URL where source data file is online
+url <- "https://data.humdata.org/dataset/85ee8e10-0c66-4635-b997-79b6fad44c71/resource/ec896b64-c922-4737-b759-e4bd7f73b8cc/download/social_capital_county.csv"
+      
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfile <- here::here("06_neighborhoods", "social-capital", "temp","social_capital_county.csv")
+      
+# Import the data file & save locally
+download.file(url, destfile)
+  
+```
+## Clean the data 
+
+This step involves shaping the data so that county and state codes are identifiable. Any missing data will also be dealt with. 
+
+```{r}
+#| label: load-data
+
+# read data
+ec_raw <- read.csv(here::here("06_neighborhoods", "social-capital", "temp", "social_capital_county.csv"))
+
+# check the columns present in the data
+names(ec_raw)
+
+```
+
+```{r}
+#| label: clean-data
+
+# add leading zeroes where they are missing (2-digit state FIP + 3-digit county FIP  = 5 digit code)
+ec_2022 <- ec_raw |>
+            mutate(county = str_pad(county, width = 5, pad = "0", side = "left")) |>
+            # create a new column for the state & county FIPS & create year variable
+            mutate(
+                state = str_sub(county, start = 1, end = 2),
+                county = str_sub(county, start = 3, end = 5),
+                year = 2022
+              ) |>
+            # keep only relevant data
+            select(year, state, county, county_name, ec_county, ec_se_county) |>
+            # remove observations with missing data for our EC variable
+            drop_na(ec_county)
+
+``` 
+     
+
+## Merge Crosswalk
+
+We will use a crosswalk to get a master list of counties which will also allow us to check for any missing counties in the data.
+
+```{r}
+#| label: crosswalk-county-population
+       
+# import the relevant county crosswalk file
+county_pop <- read_csv(here::here("geographic-crosswalks","data","county-populations.csv"))
+      
+# clean the crosswalk for relevant data
+county_pop <- county_pop |>
+        # make sure county FIPS codes are three digits and state FIPS codes are two digits
+        mutate(
+              county = str_pad(county, width = 3, pad = "0", side = "left"),
+              state = str_pad(state, width = 2, pad = "0", side = "left")
+              ) |>
+        # keep the most recent year of population data (not 2022, but 2020)
+  ###WHY??
+        filter(year == 2020)
+
+```
+
+```{r}
+#| label: merge-crosswalk
+
+# merge the county crosswalk into the clean ec data file (left join, since county file has more observations)
+merged_ec <- county_pop |>
+                  left_join(ec_2022, by=c("state", "county")) |>
+                  # sort data by state county
+                  arrange(state, county)
+  
+# check how many missing values (counties without EC data)
+# We observe that there are 126 counties without Economic Connectedness data
+sum(is.na(merged_ec$ec_county))
+          
+```
+
+We multiply by 50 because we want to display as percentages like the atlas does and not as the scaled indicator
+      
+# (4)   create data quality flag and add confidence interval
+      merged_ec <- merged_ec %>%
+        mutate(data_quality = case_when(ec_county >= 0 ~ 1))
+      
+      merged_ec <- merged_ec %>%
+        mutate(
+          ec_se_county_lb = ec_county - qnorm(0.975) * ec_se_county,
+          ec_se_county_ub = ec_county + qnorm(0.975) * ec_se_county
+        )
+      
+# (5)   final file cleaning and export to csv file									   
+      
+      # keep only relevant data (dropping population data, keeping EC data year only)
+      merged_ec <- merged_ec %>% 
+        select(year.y, state, county, state_name, county_name.x, ec_county, ec_se_county_lb, ec_se_county_ub, data_quality)
+      
+      
+      # rename the needed variable to avoid confusion
+      merged_ec <- merged_ec %>% 
+        rename(county_name = county_name.x)
+      merged_ec <- merged_ec %>% 
+        rename(year = year.y)
+      merged_ec <- merged_ec %>% 
+        rename(ec_county_quality = data_quality) %>%
+        
+      #G. Morrison addition March 2023 to clean table and prepare for join
+        select(-c(state_name, county_name)) %>%
+        rename(economic_connectedness = ec_county,
+               economic_connectedness_quality = ec_county_quality,
+               economic_connectedness_lb = ec_se_county_lb,
+               economic_connectedness_ub = ec_se_county_ub)
+      
+      # export as .csv
+      write_csv(merged_ec, "06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv")
+      
+      
+      
+
