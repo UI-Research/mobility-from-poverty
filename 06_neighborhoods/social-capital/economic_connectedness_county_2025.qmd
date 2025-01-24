@@ -14,34 +14,33 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Creating the second Social Capital metric, Economic Connectedness*
+**Creating the second Social Capital metric, Economic Connectedness**
 
 This program creates the county-level Economic Connectedness metric which is one of the two Social Capital UMF Metrics.
 
 Author: This code was initially written by Tina Chelidze and updated by Ridhi Purohit in January, 2025.
 
-Data: \[gitfolder\]/06_neighborhoods/social-capital/data/ .csv (won't be on Github). 
+Data: \[gitfolder\]/06_neighborhoods/social-capital/data/ .csv (won't be on Github).
 
 Data downloaded from the [Opportunity Insights Social Capital Atlas](https://socialcapital.org/).
 
 ## Housekeeping
 
-This update will change the way the metric is calculated to align with the changed way economic connectedness is displayed through the Social Capital Atlas. 
-
-The new Social Capital Atlas displays economic connectedness as both **the percentage of friends of those with low SES (Socio-Economic Status) that have high SES** and the **standardized percentile of that ratio nationwide**.
+This update will change the way the metric is calculated to align with the changed way economic connectedness is displayed through the Social Capital Atlas.
 
 The process to create the metric will follow these steps:
 
-  (1) download data from socialcapital.org
+(1) download data from socialcapital.org
 
-  (2) import and clean the data file
+(2) import and clean the data file
 
-  (3) use crosswalk to check any missing counties
+(3) use crosswalk to check any missing counties
 
-  (4) create a data quality tag
+(4) update the economic connectedness variable to reflect the Social Capital Atlas
 
-  (5) final file cleaning and export to csv file
+(5) create a data quality flag and confidence intervals
 
+(6) final file cleaning and export to csv file
 
 Load the packages used in this program.
 
@@ -63,7 +62,7 @@ set_urbn_defaults(style = "print")
 
 ## Download data from the Social Capital Atlas
 
-The is accessed from the Social Capital [website](https://data.humdata.org/dataset/social-capital-atlas).
+The data is accessed from the Social Capital [website](https://data.humdata.org/dataset/social-capital-atlas).
 
 ```{r}
 #| label: download-data
@@ -78,9 +77,10 @@ destfile <- here::here("06_neighborhoods", "social-capital", "temp","social_capi
 download.file(url, destfile)
   
 ```
-## Clean the data 
 
-This step involves shaping the data so that county and state codes are identifiable. Any missing data will also be dealt with. 
+## Clean the data
+
+This step involves cleaning the data so that county and state codes are identifiable. Any missing data will also be dealt with.
 
 ```{r}
 #| label: load-data
@@ -102,16 +102,14 @@ ec_2022 <- ec_raw |>
             # create a new column for the state & county FIPS & create year variable
             mutate(
                 state = str_sub(county, start = 1, end = 2),
-                county = str_sub(county, start = 3, end = 5),
-                year = 2022
+                county = str_sub(county, start = 3, end = 5)
               ) |>
             # keep only relevant data
-            select(year, state, county, county_name, ec_county, ec_se_county) |>
+            select(state, county, ec_county, ec_se_county) |>
             # remove observations with missing data for our EC variable
             drop_na(ec_county)
 
-``` 
-     
+```
 
 ## Merge Crosswalk
 
@@ -136,6 +134,7 @@ county_pop <- county_pop |>
 
 ```
 
+
 ```{r}
 #| label: merge-crosswalk
 
@@ -143,7 +142,9 @@ county_pop <- county_pop |>
 merged_ec <- county_pop |>
                   left_join(ec_2022, by=c("state", "county")) |>
                   # sort data by state county
-                  arrange(state, county)
+                  arrange(state, county) |>
+                  # update the year to 2022 as the Social Capital Atlas was published in 2022
+                  mutate(year = 2022)
   
 # check how many missing values (counties without EC data)
 # We observe that there are 126 counties without Economic Connectedness data
@@ -151,43 +152,196 @@ sum(is.na(merged_ec$ec_county))
           
 ```
 
-We multiply by 50 because we want to display as percentages like the atlas does and not as the scaled indicator
-      
-# (4)   create data quality flag and add confidence interval
-      merged_ec <- merged_ec %>%
-        mutate(data_quality = case_when(ec_county >= 0 ~ 1))
-      
-      merged_ec <- merged_ec %>%
-        mutate(
-          ec_se_county_lb = ec_county - qnorm(0.975) * ec_se_county,
-          ec_se_county_ub = ec_county + qnorm(0.975) * ec_se_county
-        )
-      
-# (5)   final file cleaning and export to csv file									   
-      
-      # keep only relevant data (dropping population data, keeping EC data year only)
-      merged_ec <- merged_ec %>% 
-        select(year.y, state, county, state_name, county_name.x, ec_county, ec_se_county_lb, ec_se_county_ub, data_quality)
-      
-      
-      # rename the needed variable to avoid confusion
-      merged_ec <- merged_ec %>% 
-        rename(county_name = county_name.x)
-      merged_ec <- merged_ec %>% 
-        rename(year = year.y)
-      merged_ec <- merged_ec %>% 
-        rename(ec_county_quality = data_quality) %>%
-        
-      #G. Morrison addition March 2023 to clean table and prepare for join
-        select(-c(state_name, county_name)) %>%
-        rename(economic_connectedness = ec_county,
-               economic_connectedness_quality = ec_county_quality,
-               economic_connectedness_lb = ec_se_county_lb,
-               economic_connectedness_ub = ec_se_county_ub)
-      
-      # export as .csv
-      write_csv(merged_ec, "06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv")
-      
-      
-      
 
+```{r}
+#| label: visualize-economic-connectedness
+
+ merged_ec |>
+    drop_na() |>
+    ggplot(aes(x = ec_county)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+    geom_density(aes(y = ..count.. * 0.02), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Economic Connectedness, County-Level"),
+      y = "Count",
+      x = "Economic Connectedness"
+    ) +
+    theme_minimal()
+
+```
+
+
+```{r}
+#| label: visualize-standard-error-economic-connectedness
+
+ merged_ec |>
+    drop_na() |>
+    ggplot(aes(x = ec_se_county)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.001) +
+    geom_density(aes(y = ..count.. * 0.001), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Standard Error in Economic Connectedness, County-Level"),
+      y = "Count",
+      x = "Standard Error"
+    ) +
+    theme_minimal()
+
+```
+
+## Update the Economic Connectedness variable
+
+The Opportunity Insights group (Chetty et al.) via the Social Capital Atlas define economic connectedness as:
+
+> the share of friends with above-median SES (‘high SES’) among people with below-median SES (‘low SES’) divided by 50%, to quantify the average degree of under-representation of high-SES friends among people with low SES.
+
+The new Social Capital Atlas dashboard displays economic connectedness as both **the percentage of friends of those with low SES (Socio-Economic Status) that have high SES** and the **standardized percentile of that ratio nationwide**.
+
+The Social Capital Atlas data set from 2022 provides the scaled economic connectedness variable per the definition mentioned above. We need to transform it into the "percentage of friends of those with low SES that have high SES" as displayed on the Social Capital Atlas. For this purpose, we will multiply the scaled economic connectedness variable with 50% to get the desired percentage representation of economic connectedness.
+
+This example illustrates the update we need to make:
+
+EXAMPLE: Fairfax County, VA
+
+-   Urban’s Mobility Metrics Economic Connectedness: 1.2
+
+-   Social Capital Atlas Raw Data Economic Connectedness: 1.185
+
+-   Social Capital Atlas Website: [Economic Connectedness - Fairfax County, VA](https://socialcapital.org/?dimension=EconomicConnectednessIndividual&geoLevel=county&selectedId=51059&dim1=EconomicConnectednessIndividual&dim2=CohesivenessClustering&dim3=CivicEngagementVolunteeringRates&bigModalSection=&bigModalChart=scatterplot&showOutliers=false&colorBy=&state%5B0%5D=51) (Click `Explore the Data` once you navigate to the link)
+
+    -   The Social Capital Atlas website displays the economic connectedness for Fairfax County, VA as "59.3 % of friends are high-income" and indicates that the county falls in the 99th percentile nationwide.
+
+-   This difference in presentation comes down to displaying the raw percentage of high SES friends vs the calculated ratio. 
+    
+    - E.g., 59.3 / 50 = 1.186
+
+
+```{r}
+#| label: update-ec-variable
+
+# update economic connectedness scaled variable by multiplying it with 50% to get the percentage values
+# standard error for economic connectedness also multiplied by 50% 
+
+merged_ec <- merged_ec |>
+              mutate(economic_connectedness = ec_county * 50,
+                     ec_se_county_updated = ec_se_county * 50)
+
+```
+
+
+```{r}
+#| label: visualize-updated-economic-connectedness
+
+ merged_ec |>
+    drop_na() |>
+    ggplot(aes(x = economic_connectedness)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.8) +
+    geom_density(aes(y = ..count.. * 0.8), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Economic Connectedness, County-Level"),
+      y = "Count",
+      x = "Economic Connectedness (Updated)"
+    ) +
+    theme_minimal()
+
+```
+
+
+```{r}
+#| label: visualize-updated-standard-error-economic-connectedness
+
+ merged_ec |>
+    drop_na() |>
+    ggplot(aes(x = ec_se_county_updated)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.03) +
+    geom_density(aes(y = ..count.. * 0.03), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Standard Error in Economic Connectedness, County-Level"),
+      y = "Count",
+      x = "Standard Error (Updated)"
+    ) +
+    theme_minimal()
+
+```
+
+
+## Incorporate data quality measures
+
+Next step is to create a data quality flag and calculate confidence intervals for the updated economic connectedness metric.
+
+
+```{r}
+#| label: data-quality
+
+merged_ec <- merged_ec |>
+    mutate(
+      # add a data quality flag
+      economic_connectedness_quality = case_when(economic_connectedness >= 0 ~ 1),
+      # calculate upper bound and lower bound from standard error
+      economic_connectedness_lb = economic_connectedness - qnorm(0.975) * ec_se_county_updated,
+      economic_connectedness_ub = economic_connectedness + qnorm(0.975) * ec_se_county_updated
+           )
+
+```
+
+
+```{r}
+#| label: visualize-upper-lower-bounds
+
+merged_ec |>
+    drop_na() |>
+    ggplot(aes(x = economic_connectedness)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.2), binwidth = 1) +
+    geom_density(aes(y = ..count.. * 1, color="Metric Value"), size = 1, alpha = 0.2) +
+    geom_density(
+      aes(x = economic_connectedness_lb,y = ..count.. * 1, color = "Lower Bound"), 
+       size = 1, alpha = 0.2
+      ) +
+    geom_density(
+      aes(x = economic_connectedness_ub,y = ..count.. * 1, color = "Upper Bound"), 
+      size = 1, alpha = 0.2
+      ) +
+  scale_color_manual(
+    name = "Density",
+    values = c("Metric Value" = "red", "Lower Bound" = "#F0E442", "Upper Bound" = "#009E73")
+    ) +
+    labs(
+      title = paste0("Economic Connectedness with Lower & Upper Bounds"),
+      y = "Count",
+      x = "Economic Connectedness (Updated)"
+    ) +
+    theme_minimal()
+
+```
+
+## Evaluate final data
+
+```{r}
+#| label: final-data-cleaning
+
+# check if there are any missing counties
+
+missing_counties <- anti_join(merged_ec, county_pop, by = c("state", "county"))
+# in this data, we find that there are no missing counties
+print(missing_counties)
+
+# keep only relevant data (dropping population data)
+ec_final_data <- merged_ec |> 
+              select(year, state, county, economic_connectedness, economic_connectedness_lb,
+                     economic_connectedness_ub, economic_connectedness_quality)
+
+```         
+
+
+```{r}
+#| label: save-final-data
+
+# Define file path to save the final data file
+file_path <- here::here(
+      "06_neighborhoods", "social-capital", "final", 
+      "economic_connectedness_version2025_county_2022.csv"
+      )
+  
+# Save the csv file
+write.csv(ec_final_data, file_path, row.names = FALSE)
+  
+```
