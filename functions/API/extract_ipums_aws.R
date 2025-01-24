@@ -4,7 +4,7 @@
   library(aws.s3)
   library(tidyverse)
 
-  extract_ipums_draft <- function(extract_name, extract_date, extract_description, survey){
+  extract_ipums_aws <- function(extract_name, extract_date, extract_description, survey){
   
   # Set folder path, .gz, and .xml variables
   folder_path <- here("data", "temp", "raw")

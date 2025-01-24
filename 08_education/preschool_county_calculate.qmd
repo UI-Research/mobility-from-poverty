@@ -1,5 +1,5 @@
 ---
-title: "Calculate access to pre-kindergarten Predictor, Place-level"
+title: "Access to pre-kindergarten Predictor, County-level"
 author: "JP Walsh"
 date: today
 format:
@@ -16,7 +16,7 @@ params:
   year: "2021"
 ---
 
-*Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the place-level*
+*Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the County-level*
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2025.
 
@@ -42,8 +42,10 @@ library(reactable)
 library(srvyr)
 library(scales)
 
+theme_set(theme_minimal())
 
 options(scipen = 999)
+
 
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
@@ -79,7 +81,8 @@ Define existing intermediate years and read them into function to combine.
 existing_years <- c("2014", "2016", "2018", "2021")
 ```
 
-## Read Person-Level Data 
+
+### Person-Level Data
 
 Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
 
@@ -115,8 +118,6 @@ Isolate the data to 3 and 4 year-olds. This is the age-range included in the pre
 ```{r}
 acs_age <- acs %>% 
   filter(age == 3 | age == 4) 
-
-rm(acs)
 ```
 
 ### Replicate Weights 
@@ -134,7 +135,6 @@ repwts <- ipums_repwt_pre_k_aws(
 )  %>% 
   select(-cbserial, -cbpernum)
 ```
-
 
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
 
@@ -171,7 +171,7 @@ rm(acs_age)
 rm(repwts_person)
 ```
 
-Check that the merge did not result in any missing values. 
+Check that the merge did not result in any missing values.
 
 ```{r}
 stopifnot(all(map_dbl(acs_combined, ~sum(is.na(.x))) == 0))
@@ -184,6 +184,7 @@ Missing data is reported in a variety of ways by IPUMS data. This step walks thr
 * **Age:** No missing values reported in variable description. Run the following test to confirm all values are either 3 or 4.
 
 ```{r}
+
 stopifnot(all(acs_combined$age %in% c(3, 4)))
           
 ```
@@ -191,6 +192,7 @@ stopifnot(all(acs_combined$age %in% c(3, 4)))
 * **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0"). Confirm this is true with the following test.
 
 ```{r}
+
 stopifnot(all(acs_combined$vacancy == "0"))
 
 ```
@@ -199,14 +201,12 @@ stopifnot(all(acs_combined$vacancy == "0"))
 Variable codes explained [here](https://usa.ipums.org/usa-action/variables/GRADEATT#codes_section).
 
 There is a significant share of records reported as "0" for the grade level attending variable.
-
 ```{r}
 acs_combined %>% 
   mutate(gradeatt = zap_labels(gradeatt)) %>% 
   count(gradeatt) %>% 
   ggplot(mapping = aes(x = factor(gradeatt), y = n)) +
   geom_col() +
-  theme_minimal() +
   ggtitle("gradeatt, All Records") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Grade Attending",
@@ -215,7 +215,6 @@ acs_combined %>%
 ```
 
 Confirm the values from the value labels of the GRADEATT variable to ensure we are interpreting them correctly. 1 is Nursery school/preschool and 0 is N/A - interpreting as not in school for the sake of this analysis. 
-
 ```{r}
 head(acs_combined$gradeatt)
 ```
@@ -246,7 +245,6 @@ acs_clean %>%
   count(gq) %>% 
   ggplot(mapping = aes(x = gq, y = n)) +
   geom_col() +
-  theme_minimal() +
   ggtitle("GQ, All Records") +
   geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
@@ -285,14 +283,23 @@ acs_clean %>%
   count(race) %>% 
   ggplot(mapping = aes(x = race, y = n)) +
   geom_col() +
-  theme_minimal() +
   ggtitle("Race, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
+  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Race",
        y = NULL)+
   scale_x_discrete(labels = label_wrap(10))
 
+acs_clean %>% 
+  count(hispan) %>% 
+  ggplot(mapping = aes(x = hispan, y = n)) +
+  geom_col() +
+  ggtitle("Hispan, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Hispan",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
 ```
 
 Create the race/ethnicity variable. For race/ethnicity categories that are not coded as Hispanic, Hispan must be equal to "Not Hispanic". 
@@ -303,7 +310,7 @@ Rename the values from number category to race label:
 * Hispan is not equal to Not Hispanic = "Hispanic"
 * Race is not Black or White and Hispan is Not Hispanic  = "Other Races and Ethnicities" 
 * Race is White and Hispan is Not Hispanic = "White, Non-Hispanic" 
-  
+
 ```{r}
 acs_clean <- acs_clean %>%
   mutate(
@@ -324,9 +331,8 @@ acs_clean %>%
   count(subgroup_race) %>% 
   ggplot(mapping = aes(x = factor(subgroup_race), y = n)) +
   geom_col() +
-  theme_minimal() +
   ggtitle("Race/ethnicity, All Records") +
- geom_text(mapping = aes(label = n), vjust = -1) +    
+  geom_text(mapping = aes(label = n), vjust = -1) +    
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Race/ethnicity",
        y = NULL)+
@@ -400,47 +406,59 @@ acs_clean %>%
   scale_x_discrete(labels = label_wrap(10))
 ```
 
-
 ## Crosswalk
 
-Read in the PUMA to place crosswalk file. This file is created by the program generate_puma_place_crosswalks.rmd in the geographic-crosswalks folder. 
+Read in the PUMA to county crosswalk file. This file is created by the program generate_puma_county_crosswalks.rmd in the geographic-crosswalks folder.
 
 ```{r}
-puma_place_crosswalk <- read_csv(
-  here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv")
-)
+puma_county_crosswalk <- read_csv(
+  here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
+  )
 ```
 
-Create a version with just unique places for creating a version of the data that matches the UMF place list.
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
 
 ```{r}
-place_list <- puma_place_crosswalk %>% 
-  select(statefip, place) %>% 
+if(params$year < 2022){
+  county_list <- puma_county_crosswalk %>%
+    filter(crosswalk_period == "pre-2022") %>% 
+    select(statefip, county) %>% 
+    filter(statefip != 72) %>% 
+    unique()
+
+}else{
+  county_list <- puma_county_crosswalk %>% 
+  filter(crosswalk_period == "2022") %>% 
+  select(statefip, county) %>% 
   filter(statefip != 72) %>% 
   unique()
+}
+
 ```
 
 ## Merge Crosswalk 
 
-Create a variable in the ACS data indicating whether the survey year is pre or post-2022. This will be used to join on the correct crosswalk information.
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
 
 ```{r}
 acs_clean <- acs_clean %>% 
   mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
 ```
 
 Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
 
 ```{r}
 count(acs_clean, crosswalk_period, year)
+
 ```
 
-Join the cleaned ACS data onto the crosswalk. 
+Join the cleaned ACS data onto the crosswalk.
 
 ```{r}
 acs_crosswalked <- left_join(
   acs_clean, 
-  puma_place_crosswalk, 
+  puma_county_crosswalk, 
   by = c("crosswalk_period", "statefip","puma"),
   relationship = "many-to-many"
 )
@@ -449,15 +467,7 @@ rm(acs_clean)
 
 ```
 
-Check that each place has joined to many ACS records. We select the largest 486 places in our crosswalk, all 486 unique places should be connected to multiple records.
-
-```{r}
-acs_crosswalked %>% 
-  group_by(place, statefip) %>% 
-  count()
-```
-
-Drop any observations with NA for `afact` (i.e. there is no place of interest overlapping this PUMA).
+Drop any observations with NA for `afact` (i.e. there is no county of interest overlapping this PUMA).
 
 ```{r}
 count(acs_crosswalked, is.na(afact))
@@ -477,7 +487,7 @@ acs_crosswalked <- acs_crosswalked %>%
 
 ```
 
-Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
+Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
 
 ```{r}
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
@@ -489,15 +499,17 @@ acs_crosswalked <- acs_crosswalked %>%
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
 ```
 
-### Create additional variables
+### Create computational variables
 
 Create a binary preschool variable indicating whether the child is in preschool/pre-K or not. IPUMS codes  Nursery school/preschool (1) and N/A (0) (re: grade level attending). 
+
 The way the code was built in prior years it is assumed N/A means that the child is not attending any school.
 
 ```{r}
 acs_crosswalked <- acs_crosswalked %>% 
   filter(grade_attending %in% c("Nursery school/preschool", "N/A", "Kindergarten")) %>% 
   mutate(preschool = grade_attending == "Nursery school/preschool")
+
 ```
 
 Evaluate the share of 3/4 year olds in kindergarten in each state. The share varies by state, with some states reaching upwards of 6 percent of 3/4 year olds being in Kindergarten.
@@ -520,6 +532,7 @@ acs_crosswalked %>%
       shr_kindergarten_record_count = colDef(format = colFormat(percent = TRUE, digits = 1))
     )
   )
+
 ```
 
 Check if `grade_attending` is ever `NA`.
@@ -536,43 +549,31 @@ stopifnot(sum(is.na(acs_crosswalked$vacancy)) == 0)
 
 ```
 
-Check the distribution of the `grade_attending` variable one last time - there should be no NA values included.
-
-```{r}
-acs_crosswalked %>% 
-  count(grade_attending) %>% 
-  ggplot(mapping = aes(x = factor(grade_attending), y = n)) +
-  geom_col() +
-  theme_minimal() +
-  ggtitle("gradeatt, All Records") +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Current Grade Attending",
-       y = NULL)
-```
-
 ## Create pre-K metric: All
 
 ### Pre-drop suppressed cells
 
-First, to save time when processing the metric, calculate the effective sample count for each place, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+First, to save time when processing the metric, calculate the effective sample count for each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
 
 ```{r}
 #| label: all-effective-samples
 
 acs_all <- acs_crosswalked %>%
-  group_by(year, sample, crosswalk_period, statefip, place) %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
   mutate(effective_sample = sum(afact)) %>% 
   ungroup()
 
 # calculate the number of statistics after suppressing values
 acs_all %>%
-  group_by(year, sample, crosswalk_period, statefip, place) %>%
-  summarise(
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  summarize(
+    sample = n(),
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarise(
+  summarize(
     original_stats = n(),
+    stats_with_30 = sum(sample >= 30),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
 
@@ -580,7 +581,7 @@ acs_all %>%
 
 Create the preschool access metric. 
 
-Objective: calculate the percent of individuals between 3 and 4 that are in pre-K or higher.
+Objective: calculate the percent of individuals between 3 and 4 that are enrolled in pre-K.
 
 Aggregation should be weighted by PERWT (this is a person level statistic).
 
@@ -596,14 +597,14 @@ acs_all <- acs_all %>%
 
 ### Calculate metric
 
-Calculate the place-level metrics. 
+Calculate the county-level metrics. 
 
 ```{r}
 #| label: calc-all
 
 results_all <- acs_all %>%
   group_split(statefip) %>% 
-  map_dfr(~ calc_survey_mean(.data = .x, .geo_level = place))
+  map_dfr(~ calc_survey_mean(.data = .x, .geo_level = county))
 
 ```
 
@@ -625,29 +626,28 @@ rm(acs_all)
 
 To create the metric we suppressed counties that did not meet the threshold for sample size but we need to include these in the final data. Create an all version of the data that includes counties that were suppressed prior to the survey_mean calculation. 
 
-Expand the place_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of places we anticipate.
+Expand the county_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of counties we anticipate.
 
 ```{r}
-expanded_place_list <- place_list %>% 
-  left_join(results_all, by = c("statefip", "place"), relationship = "many-to-many") %>%
-  mutate(geoid = paste0(statefip, place)) %>% 
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
   expand(year, geoid) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) 
+         county = str_sub(geoid, 3, 5)) 
 
-results_all_expand <- expanded_place_list %>% 
-  left_join(results_all, by = c("year", "statefip", "place")) %>% 
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
   filter(!is.na(year))
 
-
-stopifnot(nrow(results_all_expand) == 486 * n_distinct(results_all_expand$year))
+stopifnot(nrow(results_all_expand) == 3143 * n_distinct(results_all_expand$year))
 ```
 
 ## Data Quality Flags
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
 
-The `share_in_preschool_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag.  
+The `share_in_preschool_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag.
 
 ```{r}
 metrics_education_all <- results_all_expand %>% 
@@ -665,7 +665,7 @@ metrics_education_all <- results_all_expand %>%
 
 ```{r}
 if(isTRUE(bucket_exists(bucket = my_bucket))){
- if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_education_all", "_", params$year[1], ".csv"), bucket = my_bucket)){
+ if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_education_all_county", "_", params$year[1], ".csv"), bucket = my_bucket)){
     
     # write file to S3
     tmp <- tempfile()
@@ -673,7 +673,7 @@ if(isTRUE(bucket_exists(bucket = my_bucket))){
     write_csv(metrics_education_all, file = tmp)
     
     # put object with an upload progress bar
-    put_object(tmp, object = paste0(s3_dir, "/metrics_education_all", "_", params$year, ".csv"), bucket = my_bucket, 
+    put_object(tmp, object = paste0(s3_dir, "/metrics_education_all_county", "_", params$year, ".csv"), bucket = my_bucket, 
                show_progress = TRUE, multipart = FALSE)
     
   }
@@ -683,25 +683,27 @@ if(isTRUE(bucket_exists(bucket = my_bucket))){
 
 ## Create pre-K metric: Race/Ethnicity
 
-To save time when processing the metric, calculate the effective sample count for each race-ethnicity group in each place, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+To save time when processing the metric, calculate the effective sample count for each race-ethnicity group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
 
 ```{r}
 #| label: race-ethnicity-effective-samples
 
 acs_race_ethnicity <- acs_crosswalked %>%
-  group_by(year, sample, crosswalk_period, statefip, place, subgroup_race) %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
   mutate(effective_sample = sum(afact)) %>% 
   ungroup()
 
 # calculate the number of statistics after suppressing values
 acs_race_ethnicity %>%
-  group_by(year, sample, crosswalk_period, statefip, place, subgroup_race) %>%
-  summarise(
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_race) %>%
+  summarize(
+    sample = n(),
     effective_sample = max(effective_sample)
   ) %>%
   ungroup() %>%
-  summarise(
+  summarize(
     original_stats = n(),
+    stats_with_30 = sum(sample >= 30),
     unsuppressed_stats = sum(effective_sample >= 30)
   )
 
@@ -729,7 +731,7 @@ results_race_ethnicity <- acs_race_ethnicity %>%
   map_dfr(
     .f = ~ calc_survey_mean_subgroup(
       .data = .x,
-      .geo_level = place,
+      .geo_level = county,
       .subgroup = subgroup_race
     )
   )
@@ -753,35 +755,37 @@ To create the metric we suppressed counties that did not meet the threshold for 
 Create expanded version for race-ethnicity.
 
 ```{r}
-expanded_place_list_race <- place_list %>% 
-  left_join(results_race_ethnicity, by = c("statefip", "place"), relationship = "many-to-many") %>%
-  mutate(geoid = paste0(statefip, place)) %>% 
+
+expanded_county_list_race_ethnicity <- county_list %>% 
+  left_join(results_race_ethnicity, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
   expand(year, geoid, subgroup_race) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) 
+         county = str_sub(geoid, 3, 5)) 
 
-results_race_ethnicity_expanded <- expanded_place_list_race  %>% 
-  left_join(results_race_ethnicity, by = c("year", "statefip", "place", "subgroup_race")) %>% 
+results_race_ethnicity_expanded <- expanded_county_list_race_ethnicity  %>% 
+  left_join(results_race_ethnicity, by = c("year", "statefip", "county", "subgroup_race")) %>% 
   filter(!is.na(year), !is.na(subgroup_race)) %>% 
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
+
 ```
 
 ## Create pre-K metric: Income subgroup
 
-To save time when processing the metric, calculate the effective sample count for each income group in each place, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include places with less than 30 effective samples.
+To save time when processing the metric, calculate the effective sample count for each income group in each county, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
 
 ```{r}
 #| label: income-effective-samples
 
 acs_income <- acs_crosswalked %>%
-  group_by(year, sample, crosswalk_period, statefip, place, subgroup_income) %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_income) %>%
   mutate(effective_sample = sum(afact)) %>% 
   ungroup()
 
 # calculate the number of statistics after suppressing values
 acs_income %>%
-  group_by(year, sample, crosswalk_period, statefip, place, subgroup_income) %>%
+  group_by(year, sample, crosswalk_period, statefip, county, subgroup_income) %>%
   summarise(
     effective_sample = max(effective_sample)
   ) %>%
@@ -795,7 +799,7 @@ acs_income %>%
 
 Create the pre-K metric for the income subgroup. 
 
-Remove records from places below the size quality cutoff. 
+Remove records from counties below the size quality cutoff. 
 
 ```{r}
 #| label: subset-income
@@ -815,7 +819,7 @@ results_income <- acs_income %>%
   map_dfr(
     .f = ~ calc_survey_mean_subgroup(
       .data = .x,
-      .geo_level = place,
+      .geo_level = county,
       .subgroup = subgroup_income
     )
   )
@@ -839,15 +843,15 @@ To create the metric we suppressed counties that did not meet the threshold for 
 Create expanded version for the income subgroup.
 
 ```{r}
-expanded_place_list_income <- place_list %>% 
-  left_join(results_income, by = c("statefip", "place"), relationship = "many-to-many") %>%
-  mutate(geoid = paste0(statefip, place)) %>% 
+expanded_county_list_income <- county_list %>% 
+  left_join(results_income, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
   expand(year, geoid, subgroup_income) %>% 
   mutate(statefip = str_sub(geoid, 1, 2),
-         place = str_sub(geoid, 3, 7)) 
+         county = str_sub(geoid, 3, 7)) 
 
-results_income_expanded <- expanded_place_list_income %>% 
-  left_join(results_income, by = c("year", "statefip", "place", "subgroup_income")) %>% 
+results_income_expanded <- expanded_county_list_income %>% 
+  left_join(results_income, by = c("year", "statefip", "county", "subgroup_income")) %>% 
   filter(!is.na(year), !is.na(subgroup_income)) %>% 
   mutate(subgroup_type = "income") %>% 
   rename(subgroup = subgroup_income)
@@ -857,30 +861,31 @@ results_income_expanded <- expanded_place_list_income %>%
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst. 
 
-First combine the subgroup data sets. Provide the all results a subgroup and subgroup_type value of "All".
+First combine the subgroup data sets.
 
 ```{r}
-
 metrics_education_sub <-results_all_expand %>% 
   mutate(subgroup = "All",
          subgroup_type = "all") %>% 
   bind_rows(results_race_ethnicity_expanded, results_income_expanded)
 
-stopifnot(nrow(metrics_education_sub) == 486 * n_distinct(results_all_expand$year) * 7)
 
+stopifnot(nrow(metrics_education_sub) == 3143 * n_distinct(results_all_expand$year) * 7)
 ```
 
-Now create the metric quality variable. The `share_in_preschool_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any place with NA for the `share_in_preschool` metric is being suppressed due to sample size and is given a quality flag of 3.  
+Now create the metric quality variable. The `share_in_preschool_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag.
 
 ```{r}
+
 metrics_education_sub <- metrics_education_sub %>% 
-   mutate(
+  mutate(
     share_in_preschool_quality = if_else(
       is.na(share_in_preschool), 
       NA_real_,
       geographic_allocation_quality
     )
   )
+
 ```
 
 ### Write out intermediate data
@@ -889,7 +894,7 @@ For internal users with AWS access - write out intermediate data.
 
 ```{r}
  if(isTRUE(bucket_exists(bucket = my_bucket))){
-   if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_education_sub", "_", params$year, ".csv"), bucket = my_bucket)){
+   if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_education_sub_county", "_", params$year, ".csv"), bucket = my_bucket)){
     
     # write file to S3
     tmp <- tempfile()
@@ -897,7 +902,7 @@ For internal users with AWS access - write out intermediate data.
     write_csv(metrics_education_sub, file = tmp)
     
     # put object with an upload progress bar
-    put_object(tmp, object = paste0(s3_dir, "/metrics_education_sub", "_", params$year, ".csv"), bucket = my_bucket, 
+    put_object(tmp, object = paste0(s3_dir, "/metrics_education_sub_county", "_", params$year, ".csv"), bucket = my_bucket, 
                show_progress = TRUE, multipart = FALSE)
     
    }
@@ -945,9 +950,9 @@ read_intermediate <- function(year, file_type){
 ```{r}
 
 metrics_education_all <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
-                                                                          file_type = "all"))
+                                                                          file_type = "all_county"))
 metrics_education_sub <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
-                                                                          file_type = "sub"))
+                                                                          file_type = "sub_county"))
   
 ```
 
@@ -964,7 +969,7 @@ metrics_education_sub %>%
   summary()
 ```
 
-Look at distribution of pre-K attendance share by place for all and for subgroups in latest year (set by the program parameter).
+Look at distribution of pre-K attendance share by county for all and for subgroups.
 
 ```{r}
 
@@ -973,8 +978,7 @@ metrics_education_all %>%
   select(share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Distribution of share prek_attendance, by place 2021 (5-year data)") +
+  ggtitle("Distribution of share prek_attendance, by county 2021 (5-year data)") +
   ylab("Density")
 
 metrics_education_sub %>% 
@@ -982,25 +986,25 @@ metrics_education_sub %>%
   select(share_in_preschool) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Distribution of share prek_attendance, subgroups, by place 2021 (5-year data)") +
+  ggtitle("Distribution of share prek_attendance, subgroups, by county 2021 (5-year data)") +
   ylab("Density")
+  
 
 ```
 
-Look at distribution of prek_attendance share by place for each individual subgroup.
+Look at distribution of prek_attendance share by county for each individual subgroup.
 
 ```{r}
+
 metrics_education_sub %>% 
   filter(year == params$year) %>% 
   ggplot(aes(x = share_in_preschool)) +
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of share prek_attendance, subgroups, by place 2021 (5-year data)",
+    title = "Distribution of share prek_attendance, subgroups, by county 2021 (5-year data)",
     y = "Density"
-  ) +
-  theme_minimal()
+  )
 
 ```
 
@@ -1010,19 +1014,19 @@ Compare trends for the share in preschool overtime for all years in the data.
 
 ```{r}
 metrics_education_all %>%
-  group_by(statefip, place) %>%
+  group_by(statefip, county) %>%
   mutate(share_in_preschool_change = share_in_preschool - lag(share_in_preschool)) %>%
   filter(year == params$year) %>%
   ggplot(aes(share_in_preschool, share_in_preschool_change)) +
   geom_point(alpha = 0.2)
 
 metrics_education_all %>%
-  select(year, statefip, place, share_in_preschool) %>%
+  select(year, statefip, county, share_in_preschool) %>%
   pivot_wider(
     names_from = year, 
     values_from = share_in_preschool
   ) %>%
-  ggplot(aes(`2014`, `2016`)) +
+  ggplot(aes(`2018`, `2021`)) +
   geom_abline() +
   geom_point(alpha = 0.1)
 
@@ -1075,6 +1079,7 @@ metrics_education_all %>%
 ```
 
 Distribution of confidence interval widths.
+
 ```{r}
 metrics_education_all %>%
   mutate(ci_width = share_in_preschool_ub - share_in_preschool_lb) %>%
@@ -1083,13 +1088,14 @@ metrics_education_all %>%
 ```
 
 ### Quality and suppression
+
 Look at the counts of the quality flag.
+
 ```{r}
 metrics_education_all %>% 
   select(share_in_preschool_quality) %>% 
   ggplot(aes(x = share_in_preschool_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
   ggtitle("Quality Flag, All (5-year data)") +
   ylab("Count")
 
@@ -1098,7 +1104,6 @@ metrics_education_sub %>%
   select(share_in_preschool_quality) %>% 
   ggplot(aes(x = share_in_preschool_quality)) +
   geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
   ggtitle("Quality Flag, subgroups (5-year data") +
   ylab("Count")
 ```
@@ -1115,10 +1120,9 @@ metrics_education_sub %>%
   ylab("Count")
 ```
 
-
 Tabulate share of data suppressed by year.
-```{r}
 
+```{r}
 metrics_education_all %>% 
   group_by(year) %>% 
   summarise(suppressed = sum(is.na(share_in_preschool)),
@@ -1134,10 +1138,10 @@ metrics_education_sub %>%
 
 ```
 
-
 ## Export 
 
 Rename state.
+
 ```{r}
 metrics_education_all <- metrics_education_all %>% 
   rename("state" = "statefip")
@@ -1147,41 +1151,48 @@ metrics_education_sub <- metrics_education_sub %>%
 ```
 
 Order the variables how we want.
+
 ```{r}
 metrics_education_all <- metrics_education_all %>% 
-  select(year, state, place, share_in_preschool, 
-         share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality) %>% 
-  arrange(year, state, place)
+  select(year, state, county, share_in_preschool, 
+         share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality)
 
 metrics_education_sub <- metrics_education_sub %>% 
-  select(year, state, place, subgroup_type, subgroup, share_in_preschool,
+  select(year, state, county, subgroup_type, subgroup, share_in_preschool,
          share_in_preschool_lb, share_in_preschool_ub, share_in_preschool_quality) %>%
-  arrange(year, state, place, subgroup_type, subgroup)
+  arrange(year, state, county, subgroup_type, subgroup)
 
 ```
 
 Export as CSV
 
 ```{r}
+metrics_education_all %>% 
+  head(10)
 
-write_csv(metrics_education_all, 
-          here::here("08_education", "data", "final", "metrics_preschool_place_all_longitudinal_all.csv")
-          )
+write_csv(
+  metrics_education_all, 
+  file = here::here("08_education", "data", "final", "metrics_preschool_county_all_longitudinal.csv")
+)
 
 metrics_education_race <- metrics_education_sub %>% 
   filter(subgroup_type %in% c("all", "race-ethnicity")) %>% 
-  arrange(year, state, place, subgroup)
+  arrange(year, state, county, subgroup)
 
+metrics_education_race %>% 
+  head(10)
 
-write_csv(metrics_education_race, here::here("08_education", "data", "final",
-                                             "metrics_preschool_place_race-ethnicity_longitudinal.csv"))
+write_csv(metrics_education_race, here::here("08_education", "data", "final", "metrics_preschool_county_race-ethnicity_longitudinal.csv"))
 
 
 metrics_education_income <- metrics_education_sub %>% 
   filter(subgroup_type %in% c("all", "income")) %>% 
-  arrange(year, state, place, subgroup)
+  arrange(year, state, county, subgroup)
 
-write_csv(metrics_education_income, here::here("08_education", "data", "final",
-                                               "metrics_preschool_place_income_longitudinal.csv"))
+metrics_education_income %>% 
+  head(10)
+
+write_csv(metrics_education_income, here::here("08_education", "data", "final", "metrics_preschool_county_income_longitudinal.csv"))
+
+
 ```
-

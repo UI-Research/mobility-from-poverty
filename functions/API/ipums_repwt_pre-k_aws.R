@@ -21,7 +21,7 @@ library(ipumsr)
 library(aws.s3)
 library(tidyverse)
 
-ipums_repwt_pre_k_draft <- function(extract_name, extract_date, extract_description, survey){
+ipums_repwt_pre_k_aws <- function(extract_name, extract_date, extract_description, survey){
   
   # Set folder path, .gz, and .xml variables
   folder_path <- here("data", "temp", "raw")
