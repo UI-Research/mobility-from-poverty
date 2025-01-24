@@ -80,11 +80,6 @@ rename city_name_edited city_name
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
 	
-*duplicate 2015 to create 2014 place
-	expand 2 if year==2015
-	bysort year state place state_name city_name: gen obs=_n
-	replace year = 2014 if obs==2
-	drop obs
 	sort year state place state_name city_name
 	
 	save "intermediate/cityfile.dta", replace // gitignore
