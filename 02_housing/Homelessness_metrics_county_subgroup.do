@@ -45,12 +45,16 @@ cap n mkdir "built"
 	import delimited ${countyfile}, clear
 	drop population state_name county_name
 
+	*county variable is numeric and needs to be string
 	tostring county, replace
+	*after stringing, county should have 3 characters, so add leading zeros where they are missing
 	replace county = "0" + county if strlen(county)<3
 	replace county = "0" + county if strlen(county)<3
 	assert strlen(county)==3
-
+	
+	*state variable is numeric and needs to be a string
 	tostring state, replace
+	*add leading zeros where needed for a string length of 2
 	replace state = "0" + state if strlen(state)==1
 	assert strlen(state)==2
 
@@ -79,7 +83,7 @@ clear
 foreach year in $years {
 	append using "intermediate/ccd_lea_`year'_county.dta"
 		}
-	merge 1:1 year leaid using "raw/CT_2022-23_crosswalk"
+	*merge 1:1 year leaid using "raw/CT_2022-23_crosswalk"
 	
 save "intermediate/ccd_lea_recent_county.dta", replace
 
@@ -365,9 +369,7 @@ tab year _merge
 ****************
 *Quality Checks
 ****************
-		
 *check quality - how good is coverage of homeless students (based on nonsuppresion) by quality variables
-*provides information about coverage overall and by race/ethnicity and quality. 
 *If one race/ethnicity group is 
 sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
@@ -377,7 +379,7 @@ drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* *_mis
 order year state county *homeless* black* hispanic* other* white*
 gsort -year state county
 
-*summary stats to see possible outliers
+*summary stats to see possible outliers across years/times, comaring means and min/max values across years
 bysort year: sum // other_share is a lot higher than others... 
 bysort state: sum
 
@@ -402,8 +404,8 @@ gsort -year state county
 foreach var in homeless black white hispanic other {
 gen check1_`var' = 1 if `var'_count<`var'_count_lb
 gen check2_`var' = 1 if `var'_count>`var'_count_ub
-tab check1_`var', m
-tab check2_`var', m 
+	assert check1==.
+	assert check2==.
 drop check*
 }
 
@@ -418,10 +420,13 @@ replace `var'_quality = .  if `var'_count==.
 **************
 *Visual Checks
 **************
+*look to see if, by homeless quality, the distributions are relatively normal
 twoway histogram homeless_share, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==1, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==2, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==3, frequency by(year)
+
+bysort year: assert homeless_share==-1 if homeless_quality==-1
 
 foreach var in homeless black white hispanic other {
 bysort year: tab `var'_share if `var'_quality==-1

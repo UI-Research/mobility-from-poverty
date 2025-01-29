@@ -47,12 +47,16 @@ cap n mkdir "built"
 ** Import city crosswalk file to edit names of city crosswalk to match city location strings in CCD school district data
 import delimited ${cityfile}, clear
 
+*place variable is number and needs to be a string
 tostring place, replace
+*after stringing, place should have 5 characters, so add leading zeros where they are missing
 replace place = "0" + place if strlen(place)==4
 replace place = "00" + place if strlen(place)==3
 assert strlen(place)==5
 
+*state variable is numeric and needs to be a string
 tostring state, replace
+*add leading zeros where needed for a string length of 2
 replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
 
@@ -401,8 +405,8 @@ drop enrollment coverage* enroll_* *_districts_suppress min_* count_supp_* *_mis
 order year state city_name *homeless* black* hispanic* other* white*
 gsort -year state city_name
 
-*summary stats to see possible outliers
-bysort year: sum // other_share is a lot higher than others... 
+*summary stats to see possible outliers across years/times, comaring means and min/max values across years
+bysort year: sum 
 bysort state: sum
 
 bysort year: count // total of 486 cities possible
@@ -426,8 +430,8 @@ gsort -year state place
 foreach var in homeless black white hispanic other {
 gen check1_`var' = 1 if `var'_count<`var'_count_lb
 gen check2_`var' = 1 if `var'_count>`var'_count_ub
-tab check1_`var', m
-tab check2_`var', m 
+	assert check1==.
+	assert check2==.
 drop check*
 }
 
@@ -441,10 +445,13 @@ tab `var'_quality if `var'_count==.
 **************
 *Visual Checks
 **************
+*look to see if, by homeless quality, the distributions are relatively normal
 twoway histogram homeless_share, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==1, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==2, frequency by(year)
 twoway histogram homeless_share  if homeless_quality==3, frequency by(year)
+
+bysort year: assert homeless_share==-1 if homeless_quality==-1
 
 foreach var in homeless black white hispanic other {
 bysort year: tab `var'_share if `var'_quality==-1
