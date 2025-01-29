@@ -28,14 +28,14 @@ This metric is the share of people experiencing poverty in a census place who li
 8. Data quality flags
 9. Save the data
 
-## Setup
+## Housekeeping
 
 All numbers come for the Census API. The documentation for the Census API is available [here](https://api.census.gov/data/2021/acs/acs5/profile/variables.html). We pull all of the race/ethnicity counts for 2021 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete "template". It is sourced above. 
 
 To do this we have to identify census tracts with poverty rates over 40% in each census place, count the number of residents in those tracts who are poor, sum that up and divided it by the total number of poor residents in the census place.
 
 ```{r}
-#| label: setuo
+#| label: setup
 
 options(scipen = 999)
 
@@ -57,9 +57,10 @@ source(here::here("06_neighborhoods", "R", "get_vars.R"))
 https://api.census.gov/data/2021/acs/acs5/variables.html
 
 ```{r}
-#| label: load-tract-data
+#| label: load-tracts-data
 
-vars <- c( # Estimate!!Total!!Income in the past 12 months below poverty level
+get_poverty_status_data <- function(year){
+  vars <- c( # Estimate!!Total!!Income in the past 12 months below poverty level
   # "B00001_001E", # UNWEIGHTED SAMPLE COUNT OF THE POPULATION
   # "B01001_001E", # SEX BY AGE
   people = "B17001_001E", # POVERTY STATUS IN THE PAST 12 MONTHS BY SEX BY AGE (Total)
@@ -100,33 +101,51 @@ tracts <- map_df(state_fips, ~getCensus(name = "acs/acs5",
                                         vars = vars, 
                                         region = "tract:*",
                                         regionin = .x,
-                                        vintage = 2021)) %>%
+                                        vintage = {{year}})) %>%
   as_tibble() %>%
-  mutate(year = 2021)
+  mutate(year = {{year}})
 
 # rename the variables
 tracts <- tracts %>%
   rename(all_of(vars))
 
+return(tracts)
+}
+
+years <- c(2016, 2018, 2021, 2023)
+
+tracts_raw <-
+  map(years, get_poverty_status_data) |> 
+  list_rbind() |> 
+  relocate(year, .before = everything())
+
+write_csv(tracts_raw, here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
 ```
+
+```{r}
+#| label: import-tract-data
+
+tracts_raw <- read_csv(here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
+```
+
 
 Some tracts don't have any population. We drop those tracts. 
 
 ```{r}
 #| label: drop-empty-tracts
 
-tracts <- tracts %>%
+tracts <- tracts_raw %>%
   tidylog::filter(people > 0)
 
 ```
 
-Check the number of people. It should be around [321,897,703](https://data.census.gov/cedsci/table?q=B17001&tid=ACSDT5Y2021.B17001&hidePreview=false).
+Check the number of people. It should be around [321,897,703](https://data.census.gov/cedsci/table?q=B17001&tid=ACSDT5Y2021.B17001&hidePreview=false) in 2021.
 
 ```{r}
 #| label: check-total-population 
 
 tracts %>%
-  summarize(sum(people))
+  summarize(sum(people), .by = year)
 
 ```
 
@@ -173,11 +192,12 @@ values <- tracts %>%
          poverty_pacific, 
          poverty_other,
          poverty_twoplus) %>%
-  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "value")
+  pivot_longer(c(-state, -county, -tract, -year), names_to = "group", values_to = "value")
 
 # pivot the margins of error
 moes <- tracts %>%
-  select(state,
+  select(year,
+         state,
          county, 
          tract, 
          poverty_aian_moe,
@@ -185,17 +205,17 @@ moes <- tracts %>%
          poverty_pacific_moe, 
          poverty_other_moe,
          poverty_twoplus_moe) %>%
-  pivot_longer(c(-state, -county, -tract), names_to = "group", values_to = "moe") %>%
+  pivot_longer(c(-state, -county, -tract, -year), names_to = "group", values_to = "moe") %>%
   mutate(group = str_replace(group, "_moe", ""))
 
 # combine the point estimates and margins of error
-other_moe <- left_join(values, moes, by = c("state", "county", "tract", "group"))
+other_moe <- left_join(values, moes, by = c("year", "state", "county", "tract", "group"))
     
 rm(moes, values)
 
 # keep MOE for non-zero estimates and keep the largest MOE for zero estimates
 other_moe <- other_moe %>%
-  group_by(state, county, tract) %>%
+  group_by(year, state, county, tract) %>%
   mutate(moe_rank = row_number(desc(moe))) %>%
   mutate(moe_rank = if_else(value == 0, moe_rank, 5L)) %>%
   mutate(moe_rank = ifelse(moe_rank == min(moe_rank), moe_rank, 0L)) %>%
@@ -208,7 +228,7 @@ other_moe <- other_moe %>%
   ungroup()
 
 # append to the original data set
-tracts <- left_join(tracts, other_moe, by = c("state", "county", "tract"))
+tracts <- left_join(tracts, other_moe, by = c("year", "state", "county", "tract"))
 
 ```
 
@@ -230,6 +250,7 @@ tracts <- tracts %>%
 ```{r}
 tracts <- tracts %>%
   select(
+    year,
     state, 
     county, 
     tract, 
@@ -258,7 +279,7 @@ Look at the margins of error. A large share of the Other Races and Ethnicities h
 
 ```{r}
 tracts %>%
-  summarize(mean((poverty_other_races_se / poverty_other_races) > 0.4))
+  summarize(mean((poverty_other_races_se / poverty_other_races) > 0.4), .by = year)
 
 ```
 
@@ -272,7 +293,8 @@ tracts %>%
   labs(title = "Most Black Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 tracts %>%
   ggplot(aes(poverty_hispanic, poverty_hispanic_se)) +
@@ -281,7 +303,8 @@ tracts %>%
   labs(title = "Most Hispanic Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +
   coord_equal() +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 tracts %>%
   ggplot(aes(poverty_other_races, poverty_other_races_se)) +
@@ -290,7 +313,8 @@ tracts %>%
     labs(title = "Most Other Races and Ethnicities Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +
   coord_equal() +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 tracts %>%
   ggplot(aes(poverty_white_nonhispanic, poverty_white_nonhispanic_se)) +
@@ -299,7 +323,8 @@ tracts %>%
   labs(title = "Most White, non-Hispanic Estimates Have Large SEs",
        subtitle = "Line represents a CV of 0.4") +  
   coord_equal() +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 ```
 
@@ -313,7 +338,8 @@ tracts %>%
   geom_abline() +
   coord_equal() +
   labs(title = "The Counts Are Unequal because the Groups Aren't Disjoint") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 ```
 
