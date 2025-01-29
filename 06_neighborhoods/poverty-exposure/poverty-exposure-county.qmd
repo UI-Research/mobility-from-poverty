@@ -820,21 +820,19 @@ max(missing$tracts)
 We need to include all counties in the published data even if we don't have a metric for the county. We load the county file and join our metrics to the county file. 
 
 ```{r save-data}
-# load the 2021 county file
-all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) 
+# load the county file
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) |> 
+  filter(year %in% years)
 
-final_data <- left_join(all_counties, counties_summary, by = c("state", "county")) %>%
+final_data <- left_join(all_counties, counties_summary, by = c("year", "state", "county")) %>%
   select(year,
          state,
          county,
-         poverty_exposure,
-         poverty_exposure_quality)
-
-stopifnot(nrow(final_data) == 3143)
-# This was 3142 for 2018, but we did not remove Rio Arriba County, NM this time because there was not a data collection error that impacted the 2017-2021 5-year file
+         share_poverty_exposure = poverty_exposure,
+         share_poverty_exposure_quality = poverty_exposure_quality)
 
 write_csv(final_data,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2021.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_county.csv"))
 
 ```
 
@@ -843,9 +841,9 @@ write_csv(final_data,
 ```{r}
 # create a long version of the subgroup data
 counties_summary_subgroups <- counties_summary %>%
-  select(state, county, contains("exposure")) %>%
+  select(year, state, county, contains("exposure")) %>%
   # pivot to very long
-  pivot_longer(c(-state, -county), names_to = "subgroup", values_to = "poverty_exposure") %>%
+  pivot_longer(c(-year, -state, -county), names_to = "subgroup", values_to = "poverty_exposure") %>%
   # create new variable names
   mutate(variable = if_else(str_detect(subgroup, "_quality"), 
                             "poverty_exposure_quality", 
@@ -885,18 +883,45 @@ all_counties_subgroups <-
 
 final_data_race_ethnicity <- left_join(all_counties_subgroups, 
                                        counties_summary_subgroups, 
-                                       by = c("state", "county", "subgroup_type", "subgroup")) %>%
+                                       by = c("year", "state", "county", "subgroup_type", "subgroup")) %>%
   select(year,
          state,
          county,
          subgroup_type,
          subgroup,
-         poverty_exposure,
-         poverty_exposure_quality)
-
-stopifnot(nrow(final_data_race_ethnicity) == 15715)
+         share_poverty_exposure = poverty_exposure,
+         share_poverty_exposure_quality = poverty_exposure_quality)
 
 write_csv(final_data_race_ethnicity,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2021.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_race-ethnicity_county.csv"))
 
 ```
+
+## Testing
+
+```{r}
+source(here::here("functions/testing/evaluate_final_data.R"))
+
+final_county_data <- read_csv(here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_county.csv"), show_col_types = FALSE)
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_overall_county.csv",
+  data = final_county_data, geography = "county",
+  subgroups = FALSE, confidence_intervals = FALSE
+)
+
+```
+
+```{r}
+
+final_county_data_subgroups <- read_csv(here::here("06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_county.csv"), show_col_types = FALSE)
+
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_race_eth_county.csv",
+  data = final_county_data_subgroups, geography = "county",
+  subgroups = TRUE, confidence_intervals = FALSE
+)
+
+```
+
