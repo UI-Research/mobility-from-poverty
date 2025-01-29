@@ -117,6 +117,7 @@ save "intermediate/ccd_lea_recent_county_race.dta", replace
 *merge two ccd datasets together
 	use "intermediate/ccd_lea_recent_county.dta", clear
 	merge 1:1 leaid year using "intermediate/ccd_lea_recent_county_race.dta"
+	tab year _merge // this is expected, as some enrollment by race data is not collected for some districts
 	drop _merge
 	save "intermediate/ccd_lea_recent_county_merged.dta", replace
 
@@ -146,7 +147,7 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 	*Make sure the filters are set for Homeless Students, 2022-2023, and Local Education Agency
 		*If they are not, go to the left-side menu and “deselect all” of the filters (school year, population, and level)
 		*Then reselect school year: 2022-2023, population: homeless students, and level: local education agency
-		*Make sure data group = 655
+		*Make sure data group = 655, which refers to "Homeless students enrolled"
 		*Click "download data" and save to raw folder
 
 	*import csvs
@@ -176,7 +177,7 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 *reshape long form 
 	foreach year in $years {
 	use "raw/edfacts_homelessness_`year'.dta", clear
-		keep if datagroup==655
+		keep if datagroup==655 // this captures the measure for homeless students enrolled, rather than 818 which refers to "young homeless children served"
 		drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 		*these are missing because they have answers for characteristic (i.e., doubled up, etc.)
 		drop if subgroup=="" | subgroup=="Children with disabilities" | subgroup=="English Learner" | subgroup=="Migratory students" | subgroup=="Unaccompanied Youth" | subgroup=="Children with one or more disabilities (IDEA)"
@@ -231,19 +232,18 @@ egen other = rowtotal(twomore nh_pi asian amin_an) , missing
 	*we replace other==. to other==1 to mirror other 4 race categories
 	replace other = 1 if other==.
 
-foreach var in other { // 
-	di "`var'"
-	gen supp_`var' = 1 if other==1
-	*replace `var'="1" if `var'=="S"
-	*destring `var', replace
-	bysort year fipst : egen min_`var' = min(`var')
-	bysort year fipst : egen count_supp_`var' = total(supp_`var')
-	gen `var'_lower_ci = `var'
-	replace `var'_lower_ci = 0 if supp_`var'==1
-	gen `var'_upper_ci = `var'
-	replace `var'_upper_ci = 2 if supp_`var'==1
-	replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
-}
+	*repeat the above creation/interpretation of supression variables for the "Other" category to mirror the other race categories.
+	foreach var in other { // 
+		di "`var'"
+		gen supp_`var' = 1 if other==1
+		bysort year fipst : egen min_`var' = min(`var')
+		bysort year fipst : egen count_supp_`var' = total(supp_`var')
+		gen `var'_lower_ci = `var'
+		replace `var'_lower_ci = 0 if supp_`var'==1
+		gen `var'_upper_ci = `var'
+		replace `var'_upper_ci = 2 if supp_`var'==1
+		replace `var'_upper_ci = min_`var' if supp_`var'==1 & count_supp_`var'<=2 // if only one of two are suppressed, replace with next smallest number
+	}
 
 *keep varibales we need 
 	keep year leaid *homeless* *black* *hispanic* *white* *other* 
@@ -354,9 +354,12 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 
 *merge to crosswalk of counties
 merge 1:1 year state county using "intermediate/countyfile.dta"
+*the county crosswalk file inlcudes years prior to 2019, and 2023, and are not needed. 
+*We matched the universe of homeless student data to the county fil
 tab year _merge 
-	drop if _merge==1 // Puerto Rico
-	keep if year>=2019 & year<=2022
+	drop if _merge==1 // Puerto Rico 
+	keep if year>=2019 & year<=2022 // only updating 2019-2022 years
+	tab year _merge, row // we have homeless student data for almost 90 percent of counties listed in our crosswalk
 	drop _merge
 
 ****************
@@ -364,6 +367,8 @@ tab year _merge
 ****************
 		
 *check quality - how good is coverage of homeless students (based on nonsuppresion) by quality variables
+*provides information about coverage overall and by race/ethnicity and quality. 
+*If one race/ethnicity group is 
 sum coverage*, d, if homeless_quality==1
 sum coverage*, d, if homeless_quality==2
 sum coverage*, d, if homeless_quality==3
@@ -406,9 +411,9 @@ drop check*
 foreach var in homeless black white hispanic other {
 tab `var'_quality if `var'_share==.
 tab `var'_quality if `var'_count==.
+replace `var'_quality = .  if `var'_share==.
+replace `var'_quality = .  if `var'_count==.
 }
-*To reviewer: in 2019, state 17 and county 061 there is an instance where black enrollment is 0 but homeless count is 3. 
-*This means that black_quality flag==3 but the black_share==. because 3/0 == . This is the only instance and I'm not sure how to address.
 
 **************
 *Visual Checks

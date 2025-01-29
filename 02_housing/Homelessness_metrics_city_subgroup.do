@@ -142,6 +142,7 @@ save "intermediate/ccd_lea_recent_city_race.dta", replace
 *merge two ccd datasets together
 	use "intermediate/ccd_lea_recent_city.dta", clear
 	merge 1:1 leaid year using "intermediate/ccd_lea_recent_city_race.dta"
+	tab year _merge // this is expected, as some enrollment by race data is not collected for some districts
 	drop _merge
 	save "intermediate/ccd_lea_recent_city_merged.dta", replace
 
@@ -170,7 +171,7 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 	*Make sure the filters are set for Homeless Students, 2022-2023, and Local Education Agency
 		*If they are not, go to the left-side menu and “deselect all” of the filters (school year, population, and level)
 		*Then reselect school year: 2022-2023, population: homeless students, and level: local education agency
-		*Make sure data group = 655
+		*Make sure data group = 655, which refers to "Homeless students enrolled"
 		*Click "download data" and save to raw folder
 
 	*import csvs
@@ -201,7 +202,7 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 *reshape long form 
 	foreach year in $years {
 	use "raw/edfacts_homelessness_`year'.dta", clear
-		keep if datagroup==655
+		keep if datagroup==655 // this captures the measure for homeless students enrolled, rather than 818 which refers to "young homeless children served"
 		drop schoolyear school ncesschid datagroup datadescription numerator denominator population characteristics agegrade academicsubject outcome programtype
 		*these are missing because they have answers for characteristic (i.e., doubled up, etc.)
 		drop if subgroup=="" | subgroup=="Children with disabilities" | subgroup=="English Learner" | subgroup=="Migratory students" | subgroup=="Unaccompanied Youth" | subgroup=="Children with one or more disabilities (IDEA)"
@@ -255,6 +256,7 @@ foreach var in homeless black hispanic white twomore nh_pi asian amin_an {
 		*we replace other==. to other==1 to mirror the other 4 race categories
 		replace other = 1 if other==. 
 
+	*repeat the above creation/interpretation of supression variables for the "Other" category to mirror the other race categories.
 		foreach var in other {  
 			di "`var'"
 			gen supp_`var' = 1 if other==1
@@ -378,9 +380,12 @@ collapse (sum) *homeless* *black* *hispanic* *other* *white* enrollment , by(yea
 
 *merge to crosswalk of places/cities
 merge 1:1 year state city_name using "intermediate/cityfile.dta"
+*the city crosswalk file inlcudes years prior to 2019, and 2023, and are not needed. 
+*We matched the universe of homeless student data to the city files, leaving thousands of cities out. 
 tab year _merge
 	drop if _merge==1 // drop cities that don't merge to the crosswalk
 	keep if year>=2019 & year<=2022 // only updating 2019-2022 years
+	tab year _merge, row // we have homeless student data for almost 90 percent of cities listed in our crosswalk
 	drop _merge 
 		
 ****************
