@@ -1,4 +1,4 @@
-# API Pull Function
+# API Rep Weight Pull Function
 # 
 # Using the API, read in the IPUMS micro data replicate weights for individuals between 19 and 20 years old. To check on available surveys you can use the function get_sample_info('usa'). 
 # This function allows the user to chose the survey year and type (for example 2021a is the 1-year ACS data).
@@ -15,14 +15,28 @@
 # Returns:
 #   acs_imported (tibble) containing the extract required for analysis
 
-ipums_repwt_employment <- function(extract_name, extract_description, survey){
-  # Add library here for filepath
-  library(here)
+# Add library here for filepath
+library(here)
+library(ipumsr)
+library(aws.s3)
+library(tidyverse)
+
+ipums_repwt_employment_aws <- function(extract_name, extract_date, extract_description, survey){
   
   # Set folder path, .gz, and .xml variables
   folder_path <- here("data", "temp", "raw")
   extract_gz_filename <- paste0(extract_name, "_umf.dat.gz")
   extract_xml_filename <- paste0(extract_name, "_umf.xml")
+  
+  
+  #Check if file exists in AWS
+  
+  if (aws.s3::object_exists(paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"), bucket = my_bucket)){
+    
+    acs_imported <- s3read_using(FUN=readRDS, 
+                                 bucket = my_bucket, 
+                                 object=paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"))
+  } else{
   
   # Create the folder path if it doesn't exist
   if (!dir.exists(folder_path)) {
@@ -92,6 +106,21 @@ ipums_repwt_employment <- function(extract_name, extract_description, survey){
            -pernum, -perwt, -hhwt, -gq, -age) %>% 
     mutate(sample = as_factor(sample),
            unique_person_id = paste0(sample, cbserial, cbpernum))
+  
+  
+  # my-bucket 
+  my_bucket <- "mobility-from-poverty-test"
+  
+  # write file to S3
+  tmp <- tempfile()
+  on.exit(unlink(tmp))
+  saveRDS(acs_imported, file = tmp, compress = TRUE)
+  
+  # put object with an upload progress bar
+  put_object(tmp, object = paste0(s3_dir, "/", extract_name, "_", extract_date, ".rds"), bucket = my_bucket, 
+             show_progress = TRUE, multipart = TRUE)
+  
+  }
 
   #Return the ACS data set
   return(acs_imported)
