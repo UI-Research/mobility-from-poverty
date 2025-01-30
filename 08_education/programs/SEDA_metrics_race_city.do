@@ -118,14 +118,18 @@ cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long
 	tab year _merge
 	
 	*figure out which of the SEDA observations do exist in other years & fill in
+	*this code finds SEDA observations that exist in other years when they don't match the ccd data
 	sort state leaid year
 	brow state leaid year _merge sedaleaname city_location if _merge!=3
 	*search for master only (1) - some leaids that don't match are from different years.
+	*the following code signals to keep the SEDA leaid observation if it ever matches to the ccd data 
 	gen match=1 if _merge==3
 	bysort leaid: egen ever_match=max(match)
 	keep if ever_match==1
+	*drop data from the ccd that doesn't match SEDA observations
 	drop if _merge==2
 	gsort  state leaid -city_location
+	*this code fills in the missing ccd city location variable for SEDA observation years that it didn't match to CCD
 	bysort leaid: replace city_location=city_location[_n-1] if missing(city_location)
 	drop _merge *match
 	
@@ -134,13 +138,13 @@ cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long
 
 *merge to city crosswalk data
 	merge m:1 city_name state year using "intermediate/cityfile.dta"
-	tab year _merge // crosswalk only goes back to 2015
+	tab year _merge 
 	keep if cohort >=2014  // earliest cohort starts with 2014
 
 	
 *hard code/look for accidental missmataches
 	sort state city_name year
-	*brow state city_name _merge year if _merge!=3  // _merge=2 means its in city but not seda
+	brow state city_name _merge year if _merge!=3  // _merge=2 means its in city but not seda
 	*searched the _merge column for 2s and look above and below to see if cities are spelled differently 
 
 	gen final_files = 1 if _merge!=1
@@ -153,6 +157,13 @@ cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long
 
 *******************************************************
 *Clean and Calculate Growth Estimates for each subgroup
+*******************************************************
+*Outline the process for creating the data: SEDA data are manually downloaded and read in, 
+*and a regression of mean assessment scores was run on grade (as a continuous variable) 
+*interacted with each county in order to obtain county-specific grade slopes. 
+*Regressions are weighted by the number of test-takers for each year, grade, and county. 
+*95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. 
+*A flag indicates how many grades are included in each estimate.
 *******************************************************
 	** NOTE: This loop takes a about 25 minutes to run.
 foreach subgroup in all wht blk hsp nec ecd mal fem {

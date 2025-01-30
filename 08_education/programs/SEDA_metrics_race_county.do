@@ -62,7 +62,7 @@ save "intermediate/countyfile.dta", replace
 *****Download SEDA Data******
 *****************************
 	** NOTE: If the following doesn't work, download data in manually from SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ **
-	** exact file: "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_geodist_long_gcs_5.0_updated_20240319.dta" for 2009-2019 **
+	** exact file: "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_county_long_gcs_5.0.dta" for 2009-2019 **
 	** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
 cap n copy "https://stacks.stanford.edu/file/druid:cs829jn7849/seda_county_long_gcs_5.0.dta" "raw/seda_county_long_gcs_5.0.dta"
 	use "raw/seda_county_long_gcs_5.0.dta", clear
@@ -84,6 +84,13 @@ keep if subject=="rla"
 
 *******************************************************
 *Clean and Calculate Growth Estimates for each subgroup
+*******************************************************
+*Outline the process for creating the data: SEDA data are manually downloaded and read in, 
+*and a regression of mean assessment scores was run on grade (as a continuous variable) 
+*interacted with each county in order to obtain county-specific grade slopes. 
+*Regressions are weighted by the number of test-takers for each year, grade, and county. 
+*95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. 
+*A flag indicates how many grades are included in each estimate.
 *******************************************************
 	** NOTE: This loop takes a about 12:46 minutes to run.
 foreach subgroup in all wht blk hsp nec ecd mal fem {
