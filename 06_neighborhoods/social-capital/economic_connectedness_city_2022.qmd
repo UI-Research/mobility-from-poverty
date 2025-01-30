@@ -1,0 +1,497 @@
+---
+title: "Economic Connectedness (city)"
+author: "Ridhi Purohit and Tina Chelidze"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+**Creating the second Social Capital metric, Economic Connectedness**
+
+This program creates the city-level Economic Connectedness metric which is one of the two Social Capital UMF Metrics.
+
+Author: This code was initially written by Tina Chelidze (see `06_neighborhoods/social-capital/economic_connectedness_city_code_2022.R`) and updated by Ridhi Purohit in January, 2025. 
+
+Data downloaded from the [Opportunity Insights Social Capital Atlas](https://socialcapital.org/).
+
+## Housekeeping
+
+This update will change the way the metric is calculated to align with the changed way economic connectedness is displayed through the Social Capital Atlas.
+
+The process to create the metric will follow these steps:
+
+(1) download data from socialcapital.org
+
+(2) import and clean the data file
+
+(3)  merge with the 2010 ZCTA -> 2021 Census Place crosswalk
+
+(4)  collapse estimates to unique Places
+
+(5)  check against official Census Place file & limit to population cutoff Places
+
+(6)  update economic connectedness variable and create data quality flag
+
+(7)  final file cleaning and export to csv file
+
+Load the packages used in this program.
+
+```{r}
+#| label: setup
+
+options(scipen = 999)
+
+librarian::shelf(
+  sf,
+  tidyverse,
+  here,
+  UrbanInstitute / urbnthemes
+  )
+
+set_urbn_defaults(style = "print")
+
+# source the final data evaluation function
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+
+```
+
+## Download data from the Social Capital Atlas
+
+The data is accessed from the Social Capital [website](https://data.humdata.org/dataset/social-capital-atlas).
+
+NOTE: in the paper (https://opportunityinsights.org/wp-content/uploads/2022/07/social-capital1_wp.pdf), the authors state that "Zip Codes" is shorthand for 2010 ZCTA designations
+
+```{r}
+#| label: download-data
+
+# Specify URL where source data file is online
+url <- "https://data.humdata.org/dataset/85ee8e10-0c66-4635-b997-79b6fad44c71/resource/ab878625-279b-4bef-a2b3-c132168d536e/download/social_capital_zip.csv"
+      
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfile <- here::here("06_neighborhoods", "social-capital", "temp","social_capital_zip.csv")
+      
+# Import the data file & save locally
+download.file(url, destfile)
+  
+```
+
+## Clean the data
+
+This step involves cleaning the data so that zip and state codes are identifiable. Any missing data will also be dealt with.
+
+```{r}
+#| label: load-data
+
+# read data
+ec_zip_raw <- read.csv(here::here("06_neighborhoods", "social-capital", "temp", "social_capital_zip.csv"))
+
+# check the columns present in the data
+names(ec_zip_raw)
+
+```
+
+In the data, `ec_zip` is the Economic Connectedness variable for a zip code and `ec_se_zip` is the corresponding standard error in calculating `ec_zip`.
+
+```{r}
+#| label: clean-data
+
+ec_zip_raw <- ec_zip_raw |>
+            mutate(
+              # add leading zeroes where they are missing (ZCTA codes are 5 digits)
+              zip = str_pad(zip, width = 5, pad = "0", side = "left"), 
+              #add leading zeroes where they are missing for the concatenated FIPS (2 state + 3 county)
+              county = str_pad(county, width = 5, pad = "0", side = "left")
+              ) |>
+             # create a new column for the state & county FIPS 
+             mutate(
+                state = str_sub(county, start = 1, end = 2),
+                county = str_sub(county, start = 3, end = 5)
+              ) |>
+            # keep only relevant data
+            select(state, county, zip, ec_zip, ec_se_zip) 
+
+# find if there are missing values for `ec_zip` in the data
+sum(is.na(ec_zip_raw$ec_zip))
+### There were 4048 missing observations from a total of 23028 observations 
+
+# remove observations with missing data for our Economic Connectedness variable
+ec_zip_raw <- ec_zip_raw |>
+            drop_na(ec_zip)
+
+```
+
+
+## Merge Crosswalk
+
+We will use a 2010 ZCTA -> 2021 Census Place crosswalk to get a master list of places which will also allow us to assess missingness in the data.
+
+The zip codes i.e. ZCTA (ZIP Code Tabulation Areas), state and place FIPS codes in the data need to be cleaned up. 
+
+```{r}
+#| label: crosswalk-zcta-place
+       
+# import the relevant crosswalk file
+ZCTA_Place <- read_csv(
+                    here::here("geographic-crosswalks", "data",
+                               "2010_ZCTA_2021_Census_Places_Crosswalk.csv")
+                    )
+      
+## clean up the crosswalk file to prepare for the merge
+
+# rename the ZCTA and other FIPS variables to avoid confusion
+ZCTA_Place <- ZCTA_Place |>
+        rename(
+          zip = ZCTA5CE10,
+          state = STATEFP,
+          place = PLACEFP,
+          place_name = NAMELSAD
+          ) |>
+        # adjust the leading zeroes to 5 digit zip codes, 2 digit state codes and 5 digit place codes
+        mutate(
+              zip = sprintf("%0.5d", as.numeric(zip)),
+              state = sprintf("%0.2d", as.numeric(state)),
+              place = sprintf("%0.5d", as.numeric(place))
+              )
+
+```
+
+Next, we create a variable `portion_in` to indicate whether a ZIP area entirely falls inside a Census designated `Place`. Another variable `mostly_in` was created to find the ZIP areas where more than 50% of the area falls inside a `Place`.
+
+```{r}
+#| label: clean-up-crosswalk
+
+# make an indicator for ZIPs that fall wholly into a Place vs. partially (ZCTAinPlace < 1)
+ZCTA_Place <- ZCTA_Place |>
+        mutate(portion_in = case_when(
+                                      ZCTAinPlace == 1 ~ 1,
+                                      ZCTAinPlace < 1 ~ 0)
+               )
+
+# check how many of these fall fully into a Census Place
+sum(with(ZCTA_Place, portion_in == 1))
+## Observation: 2079 of these ZCTAs fall fully into a Census Place
+     
+summary(ZCTA_Place)
+## Observation for ZCTAinPlace: mean = 0.13, Q3 = 0.072
+
+# find boundaries (I did not end up using this, but leaving it in)
+# make a more detailed indicator for portion of ZIPs falling into each census place
+ZCTA_Place <- ZCTA_Place |>
+        mutate(
+          mostly_in = case_when(
+                                ZCTAinPlace >= 0.5 ~ 1,
+                                ZCTAinPlace < 0.5 ~ 0)
+          )
+      
+# keep only the variables we will need
+ZCTA_Place <- ZCTA_Place |>
+                    select(
+                      zip, state, place, place_name, IntersectArea, ZCTAinPlace, 
+                      portion_in, mostly_in)
+```
+
+At this stage we need to merge the Opportunity Insights data at the ZCTA level with the ZCTA to Place crosswalk that we cleaned up above. This will help map the economic connectedness data at the ZCTA level to corresponding Places that a ZIP code is associated with.
+
+```{r}
+#| label: merge-crosswalk
+
+# merge the ZIP/Places crosswalk into the economic connectedness data (left join, since places file has more observations)
+merged_ec_city <- left_join(ZCTA_Place, ec_zip_raw, by=c("state", "zip"))
+## Observation: Number of obs after merge is 71790
+
+# check if there is missingness after the merge
+merged_ec_city <- merged_ec_city %>% 
+        drop_na(ec_zip)
+## Observation: Number of obs dropped to 54042 after removing `NA` values for economic connectedness
+
+```
+
+
+## Collapse Estimates to Unique Places
+
+The final data must be reported at the `Place` level so we need to identify unique places and the ZCTAs they are linked to. This will help create a measure of number of ZCTAs linked with a place i.e. the `num_ZCTAs_in_place` variable.
+
+```{r}
+#| label: data-quality-marker
+
+# Exploring options for data quality marker
+
+# create a new variable `num_ZCTAs_in_place` that tracks the number of ZCTAs falling in each Place (duplicates)
+# Set the year to 2022 for merging
+merge_year <- c(2022)
+
+merged_ec_city <- merged_ec_city |> 
+                                arrange(state, place) |>
+## Changed logic of the previous version of this code to group by `state, place, place_name` 
+# instead of just `place, place_name`, otherwise places with same FIPS and name were getting counted
+# across states leading to inflated values in `num_ZCTAs_in_place` variable
+                                group_by(state, place, place_name) |>
+                                mutate(
+                                  num_ZCTAs_in_place = n(),
+                                  year = merge_year
+                                  )
+
+```
+
+Now, calculate a weighted average of economic connectedness for each Plac, weighted by the percentage area of the ZCTA in that place (i.e. the `ZCTAinPlace` variable).  
+
+```{r}
+#| label: collapse-estimates
+
+# create the merged file where the economic connectedness variable is averaged per Place
+# (new_ec_zip_to_place), weighted by the % area of the ZCTA in that Place
+# and also include total ZCTAs in Place & how many of those partially fall outside the Place 
+
+
+wtd_merged_ec_city <- merged_ec_city |>
+                        group_by(state, place, place_name) |>
+                        summarize(
+                                  # create variable for number of ZIPs present in a place
+                                  zip_total = mean(num_ZCTAs_in_place),
+                                  # create variable aggregating portion of ZIPs falling fully in a place
+                                  zips_in = sum(portion_in), 
+                                  # create variable for weighted mean of economic connectedness
+                                  new_ec_zip_to_place = weighted.mean(ec_zip, ZCTAinPlace),
+                                  year = merge_year
+                                )
+
+# drop missing values
+wtd_merged_ec_city <- wtd_merged_ec_city |> 
+                          drop_na(new_ec_zip_to_place)
+## Observation: lost 1919 observations (25030 minus 23111)
+```
+
+
+## Limit Places Based on Population-Cutoff
+
+To get the final places required for the metric, we use the place to populations crosswalk i.e. `place-populations.csv`. 
+
+```{r}
+#| label: place-population-crosswalk
+
+# bring in the updated population-cutoff Places file
+places_pop <- read_csv(here::here("geographic-crosswalks", "data", 
+                                  "place-populations.csv"))
+
+# adapt variables to prepare for merge 
+places_pop <- places_pop |>
+                        mutate(
+                          state = str_pad(state, width = 2, pad = "0", side = "left"),
+                          place = str_pad(place, width = 5, pad = "0", side = "left")
+                          )
+      
+# keep only 2020 data to prepare for merge (should leave us with 486 obs total)
+keep <- c(2020)
+
+places_pop <- places_pop |>
+                  filter(year %in% keep) |>
+                  select(! year) # Keep only `merge_year` when merging
+## Observation: 486 places available for year 2020
+```
+
+Merge the economic connectedness data with the place to populations crosswalk to get the final data points we need for the cities under consideration of the UMF project. 
+
+```{r}
+#| label: merge-place-population-crosswalk
+
+# merge `places_pop` with data file in order to get final Economic Connectedness city data
+ec_city_data <- left_join(places_pop, wtd_merged_ec_city, by=c("state", "place"))
+
+# check if there are missings
+ec_city_data <- ec_city_data |>
+                    drop_na(new_ec_zip_to_place)
+## Observation: no missing values! Total cities/places: 486
+
+```
+
+
+```{r}
+#| label: visualize-economic-connectedness
+
+# Visualize economic connectedness before updating
+ 
+ec_city_data |>
+    drop_na() |>
+    ggplot(aes(x = new_ec_zip_to_place)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+    geom_density(aes(y = ..count.. * 0.02), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Economic Connectedness, Place-Level"),
+      y = "Count",
+      x = "Economic Connectedness"
+    ) +
+    theme_minimal()
+
+```
+
+
+## Update the Economic Connectedness variable
+
+The Opportunity Insights group (Chetty et al.) via the Social Capital Atlas define economic connectedness as:
+
+> the share of friends with above-median SES (‘high SES’) among people with below-median SES (‘low SES’) divided by 50%, to quantify the average degree of under-representation of high-SES friends among people with low SES.
+
+The new Social Capital Atlas dashboard displays economic connectedness as both **the percentage of friends of those with low SES (Socio-Economic Status) that have high SES** and the **standardized percentile of that ratio nationwide**.
+
+The Social Capital Atlas data set from 2022 provides the scaled economic connectedness variable per the definition mentioned above. We need to transform it into the "percentage of friends of those with low SES that have high SES" as displayed on the Social Capital Atlas. For this purpose, we will multiply the scaled economic connectedness variable with 50% to get the desired percentage representation of economic connectedness.
+
+This example illustrates the update we need to make:
+
+EXAMPLE: Fairfax County, VA
+
+-   Urban’s Mobility Metrics Economic Connectedness: 1.2
+
+-   Social Capital Atlas Raw Data Economic Connectedness: 1.185
+
+-   Social Capital Atlas Website: [Economic Connectedness - Fairfax County, VA](https://socialcapital.org/?dimension=EconomicConnectednessIndividual&geoLevel=county&selectedId=51059&dim1=EconomicConnectednessIndividual&dim2=CohesivenessClustering&dim3=CivicEngagementVolunteeringRates&bigModalSection=&bigModalChart=scatterplot&showOutliers=false&colorBy=&state%5B0%5D=51) (Click `Explore the Data` once you navigate to the link)
+
+    -   The Social Capital Atlas website displays the economic connectedness for Fairfax County, VA as "59.3 % of friends are high-income" and indicates that the county falls in the 99th percentile nationwide.
+
+-   This difference in presentation comes down to displaying the raw percentage of high SES friends vs the calculated ratio. 
+    
+    - E.g., 59.3 / 50 = 1.186
+
+
+```{r}
+#| label: update-ec-variable
+
+# update economic connectedness scaled variable by multiplying it with 50% (i.e. 0.5) to get the percentage values
+
+ec_city_data <- ec_city_data |>
+                    mutate(share_economic_connectedness = new_ec_zip_to_place * 0.5)
+
+```
+
+```{r}
+#| label: show-metric-distribution
+
+quantile(ec_city_data$share_economic_connectedness, na.rm=TRUE)
+
+```
+
+
+```{r}
+#| label: visualize-updated-economic-connectedness
+
+ ec_city_data |>
+    drop_na() |>
+    ggplot(aes(x = share_economic_connectedness)) +
+    geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
+    geom_density(aes(y = ..count.. * 0.02), color = "red", size = 1, alpha = 0.2) +
+    labs(
+      title = paste0("Economic Connectedness, Place-Level"),
+      y = "Count",
+      x = "Economic Connectedness (Updated)"
+    ) +
+    theme_minimal()
+
+```
+
+
+## Incorporate data quality measures
+
+Next step is to create a data quality flag for the updated economic connectedness metric. This involves creating a measure (variable `zip_ratio`) to track the number of ZIPs that were aggregated which are entirely present in a Census designated Place. Using this new variable `zip_ratio`, data quality for the economic connectedness metric is defined as:
+
+- Data Quality `1` = 50% or more of the ZIPs fall mostly (>50%) in the census place 
+- Data Quality `2` = 15% to 50% of the ZIPs fall mostly (>50%) in the census place
+- Data Quality `3` = less than 15% of the ZIP falls mostly into the census place
+
+Here, the highest data quality is `1` while `3` is the lowest. For places that don't have a metric value, a data quality of `NA` is assigned.
+
+```{r}
+#| label: create-zip-ratio
+
+# create a ratio value to see how many of the ZIPs we aggregated fell fully into a Census Place boundary 
+ec_city_data <- ec_city_data |>
+                     mutate(zip_ratio = zips_in/zip_total)
+
+# check the range on this
+summary(ec_city_data)
+## Observation: zip_ratio mean = 0.09326, Q1 = 0, Q3 = 0.14954
+
+```
+
+```{r}
+#| label: data-quality-flag
+
+# Data Quality 1 = 50% or more of the ZIPs fall mostly (>50%) in the census place 
+# Data Quality 2 = 15% to 50% of the ZIPs fall mostly (>50%) in the census place
+# Data Quality 3 = less than 15% of the ZIP falls mostly into the census place
+
+# create the data quality flag
+ec_city_data <- ec_city_data |>
+                        mutate(
+                          share_economic_connectedness_quality = 
+                            case_when(
+                              zip_ratio >= 0.5 ~ 1,
+                              zip_ratio < 0.5 & zip_ratio > 0.15 ~ 2,
+                              zip_ratio < 0.15 ~ 3,
+                              .default = NA_integer_
+                              )
+                          )
+
+```
+
+
+## Evaluate and export final data
+
+```{r}
+#| label: final-data-cleaning
+
+# check if there are any missing places
+
+missing_places <- anti_join(ec_city_data, places_pop, by = c("state", "place"))
+# in this data, we find that there are no missing cities
+print(missing_places)
+
+# check for number of places with NA metric values
+sum(is.na(ec_city_data$share_economic_connectedness))
+## there are no cities with NA metric values
+
+# keep only relevant data 
+ec_final_data <- ec_city_data |> 
+                  select(year, state, place, share_economic_connectedness,
+                          share_economic_connectedness_quality)
+
+```         
+
+
+After generating the final data, we need to evaluate the outputs using the `evaluate_final_data` function per UMF [guidelines](https://github.com/UI-Research/mobility-from-poverty/wiki/8_Final-Data-Expectations-Form%E2%80%AF).
+
+```{r}
+#| label: final-data-evaluation-place
+
+evaluate_final_data(
+    exp_form_path = 
+      here::here("10a_final-evaluation", "evaluation_form_social_cap2_overall_place.csv"),
+    data = ec_final_data, geography = "place",
+    subgroups = FALSE, confidence_intervals = FALSE)
+
+```
+
+
+After successfully evaluating the final data, store the final data file `economic_connectedness_version2025_place_2022.csv` in folder `06_neighborhoods/social-capital/final/`.
+
+```{r}
+#| label: save-final-data
+
+# Define file path to save the final data file
+file_path <- here::here(
+      "06_neighborhoods", "social-capital", "final", 
+      "economic_connectedness_version2025_place_2022.csv"
+      )
+  
+# Save the csv file
+write.csv(ec_final_data, file_path, row.names = FALSE)
+  
+```
+
+
