@@ -92,7 +92,7 @@ keep if subject=="rla"
 *95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. 
 *A flag indicates how many grades are included in each estimate.
 *******************************************************
-	** NOTE: This loop takes a about 12:46 minutes to run.
+	** NOTE: This loop takes a about 20 hours to run.
 foreach subgroup in all wht blk hsp nec ecd mal fem {
 	gen learning_rate_`subgroup'=.
 	gen se_`subgroup'=.
