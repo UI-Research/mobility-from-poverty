@@ -34,12 +34,12 @@ cap n mkdir "built"
 *****************************
 ** Import city crosswalk file to edit names of city crosswalk to match city location strings in CCD school district data
 import delimited using "${cityfile}", clear 
-
+*change from numeric to string and add leading zeros
 tostring place, replace
 replace place = "0" + place if strlen(place)==4
 replace place = "00" + place if strlen(place)==3
 assert strlen(place)==5
-
+*change from numeric to string and add leading zeros
 tostring state, replace
 replace state = "0" + state if strlen(state)==1
 assert strlen(state)==2
@@ -68,14 +68,7 @@ rename city_name_edited city_name
 	replace city_name="Nashville" if city_name=="Nashville-Davidson metropolitan government (balance)"
 	replace city_name="Mcallen" if city_name=="McAllen"
 	replace city_name="Mckinney" if city_name=="McKinney"
-	
-*duplicate 2015 to create 2014 place
-	expand 2 if year==2015
-	bysort year state place state_name city_name: gen obs=_n
-	replace year = 2014 if obs==2
-	drop obs
-	sort year state place state_name city_name
-	
+		
 	save "intermediate/cityfile.dta", replace // gitignore
 
 *****************************
@@ -84,11 +77,16 @@ rename city_name_edited city_name
 ** Download CCD school level enrollment by race/ethnicity data from Urban's Education Data Portal **
 educationdata using "school ccd enrollment race", sub(year=2014:${year}) csv clear
 save "raw\ccd_enr_2014-${year}.dta", replace
+numlabel, add
 
-keep if grade==99 & sex==99
-drop leaid ncessch_num grade sex fips
+replace enrollment = . if enrollment < 0
 
-replace enrollment = 0 if enrollment < 0
+keep if grade==99 
+drop grade
+drop if sex==99
+*add the number enrolled male and female student within race
+collapse (sum) enrollment, by (year ncessch ncessch_num leaid fips race)
+drop leaid ncessch_num fips
 
 reshape wide enrollment, i(year ncessch) j(race) // 1-white, 2-black, 3-hispanic
 save "intermediate\ccd_enr_2014-${year}_wide.dta", replace
@@ -98,7 +96,8 @@ educationdata using "school ccd directory", sub(year=2014:${year}) csv clear
 save "raw\ccd_dir_2014-${year}.dta", replace
 
 **Download MEPS school level data from Urban's Education Data Portal
-	*This data is not available yet on the portal and therefore is kept in the raw data folder 
+	*Updated MEPS data is not currently available on the portal, so using an internal file that the public does not have access to
+	*Once it is available on the portal, uncomment lines 96-99 and 108, comment out line 109
 	/* 
 	educationdata using "school meps", sub(year=2014:${year}) csv clear
 	save "raw\ccd_meps_2014-${year}.dta", replace
@@ -113,13 +112,9 @@ merge 1:1 year ncessch using "intermediate\ccd_enr_2014-${year}_wide.dta"
 drop _merge
 *merge 1:1 year ncessch using "raw\ccd_meps_2014-${year}.dta" // 
 merge 1:1 year ncessch using "raw\Abrv Set of Portal Variables.dta"
-tab year _merge
+tab year _merge // non merges are 2013 and 2022
+drop if year==2013 | year==2022
 drop _merge
-
-save "intermediate/combined_2014-${year}.dta", replace
-
-** city-level rates **
-use "intermediate/combined_2014-${year}.dta", clear
 
 replace enrollment = . if enrollment<0
 drop if missing(enrollment) | enrollment==0
@@ -127,7 +122,7 @@ forvalues n = 1/3 {
 replace enrollment`n' = . if enrollment`n'<0
 }
 
-*Using MEPS
+*Using MEPS - edit MEPS share and binary if the share is greater than or equal to 20%
 gen meps_share = meps_poverty_pct/100 // ./# == . and 0/# == 0
 gen meps_20 = (meps_share>=.20) if !missing(meps_share) // meps_20 is . if meps_share .
 
@@ -135,7 +130,7 @@ gen numerator = enrollment
 replace numerator = 0 if meps_20 == 0
 replace numerator = . if meps_20 == .
 
-// White, Black Hispanic
+*Create numerators for race - White, Black Hispanic
 forvalues i=1/3 {
 	gen numerator`i' = enrollment`i'
 	replace numerator`i' = 0 if meps_20 == 0
@@ -155,15 +150,16 @@ assert strlen(state)==2
 gen city_name=lower(city_location)
 replace city_name = proper(city_name)
 
+*add enrollments of schools to the city level
 collapse (sum) enrollment enrollment1 enrollment2 enrollment3  numerator*, by(year state city_name)
 
+*create shares for total and race
 gen meps20_total = numerator/enrollment
 gen meps20_white = numerator1/enrollment1
 gen meps20_black = numerator2/enrollment2
 gen meps20_hispanic = numerator3/enrollment3
 
-
-*Quality Check Variables
+*Create quality Check Variables
 gen meps20_total_quality = 1 if enrollment>=30 & meps20_total!=.
 replace meps20_total_quality = 2 if enrollment>=15 & meps20_total_quality==. & meps20_total!=.
 replace meps20_total_quality = 3 if meps20_total_quality==. & meps20_total!=.
@@ -188,40 +184,45 @@ order year state city_name meps20_total meps20_total_quality ///
 meps20_white meps20_white_quality meps20_black meps20_black_quality meps20_hispanic meps20_hispanic_quality
 duplicates drop
 
-*city data only available for 2016+ and MEPS only available up to 2020
-keep if year >= 2016 & year <= $year
-merge m:1 year state city_name using "Intermediate/cityfile.dta"
-tab year _merge
+*merge to city crosswalk
+merge 1:1 year state city_name using "Intermediate/cityfile.dta"
+tab year _merge // nonmatches are largely 2022 and 2023, data we don't have in MEPS
 drop if year > $year
-tab _merge if missing(place)
-drop if _merge==1 // drop district data that doesn't match 
-	drop _merge state_name 
+drop if _merge==1 // drop ccd district data that doesn't match the those needed indicated by the crosswalk list
+drop _merge state_name 
 	
 ****************
 *Quality Checks
 ****************
 
-
-*summary stats to see possible outliers
+*summary stats to see possible outliers in the means, maxes, and mins.
 bysort year: sum
 bysort state: sum
 
-*missingness
-*missingness
-tab year
+bysort year: count // 485 cities for 2014-17 and 486 for 2018-21
+
+*check missingness for each 
+tab year if missing(meps20_total)
 tab year if missing(meps20_black)
 tab year if missing(meps20_hispanic)
 tab year if missing(meps20_white)
-tab year if missing(meps20_total)
 
+*are all quality flags missing if metric is missing
+assert meps20_total_quality==. if meps20_total==.
+assert meps20_white_quality==. if meps20_white==.
+assert meps20_black_quality==. if meps20_black==.
+assert meps20_hispanic_quality==. if meps20_hispanic==.
+
+*clean for output
 order year state place city  meps20_black* meps20_hispanic* meps20_white* meps20_total*
 gsort -year state place city
 
 drop meps20_total meps20_total_quality city_name
 
+*rename variables
 foreach var in black hispanic white {
 rename meps20_`var' share_meps20_`var'
 rename meps20_`var'_quality share_meps20_`var'_quality
 }
 
-export delimited using "${final_data}meps_city_2020.csv", replace 
+export delimited using "final\meps_city_2014-${year}.csv", replace 
