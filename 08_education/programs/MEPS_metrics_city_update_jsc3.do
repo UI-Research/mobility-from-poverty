@@ -1,12 +1,10 @@
 * SHARE OF STUDENTS IN HIGH POVERTY SCHOOLS BY RACE/ETHNICITY **
-** E Blom ** 
-	** Previously Free and Reduce Price Lunch: the share of students attending schools where 40% or more students receive FRPL **
-*Updated by E Gutierrez
+*E Gutierrez
 	** 11/28/2022 **
-		** Now uses MEPS: the share of students attending schools where 20% or more students are in Poverty **
+		** Uses MEPS: the share of students attending schools where 20% or more students are in Poverty  **
 		** Uses 2014-2018 data
 		** Produces city level data
-	* 1/22/2025 **
+	* 1/31/2025 **
 		**Produces data for 2014-2021 (School Years 2014-15 through 2021-22)
 
 **Housekeeping: install educationdata command **
