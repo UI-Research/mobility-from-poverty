@@ -59,7 +59,7 @@ https://api.census.gov/data/2021/acs/acs5/variables.html
 ```{r}
 #| label: load-tracts-data
 
-get_poverty_status_data <- function(year){
+get_poverty_status_data <- function(year, geography){
   vars <- c( # Estimate!!Total!!Income in the past 12 months below poverty level
   # "B00001_001E", # UNWEIGHTED SAMPLE COUNT OF THE POPULATION
   # "B01001_001E", # SEX BY AGE
@@ -99,7 +99,7 @@ state_fips <-
 
 tracts <- map_df(state_fips, ~getCensus(name = "acs/acs5",
                                         vars = vars, 
-                                        region = "tract:*",
+                                        region = paste0(geography, ":*"),
                                         regionin = .x,
                                         vintage = {{year}})) %>%
   as_tibble() %>%
@@ -184,7 +184,8 @@ tracts <- tracts %>%
 ```{r}
 # pivot the point estimates
 values <- tracts %>%
-  select(state, 
+  select(year,
+         state, 
          county, 
          tract, 
          poverty_aian,
@@ -192,7 +193,7 @@ values <- tracts %>%
          poverty_pacific, 
          poverty_other,
          poverty_twoplus) %>%
-  pivot_longer(c(-state, -county, -tract, -year), names_to = "group", values_to = "value")
+  pivot_longer(c(-year, -state, -county, -tract), names_to = "group", values_to = "value")
 
 # pivot the margins of error
 moes <- tracts %>%
@@ -205,7 +206,7 @@ moes <- tracts %>%
          poverty_pacific_moe, 
          poverty_other_moe,
          poverty_twoplus_moe) %>%
-  pivot_longer(c(-state, -county, -tract, -year), names_to = "group", values_to = "moe") %>%
+  pivot_longer(c(-year, -state, -county, -tract), names_to = "group", values_to = "moe") %>%
   mutate(group = str_replace(group, "_moe", ""))
 
 # combine the point estimates and margins of error
@@ -401,7 +402,7 @@ Then click "Run request" at the bottom of the screen. After the crosswalk finish
 Now we read in the tract to place crosswalk and clean it.
 
 ```{r}
-crosswalk <- read_csv(
+crosswalk_20 <- read_csv(
   here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
   skip = 1
 ) %>%
@@ -419,16 +420,44 @@ crosswalk <- read_csv(
   # place GEOIDs of 99999 indicate tracts that are not located within a census place
   filter(place != 99999)
 
+crosswalk_10 <-
+  read_csv(here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2018.csv"), skip = 1) |> 
+    select(
+    state = `State code`, 
+    county = `County code`, 
+    place = `Place code`, 
+    tract = Tract, 
+    afact = `tract to placefp allocation factor`,
+    afact2 = `placefp to tract allocation factor`
+  ) %>%
+  mutate(county = substring(county, 3, 5),
+         state_place = str_c(state, place),
+         tract = str_remove(string = tract, pattern = "[.]")) %>%
+  # place GEOIDs of 99999 indicate tracts that are not located within a census place
+  filter(place != 99999) 
 ```
 
+Expand the crosswalks to include a column with the years in `tracts` the crosswalk can apply to
+```{r}
+# Create a tibble for the years you want to expand
+years_20 <- tibble(year = c(2021, 2023))
+years_10 <- tibble(year = c(2016, 2018))
+# Perform cross join to repeat for each year
+crosswalk_20 <- crosswalk_20 %>%
+  crossing(years_20)
+
+crosswalk_10 <- crosswalk_10 |>
+  crossing(years_10)
+
+crosswalk <- bind_rows(crosswalk_10, crosswalk_20) |>
+  relocate(year, .before = everything())
+```
 We are only interested in places with large populations. We load the crosswalk containing those places and filter to the places of interest. 
 
 ```{r}
 places_of_interest <- 
   read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
-  filter(year == 2020) %>%
-  mutate(state_place = paste0(state, place)) %>%
-  select(-year)
+  mutate(state_place = paste0(state, place))
 
 crosswalk <- crosswalk %>%
   filter(state_place %in% places_of_interest$state_place)
@@ -436,8 +465,8 @@ crosswalk <- crosswalk %>%
 crosswalk <- 
   inner_join(
     crosswalk,
-    select(places_of_interest, state_place, place_name), 
-    by = "state_place"
+    select(places_of_interest, year, state_place, place_name), 
+    by = c("year", "state_place")
   )
 
 ```
@@ -455,7 +484,7 @@ crosswalk <- crosswalk %>%
 Join data to match each census tract with every census place that the tract overlaps with.
 
 ```{r}
- tracts_joined <- left_join(tracts, crosswalk, by = c("state", "county", "tract")) %>%
+ tracts_joined <- left_join(tracts, crosswalk, by = c("year", "state", "county", "tract")) %>%
   arrange(state_place)
 
 ```
@@ -479,7 +508,6 @@ We calculate the overall poverty and the number of people without a poverty esti
 
 ```{r}
 places_summary <- tracts_joined %>%
-  group_by(state, place, state_place, place_name, year) %>%
   summarize(
     people = sum(people * afact), 
     tracts = sum(afact),
@@ -501,39 +529,51 @@ places_summary <- tracts_joined %>%
     poverty_hispanic_se = sqrt(sum(afact * (poverty_hispanic_moe ^ 2))),
     poverty_other_races_se = sqrt(sum(afact * (poverty_other_races_moe ^ 2))),
     poverty_white_nonhispanic_se = sqrt(sum(afact * (poverty_white_nonhispanic_moe ^ 2))),
-    afact_sum_product = sum(afact_product)
-  ) %>%
-  ungroup()
+    afact_sum_product = sum(afact_product),
+    .by = c(state, place, state_place, place_name, year)
+  ) 
 
 places_summary <- places_summary %>%
   mutate(poverty_rate = poverty / people)
 
-stopifnot(nrow(places_summary) == 486)
 
+```
+
+**Note:** There are 479 places in 2023, why?
+```{r}
+
+places_summary |> 
+  count(year)
 ```
 
 We pull in the place-level data and compare it to the calculated place-level data. The poverty rates should be identical; however, they may differ from numbers published elsewhere (like [here](https://www.census.gov/quickfacts/autaugacountyalabama)) that use Small-Area Income and Poverty Estimates (SAIPE). 
 
-```{r}
-places_test <- map_df(
-  state_fips, ~getCensus(name = "acs/acs5",
-                         vars = vars, 
-                         region = "place:*",
-                         regionin = .x,
-                         vintage = 2021)
-) %>%
-  as_tibble() %>%
-  rename(all_of(vars)) %>%
-  mutate(state_place = paste0(state, place))
 
-places_test <- places_test %>%
-  filter(state_place %in% places_of_interest$state_place)
+```{r}
+#| label: create-places-test
+
+places_test <-
+  map(years, ~get_poverty_status_data(.x, "place")) |> 
+  list_rbind() |> 
+  relocate(year, .before = everything())
+
+write_csv(places_test, here::here("06_neighborhoods/poverty-exposure/data/places.csv"))
 
 ```
 
 ```{r}
+
+places_test <- read_csv(here::here("06_neighborhoods/poverty-exposure/data/places.csv"))
 places_test <- places_test %>%
-  mutate(poverty_rate = poverty / people)
+  mutate(state_place = paste0(state, place)) |> 
+  filter(state_place %in% places_of_interest$state_place) |> 
+  mutate(poverty_rate_test = poverty / people) %>%
+  select(year, state, place, state_place, poverty_rate_test) %>%
+  arrange(year, state, place, state_place)
+
+```
+
+```{r}
 
 # join data
 test_joined <- inner_join(
@@ -743,7 +783,8 @@ places_summary %>%
   scale_y_continuous(limits = c(0, NA),
                      expand = expansion(mult = c(0, 0.2))) +
   labs(title = "Most Places in 2021 Have No Poverty Exposure",
-       subtitle = "The Distribution of Poverty Exposure")
+       subtitle = "The Distribution of Poverty Exposure") +
+  facet_wrap(. ~ year)
 
 places_summary %>%
   ggplot(aes(tracts, share_poverty_exposure)) +
@@ -753,7 +794,8 @@ places_summary %>%
                      expand = expansion(mult = c(0, 0.2))) +
   scatter_grid() +
   labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
-       x = "Number of Tracts in Place")
+       x = "Number of Tracts in Place") +
+    facet_wrap(. ~ year)
 
 places_summary %>%
   ggplot(aes(people, share_poverty_exposure)) +
@@ -763,7 +805,8 @@ places_summary %>%
                      expand = expansion(mult = c(0, 0.2))) +
   scatter_grid() +
   labs(title = "Most Extreme Poverty Exposure Values are for Small Counties",
-       x = "Population in Place")
+       x = "Population in Place") +
+    facet_wrap(. ~ year)
 
 places_summary %>%
   ggplot(aes(poverty_rate, share_poverty_exposure)) +
@@ -772,7 +815,8 @@ places_summary %>%
   scale_y_continuous(limits = c(0, NA),
                      expand = expansion(mult = c(0, 0.2))) +
   scatter_grid() +
-  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related")
+  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related") +
+    facet_wrap(. ~ year)
 
 ```
 
@@ -780,9 +824,9 @@ places_summary %>%
 
 ```{r validation-plots-subgroups}
 places_summary_subgroups_plots <- places_summary %>%
-  select(state, place, contains("exposure")) %>%
+  select(year, state, place, contains("exposure")) %>%
   # pivot to very long
-  pivot_longer(c(-state, -place), names_to = "subgroup", values_to = "share_poverty_exposure") %>%
+  pivot_longer(c(-year, -state, -place), names_to = "subgroup", values_to = "share_poverty_exposure") %>%
   # clean up names
   mutate(subgroup = 
            recode(
@@ -804,9 +848,10 @@ places_summary_subgroups_plots %>%
                      expand = expansion(mult = c(0, 0.2))) +
   facet_wrap(~subgroup) +
   labs(title = "Most Places in 2021 Have No Poverty Exposure",
-       subtitle = "The Distribution of Poverty Exposure")
+       subtitle = "The Distribution of Poverty Exposure") +
+  facet_wrap(. ~ year)
 
-places_summary_subgroups_plots <- left_join(places_summary_subgroups_plots, select(places_summary, -share_poverty_exposure), by = c("state", "place"))
+places_summary_subgroups_plots <- left_join(places_summary_subgroups_plots, select(places_summary, -share_poverty_exposure), by = c("year", "state", "place"))
 
 places_summary_subgroups_plots %>%
   filter(subgroup!= "All") %>%
@@ -818,7 +863,8 @@ places_summary_subgroups_plots %>%
   facet_wrap(~subgroup, nrow = 2) +
   scatter_grid() +
   labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
-       x = "Number of Tracts in Place")
+       x = "Number of Tracts in Place") +
+  facet_wrap(. ~ year)
 
 places_summary_subgroups_plots %>%
   filter(subgroup!= "All") %>%
@@ -830,7 +876,8 @@ places_summary_subgroups_plots %>%
   facet_wrap(~subgroup) +
   scatter_grid() +
   labs(title = "Most Extreme Poverty Exposure Values are for Small Places",
-       x = "Population in Place")
+       x = "Population in Place") +
+  facet_wrap(. ~ year)
 
 places_summary_subgroups_plots %>%
   filter(subgroup!= "All") %>%
@@ -841,7 +888,8 @@ places_summary_subgroups_plots %>%
                      expand = expansion(mult = c(0, 0.2))) +
   facet_wrap(~subgroup) +
   scatter_grid() +
-  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related")
+  labs(title = "Place Poverty Rate and Place Poverty Exposure Are Related") +
+  facet_wrap(. ~ year)
 
 rm(places_summary_subgroups_plots)
 
@@ -959,7 +1007,8 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty <= 30 in yellow") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
   
 places_summary %>%
   filter(poverty_black_cv >= 0.4) %>%
@@ -967,7 +1016,8 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Black: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_black <= 30 in yellow") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
   
 places_summary %>%
   filter(poverty_hispanic_cv >= 0.4) %>%
@@ -975,7 +1025,8 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_hispanic <= 30 in yellow") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 places_summary %>%
   filter(poverty_other_races_cv >= 0.4) %>%
@@ -983,7 +1034,8 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_other_races <= 30 in yellow") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 places_summary %>%
   filter(poverty_white_nonhispanic_cv >= 0.4) %>%
@@ -991,7 +1043,8 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, white_nh <= 30 in yellow") +
-  scatter_grid()
+  scatter_grid() +
+  facet_wrap(. ~ year)
 
 ```
 
@@ -1109,7 +1162,7 @@ final_data <- places_summary %>%
          share_poverty_exposure_quality)
 
 write_csv(final_data,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_city_2021.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_city.csv"))
 
 ```
 
@@ -1161,7 +1214,7 @@ all_places_subgroups <-
 final_data_race_ethnicity <- left_join(
   all_places_subgroups, 
   places_summary_subgroups, 
-  by = c("state", "place", "subgroup_type", "subgroup")
+  by = c("year", "state", "place", "subgroup_type", "subgroup")
 ) %>%
   select(
     year,
@@ -1174,6 +1227,36 @@ final_data_race_ethnicity <- left_join(
   )
 
 write_csv(final_data_race_ethnicity,
-          here::here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_city_2021.csv"))
+          here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_race-ethnicity_city.csv"))
 
 ```
+
+## Testing
+
+
+```{r}
+source(here::here("functions/testing/evaluate_final_data.R"))
+
+final_county_data <- read_csv(here::here("06_neighborhoods", "poverty-exposure", "final", "poverty-exposure_city.csv"), show_col_types = FALSE)
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_overall_city.csv",
+  data = final_county_data, geography = "place",
+  subgroups = FALSE, confidence_intervals = FALSE
+)
+
+```
+
+```{r}
+
+final_county_data_subgroups <- read_csv(here::here("06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_county.csv"), show_col_types = FALSE)
+
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_race_eth_county.csv",
+  data = final_county_data_subgroups, geography = "county",
+  subgroups = TRUE, confidence_intervals = FALSE
+)
+
+```
+
