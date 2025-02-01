@@ -1,0 +1,349 @@
+---
+title: "Transportation Trips County"
+author: "Tina Chelidze and Aaron R. Williams"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+::: {.callout-tip}
+Raw data pulled from https://htaindex.cnt.org/download/ The Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT)
+:::
+
+::: {.callout-tip}
+*User Notice: This program requires downloading raw files from the Metrics_2024_round Box folder prior to running. See details under the Read Data section.*
+
+:::
+
+## Setup
+
+### Load Packages
+
+```{r}
+library(tidyverse)
+
+theme_set(theme_minimal())
+
+```
+
+### Read data
+
+The data from HUD cannot be easily read directly into this program.
+Before running, please download the files below from the following [Box
+folder](https://urbanorg.app.box.com/folder/250262697073) into the
+repository folder
+`"mobility-from-poverty\06_neighborhoods\Transportation\data"`
+
+-   htaindex2015_data_counties.csv
+-   htaindex2019_data_counties.csv
+
+Import all the files (and/or combine into one file) with only the
+relevant variables and years
+
+FOR COUNTIES - import the raw data files
+
+Unlike for Places and Tracts, the CNT website allows you to download raw
+data for all counties at once so we just import the all-county file for
+the two available years; 2015 and 2019
+
+```{r}
+transport_county_2015 <- read_csv(
+  here::here("06_neighborhoods",
+             "Transportation", 
+             "data", 
+             "htaindex2015_data_counties.csv")
+)
+
+transport_county_2019 <- read_csv(
+  here::here("06_neighborhoods",
+             "Transportation", 
+             "data", 
+             "htaindex2019_data_counties.csv")
+)
+
+transport_county <- bind_rows(
+  `2015` = transport_county_2015,
+  `2019` = transport_county_2019,
+  .id = "year"
+) |>
+  mutate(year = as.numeric(year))
+
+rm(transport_county_2015, transport_county_2019)
+```
+
+## Clean Data
+
+Create correct FIPS columns.
+
+```{r}
+transport_county <- transport_county |>
+  mutate(
+    state = substr(county, start = 2, stop = 3),
+    county = substr(county, start = 4, stop = 6)
+  )
+```
+
+Keep only variables of interest
+
+```{r}
+transportation_county <- transport_county |>
+  select(year, state, county, blkgrps, population, households, transit_trips_80ami, t_80ami)
+```
+
+Compare to our official county file to make sure we have all counties
+accounted for Bring in the official county file
+
+```{r}
+counties <- read_csv(here::here("geographic-crosswalks", 
+                                "data", 
+                                "county-populations.csv"))
+```
+
+```{r}
+counties <- counties |>
+  filter(year %in% c(2015, 2019))
+
+```
+
+```{r}
+full_join(transportation_county, counties, by = c("year", "state", "county"))
+
+anti_join(transportation_county, counties, by = c("year", "state", "county"))
+
+```
+
+As shown by `full_join()` and `anti_join()`, the transportation data contain the correct counties, so we don't need to merge the data. 
+
+```{r}
+transportation_county <- transportation_county |>
+  rename(
+    count_transit_trips = transit_trips_80ami,
+    index_transportation_cost = t_80ami
+  )
+
+```
+
+## Transit Trips Quality Control Checks
+
+### Missing Data
+
+```{r}
+transportation_county |>
+  filter(is.na(count_transit_trips))
+
+```
+
+Loving County, Texas is missing in 2015. 
+
+### Distribution
+
+Use stopifnot to check if all values in `transportation_county` are
+non-negative
+
+```{r}
+stopifnot(min(transportation_county$count_transit_trips, na.rm = TRUE) >= 0)
+```
+
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
+
+```{r}
+ggplot(transportation_county, aes(x = count_transit_trips)) +
+  geom_histogram(binwidth = 5) + 
+  facet_wrap(~ year, nrow = 2) +
+  labs(
+    x = "Annual Transit Trips for the Regional Moderate Income Household", 
+    y = "number of counties"
+  )
+```
+
+Makes sense for most counties to fall in really low transit trip numbers
+since most of the US has no public infrastructure that can be used for
+daily transport
+
+Look at summary stats
+
+```{r}
+summary(transportation_county$count_transit_trips)
+```
+
+Examine extreme values
+
+```{r}
+transportation_county |>
+  group_by(year) |>
+  slice_max(n = 10, order_by = count_transit_trips)
+
+```
+
+1057 trips in 38059 county -- Morton County, North Dakota -- seems to be
+a railroad town... 1300 trips in 36047 -- Kings County, New York -- this
+is Brooklyn, makes total sense all the highest ones(1000+) are in New
+York counties - checks out 313 trips in 06037 -- Los Angeles county,
+California - checks out
+
+### Change
+
+```{r}
+transportation_county |>
+  select(state, county, year, households, count_transit_trips) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, count_transit_trips)
+  ) |>
+  mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(count_transit_trips_2015, count_transit_trips_2019, size = households_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
+
+
+transportation_county |>
+  group_by(state, county) |>
+  mutate(change = count_transit_trips - lag(count_transit_trips)) |>
+  ungroup() |>
+  filter(year == 2019) |>
+  slice_max(order_by = abs(change), n = 10)
+
+```
+
+## Cost Quality Control Checks
+
+### Missing Data
+
+```{r}
+transportation_county |>
+  filter(is.na(index_transportation_cost))
+
+```
+
+Loving County, Texas is missing in 2015. 
+
+### Distribution
+
+Use stopifnot to check if all values in `transportation_county` are
+non-negative
+
+```{r}
+stopifnot(min(transportation_county$index_transportation_cost, na.rm = TRUE) >= 0)
+```
+
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
+
+```{r}
+ggplot(transportation_county, aes(x = index_transportation_cost)) +
+  geom_histogram(binwidth = 5) + 
+  facet_wrap(~ year, nrow = 2) +
+  labs(
+    x = "Annual Transportation Costs for the Regional Moderate Income Household", 
+    y = "number of counties"
+  )
+
+```
+
+Makes sense for most counties to fall in really low transit trip numbers
+since most of the US has no public infrastructure that can be used for
+daily transport
+
+Look at summary stats
+
+```{r}
+summary(transportation_county$index_transportation_cost)
+```
+
+Examine extreme values
+
+```{r}
+transportation_county |>
+  group_by(year) |>
+  slice_max(n = 10, order_by = index_transportation_cost)
+
+```
+
+### Change
+
+```{r}
+transportation_county |>
+  select(state, county, year, households, index_transportation_cost) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, index_transportation_cost)
+  ) |>
+  mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(index_transportation_cost_2015, index_transportation_cost_2019, size = households_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
+
+
+transportation_county |>
+  group_by(state, county) |>
+  mutate(change = index_transportation_cost - lag(index_transportation_cost)) |>
+  ungroup() |>
+  filter(year == 2019) |>
+  slice_max(order_by = abs(change), n = 10)
+
+```
+
+## Data Quality Marker
+
+Determine data quality cutoffs based on number of observations (all at the HH level for these values).
+
+```{r}
+summary(transportation_county$households) 
+
+```
+
+We use a 30 HH cutoff for Data Quality 3 for the ACS variables, so for
+the sake of consistency, since none of these are less than 30 (all
+minimum values are at least 30 HHs), Data Quality can be 1 for all these
+observations
+
+```{r}
+transportation_county <- transportation_county |>
+  mutate(
+    count_transit_trips_quality = ifelse(households > 30, 1, 3),
+    index_transportation_cost_quality = ifelse(households > 30, 1, 3)
+  )
+
+```
+
+## Export final files
+
+Keep variables of interest and order them appropriately.
+
+```{r}
+transportation_county |>
+  select(year, state, county, count_transit_trips, count_transit_trips_quality) |>
+  arrange(year, state, county) |>
+  write_csv(
+    here::here("06_neighborhoods", 
+               "Transportation", 
+               "final", 
+               "transit_trips_all_county.csv")
+  )
+
+
+transportation_county |>
+  select(year, state, county, index_transportation_cost, index_transportation_cost_quality) %>%
+  arrange(year, state, county) |>
+  write_csv(
+    here::here("06_neighborhoods", 
+               "Transportation", 
+               "final", 
+               "transit_cost_all_county.csv")
+  )
+
+```
+
