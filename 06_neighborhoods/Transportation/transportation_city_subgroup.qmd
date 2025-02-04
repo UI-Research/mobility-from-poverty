@@ -1,5 +1,5 @@
 ---
-title: "Transit Trips and Transportation Costs -- County -- Subgroups"
+title: "Transit Trips and Transportation Costs -- City"
 author: "Tina Chelidze and Aaron R. Williams"
 date: today
 format:
@@ -40,11 +40,11 @@ theme_set(theme_minimal())
 
 ### Read data
 
-The data from CNT cannot be easily read directly into this program.
+The data from HUD cannot be easily read directly into this program.
 Before running, please download the entirety of the folders listed below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
-`"mobility-from-poverty\06_neighborhoods\transportation\data"`
+`"mobility-from-poverty\06_neighborhoods\Transportation\data"`
 
 -   2015_tract
 -   2019_tract
@@ -98,8 +98,6 @@ transportation_tracts <- transportation_tracts |>
 
 ```
 
-Only keep variables of interest. 
-
 ```{r}
 transportation_tracts <- transportation_tracts |>
   select(
@@ -110,7 +108,7 @@ transportation_tracts <- transportation_tracts |>
 
 ```
 
-We drop tracts without households. Some of these tracts have population but the population must be in group quarters or on reservations. For example, one tract from the North Slope Borough in Alaska has people but no households. 
+Many tracts have no households. We drop these tracts.
 
 ```{r}
 transportation_tracts <- transportation_tracts |>
@@ -119,6 +117,8 @@ transportation_tracts <- transportation_tracts |>
 ```
 
 ## Clean Census Data
+
+### Pull Data
 
 ```{r}
 my_states <- fips_codes |> 
@@ -291,20 +291,58 @@ acs_tracts <- acs_tracts |>
 
 ```
 
-## Merge Data
+### Calculate race category
+
+For each tract, ID the race category by calculating the proportion White, Non-Hispanic and the proportion of every other race and ethnicity. 
+
+```{r}
+acs_tracts <- acs_tracts |>
+  mutate(
+    prop_white_nh = white_nh / total_population,
+    prop_poc = poc / total_population
+  )
+
+stopifnot(
+  acs_tracts |>
+    filter(prop_white_nh + prop_poc != 1) |>
+    nrow() == 0
+)
+
+```
+
+Assign race-category for each tract. These assignments should align with the debt metric.
+
+```{r}
+acs_tracts <- acs_tracts |>
+  mutate(
+    subgroup = case_when(
+      total_population == 0 ~ "No population",
+      prop_white_nh >= 0.6 ~ "White neighborhoods",
+      prop_poc >= 0.6 ~ "Neighborhoods of color",
+      prop_white_nh >= 0.4 | prop_poc >= 0.4 ~ "Mixed neighborhoods",
+      prop_white_nh < 0.4 & prop_poc < 0.4 ~ as.character(NA)
+    )
+  ) 
+
+acs_tracts |>
+  count(subgroup)
+
+```
+
+## Merge ACS and Transportation Data
 
 We join the ACS demographic information to the transportation information. 
 
 ```{r}
 combined_tracts <- left_join(
   transportation_tracts,
-  acs_tracts, 
+  acs_tracts,
   by = c("year", "GEOID", "state", "county", "tract")
 )
 
 ```
 
-No tracts with transportation data are missing demographic data. There are demographic tracts without transportation information but this is expected because of empty tracts and tracts without households. A few tracts have `sample_size > 0`. We speculate this is because of using different ACS years.
+No tracts with transportation data are missing demographic data. There are demographic tracts without transportation information but this is expected because of empty tracts and tracts without households.
 
 ```{r}
 anti_join(
@@ -320,112 +358,191 @@ anti_join(
 ) |>
   filter(total_population > 0)
 
-anti_join(
-  acs_tracts, 
-  transportation_tracts, 
-  by = c("year", "GEOID", "state", "county", "tract")
-) |>
-  filter(sample_size > 0) |>
-  arrange(desc(sample_size))
+```
+
+## Crosswalk Tracts to Places
+
+Bring in the crosswalk of interest (we want the year range to be before 2020, when tract definitions changed)
+
+```{r}
+tract_place <- read_csv(here("geographic-crosswalks", 
+                             "data", 
+                             "geocorr2018_tract_to_place.csv"))
+```
+
+Remove the decimal from the tract variable
+
+```{r}
+tract_place <- tract_place |>
+  mutate(tract = tract * 100)
 
 ```
 
-## Calculate race category
-
-For each tract, ID the race category by calculating the proportion White, Non-Hispanic and the proportion of every other race and ethnicity. 
+Add in leading zeroes as needed
 
 ```{r}
-combined_tracts <- combined_tracts |>
+tract_place <- tract_place |>
   mutate(
-    prop_white_nh = white_nh / total_population,
-    prop_poc = poc / total_population
-  )
+    state = sprintf("%0.2d", as.numeric(state)),
+    tract = sprintf("%0.6d", as.integer(as.character(tract))),
+    placefp = sprintf("%0.5d", as.numeric(placefp)),
+    county = substr(county, nchar(county) - 2, nchar(county))
+  ) |>
+  rename(place = placefp)
+```
 
-stopifnot(
-  combined_tracts |>
-    filter(prop_white_nh + prop_poc != 1) |>
-    nrow() == 0
+Limit to the Census Places we want first, bring in the places crosswalk (place-populations.csv).
+
+```{r}
+places <- read_csv(here("geographic-crosswalks", 
+                        "data", 
+                        "place-populations.csv"))
+```
+
+Filter the crosswalk to only include the places in the place destination file. 
+
+```{r}
+tract_place <- tract_place |>
+  filter(paste0(state, place) %in% paste0(places$state, places$place))
+
+```
+
+The CNT data contains tons of tracts not included in our places. Our places include tracts not included in the CNT data. 
+
+```{r}
+anti_join(
+  combined_tracts, 
+  tract_place, 
+  by = c("state", "county", "tract")
+)
+
+anti_join(
+  combined_tracts,
+  transportation_tracts, 
+  by = c("state", "county", "tract")
 )
 
 ```
 
-Assign race-category for each tract. These assignments should align with the debt metric.
-
 ```{r}
-combined_tracts <- combined_tracts |>
-  mutate(
-    subgroup = case_when(
-      total_population == 0 ~ "No population",
-      prop_white_nh >= 0.6 ~ "White neighborhoods",
-      prop_poc >= 0.6 ~ "Neighborhoods of color",
-      prop_white_nh >= 0.4 | prop_poc >= 0.4 ~ "Mixed neighborhoods",
-      prop_white_nh < 0.4 & prop_poc < 0.4 ~ as.character(NA)
-    )
-  ) 
+transportation_tracts_places <- left_join(
+  combined_tracts, 
+  tract_place, 
+  by = c("state", "county", "tract")
+)
 
-combined_tracts |>
-  count(subgroup)
+transportation_tracts_places <- transportation_tracts_places |>
+  filter(!is.na(place))
 
 ```
 
 ## Calculate metrics
 
-We average census tracts to the county-race/ethnicity group with weights for the number of households in each tract. 
+Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
 
 ```{r}
-transportation_county_all <- combined_tracts |>
+transportation_places_all <- transportation_tracts_places |>
   filter(subgroup != "No population") |>
-  group_by(year, state, county) |>
+  group_by(year, state, place) |>
   summarize(
-    count_transit_trips = weighted.mean(x = count_transit_trips, w = households),
-    index_transportation_cost = weighted.mean(x = index_transportation_cost, w = households),
-    households = sum(households),
-    sample_size = sum(sample_size)
+    n = n(),
+    count_transit_trips = weighted.mean(count_transit_trips, w = households * afact, na.rm = TRUE),
+    index_transportation_cost = weighted.mean(index_transportation_cost, w = households * afact, na.rm = TRUE),
+    match_pop = sum(population * afact),
+    match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE),
+    sample_size = sum(sample_size * afact)
   ) |>
+  ungroup() |>
+  dplyr::mutate(
+    index_transportation_cost_quality = case_when(
+      match_quality >= 0.5 ~ 1,
+      match_quality < 0.5 ~ 2,
+      TRUE ~ NA
+    )
+  ) |>
+  mutate(count_transit_trips_quality = index_transportation_cost_quality) |>
   mutate(
     subgroup_type = "all",
     subgroup = "All"
-  ) |>
-  ungroup()
+  )
 
-transportation_county_subgroup <- combined_tracts |>
-  filter(subgroup != "No population") |>
-  group_by(year, state, county, subgroup) |>
-  summarize(
-    count_transit_trips = weighted.mean(x = count_transit_trips, w = households),
-    index_transportation_cost = weighted.mean(x = index_transportation_cost, w = households),
-    households = sum(households),
-    sample_size = sum(sample_size)
+transportation_places_subgroup <- transportation_tracts_places |> 
+  dplyr::group_by(year, state, place, subgroup) |> 
+  dplyr::summarize(
+    n = n(),
+    count_transit_trips = weighted.mean(count_transit_trips, w = households * afact, na.rm = TRUE),
+    index_transportation_cost = weighted.mean(index_transportation_cost, w = households * afact, na.rm = TRUE),
+    match_pop = sum(population * afact),
+    match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE),
+    sample_size = sum(sample_size * afact)
   ) |>
+  ungroup() |>
+  dplyr::mutate(
+    index_transportation_cost_quality = case_when(
+      match_quality >= 0.5 ~ 1,
+      match_quality < 0.5 ~ 2,
+      TRUE ~ NA
+    )
+  ) |>
+  mutate(count_transit_trips_quality = index_transportation_cost_quality) |>
   mutate(
     subgroup_type = "race-ethnicity"
-  ) |>
-  ungroup()
+  )
 
-transportation_county <- bind_rows(
-  transportation_county_all, 
-  transportation_county_subgroup
+transportation_place <- bind_rows(
+  transportation_places_all, 
+  transportation_places_subgroup
 )
 
 ```
 
-Some county-race/ethnicity groups are missing. This is because some race/ethnicity groups don't exist in each county. We load the target geography file, join our statistics to the target geography file, and then add zeros for household sizes.
+Some place-race/ethnicity groups are missing. This is because some race/ethnicity groups don't exist in each place. We load the target geography file, join our statistics to the target geography file, and then add zeros for household sizes.
 
 ```{r}
-target_statistics <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) |>
+target_statistics <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) |>
   filter(year %in% c(2015, 2019)) |>
-  select(year, state, county) |>
+  select(year, state, place) |>
   expand_grid(subgroup = c("All", "Neighborhoods of color", "White neighborhoods", "Mixed neighborhoods")) |>
   mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
 
-transportation_county <- full_join(
+transportation_place <- full_join(
   target_statistics,
-  transportation_county,
-  by = c("year", "state", "county", "subgroup_type", "subgroup")
+  transportation_place,
+  by = c("year", "state", "place", "subgroup_type", "subgroup")
 )
 
-transportation_county <- transportation_county |>
-  mutate(households = if_else(is.na(households), 0, households))
+```
+
+Left join with places file to get rid of irrelevant places data
+
+```{r}
+transportation_city <- left_join(
+  places, 
+  transportation_place, 
+  by = c("year", "state", "place")
+) |>
+  filter(year %in% c(2015, 2019))
+
+```
+
+We drop the all category and sum the match population to the place level. We then compare this to the population from the place target file. 
+
+```{r}
+transportation_city |>
+  filter(subgroup_type != "all") |>
+  group_by(year, state, place) |>
+  summarize(population = max(population), match_pop = sum(match_pop)) |>
+  ggplot(aes(population, match_pop)) +
+  geom_abline(color = "red") +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "Points on the line suggest high-quality"
+  )
+
+```
+
+```{r}
+map_dbl(transportation_city, ~sum(is.na(.x)))
 
 ```
 
@@ -434,24 +551,24 @@ transportation_county <- transportation_county |>
 ### Missing Data
 
 ```{r}
-transportation_county |>
-  filter(is.na(count_transit_trips)) |>
-  count(subgroup)
+transportation_city |>
+  filter(is.na(count_transit_trips))
 
 ```
 
 ### Distribution
 
-Use stopifnot to check if all values in `transportation_county` are non-negative.
+Use stopifnot to check if all values in `transportation_city` are non-negative.
 
 ```{r}
-stopifnot(min(transportation_county$count_transit_trips, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_city$count_transit_trips, na.rm = TRUE) >= 0)
 ```
 
-Create a histogram.
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
 
 ```{r}
-ggplot(transportation_county, aes(x = count_transit_trips)) +
+ggplot(transportation_city, aes(x = count_transit_trips)) +
   geom_histogram(binwidth = 5) + 
   facet_grid(year ~ subgroup) +
   labs(
@@ -460,49 +577,48 @@ ggplot(transportation_county, aes(x = count_transit_trips)) +
   )
 ```
 
-Makes sense for most counties to fall in really low transit trip numbers since most of the US has no public infrastructure that can be used for daily transport.
+Makes sense for most counties to fall in really low transit trip numbers
+since most of the US has no public infrastructure that can be used for
+daily transport
 
 Look at summary stats
 
 ```{r}
-summary(transportation_county$count_transit_trips)
+summary(transportation_city$count_transit_trips)
 ```
 
 Examine extreme values
 
 ```{r}
-transportation_county |>
+transportation_city |>
   group_by(year) |>
-  slice_max(n = 10, order_by = count_transit_trips) |>
-  select(year, state, county, subgroup, count_transit_trips)
+  slice_max(n = 10, order_by = count_transit_trips)
 
 ```
 
 ### Change
 
-We look at the change from 2015 to 2019. Transit trips changes a lot, which may cause us to question the data quality. 
-
 ```{r}
-transportation_county |>
-  select(state, county, year, subgroup, households, count_transit_trips) |>
+transportation_city |>
+  select(state, place, year, subgroup, population, count_transit_trips) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, count_transit_trips)
+    values_from = c(population, count_transit_trips)
   ) |>
-  mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(count_transit_trips_2015, count_transit_trips_2019, size = households_2019)) +
+  mutate(size = if_else(population_2019 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(count_transit_trips_2015, count_transit_trips_2019, size = population_2019)) +
   geom_point(alpha = 0.1) +
-  facet_grid(size ~ subgroup) +
+  facet_wrap(~ size) +
   coord_equal() +
-  labs(subtitle = "Large counties have at least 200,000 households")
+  labs(subtitle = "Large counties have at least 400,000 people")
 
-transportation_county |>
-  group_by(state, county, subgroup) |>
-  mutate(change_count_transit_trips = count_transit_trips - lag(count_transit_trips)) |>
+
+transportation_city |>
+  group_by(state, place, subgroup) |>
+  mutate(change = count_transit_trips - lag(count_transit_trips)) |>
   ungroup() |>
   filter(year == 2019) |>
-  slice_max(order_by = abs(change_count_transit_trips), n = 10) |>
-  select(year, state, county, subgroup, change_count_transit_trips)
+  slice_max(order_by = abs(change), n = 10)
 
 ```
 
@@ -511,23 +627,27 @@ transportation_county |>
 ### Missing Data
 
 ```{r}
-transportation_county |>
+transportation_city |>
   filter(is.na(index_transportation_cost))
 
 ```
 
+Loving County, Texas is missing in 2015. 
+
 ### Distribution
 
-Use stopifnot to check if all values in `transportation_county` are non-negative.
+Use stopifnot to check if all values in `transportation_city` are
+non-negative
 
 ```{r}
-stopifnot(min(transportation_county$index_transportation_cost, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_city$index_transportation_cost, na.rm = TRUE) >= 0)
 ```
 
-Create a histogram.
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
 
 ```{r}
-ggplot(transportation_county, aes(x = index_transportation_cost)) +
+ggplot(transportation_city, aes(x = index_transportation_cost)) +
   geom_histogram(binwidth = 5) + 
   facet_grid(year ~ subgroup) +
   labs(
@@ -537,91 +657,65 @@ ggplot(transportation_county, aes(x = index_transportation_cost)) +
 
 ```
 
+Makes sense for most counties to fall in really low transit trip numbers
+since most of the US has no public infrastructure that can be used for
+daily transport
+
 Look at summary stats
 
 ```{r}
-summary(transportation_county$index_transportation_cost)
+summary(transportation_city$index_transportation_cost)
 ```
 
 Examine extreme values
 
 ```{r}
-transportation_county |>
+transportation_city |>
   group_by(year) |>
-  slice_max(n = 10, order_by = index_transportation_cost) |>
-  select(year, state, county, subgroup, index_transportation_cost)
+  slice_max(n = 10, order_by = index_transportation_cost)
 
 ```
 
 ### Change
 
-We look at the change from 2015 to 2019. Transportation costs are very stable during this time period.
-
 ```{r}
-transportation_county |>
-  select(state, county, year, subgroup, households, index_transportation_cost) |>
+transportation_city |>
+  select(state, place, year, subgroup, population, index_transportation_cost) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, index_transportation_cost)
+    values_from = c(population, index_transportation_cost)
   ) |>
-  mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(index_transportation_cost_2015, index_transportation_cost_2019, size = households_2019)) +
+  mutate(size = if_else(population_2019 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(index_transportation_cost_2015, index_transportation_cost_2019, size = population_2019)) +
   geom_point(alpha = 0.1) +
   facet_wrap(~ size) +
   coord_equal() +
-  labs(subtitle = "Large counties have at least 200,000 households")
+  labs(subtitle = "Large counties have at least 400,000 people")
 
 
-transportation_county |>
-  group_by(state, county, subgroup) |>
-  mutate(change_index_transportation_cost = index_transportation_cost - lag(index_transportation_cost)) |>
+transportation_city |>
+  group_by(state, place, subgroup) |>
+  mutate(change = index_transportation_cost - lag(index_transportation_cost)) |>
   ungroup() |>
   filter(year == 2019) |>
-  slice_max(order_by = abs(change_index_transportation_cost), n = 10)  |>
-  select(year, state, county, subgroup, index_transportation_cost)
-
+  slice_max(order_by = abs(change), n = 10)
 ```
 
 ## Data Quality Marker
 
-Determine data quality cutoffs based on number of observations (all at the HH level for these values).
-
-```{r}
-summary(transportation_county$households) 
-
-```
-
-We use 30 households as a quality cutoff. Estimates with fewer than 30 responses receive a data quality of 3 and everything else gets data quality of 1. 
-
-```{r}
-transportation_county <- transportation_county |>
-  mutate(
-    count_transit_trips_quality = if_else(sample_size > 30, true = 1, false = 3),
-    index_transportation_cost_quality = if_else(sample_size > 30, true = 1, false = 3)
-  ) |>
-  mutate(
-    count_transit_trips_quality = if_else(is.na(count_transit_trips), NA, count_transit_trips_quality),
-    index_transportation_cost_quality = if_else(is.na(index_transportation_cost), NA, index_transportation_cost_quality)
-  )
-
-stopifnot(
-  transportation_county |>
-    filter(
-      (is.na(count_transit_trips) | is.na(index_transportation_cost)) &
-        (!is.na(count_transit_trips_quality) | !is.na(index_transportation_cost_quality))
-    ) |>
-    nrow() == 0
-)
-
-```
+Data quality is calculated above using the match quality. 
 
 ## Export final files
 
 Keep variables of interest and order them appropriately.
 
 ```{r}
-final_data <- transportation_county |>
-  select(year, state, county, subgroup_type, subgroup, count_transit_trips, count_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) 
+final_data <- transportation_city |>
+  select(
+    year, state, place, count_transit_trips, count_transit_trips_quality,
+    index_transportation_cost, index_transportation_cost_quality
+  ) |>
+  arrange(year, state, place)
 
 ```
 
@@ -634,21 +728,22 @@ evaluate_final_data(
        "final", 
        "final_data_evaluation_form.csv"), 
   data = final_data, 
-  geography = "county",
-  confidence_intervals = FALSE, 
-  subgroups = TRUE
+  geography = "place", 
+  confidence_intervals = FALSE
 )
 
 ```
 
+Write the final data.
+
 ```{r}
 final_data |>
-  arrange(year, state, county) |>
   write_csv(
-    here("06_neighborhoods",
-         "Transportation",
-         "final",
-         "transportation_subgroup_county.csv")
+    here("06_neighborhoods", 
+         "Transportation", 
+         "final", 
+         "transportation_subgroup_city.csv")
   )
 
 ```
+

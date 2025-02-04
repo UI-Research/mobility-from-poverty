@@ -84,15 +84,15 @@ transportation_tracts <- bind_rows(
 Create correct FIPS columns.
 
 ```{r}
-transportation_tracts <- transportation_tracts %>%
-  rename (GEOID = tract) %>%
+transportation_tracts <- transportation_tracts |>
+  rename (GEOID = tract) |>
   mutate(
     state = substr(GEOID, start = 2, stop = 3),
     county = substr(GEOID, start = 4, stop = 6),
     tract = substr(GEOID, start = 7, stop = 12)
   )
 
-transportation_tracts <- transportation_tracts %>%
+transportation_tracts <- transportation_tracts |>
   select(
     year, GEOID, state, county, tract, blkgrps, population, households, 
     count_transit_trips = transit_trips_80ami, 
@@ -114,35 +114,27 @@ transportation_tracts <- transportation_tracts |>
 Bring in the crosswalk of interest (we want the year range to be before 2020, when tract definitions changed)
 
 ```{r}
-tract_place <- read_csv(here("geographic-crosswalks", 
-                             "data", 
-                             "geocorr2018_tract_to_place.csv"))
-```
-
-Remove the decimal from the tract variable
-
-```{r}
-tract_place <- tract_place %>%
-  mutate(tract = tract * 100)
-```
-
-Add in leading zeroes as needed
-
-```{r}
-tract_place <- tract_place %>%
-  mutate(
-    state = sprintf("%0.2d", as.numeric(state)),
-    tract = sprintf("%0.6d", as.integer(as.character(tract))),
-    placefp = sprintf("%0.5d", as.numeric(placefp)),
-    county = substr(county, nchar(county) - 2, nchar(county))
+tract_place <- read_csv(
+  here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
+  skip = 1
+) %>%
+  select(
+    state = `State code`, 
+    county = `County code`, 
+    place = `Place code`, 
+    tract = Tract, 
+    afact = `tract-to-place allocation factor`,
+    afact2 = `place-to-tract allocation factor`
   ) %>%
-  rename(place = placefp)
+  mutate(
+    county = substring(county, 3, 5),
+    state_place = str_c(state, place),
+    tract = str_remove(string = tract, pattern = "[.]")
+  )
+
 ```
 
-NOW, aggregate the tract-level data to the place levels for each variable for each year
-
-For when we want to: Limit to the Census Places we want 
-first, bring in the places crosswalk (place-populations.csv)
+Limit to the Census Places we want.
 
 ```{r}
 places <- read_csv(here("geographic-crosswalks", 
@@ -153,11 +145,9 @@ places <- read_csv(here("geographic-crosswalks",
 Filter the crosswalk to only include the places in the place destination file. 
 
 ```{r}
-tract_place <- tract_place |>
-  filter(paste0(state, place) %in% paste0(places$state, places$place))
+# tract_place <- tract_place |>
+#   filter(paste0(state, place) %in% paste0(places$state, places$place))
 
-# places <- places %>%
-#   filter(year == 2019)
 ```
 
 ## Join and Aggregate
@@ -185,32 +175,24 @@ transportation_tracts_places <- left_join(
   tract_place, 
   by = c("state", "county", "tract")
 )
-# %>%
-  # mutate(index_transportation_cost = index_transportation_cost / 100)
 
 transportation_tracts_places <- transportation_tracts_places |>
   filter(!is.na(place))
 
-
 ```
-
-
-
-
-
 
 Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
 
 ```{r}
-transportation_places <- transportation_tracts_places %>% 
-  dplyr::group_by(year, state, place) %>% 
+transportation_places <- transportation_tracts_places |> 
+  dplyr::group_by(year, state, place) |> 
   dplyr::summarize(
     n = n(),
     count_transit_trips = weighted.mean(count_transit_trips, w = households * afact, na.rm = TRUE),
     index_transportation_cost = weighted.mean(index_transportation_cost, w = households * afact, na.rm = TRUE),
     match_pop = sum(population * afact),
     match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE)
-  ) %>%
+  ) |>
   ungroup() |>
   dplyr::mutate(
     index_transportation_cost_quality = case_when(
@@ -246,10 +228,7 @@ transportation_city |>
 ```{r}
 map_dbl(transportation_city, ~sum(is.na(.x)))
 
-
 ```
-
-
 
 ## Transit Trips Quality Control Checks
 
@@ -302,12 +281,6 @@ transportation_city |>
   slice_max(n = 10, order_by = count_transit_trips)
 
 ```
-
-1057 trips in 38059 county -- Morton County, North Dakota -- seems to be
-a railroad town... 1300 trips in 36047 -- Kings County, New York -- this
-is Brooklyn, makes total sense all the highest ones(1000+) are in New
-York counties - checks out 313 trips in 06037 -- Los Angeles county,
-California - checks out
 
 ### Change
 
@@ -457,9 +430,6 @@ final_data |>
          "final", 
          "transportation_all_city.csv")
   )
-
-
-
 
 ```
 

@@ -29,6 +29,7 @@ Raw data pulled from https://htaindex.cnt.org/download/ The Housing and Transpor
 
 ```{r}
 library(tidyverse)
+library(tidycensus)
 library(here)
 
 source(here("functions", "testing", "evaluate_final_data.R"))
@@ -50,12 +51,6 @@ repository folder
 
 Import all the files (and/or combine into one file) with only the
 relevant variables and years
-
-FOR COUNTIES - import the raw data files
-
-Unlike for Places and Tracts, the CNT website allows you to download raw
-data for all counties at once so we just import the all-county file for
-the two available years; 2015 and 2019
 
 ```{r}
 transport_county_2015 <- read_csv(
@@ -94,15 +89,14 @@ transport_county <- transport_county |>
   )
 ```
 
-Keep only variables of interest
+Only keep variables of interest.
 
 ```{r}
 transportation_county <- transport_county |>
   select(year, state, county, blkgrps, population, households, transit_trips_80ami, t_80ami)
 ```
 
-Compare to our official county file to make sure we have all counties
-accounted for Bring in the official county file
+Compare to our official county file to make sure we have all needed counties. 
 
 ```{r}
 counties <- read_csv(here("geographic-crosswalks", 
@@ -187,12 +181,6 @@ transportation_county |>
 
 ```
 
-1057 trips in 38059 county -- Morton County, North Dakota -- seems to be
-a railroad town... 1300 trips in 36047 -- Kings County, New York -- this
-is Brooklyn, makes total sense all the highest ones(1000+) are in New
-York counties - checks out 313 trips in 06037 -- Los Angeles county,
-California - checks out
-
 ### Change
 
 ```{r}
@@ -212,10 +200,10 @@ transportation_county |>
 
 transportation_county |>
   group_by(state, county) |>
-  mutate(change = count_transit_trips - lag(count_transit_trips)) |>
+  mutate(count_transit_trips_change = count_transit_trips - lag(count_transit_trips)) |>
   ungroup() |>
   filter(year == 2019) |>
-  slice_max(order_by = abs(change), n = 10)
+  slice_max(order_by = abs(count_transit_trips_change), n = 10)
 
 ```
 
@@ -292,19 +280,54 @@ transportation_county |>
 
 transportation_county |>
   group_by(state, county) |>
-  mutate(change = index_transportation_cost - lag(index_transportation_cost)) |>
+  mutate(index_transportation_cost_change = index_transportation_cost - lag(index_transportation_cost)) |>
   ungroup() |>
   filter(year == 2019) |>
-  slice_max(order_by = abs(change), n = 10)
+  slice_max(order_by = abs(index_transportation_cost_change), n = 10)
 
 ```
 
 ## Data Quality Marker
 
+We pull `B00002_001`, which is the UNWEIGHTED SAMPLE HOUSING UNITS for the data quality measure. This series discontinues in the 2019, so we use 2018 as an approximation for 2019.
+
+```{r}
+acs_sample_size <- bind_rows(
+  `2015` = get_acs(
+    geography = "county",
+    variables = "B00002_001",
+    year = 2015,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2019` = get_acs(
+    geography = "county",
+    variables = "B00002_001",
+    year = 2018,
+    survey = "acs5",
+    output = "wide"
+  ),
+  .id = "year"
+) |>
+  rename(sample_size = B00002_001E) |>
+  mutate(
+    year = as.numeric(year),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  )
+
+transportation_county <- left_join(
+  transportation_county,
+  acs_sample_size,
+  by = c("year", "state", "county")
+)
+
+```
+
 Determine data quality cutoffs based on number of observations (all at the HH level for these values).
 
 ```{r}
-summary(transportation_county$households) 
+summary(transportation_county$sample_size) 
 
 ```
 
@@ -316,8 +339,8 @@ observations
 ```{r}
 transportation_county <- transportation_county |>
   mutate(
-    count_transit_trips_quality = ifelse(households > 30, 1, 3),
-    index_transportation_cost_quality = ifelse(households > 30, 1, 3)
+    count_transit_trips_quality = ifelse(sample_size > 30, 1, 3),
+    index_transportation_cost_quality = ifelse(sample_size > 30, 1, 3)
   )
 
 ```
@@ -361,6 +384,3 @@ final_data |>
   )
 
 ```
-
-
-
