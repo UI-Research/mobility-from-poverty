@@ -20,14 +20,9 @@ execute:
 @import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
 </style>
 ```
-
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
-This document programs the **Digital Access** metric which encapsulates a ratio
-of households with the presence of a computer (laptop, desktop, notebook computer, 
-tablet, or portable wireless computer) and broadband (high speed) internet service
-in the household. An overall ratio is calculated, as well as by racial subgroup 
-- measured according to the race of each head of the household.
+This document programs the **Digital Access** metric which encapsulates a ratio of households with the presence of a computer (laptop, desktop, notebook computer, tablet, or portable wireless computer) and broadband (high speed) internet service in the household. An overall ratio is calculated, as well as by racial subgroup (measured according to the race of each head of the household) and income subgroup.
 
 ## Process
 
@@ -51,29 +46,32 @@ librarian::shelf(
   tidyverse,
   ipumsr,
   here,
-  UrbanInstitute / urbnthemes
+  UrbanInstitute / urbnthemes,
+  tidylog,
+  warn.conflicts = FALSE
   )
 set_urbn_defaults(style = "print")
 
-source(here::here("functions", "testing", "evaluate_final_data.R"))
+source(here::here("functions", "testing", "evaluate_final_data_4.R"))
 
 ```
 
+**Instructions to run this code book**
+
+-   This Quarto markdown document uses the `here` R library to set and access file paths. Please check your root directory by executing `here::here()` to verify that it points to the root folder of the `mobility-from-poverty` GitHub repository.
+-   To avoid manually setting up file paths, open the GitHub repository as an R project by leveraging the `mobility-from-poverty.Rproj` file present in the root folder of the `mobility-from-poverty` GitHub repository when you clone it.
+-   Un-comment all of the code in @lst-query-ipums-api code block (lines 68 through 111) when you run the code in this file for the first time to download the IPUMS data.
+-   In @lst-load-ipums code block, you'd be asked to update the microdata file name (line number 128) that you download through the @lst-query-ipums-api block, so please make a note of it.
 
 ## Get IPUMS Data {#sec-get-ipums-data}
 
-This code book uses the 2017-2021 5-year ACS extract from the IPUMS API using
-R package `ipumsr`. To access this data, an IPUMS API key is required. This can
-be obtained by registering on the [IPUMS
-USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu)
-website and creating an API key. For more information see the `ipumsr` [getting started
-vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
-
+This code book uses the 2017-2021 5-year ACS extract from the IPUMS API using R package `ipumsr`. To access this data, an IPUMS API key is required. This can be obtained by registering on the [IPUMS USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu) website and creating an API key. For more information see the `ipumsr` [getting started vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
 
 ```{r}
 #| label: query-ipums-api
+#| lst-label: lst-query-ipums-api
+#| lst-cap: Query IPUMS API
 #| cache: true
-#| eval: false
 
 # Run the code in this block the first time this notebook is executed to get the 
 # data and avoid repeated downloads 
@@ -84,12 +82,12 @@ vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
 # ! API request failed with status 400.
 # ✖ CIHISPEED has data quality flags, but none are available in the selected samples
 
-acs_vars <- list("YEAR", "MULTYEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", 
-              "CLUSTER", "STRATA", "GQ", "REGION", "STATEFIP", "COUNTYFIP", "PUMA",
-              "HHINCOME", var_spec("CILAPTOP", data_quality_flags = TRUE), 
-              var_spec("CITABLET", data_quality_flags = TRUE),
-              "CIHISPEED", "CINETHH",
-              "PERNUM", "PERWT", "RACE", "HISPAN")
+# acs_vars <- list("YEAR", "MULTYEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", 
+#              "CLUSTER", "STRATA", "GQ", "REGION", "STATEFIP", "COUNTYFIP", "PUMA",
+#              "HHINCOME", var_spec("CILAPTOP", data_quality_flags = TRUE), 
+#              var_spec("CITABLET", data_quality_flags = TRUE),
+#              "CIHISPEED", "CINETHH",
+#              "PERNUM", "PERWT", "RACE", "HISPAN")
 
 
 # define the IPUMS extract
@@ -116,16 +114,16 @@ fs::dir_create(here("08_education/data/raw"))
 
 ## Format Data {#sec-format-data}
 
-Now, the downloaded data needs to be cleaned and formatted so that it can be used
-further to generate the metric. The 2017-2021 5-year ACS microdata extract for computer 
-and internet use is in the form of household level data set with person level variables 
-added for this analysis. 
+Now, the downloaded data needs to be cleaned and formatted so that it can be used further to generate the metric. The 2017-2021 5-year ACS microdata extract for computer and internet use is in the form of household level data set with person level variables added for this analysis.
 
-To analyze the data at the household level, only the first person sampled in the household
-is retained in the data.
+### Clean Household-Level Data
+
+To analyze the data at the household level, only the first person sampled in the household is retained in the data.
 
 ```{r}
-#| label: load-acs
+#| label: load-ipums
+#| lst-label: lst-load-ipums
+#| lst-cap: Load IPUMS Data
 #| cache: true
 
 # Manually set the file name downloaded in the previous code chunk which is 
@@ -141,12 +139,9 @@ acs5_2021_raw <- ipumsr::read_ipums_micro(
 
 ```
 
-The IPUMS data consists of labelled vectors ([ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels)). 
-We find the missing labels using the `ipums_var_info(acs5_2021_raw)` and inspecting the 
-`val_labels` column.
+The IPUMS data consists of labelled vectors ([ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels)). We find the missing labels using the `ipums_var_info(acs5_2021_raw)` and inspecting the `val_labels` column.
 
-For the "Total household income" i.e. `HHINCOME` column, "N/A" values are denoted
-by `9999999` which needs to be updated before proceeding.
+For the "Total household income" i.e. `HHINCOME` column, "N/A" values are denoted by `9999999` which needs to be updated before proceeding.
 
 ```{r}
 #| label: handle-missingness
@@ -160,22 +155,16 @@ acs5_2021_raw <- acs5_2021_raw |>
 
 ```
 
-Since the digital access metric is at the household level, individuals who live in
-group quarters need to be excluded from the data. For more information, see
-the [variable description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on
-IPUMS USA.
+Since the digital access metric is at the household level, individuals who live in group quarters need to be excluded from the data. For more information, see the [variable description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on IPUMS USA.
 
-Running `ipums_var_info(acs5_2021_raw)` shows the value labels for the group 
-quarters variable `GQ`:
+Running `ipums_var_info(acs5_2021_raw)` shows the value labels for the group quarters variable `GQ`:
 
-val lbl                                        
-0   Vacant unit                                
-1   Households under 1970 definition           
-2   Additional households under 1990 definition
-3   Group quarters--Institutions               
-4   Other group quarters                       
-5   Additional households under 2000 definition
-6   Fragment
+val lbl\
+0 Vacant unit\
+1 Households under 1970 definition\
+2 Additional households under 1990 definition 3 Group quarters--Institutions\
+4 Other group quarters\
+5 Additional households under 2000 definition 6 Fragment
 
 ```{r}
 #| label: remove-group-quarters
@@ -184,11 +173,11 @@ val lbl
 acs5_2021_raw <- acs5_2021_raw |>
   filter((GQ %in% c(1,2,5)))
 
+# Check if only required GQ values remain in data
+assertthat::assert_that(all(acs5_2021_raw$GQ %in% c(1, 2, 5)))
 ```
 
-
-FIPS codes require re-formatting by padding with leading zeros so that state codes 
-are two digits, county codes are three digits, and place codes are five digits.
+FIPS codes require re-formatting by padding with leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits.
 
 ```{r}
 #| label: format-fips-codes
@@ -209,30 +198,28 @@ acs5_2021_raw <-
   mutate(YEAR = as.integer(YEAR))
 ```
 
-The race-ethnicity subgroup is created by collapsing the `RACE` and 
-`HISPAN` variables into following categories:
-- Black, Non-Hispanic
-- White, Non-Hispanic
-- Other Races and Ethnicities
-- Hispanic
+### Race-Ethnicity & Income Subgroups
 
-Running `ipums_val_labels(acs5_2021_raw$RACE)` shows the value labels for the 
-`RACE` variable:
+The race-ethnicity subgroup is created by collapsing the `RACE` and `HISPAN` variables into following categories: - Black, Non-Hispanic - White, Non-Hispanic - Other Races and Ethnicities - Hispanic
 
-val   lbl                                        
-                           
-1     White                           
-2     Black/African American          
-3     American Indian or Alaska Native
-4     Chinese                         
-5     Japanese                        
-6     Other Asian or Pacific Islander 
-7     Other race, nec                 
-8     Two major races                 
-9     Three or more major races
+Running `ipums_val_labels(acs5_2021_raw$RACE)` shows the value labels for the `RACE` variable:
+
+| val | lbl                              |
+|-----|----------------------------------|
+| 1   | White                            |
+| 2   | Black/African American           |
+| 3   | American Indian or Alaska Native |
+| 4   | Chinese                          |
+| 5   | Japanese                         |
+| 6   | Other Asian or Pacific Islander  |
+| 7   | Other race, nec                  |
+| 8   | Two major races                  |
+| 9   | Three or more major races        |
+
+We need to create a collapsed variable `RACE_mod` that takes on values `Black/African American` for `RACE` label value `2`, `White` for `RACE` label value `1`, and `Other` for all other `RACE` label values.
 
 ```{r}
-#| label: create-subgroup-race-ethnicity
+#| label: create-collapsed-race
 
 # Create new column `RACE_mod` identifying White, Black , and Other races
 acs5_2021_raw <- acs5_2021_raw |>
@@ -242,6 +229,16 @@ acs5_2021_raw <- acs5_2021_raw |>
     RACE_mod = as_factor(RACE_mod),
     HISPAN = as_factor(HISPAN)
     ) 
+
+# Check if `RACE_mod` correctly codes `RACE` by verifying their unique combinations
+acs5_2021_raw |> distinct(RACE_mod, RACE)
+
+```
+
+`RACE_ETHNICITY` is coded by combining `RACE_mod` to specify race while ethnicity is derived from variable `HISPAN`. For any race, if `HISPAN` takes on value "Not Hispanic" then ethnicity is "Non-Hispanic" otherwise it is considered "Hispanic".
+
+```{r}
+#| label: create-subgroup-race-ethnicity
 
 # Create `RACE_ETHNICITY` subgroup by collapsing `RACE_mod` and `HISPAN`
 acs5_2021_raw <- acs5_2021_raw |>
@@ -255,12 +252,11 @@ acs5_2021_raw <- acs5_2021_raw |>
     )
   )
 
+# Check if `RACE_ETHNICITY` correctly codes `RACE_mod` and `HISPAN` by verifying their unique combinations
+acs5_2021_raw |> distinct(RACE_ETHNICITY, RACE_mod, HISPAN)
 ```
 
-
-Income subgroup is created at two levels:
-- Less than $50,000
-- $50,000 or More
+Income subgroup is created at two levels: - Less than \$50,000 - \$50,000 or More
 
 ```{r}
 #| label: create-subgroup-income
@@ -274,16 +270,45 @@ acs5_2021_raw <- acs5_2021_raw |>
       .default = NA_character_)
     )
 
+# Verify that `INCOME` is coded correctly
+stopifnot(all(acs5_2021_raw$INCOME[acs5_2021_raw$HHINCOME < 50000] == "Less than $50,000"))
+
+stopifnot(all(acs5_2021_raw$INCOME[acs5_2021_raw$HHINCOME >= 50000] == "$50,000 or More"))
+
 ```
 
+### Computer and Internet Use Variables
 
-For measuring digital access, a composite variable `DIGITAL_ACCESS` is created 
-using `CIHISPEED`, `CILAPTOP`, and `CITABLET` IPUMS variables. 
+-   For measuring digital access, a composite variable `DIGITAL_ACCESS` is created using `CIHISPEED`, `CILAPTOP`, and `CITABLET` IPUMS variables.
 
-We consider the `CINETHH` variable to find the universe of observations for households 
-with digital access. This variable indicates whether any member of a household 
-has access to the internet (by either paying or without paying a cellphone 
-company) or nobody in the household has access to the internet.
+- `CILAPTOP` indicates whether the respondent or any member of their household owned or used a desktop, laptop, netbook, or notebook computer. 
+
+- `CITABLET` indicates whether the respondent or any member of their household owned or used a tablet or other portable wireless computer.
+
+-   `CINETHH` is derived from Question 9 in the ACS listed below:
+
+```         
+  9. At this house, apartment, or mobile home - do you or any member of this 
+      household have access to the internet?
+    [ ] Yes, by paying a cell phone company or Internet service provider
+    [ ] Yes, without paying a cell phone company of Internet service provider -> 
+    SKIP to question 11
+    [ ] No access to the Internet at this house, apartment, or mobile home -> 
+    SKIP to question 11
+```
+
+-   `CIHISPEED` is derived from Question 10, part (b) in the ACS listed below:
+
+```         
+  10. Do you or any member of this household have access to the Internet using a -
+
+  b) broadband (high speed) Internet service such as cable, fiber optic, or DSL 
+      service installed in this household?
+      [ ]Yes
+      [ ]No
+```
+
+We first investigate the unique values and labels that exist for the computer and internet use variables in the IPUMS data.
 
 ```{r}
 #| label: data-exploration
@@ -316,26 +341,26 @@ unique(acs5_2021_raw$CIHISPEED)
 # to an Internet Service' and 'No Internet access at this house, apartment, or 
 # mobile home' for `CINETHH`
 unique(acs5_2021_raw$CINETHH)
-
 ```
 
-Since, group quarters are filtered out from the data, we need to investigate why
-`CIHISPEED` has N/A(GQ) values present. Investigating based on [this](https://forum.ipums.org/t/cihispeed-group-quarters/3453) discussion on
-IPUMS forum.
+In the data, it seems that `CIHISPEED` has N/A(GQ) values present. This needs to be investigated because group quarters were filtered out from the data so it is not clear why the `CIHISPEED` variable would have `N/A(GQ)` values. Investigating based on [this](https://forum.ipums.org/t/cihispeed-group-quarters/3453) discussion on IPUMS forum.
+
+> We consider the `CINETHH` variable to find the universe of observations for households with digital access. This variable indicates whether any member of a household has access to the internet (by either paying or without paying a cellphone company) or nobody in the household has access to the internet.
+
+Since, `CINETHH` is the universe of observations, first, let's observe the relationship between `CINETHH` and `CIHISPEED` in relation to the `CIHISPEED` variable taking the value `0` corresponding to label `N/A(GQ)`.
 
 ```{r}
 #| label: investigate-data-issue-1
 
 # Subset dataframe so that only `CIHISPEED` = 0 values are retained and check
 # the values that exist for `CINETHH`
-test_cihispeed_gq <- acs5_2021_raw |>
+
+print(paste0("When `CIHISPEED` equals `0` i.e. 'N/A (GQ)' then `CINETHH` takes up ", 
+              "following values:"))
+
+acs5_2021_raw |>
   filter(CIHISPEED==0) |>
   distinct(CIHISPEED, CINETHH)
-
-print(paste0("When `CIHISPEED` has label 'N/A (GQ)' then `CINETHH` takes up ", 
-              "following values:"))
-print(test_cihispeed_gq)
-
 ```
 
 
@@ -344,57 +369,62 @@ print(test_cihispeed_gq)
 
 # Subset dataframe so that `CIHISPEED` = 0 values are removed and check
 # the values that exist for `CINETHH`
-test_cihispeed <- acs5_2021_raw |>
+
+print(paste0("When `CIHISPEED` does not equal `0` i.e. 'N/A (GQ)' then `CINETHH` ", 
+              "takes up following values:"))
+acs5_2021_raw |>
   filter(CIHISPEED!=0) |>
   distinct(CIHISPEED, CINETHH)
+```
 
-print(paste0("When `CIHISPEED` does not have label 'N/A (GQ)' then `CINETHH` ", 
-              "takes up following values:"))
-print(test_cihispeed)
+```{r}
+# Assert that when `CIHISPEED` == 0 then there aren't any instances where `CINETHH` is not equal to
+# either 3 or 2
+assertthat::assert_that(!any(
+                             acs5_2021_raw$CIHISPEED==0 & 
+                             !(acs5_2021_raw$CINETHH %in% c(3, 2))  
+                             ))
 
 ```
 
-The results imply that `CIHISPEED` takes on 'N/A(GQ)' values when `CINETHH` 
-indicates either 'No Internet access at this house, apartment, or mobile home' or
-'Yes, without a subscription to an Internet Service'. 
+```{r}
+# Assert that when `CIHISPEED` != 0 then there aren't any instances where `CINETHH` is not equal to 1
+assertthat::assert_that(!any(
+                             acs5_2021_raw$CIHISPEED!=0 & 
+                             !(acs5_2021_raw$CINETHH %in% 1)  
+                             ))
 
-`CINETHH` is derived from Question 9 in the ACS listed below:
+```
 
-    9. At this house, apartment, or mobile home - do you or any member of this 
-    household have access to the internet?
-    [ ] Yes, by paying a cell phone company or Internet service provider
-    [ ] Yes, without paying a cell phone company of Internet service provider -> 
-        SKIP to question 11
-    [ ] No access to the Internet at this house, apartment, or mobile home -> 
-        SKIP to question 11
+The above results imply that `CIHISPEED` takes on 'N/A(GQ)' value when `CINETHH` indicates either 'No Internet access at this house, apartment, or mobile home' or 'Yes, without a subscription to an Internet Service'.
 
-`CIHISPEED` is derived from Question 10, part (b) in the ACS listed below:
+It is reasonable to assume based on the data values in the IPUMS extract that whenever a household skipped to question 11 while answering question 9 referenced earlier (i.e. answered access to internet without subscription or no subscription for question 9), the corresponding value assigned to `CIHISPEED` was 'N/A(GQ)' as for these households the question of having access to paid high speed broadband was inapplicable.
 
-    10. Do you or any member of this household have access to the Internet using a -
+This finding tracks with the [IPUMS forum discussion](https://forum.ipums.org/t/cihispeed-group-quarters/3453) indicating that a household could have 'N/A(GQ)' values for reasons other than being categorized as a group quarter.
 
-    b) broadband (high speed) Internet service such as cable, fiber optic, or DSL 
-        service installed in this household?
-        [ ]Yes
-        [ ]No
+In light of this, our assumption stands that the universe of households to answer questions regarding digital access comes from the data encapsulated by the `CINETHH` variable. This will feed into the denominator to compute share of digital access in a geography. The target households are those which answered Question 9 in the ACS. We will remove any households that have `CINETHH` equals `0` i.e. `N/A(GQ)` as they will not be a part of our target universe of households. 
 
-It is reasonable to assume based on the data values in the IPUMS extract that 
-whenever a household skipped to question 11 (i.e. answered access to internet 
-without subscription or no subscription for question 9), the corresponding value 
-assigned to `CIHISPEED` was 'N/A(GQ)' as for these households the question of
-having access to paid high speed broadband was inapplicable. 
+```{r}
+#| label: universe-for-digital-access
 
-This finding tracks with the [IPUMS forum discussion](https://forum.ipums.org/t/cihispeed-group-quarters/3453) indicating that a household
-could have 'N/A(GQ)' values for reasons other than being categorized as a group
-quarter.
+# Remove `0` values labelled `N/A (GQ)` for `CINETHH` as they do not represent households of interest
 
-In light of this, our assumption stands that the universe of households to answer
-questions regarding digital access comes from the data encapsulated by the 
-`CINETHH` variable. This will feed into the denominator to compute share of digital
-access in a geography. 
+# Check if any `0` values exist in `CINETHH`
+if ( any(acs5_2021_raw$CINETHH == 0) ) {
+  
+  acs5_2021_raw <- acs5_2021_raw |> 
+                                 filter(CINETHH!=0)
+} else {
+  print("Variable `CINETHH` represents households of interest.")
+}
 
-Create `DIGITAL_ACCESS`as a composite binary variable that takes on the value `1` 
-when a household has access to high speed internet and either a tablet or laptop 
-computer or both.
+```
+
+### Digital Access
+
+Create `DIGITAL_ACCESS`as a composite binary variable that takes on the value `1` when a household has access to high speed internet and either a tablet or laptop computer or both.
+
+For computing `DIGITAL_ACCESS`, we consider that access relies on whether `CIHISPEED` indicates household has access to high speed internet or not. If `CIHISPEED` has value `N/A(GQ)` after filtering for group quarters, we assume that the corresponding `DIGITAL_ACCESS` for those households would be `N/A` as they did not answer question 10 and instead skipped to Question 11.
 
 ```{r}
 #| label: create-composite-digital-access
@@ -413,30 +443,14 @@ acs5_2021_raw <- acs5_2021_raw |>
 ```
 
 
-```{r}
-#| label: universe-for-digital-access
-
-# Run this code only if `N/A (GQ)` label corresponding to '0' value is present in the 
-# data for `CINETHH`
-# Remove values labelled `N/A (GQ)` as they do not represent households of interest
-
-#acs5_2021_raw |> acs5_2021_raw |>
-#  filter(CINETHH!=0)
-
-```
-
-
 ## Merge Crosswalk {#sec-merge-crosswalk}
 
-The 5-yr 2017-21 ACS data from IPUMS needs to be merged with PUMA to county and 
-PUMA to place geocodes to get county and place boundaries.
-
-Since, the data IPUMS data is pre-2022, a crosswalk from 2012 PUMA to 2014 county # QUESTION: should this be 2014 or 2016 in the Wiki?)
-is used. The weight of each household will be adjusted by the proportion of the 
-PUMA area that falls into a given County/Place
+The 5-yr 2017-21 ACS data from IPUMS needs to be merged with PUMA to county and PUMA to place geocodes to get county and place boundaries.
 
 ::: panel-tabset
 ### PUMA to County
+
+Since, the data IPUMS data is pre-2022, a crosswalk from 2012 PUMA to 2014 county is used. This crosswalk is derived from [Geocorr](https://mcdc.missouri.edu/applications/geocorr2022.html) as documented in ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd).
 
 ```{r}
 #| label: crosswalk-puma-county-1
@@ -454,76 +468,110 @@ crosswalk_puma_county <- read_csv((here::here("geographic-crosswalks",
   filter(STATE != "72")
 ```
 
+The `crosswalk_puma_to_county.csv` crosswalk has a variable called `afact` (for more information see ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd) notebook), which gives the allocation factor for the PUMA area that falls within a given county area. Another variable of interest is `sum_products` which is a geographic allocation quality variable derived from the Geocorr data as documented in ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd).
+
+If a county in the IPUMS data is unidentifiable, the corresponding value for county will be `000` ([see](https://usa.ipums.org/usa-action/variables/COUNTYFIP#codes_section)). 
+  - We rely on the crosswalk information to substitute for counties that have `000` value in IPUMS. 
+  - For these, cases we also adjust the household weight `HHWT` by multiplying `HHWT` with `afact` to
+  account for the county geography a household in a PUMA can be associated with. 
+  - Lastly, for the unidentifiable counties, the geographic allocation variable `sum_products` from the
+  crosswalk will be leveraged. However, for identifiable counties from the IPUMS data, we will assign a
+  value of `1` to `sum_products` as the PUMAs are mapped to their associated counties. 
+
+`crosswalk_puma_county` contains the relevant counties that we need in our final data. These will be merged with the clean 5-yr 2017-21 ACS data to map the PUMA geocodes with their corresponding county geocodes. The weight of each household will be adjusted by the proportion of the PUMA area that falls into a given County.
+
+Depends on which geographies are available in the raw IPUMS data.
 
 ```{r}
 #| label: crosswalk-puma-county-2
 
 # Merge crosswalk PUMA to county with the IPUMS data
 acs5_2021_county <- acs5_2021_raw |>
-  right_join(crosswalk_puma_county,
+  right_join(
+             crosswalk_puma_county,
              by = c("STATE", "PUMA"),
-             relationship = "many-to-many") |>
+             relationship = "many-to-many"
+  ) |>
   # Use county codes from crosswalk if they're not present in the IPUMS data
   mutate(
     COUNTY = if_else(COUNTY.x != "000", COUNTY.x, COUNTY.y),
     HHWT = if_else(COUNTY.x != "000", HHWT, HHWT * afact),
-    sum_products = if_else(COUNTY.x != "000", 1, sum_products) #Question - is this right??
+    sum_products = if_else(COUNTY.x != "000", 1, sum_products) 
   ) |>
   select(-c(COUNTY.x, COUNTY.y)) |>
-  mutate(COUNTY = str_pad(COUNTY, width = 3, pad = "0", side = "left")) 
+  mutate(
+          COUNTY = str_pad(COUNTY, width = 3, pad = "0", side = "left"
+  )
+) 
 
 ```
 
 ### PUMA to Place
 
+Since, the data IPUMS data is pre-2022, a crosswalk from 2012 PUMA to 2014 place is used. This crosswalk is derived from [Geocorr](https://mcdc.missouri.edu/applications/geocorr2022.html) as documented in ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd).
+
 ```{r}
 #| label: crosswalk-puma-place-1
 
 # Read the relevant crosswalk file
-crosswalk_puma_place <- read_csv((here::here("geographic-crosswalks", 
+crosswalk_puma_place <- read_csv((
+                                  here::here("geographic-crosswalks", 
                                               "data", 
-                                              "crosswalk_puma_to_place.csv"))) |>
+                                              "crosswalk_puma_to_place.csv")
+  )) |>
   # filter the crosswalk for the data period 2017-2021
   filter(crosswalk_period == "pre-2022") |>
-  rename(STATE = statefip,
-         PUMA = puma) 
+  rename(
+          STATE = statefip,
+          PUMA = puma
+  ) 
 ```
+
+The `crosswalk_puma_to_place.csv` crosswalk has a variable called `afact` (for more information see ["Generate Puma to Place Crosswalk"](geographic-crosswalks/generate_puma_place_crosswalks.qmd) notebook), which gives the allocation factor for the PUMA area that falls within a given place area. Another variable of interest is `sum_products` which is a geographic allocation quality variable derived from the Geocorr data as documented in ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd). 
+
+IPUMS data doesn't have place geography, so we rely on the crosswalk. The weight of each household will be adjusted by the proportion of the PUMA area that falls into a given place. This is done by multiplying `HHWT` with `afact`. For places, we do not make changes to the `sum_products` variable and rely on the crosswalk for this information.
+
+`crosswalk_puma_place` contains the relevant places that we need in our final data. These will be merged with the clean 5-yr 2017-21 ACS data to map the PUMA geocodes with their corresponding place geocodes. The weight of each household will be adjusted by the proportion of the PUMA area that falls into a given Place.
 
 ```{r}
 #| label: crosswalk-puma-place-2
 
 # Merge crosswalk PUMA to county with the IPUMS data
 acs5_2021_place <- acs5_2021_raw |>
-  right_join(crosswalk_puma_place,
+  right_join(
+             crosswalk_puma_place,
              by = c("STATE", "PUMA"),
-             relationship = "many-to-many") |>
+             relationship = "many-to-many"
+  ) |>
   # Use county codes from crosswalk if they're not present in the IPUMS data
   mutate(
     HHWT = HHWT * afact,
   ) 
 
 ```
-
 :::
 
-Filter out observations where HHWT is N/A or zero as these will not be counted
-in the metric calculation.
+Filter out observations where household weight `HHWT` is N/A or zero as these will not be counted in the metric calculation because they do not contribute to the universe of households for this metric.
 
 ```{r}
 #| label: clean-up-crosswalked-county
 
 # Remove observations where HHWT is N/A
-count(acs5_2021_county, is.na(HHWT))
+if ( sum(is.na(acs5_2021_county$HHWT)) > 0){
+  
+  acs5_2021_county <- acs5_2021_county |> 
+                                    drop_na(HHWT)
 
-acs5_2021_county <- acs5_2021_county %>% 
-  drop_na(HHWT)
+} else 
+  # Remove observations where HHWT is zero
+  if ( sum(acs5_2021_county$HHWT == 0) > 0 ) {
+  
+  acs5_2021_county <- acs5_2021_county |> 
+                                      filter(HHWT > 0)
+} else {
 
-# Remove observations where HHWT is zero
-count(acs5_2021_county, HHWT == 0)
-
-acs5_2021_county <- acs5_2021_county %>% 
-  filter(HHWT > 0)
-
+  print("Household weight, HHWT, doesn't have any N/A or 0 values for counties.")
+}
 ```
 
 
@@ -531,25 +579,28 @@ acs5_2021_county <- acs5_2021_county %>%
 #| label: clean-up-crosswalked-place
 
 # Remove observations where HHWT is N/A
-count(acs5_2021_place, is.na(HHWT))
+if ( sum(is.na(acs5_2021_place$HHWT)) > 0){
+  
+  acs5_2021_place <- acs5_2021_place |> 
+                                    drop_na(HHWT)
 
-acs5_2021_place <- acs5_2021_place %>% 
-  drop_na(HHWT)
+} else 
+  # Remove observations where HHWT is zero
+  if ( sum(acs5_2021_place$HHWT == 0) > 0 ) {
+  
+  acs5_2021_place <- acs5_2021_place |> 
+                                      filter(HHWT > 0)
+} else {
 
-# Remove observations where HHWT is zero
-count(acs5_2021_place, HHWT == 0)
-
-acs5_2021_place <- acs5_2021_place %>% 
-  filter(HHWT > 0)
+  print("Household weight, HHWT, doesn't have any N/A or 0 values for places.")
+}
 ```
 
 ## Create Metric {#sec-create-metric}
 
-Now digital access metric can be created as share of households having access to 
-either a tablet or laptop and a high speed internet connection for a given county/place.
-However, in an IPUMS sample a household may be representative of many households 
-which is gauged through the `HHWT` variable. So, to find the share of households 
-with digital access, a weighted measure is needed.
+We need to create the digital access metric as a share of households having access to either a tablet or laptop and a high speed internet connection for a given county/place. However, in an IPUMS sample a household may be representative of many households which is gauged through the `HHWT` variable. So, to find the share of households with digital access, a weighted measure is needed. 
+
+This weighted measure, `HHWTD_DIGITAL_ACCESS`, will be created using the composite `DIGITAL_ACCESS` variable coded earlier.
 
 ```{r}
 #| label: weighted-digital-access
@@ -564,12 +615,7 @@ mutate(HHWTD_DIGITAL_ACCESS = if_else(DIGITAL_ACCESS == 1, HHWT, 0))
 
 ```
 
-
-For quality measures, compute effective sample size count for each county/place
-which is the unweighted sum of households present in the data for each geography. 
-The effective sample will indicate the actual number of survey records that will
-factor into metric calculation as we do not want to include geographies with less
-than 30 records for quality purposes. 
+For quality measures, compute effective sample size count for each county/place which is the unweighted sum of households present in the data for each geography. The effective sample will indicate the actual number of survey records that will factor into metric calculation as we do not want to include geographies with less than 30 records for quality purposes.
 
 ```{r}
 #| label: create-effective-sample-county
@@ -594,7 +640,6 @@ acs5_2021_county |>
     effective_30_sample_counties = sum(effective_sample_count > 30)
   )
 ```
-
 
 ```{r}
 #| label: create-effective-sample-place
@@ -621,14 +666,7 @@ acs5_2021_place |>
 
 ```
 
-
-Using the weighted digital access measure, we will compute the county and place 
-level metric. The digital access metric will represent the number of households
-that have digital access divided by the total number of households for a given 
-geography at the county/place level. The numerator represents the households which 
-have access to high speed internet and a tablet/laptop computer while the denominator
-represents all the households that do (either with subscription or without) and 
-do not have access to the internet.
+Using the weighted digital access measure, we will compute the county and place level metric. The digital access metric will represent the number of households that have digital access divided by the total number of households for a given geography at the county/place level. The numerator represents the households which have access to high speed internet and a tablet/laptop computer. The denominator represents all the households that do (either with subscription or without) and do not have access to the internet.
 
 ### County
 
@@ -661,9 +699,7 @@ share_dig_acc_county <-
 
 ```
 
-
 ### County Subgroups: Race-Ethnicity & Income
-
 
 ```{r}
 #| label: function-share-digital-access
@@ -706,7 +742,6 @@ compute_share_dig_acc_subgroup <- function(data, geo, subgroup_vars) {
 
 ```
 
-
 ```{r}
 #| label: digital-access-county-subgroups
 
@@ -720,7 +755,6 @@ share_dig_acc_county_income <-
   compute_share_dig_acc_subgroup(acs5_2021_county, "COUNTY", "INCOME")
 
 ```
-
 
 ### Place
 
@@ -752,7 +786,6 @@ share_dig_acc_place <-
 
 ```
 
-
 ### Place Subgroups: Race-Ethnicity & Income
 
 ```{r}
@@ -769,11 +802,11 @@ share_dig_acc_place_income <-
 
 ```
 
-
 ## Explore Metric {#sec-evaluate-metric}
 
-```{r} 
+Let's assess the digital access metric. As the share of digital access metric is a proportion, it's value should fall between 0 and 1 (inclusive) and we need to verify this.
 
+```{r}
 #| label: metric-range-checks
 
 # Check the range of digital access metric is between 0 and 1
@@ -802,12 +835,47 @@ print(min_max_check)
 rm(all_df)
 ```
 
+The digital access metric should have a value of `NA` when effective sample size is less than 30. Let's verify this.
 
-To get a better sense of the distribution of the digital access metric, we visualize
-it for both county and place.
+```{r}
+#| label: metric-range-checks
 
+# Check that if effective sample size is less than 30, then share of digital access only has NA values 
+stopifnot( !any( 
+                (share_dig_acc_county$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_county$share_digital_access) 
+          ))
 
-```{r} 
+stopifnot( !any( 
+                (share_dig_acc_county_income$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_county_income$share_digital_access) 
+          ))
+
+stopifnot( !any( 
+                (share_dig_acc_county_race_ethnicity$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_county_race_ethnicity$share_digital_access) 
+          ))
+
+stopifnot( !any( 
+                (share_dig_acc_place$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_place$share_digital_access) 
+          ))
+
+stopifnot( !any( 
+                (share_dig_acc_place_race_ethnicity$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_place_race_ethnicity$share_digital_access) 
+          ))
+
+stopifnot( !any( 
+                (share_dig_acc_place_income$effective_sample_count < 30) &        
+                 !is.na(share_dig_acc_place_income$share_digital_access) 
+          ))
+
+```
+
+To get a better sense of the distribution of the digital access metric, we visualize it for both county and place.
+
+```{r}
 
 #| label: metric-visualization-function
 
@@ -830,9 +898,7 @@ metric_visualization_subgroup <- function(data, subgroup, subtitle) {
 
 ```
 
-
 ::: panel-tabset
-
 ### Visualizing Digital Access for County by Race and Ethnicity
 
 ```{r}
@@ -846,7 +912,6 @@ quantile(share_dig_acc_county_race_ethnicity$share_digital_access, na.rm=TRUE)
 skimr::skim(share_dig_acc_county_race_ethnicity)
 
 ```
-
 
 ### Visualizing Digital Access for County by Income
 
@@ -889,50 +954,29 @@ quantile(share_dig_acc_place_income$share_digital_access, na.rm=TRUE)
 skimr::skim(share_dig_acc_place_income)
 
 ```
-
 :::
 
 ## Metric Quality {#sec-metric-quality}
 
-Determining the quality of the digital access metric is a two step process that
-considers an effective sample test and geographic allocation test. 
+Determining the quality of the digital access metric is a two step process that considers an effective sample test and geographic allocation test.
 
-- Effective sample test entails that for the IPUMS micro data each geography must 
-have a sample of at least 30 survey responses otherwise we report the metric as
-NA for that geography. This is useful because counties/places with an extremely 
-small number of households sampled would have a poorer data quality. 
+-   Effective sample test entails that for the IPUMS micro data each geography must have a sample of at least 30 survey responses otherwise we report the metric as NA for that geography. This is useful because counties/places with an extremely small number of households sampled would have a poorer data quality.
 
-- Geographic allocation test leverages the project crosswalks (either from PUMA 
-to county or PUMA to place for IPUMS data) which include a measure for quality 
-based on the area of the destination geography that falls within the IPUMS geography.
-For geographies that have a large number of households, this helps figure out how
-much of the data associated with a county/place actually came from that county/place.
-The measure for this comes from the `sum_products` variable in the crosswalks
-(for more information see ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd) notebook).
+-   Geographic allocation test leverages the project crosswalks (either from PUMA to county or PUMA to place for IPUMS data) which include a measure for quality based on the area of the IPUMS geography (PUMA) that falls within the target geography (county/place). This helps figure out how much of the data associated with a county/place actually came from that county/place and is measured by the `sum_products` variable in the crosswalks (for more information see ["Generate Puma to County Crosswalk"](geographic-crosswalks/generate_puma_county_crosswalks.qmd) notebook). 
+
+Combining the above two guidelines for quality testing, the following measure of digital access quality is determined:
+
+-   Data quality is Strong (`1`): When number of households in a geography is greater than or equal to 30 and 75% or more of the observations (estimated by `sum_products`) are from the county/place.
+
+-   Data quality is Adequate (`2`): When number of households in a geography is greater than or equal to 30 but only 35% to 74% of the observations are from the county/place.
+
+-   Data quality is Weak (`3`): When number of households in a geography is greater than or equal to 30 but less than 35% of the observations are from the county/place.
+
+-   Data quality is NA: When number of households in a geography is less than 30.
 
 
-Combining the above two guidelines for quality testing, the following measure of
-digital access quality is determined:
+Earlier, the `sum_products` variable was modified for county data. Let's check whether each unique county/place has a singular `sum_products` value associated to make sure we did not introduce any errors. This check will also help extract the `sum_products` associated with each county and place so that we can use these values for computing the quality metric.
 
- - Data quality is Strong (`1`): When number of households in a geography is 
-    greater than or equal to 30 and 75% or more of the observations are from 
-    the county/place.
- 
- - Data quality is Adequate (`2`): When number of households in a geography is 
-   greater than or equal to 30 but only 35% to 74% of the observations are from 
-   the county/place.
-  
- - Data quality is Weak (`3`): When number of households in a geography is 
-   greater than or equal to 30 but less than 35% of the observations are from 
-   the county/place.
-  
- - Data quality is NA: When number of households in a geography is less than 30.
- 
- USE CINETHH for DENOMINATOR being the universe and then 9 and 11 correspond to numerator. get rid of NA based on CINETHH
- Put some language together to add to the Git issue on this decision
- 
- Check whether each unique county/place has a singular `sum_products` value associated.
- 
 ```{r}
 #| label: check-sum-products-county
 
@@ -957,7 +1001,6 @@ print("Are there any counties with multiple `sum_products` values?")
 any(quality_county$distinct_sum_products > 1)
 ```
 
-
 ```{r}
 #| label: check-sum-products-place
 
@@ -980,9 +1023,7 @@ any(quality_place$distinct_sum_products > 1)
 
 ```
 
-
-Putting together the `sum_products` and effective sample size values together
-will help create the digital access quality variable.
+Putting together the `sum_products` and effective sample size values together will help create the digital access quality variable.
 
 ```{r}
 #| label: function-data-quality-metric
@@ -1035,10 +1076,9 @@ share_dig_acc_place_race_ethnicity <- create_quality_metric(share_dig_acc_place_
 
 ```
 
+## Evaluate Metric {#evaluate-metric}
 
-## Evaluate Metric {#sec-evaluate-metric}
-
-Check number of unique counties and places in the crosswalks.
+Check there are 3143 unique counties and 485 unique places in the pre-2022 crosswalks. (See the [Wiki](https://github.com/UI-Research/mobility-from-poverty/wiki/5_Geographies-&-Crosswalks) for more information )
 
 ```{r}
 
@@ -1061,12 +1101,12 @@ places_pre_2022 <- crosswalk_puma_place |>
                 arrange(state, place)
 ```
 
-Check whether counties present during digital access metric calculation for county 
-and place are the same ones present in the crosswalks.
+Check whether counties present during digital access metric calculation for county and place are the same ones present in the crosswalks as calculated in `counties_pre_2022` and `places_pre_2022`. This is done to verify that our final contains all the required geographies.
 
-```{r} 
+```{r}
 #| label: function-geography-equivalence
 
+#' This function asserts whether the unique counties/places present in the digital metric calculations are the same ones as the unique counties/places from crosswalk data frames (`counties_pre_2022`, `places_pre_2022`)
 check_geography_equivalence <- function(crosswalk, metric, geo) {
   return (assertthat::assert_that(
       all.equal(
@@ -1081,73 +1121,64 @@ check_geography_equivalence <- function(crosswalk, metric, geo) {
 ```
 
 
-```{r} 
+```{r}
 #| label: check-missing-counties
 
-print("Are all 3143 counties present for overall county metric?")
-check_geography_equivalence(counties_pre_2022, share_dig_acc_county, "county")
+# Check all 3143 counties and 385 counties are present in our respective metric data calculations 
 
-print("Are all 3143 counties present for race-ethnicity subgroup county metric?")
-check_geography_equivalence(counties_pre_2022, share_dig_acc_county_race_ethnicity
-                            , "county")
+stopifnot(check_geography_equivalence(counties_pre_2022, share_dig_acc_county, "county"))
 
-print("Are all 3143 counties present for income subgroup county metric?")
-check_geography_equivalence(counties_pre_2022, share_dig_acc_county_income
-                            , "county")
+stopifnot(check_geography_equivalence(counties_pre_2022, share_dig_acc_county_race_ethnicity
+                            , "county"))
 
-print("Are all 485 places present for overall place metric?")
-check_geography_equivalence(places_pre_2022, share_dig_acc_place, "place")
+stopifnot(check_geography_equivalence(counties_pre_2022, share_dig_acc_county_income
+                            , "county"))
 
-print("Are all 485 places present for race-ethnicity subgroup place metric?")
-check_geography_equivalence(places_pre_2022, share_dig_acc_place_race_ethnicity
-                            , "place")
+stopifnot(check_geography_equivalence(places_pre_2022, share_dig_acc_place, "place"))
 
-print("Are all 485 places present for income subgroup place metric?")
-check_geography_equivalence(places_pre_2022, share_dig_acc_place_income
-                            , "place")
+stopifnot(check_geography_equivalence(places_pre_2022, share_dig_acc_place_race_ethnicity
+                            , "place"))
 
+stopifnot(check_geography_equivalence(places_pre_2022, share_dig_acc_place_income
+                            , "place"))
 ```
 
-The above results suggest that all of the unique counties/places from the crosswalks 
-are present in the digital access metric calculation.
+The above results suggest that all of the unique counties/places from the crosswalks are present in the digital access metric calculation.
 
+Check whether required number of observations exist for each subgroup associated with county and place digital access metric.
 
-Check whether required number of observations exist for each subgroup associated
-with county and place digital access metric.
 
 ```{r}
-
 # For county race-ethnicity subgroup there should be 3143*4 observations
-
-# We observe missingness for some counties for the `Black, Non-Hispanic` subgroup type
 assertthat::are_equal((3143 * 4), nrow(share_dig_acc_county_race_ethnicity))
+# We observe missingness for some counties for the `Black, Non-Hispanic` subgroup type
 share_dig_acc_county_race_ethnicity |> 
       group_by(race_ethnicity) |> 
       summarise(n = n())
 
 # For county income subgroup there should be 3143*2 observations
 assertthat::are_equal((3143 * 2), nrow(share_dig_acc_county_income))
+
 share_dig_acc_county_income |> 
       group_by(income) |> 
       summarise(n = n())
 
 # For place race-ethnicity subgroup there should be 485*4 observations
 assertthat::are_equal((485 * 4), nrow(share_dig_acc_place_race_ethnicity))
+
 share_dig_acc_place_race_ethnicity |> 
       group_by(race_ethnicity) |> 
       summarise(n = n())
 
 # For place income subgroup there should be 485*2 observations
 assertthat::are_equal((485 * 2), nrow(share_dig_acc_place_income))
+
 share_dig_acc_place_income |> 
       group_by(income) |> 
       summarise(n = n())
 ```
 
-The above results suggest that there is missingness in digital access metric observation
-for `Black, Non-Hispanic` race-ethnicity subgroup data for some counties. Expected 
-number of observations are present in the data for county income subgroup, place 
-race-ethnicity subgroup, and place income subgroup.
+Expected number of observations are present in the data for county income subgroup, place race-ethnicity subgroup, and place income subgroup. However, the above results suggest that there is missingness in digital access metric observation for `Black, Non-Hispanic` race-ethnicity subgroup data for some counties. This missing data is likely the result of subgroup samples not being present in the data for some counties when we drill down to the subgroup level from the overall county level.  
 
 ```{r}
 
@@ -1160,8 +1191,28 @@ missing_counties <- anti_join(counties_pre_2022,
 
 ```
 
+Let's check whether the missing counties have any households with `RACE_ETHNICITY` subgroup "Black, Non-Hispanic" present in the county data before we calculated share of digital access at subgroup level.
 
-Add missing counties back to the metric data.
+```{r}
+
+# Check whether any rows exist in the data for "Black, Non-Hispanic" households for the missing counties 
+stopifnot( nrow( acs5_2021_county |> 
+                    rename(state = STATE, county = COUNTY) |>
+                    # Retain only missing counties in IPUMS county data
+                    semi_join(missing_counties, by = c("state", "county")) |>
+                    select(state, county, RACE_ETHNICITY) |>
+                    # Filter for the relevant `RACE_ETHNICITY` subgroup
+                    filter(RACE_ETHNICITY == "Black, Non-Hispanic") |>
+                    # Count the subgroup samples for each county
+                    group_by(state, county, RACE_ETHNICITY) |> summarize(n())
+                ) == 0
+          )
+
+```
+
+From the above test we can confirm that "Black, Non-Hispanic" subgroup does not exist for some counties which is why county race-ethnicity subgroup metric data is missing some values. 
+
+So, we add missing counties back to the county race-ethnicity subgroup metric data with `share_digital_access` value as N/A.
 
 ```{r}
 
@@ -1186,25 +1237,23 @@ share_dig_acc_county_race_ethnicity <-
 
 # Check data is not missing anymore
 assertthat::are_equal((3143 * 4), nrow(share_dig_acc_county_race_ethnicity))
+
 share_dig_acc_county_race_ethnicity |> 
       group_by(race_ethnicity) |> 
       summarise(n = n())
 
-check_geography_equivalence(counties_pre_2022, 
+stopifnot(check_geography_equivalence(counties_pre_2022, 
                             share_dig_acc_county_race_ethnicity, 
-                            "county")
+                            "county"))
 ```
-
 
 ## Final Data {#sec-final-data}
 
-The final output files will include digital access metric calculated for county 
-and place at the overall and subgroup level.
+The final output files will include digital access metric calculated for county and place at the overall and subgroup level.
 
-The subgroups level data files should include a row indicating the metric value
-for the overall population.
+The subgroups level data files should include a row indicating the metric value for the overall population. We need to add "All" subgroup to the race-ethnicity and income variables in the data.
 
-```{r} 
+```{r}
 #| label: function-overall-subgroup-row
 
 # Add row indicating `all` metric value corresponding to entire population for
@@ -1231,8 +1280,7 @@ create_all_subgroup <- function(overall_df, subgroup_df, subgroup) {
 
 ```
 
-
-```{r} 
+```{r}
 #| label: add-overall-subgroup-row-county
 
 # For county
@@ -1249,19 +1297,19 @@ share_dig_acc_county_income <- create_all_subgroup(
                                               "income")
 
 # Check all counties are present in updated subgroups data
-check_geography_equivalence(counties_pre_2022, 
+stopifnot(check_geography_equivalence(counties_pre_2022, 
                             share_dig_acc_county_race_ethnicity |> 
                                 filter(race_ethnicity == "All"),
-                            "county")
+                            "county"))
 
-check_geography_equivalence(counties_pre_2022, 
+stopifnot(check_geography_equivalence(counties_pre_2022, 
                             share_dig_acc_county_income |> 
                                 filter(income == "All"),
-                            "county")
+                            "county"))
 ```
 
 
-```{r} 
+```{r}
 #| label: add-overall-subgroup-row-place
 # For place
 
@@ -1277,34 +1325,34 @@ share_dig_acc_place_income <- create_all_subgroup(
                                               "income")
 
 # Check all places are present in updated subgroups data
-check_geography_equivalence(places_pre_2022, 
+stopifnot(check_geography_equivalence(places_pre_2022, 
                             share_dig_acc_place_race_ethnicity |> 
                                 filter(race_ethnicity == "All"),
-                            "place")
+                            "place"))
 
-check_geography_equivalence(places_pre_2022, 
+stopifnot(check_geography_equivalence(places_pre_2022, 
                             share_dig_acc_place_income |> 
                                 filter(income == "All"),
-                            "place")
+                            "place"))
 ```
 
-The final data files need to be created according to UMF guidelines mentioned
-in the GitHub Wiki:
+The final data files need to be created according to UMF guidelines mentioned in the GitHub Wiki:
 
-[2_Data Structure and Expectations](https://github.com/UI-Research/mobility-from-poverty/wiki/2_Data-Structure-and-Expectations%E2%80%AF)
-[9_Final File Output](https://github.com/UI-Research/mobility-from-poverty/wiki/9_Final-File-Output)
-
+[2_Data Structure and Expectations](https://github.com/UI-Research/mobility-from-poverty/wiki/2_Data-Structure-and-Expectations%E2%80%AF) [9_Final File Output](https://github.com/UI-Research/mobility-from-poverty/wiki/9_Final-File-Output)
 
 ```{r}
 #| label: function-final-data-export
 
-# Function to create the final data csv file
-# `subgroups` is a indicator variable for the presence of subgroup in the final data
-# `subgroup_var` is a character variable for the name of the subgroup in the data 
-# and can take values "race_ethnicity" and "income", defaults to NA
-# `geo` indicates whether data is for "county" or "place"
+#' @description Function to create the final data
+#' 
+#' @param `subgroups` is a indicator variable for the presence of subgroup in the final data
+#' @param `subgroup_var` is a character variable for the name of the subgroup in the data 
+#'  and can take values "race_ethnicity" and "income", defaults to NA
+#' @param `geo` indicates whether data is for "county" or "place"
+#' 
+#' @return Data frame with the final data formatted
 
-create_final_data_file <- function(data, subgroups, subgroup_var = NA, geo) {
+create_final_data <- function(data, subgroups, subgroup_var = NA, geo) {
 
     if (!subgroups) {
         
@@ -1337,8 +1385,13 @@ create_final_data_file <- function(data, subgroups, subgroup_var = NA, geo) {
                 ) |>
                   select(year, state, geo, subgroup, subgroup_type, 
                           share_digital_access, share_digital_access_quality)
+    }
 
-      file_name <- paste0("digital_access_", geo, "_", subgroup_var, 
+    return (data)
+}
+
+```
+file_name <- paste0("digital_access_", geo, "_", subgroup_var, 
                             "_longitudinal_", data$year[1], ".csv")
     }
   
@@ -1347,31 +1400,31 @@ create_final_data_file <- function(data, subgroups, subgroup_var = NA, geo) {
   
   # Save the csv file
   write.csv(data, file_path, row.names = FALSE)
- }
-
-```
-
+return (data)
 
 ```{r}
 #| label: generate-final-data
 
 # For county
-create_final_data_file(share_dig_acc_county, FALSE, geo = "county")
-create_final_data_file(share_dig_acc_county_race_ethnicity, TRUE, 
-                        "race_ethnicity", "county")
-create_final_data_file(share_dig_acc_county_income, TRUE, "income", "county")
+final_share_dig_acc_county <- create_final_data(share_dig_acc_county, FALSE, geo = "county")
+
+final_share_dig_acc_county_race_ethnicity <- create_final_data(share_dig_acc_county_race_ethnicity, 
+                                                                      TRUE, "race_ethnicity", "county")
+
+final_share_dig_acc_county_income <- create_final_data(share_dig_acc_county_income, 
+                                                              TRUE, "income", "county")
 
 # For place
-create_final_data_file(share_dig_acc_place, FALSE, geo = "place")
-create_final_data_file(share_dig_acc_place_race_ethnicity, TRUE, 
-                        "race_ethnicity", "place")
-create_final_data_file(share_dig_acc_place_income, TRUE, "income", "place")
+final_share_dig_acc_place <- create_final_data(share_dig_acc_place, FALSE, geo = "place")
+
+final_share_share_dig_acc_place_race_ethnicity <- create_final_data(share_dig_acc_place_race_ethnicity,
+                                                                          TRUE, "race_ethnicity", "place")
+
+final_share_dig_acc_place_income <- create_final_data(share_dig_acc_place_income, TRUE, "income", "place")
 
 ```
 
-After generating the final data files in folder `08_Education/data/final`, 
-we need to evaluate the outputs using the `evaluate_final_data` function per 
-UMF [guidelines](https://github.com/UI-Research/mobility-from-poverty/wiki/8_Final-Data-Expectations-Form%E2%80%AF).
+After generating the final data files in folder `08_Education/data/final`, we need to evaluate the outputs using the `evaluate_final_data` function per UMF [guidelines](https://github.com/UI-Research/mobility-from-poverty/wiki/8_Final-Data-Expectations-Form%E2%80%AF).
 
 ```{r, eval=FALSE}
 #| label: final-data-evaluation-county
@@ -1383,11 +1436,25 @@ overall_county <- read_csv(
         ,show_col_types = FALSE)
 
 evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_overall_county.csv",
-    data = overall_county, geography = "county",
+    data = final_share_dig_acc_county, geography = "county",
     subgroups = FALSE, confidence_intervals = FALSE)
 
 
+race_ethnicity_county <- read_csv(
+        here::here("08_Education/data/final/digital_access_county_race_ethnicity_longitudinal_2021.csv")
+        ,show_col_types = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_race_ethnicity_county.csv",
+    data = race_ethnicity_county, geography = "county",
+    subgroups = TRUE, confidence_intervals = FALSE)
+
+overall_county <- read_csv(
+        here::here("08_Education/data/final/digital_access_county_income_longitudinal_2021.csv")
+        ,show_col_types = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_income_county.csv",
+    data = overall_county, geography = "county",
+    subgroups = TRUE, confidence_intervals = FALSE)
 
 
 ```
-
