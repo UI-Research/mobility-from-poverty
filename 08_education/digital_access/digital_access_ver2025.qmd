@@ -52,7 +52,7 @@ librarian::shelf(
   )
 set_urbn_defaults(style = "print")
 
-source(here::here("functions", "testing", "evaluate_final_data_4.R"))
+source(here::here("functions", "testing", "evaluate_final_data.R"))
 
 ```
 
@@ -1251,7 +1251,7 @@ stopifnot(check_geography_equivalence(counties_pre_2022,
 
 The final output files will include digital access metric calculated for county and place at the overall and subgroup level.
 
-The subgroups level data files should include a row indicating the metric value for the overall population. We need to add "All" subgroup to the race-ethnicity and income variables in the data.
+The subgroups level data files should include a row indicating the metric value for the overall population. We need to add "All" subgroup to the race-ethnicity and income variables in the data. This data will be extracted from the overall final data and appended to the subgroup data.
 
 ```{r}
 #| label: function-overall-subgroup-row
@@ -1279,6 +1279,7 @@ create_all_subgroup <- function(overall_df, subgroup_df, subgroup) {
 }
 
 ```
+
 
 ```{r}
 #| label: add-overall-subgroup-row-county
@@ -1336,7 +1337,7 @@ stopifnot(check_geography_equivalence(places_pre_2022,
                             "place"))
 ```
 
-The final data files need to be created according to UMF guidelines mentioned in the GitHub Wiki:
+The final data files need to be formatted according to UMF guidelines mentioned in the GitHub Wiki:
 
 [2_Data Structure and Expectations](https://github.com/UI-Research/mobility-from-poverty/wiki/2_Data-Structure-and-Expectations%E2%80%AF) [9_Final File Output](https://github.com/UI-Research/mobility-from-poverty/wiki/9_Final-File-Output)
 
@@ -1363,8 +1364,6 @@ create_final_data <- function(data, subgroups, subgroup_var = NA, geo) {
                 rename(share_digital_access_quality = quality_digital_access) |>
                 select(year, state, geo, share_digital_access, share_digital_access_quality)
       
-      file_name <- paste0("digital_access_", geo, "_all_longitudinal_", 
-                            data$year[1], ".csv")
       }
       
     else {
@@ -1383,7 +1382,7 @@ create_final_data <- function(data, subgroups, subgroup_var = NA, geo) {
                                     (subgroup == "All") ~ "all",
                                     TRUE ~ as.character({{subgroup_var}}) )
                 ) |>
-                  select(year, state, geo, subgroup, subgroup_type, 
+                  select(year, state, geo, subgroup_type, subgroup, 
                           share_digital_access, share_digital_access_quality)
     }
 
@@ -1391,16 +1390,7 @@ create_final_data <- function(data, subgroups, subgroup_var = NA, geo) {
 }
 
 ```
-file_name <- paste0("digital_access_", geo, "_", subgroup_var, 
-                            "_longitudinal_", data$year[1], ".csv")
-    }
-  
-  # Define file path to save the final data file
-  file_path <- here::here("08_education", "data", "final", file_name)
-  
-  # Save the csv file
-  write.csv(data, file_path, row.names = FALSE)
-return (data)
+
 
 ```{r}
 #| label: generate-final-data
@@ -1417,44 +1407,113 @@ final_share_dig_acc_county_income <- create_final_data(share_dig_acc_county_inco
 # For place
 final_share_dig_acc_place <- create_final_data(share_dig_acc_place, FALSE, geo = "place")
 
-final_share_share_dig_acc_place_race_ethnicity <- create_final_data(share_dig_acc_place_race_ethnicity,
+final_share_dig_acc_place_race_ethnicity <- create_final_data(share_dig_acc_place_race_ethnicity,
                                                                           TRUE, "race_ethnicity", "place")
 
 final_share_dig_acc_place_income <- create_final_data(share_dig_acc_place_income, TRUE, "income", "place")
 
 ```
 
-After generating the final data files in folder `08_Education/data/final`, we need to evaluate the outputs using the `evaluate_final_data` function per UMF [guidelines](https://github.com/UI-Research/mobility-from-poverty/wiki/8_Final-Data-Expectations-Form%E2%80%AF).
+After generating the final data frames, we need to evaluate the outputs using the `evaluate_final_data` function per UMF [guidelines](https://github.com/UI-Research/mobility-from-poverty/wiki/8_Final-Data-Expectations-Form%E2%80%AF).
 
 ```{r, eval=FALSE}
 #| label: final-data-evaluation-county
 
-# For county files
-
-overall_county <- read_csv(
-        here::here("08_Education/data/final/digital_access_county_all_longitudinal_2021.csv")
-        ,show_col_types = FALSE)
+# For county data
 
 evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_overall_county.csv",
     data = final_share_dig_acc_county, geography = "county",
     subgroups = FALSE, confidence_intervals = FALSE)
 
-
-race_ethnicity_county <- read_csv(
-        here::here("08_Education/data/final/digital_access_county_race_ethnicity_longitudinal_2021.csv")
-        ,show_col_types = FALSE)
-
 evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_race_ethnicity_county.csv",
-    data = race_ethnicity_county, geography = "county",
+    data = final_share_dig_acc_county_race_ethnicity, geography = "county",
     subgroups = TRUE, confidence_intervals = FALSE)
 
-overall_county <- read_csv(
-        here::here("08_Education/data/final/digital_access_county_income_longitudinal_2021.csv")
-        ,show_col_types = FALSE)
-
 evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_income_county.csv",
-    data = overall_county, geography = "county",
+    data = final_share_dig_acc_county_income, geography = "county",
     subgroups = TRUE, confidence_intervals = FALSE)
 
 
 ```
+
+
+```{r, eval=FALSE}
+#| label: final-data-evaluation-place
+
+# For place data
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_overall_place.csv",
+    data = final_share_dig_acc_place, geography = "place",
+    subgroups = FALSE, confidence_intervals = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_race_ethnicity_place.csv",
+    data = final_share_dig_acc_place_race_ethnicity, geography = "place",
+    subgroups = TRUE, confidence_intervals = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_digital_access_income_place.csv",
+    data = final_share_dig_acc_place_income, geography = "place",
+    subgroups = TRUE, confidence_intervals = FALSE)
+
+
+```
+
+
+Lastly, after successful evaluation we save the final data files in folder `08_Education/data/final`.
+
+```{r}
+#| label: function-save-final-data
+
+#' @description Function to save the final data files
+#' 
+#' @param `subgroups` is a indicator variable for the presence of subgroup in the final data
+#' @param `subgroup_var` is a character variable for the name of the subgroup in the data 
+#'  and can take values "race_ethnicity" and "income", defaults to NA
+#' @param `geo` indicates whether data is for "county" or "place"
+#' 
+
+save_final_data <- function(data, subgroups, subgroup_var = NA, geo) {
+  
+  if (!subgroups) {
+      
+      file_name <- paste0("digital_access_", geo, "_all_longitudinal_", 
+                            data$year[1], ".csv")
+  } else {
+  
+      file_name <- paste0("digital_access_", geo, "_", subgroup_var, 
+                            "_longitudinal_", data$year[1], ".csv")
+    }
+  
+  # Define file path to save the final data file
+  file_path <- here::here("08_education", "data", "final", file_name)
+  
+  # Save the csv file
+  write.csv(data, file_path, row.names = FALSE)
+
+}
+
+```
+
+
+```{r}
+
+#| label: save-final-data
+
+# For county
+save_final_data(final_share_dig_acc_county, FALSE, geo = "county")
+
+save_final_data(final_share_dig_acc_county_race_ethnicity, TRUE, "race_ethnicity", "county")
+
+save_final_data(final_share_dig_acc_county_income, TRUE, "income", "county")
+
+# For place
+save_final_data(final_share_dig_acc_place, FALSE, geo = "place")
+
+save_final_data(final_share_dig_acc_place_race_ethnicity, TRUE, "race_ethnicity", "place")
+
+save_final_data(final_share_dig_acc_place_income, TRUE, "income", "place")
+
+```
+
+
+
+
