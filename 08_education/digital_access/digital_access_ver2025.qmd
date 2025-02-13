@@ -668,6 +668,8 @@ acs5_2021_place |>
 
 Using the weighted digital access measure, we will compute the county and place level metric. The digital access metric will represent the number of households that have digital access divided by the total number of households for a given geography at the county/place level. The numerator represents the households which have access to high speed internet and a tablet/laptop computer. The denominator represents all the households that do (either with subscription or without) and do not have access to the internet.
 
+Please note that when calculating share of digital access, the denominator depends on the universe of observation variable `CINETHH` so it will also include the households (through `HHWT`) for which `HHWTD_DIGITAL_ACCESS` is `NA`. But the numerator depends on a composite variable (`DIGITAL_ACCESS`) referencing `CIHISPEED` so it will not take into account households where `HHWTD_DIGITAL_ACCESS` is `NA`.
+
 ### County
 
 ```{r}
@@ -838,7 +840,7 @@ rm(all_df)
 The digital access metric should have a value of `NA` when effective sample size is less than 30. Let's verify this.
 
 ```{r}
-#| label: metric-range-checks
+#| label: metric-value-checks
 
 # Check that if effective sample size is less than 30, then share of digital access only has NA values 
 stopifnot( !any( 
@@ -1073,6 +1075,57 @@ share_dig_acc_place_income <- create_quality_metric(share_dig_acc_place_income,
 
 share_dig_acc_place_race_ethnicity <- create_quality_metric(share_dig_acc_place_race_ethnicity, 
                                               quality_place, "place")
+
+```
+
+Let's verify that the assigned data quality values reflect the criteria for effective sample size and `sum_products`.
+
+```{r}
+#| label: check-data-quality-values
+
+# Function to check whether the quality metric follows the data quality criteria defined above based on effective sample size and value for `sum_products`
+
+check_data_quality_assignment <- function(data) {
+
+stopifnot(all(
+            data$effective_sample_count >= 30 | 
+            is.na(data$quality_digital_access)
+))
+
+stopifnot( !any(
+           data$effective_sample_count >= 30 &
+           data$sum_products >= 0.75 &  
+           data$quality_digital_access != 1
+))
+
+stopifnot( !any(  
+           data$effective_sample_count >= 30 &
+           data$sum_products >= 0.35 & 
+           data$sum_products < 0.75 &
+           data$quality_digital_access != 2
+))
+
+stopifnot( !any(  
+           data$effective_sample_count >= 30 &
+           data$sum_products < 0.35 &
+           data$quality_digital_access != 3
+))
+
+}
+
+# For counties
+check_data_quality_assignment(share_dig_acc_county) 
+
+check_data_quality_assignment(share_dig_acc_county_income) 
+
+check_data_quality_assignment(share_dig_acc_county_race_ethnicity) 
+
+# For places
+check_data_quality_assignment(share_dig_acc_place)
+
+check_data_quality_assignment(share_dig_acc_place_income) 
+
+check_data_quality_assignment(share_dig_acc_place_race_ethnicity)
 
 ```
 
