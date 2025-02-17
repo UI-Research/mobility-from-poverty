@@ -295,7 +295,7 @@ bysort year: assert homeless_share==-1 if homeless_quality==-1
 	foreach group in homeless {
 	foreach var in count count_lb count_ub quality share {
 	replace `group'_`var' = "NA" if  `group'_`var'=="-1"
-	replace `group'_`var' = "" if  `group'_`var'=="."
+	replace `group'_`var' = "NA" if  `group'_`var'=="."
 	}
 	}
 
