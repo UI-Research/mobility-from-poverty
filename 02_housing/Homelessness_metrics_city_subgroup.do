@@ -465,7 +465,7 @@ bysort year: tab `var'_share if `var'_quality==-1
 foreach group in homeless black white hispanic other {
 	foreach var in count count_lb count_ub quality share {
 	replace `group'_`var' = "NA" if  `group'_`var'=="-1"
-	replace `group'_`var' = "" if  `group'_`var'=="."
+	replace `group'_`var' = "NA" if  `group'_`var'=="."
 	}
 	}
 
