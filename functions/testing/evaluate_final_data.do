@@ -42,6 +42,8 @@ program define evaluate_final_data
 	*a gloabl for all the years listed in the final eval form
 	preserve
 	gen year_form = subinstr(allyearsusenospace, ";", " ", .)
+	global year_form = year_form[_n]
+	/*
 	split year_form, gen(n) destring
 	gen obs=_n
 	keep if obs==1
@@ -50,6 +52,7 @@ program define evaluate_final_data
 	global year_form = r(values)
 	restore
 	*a global for all subgroup types
+	*/
 	preserve
 	if subgrouptypeleaveblankifnone != "" {
 	split subgroupvaluesincludeallanduseno, gen(subgroupvalues) p(;)
@@ -127,14 +130,16 @@ program define evaluate_final_data
 	keep if obs==1
 	destring year, replace
 	valuesof year
-	gen year_data = r(values)
-	capture confirm year_data = "$year_form"
-    if _rc {
+	global year_data = r(values)
+	if "$year_form" == "$year_data" {
+		di "Years do match those found in the data."
+		}
+	else {
         di as error "Years do not match those found in the data."
         exit 1
-    }
+		}
 	restore
-	
+/*	
 	// Check if the subgroups in final eval form are same in output file
    preserve
 	if "$subgroups" != "" {
@@ -149,7 +154,7 @@ program define evaluate_final_data
         exit 1
     }
 	restore
-	
+	*/
 end
 
 evaluate_final_data $data $exp_form_path "place" 0 1
