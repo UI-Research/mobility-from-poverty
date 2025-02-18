@@ -60,12 +60,12 @@ expected_subgroups <- exp_form %>%
   
 }
 
-#Pull year list from expectation form
-expected_years <- exp_form %>% 
-  pull(all_years_use_no_space) %>% 
-  strsplit(split = ";") %>% 
-  as.numeric() %>% 
-  .[[1]]
+  # Pull year list from expectation form
+  expected_years <- exp_form %>%
+    pull(all_years_use_no_space) %>%
+    strsplit(split = ";") %>%
+    .[[1]] %>%
+    as.numeric()
 
 # check that the file has the necessary columns
 # check that the first few columns are year, state
