@@ -12,20 +12,23 @@ execute:
   warning: false
 editor_options: 
   chunk_output_type: console
+params:
+  year: "2021"
 ---
 
 *Program for the creation of the Opportunity for Income Predictor at the place level for subgroups*
 
-ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023 and 2025.
 
 Primary data derived from the IPUMS API.
 
 Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
-*User warnings* 
+*Internal users* If you are an internal tester using the AWS feature of this program remember to enter the passkey into your environment using Sys.setenv(). Authentication steps are nicely explained in this [blog](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/). You will have to request access to the access key.
 
-    + The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with large computing power to run this.
-     + Please check that no folders in the filepath that you have cloned this repostiory to include the acronym "UMF" - this will throw an error from the extract_ipums function. To check your file path you can use the function here::here().
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with significant computing power to run this.
+
+Please check that no folders in the filepath that you have cloned this repository to include the acronym "UMF" - this will throw an error from the extract_ipums_aws function. To check your file path you can use the function here::here().
 
 ## Housekeeping
 
@@ -46,25 +49,61 @@ theme_set(theme_minimal())
 # DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
 #set_ipums_api_key("Your KEY", save = TRUE)
 
-source(here::here("functions", "API", "extract_ipums.R"))
-source(here::here("functions", "API", "ipums_repwt_household.R"))
+s3_dir <- "metric_name/data/acs"
+my_bucket <- "mobility-from-poverty-test"
+
+source(here::here("functions", "API", "extract_ipums_aws.R"))
+source(here::here("functions", "API", "ipums_repwt_household_aws.R"))
+source(here::here("functions", "testing", "evaluate_final_data_srv_quantile.R"))
 source(here::here("01_financial-well-being", "R", "finalize_metric.R"))
 source(here::here("01_financial-well-being", "R", "calc_income_quantiles.R"))
 source(here::here("01_financial-well-being", "R", "calc_income_quantiles_subgroup.R"))
 ```
 
+Date of IPUMS extract. Denote the latest date that the IPUMS extract was changed and pulled both for the overall data and the repweights. The recommended date notation format is "mm_dd_yy". 
+
+For internal reviewers, if you plan to utilize AWS keep this date as it was last entered by the metric lead unless you intend to change the extract.
+
+```{r}
+ipums_extract_date <- "01_13_25"
+ipums_repwt_extract_date <- "01_13_25"
+```
+
+If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
+
+```{r}
+single_year_update = "No"
+```
+
+Define existing intermediate years and read them into function to combine. 
+
+```{r}
+existing_years <- c("2014", "2016", "2018", "2021")
+```
+
 ## Read ACS Data
+
+Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
+
+```{r}
+
+acs_surveys <- list(paste0("us", params$year, "c"))
+
+```
 
 ### Household-Level Data
 
-Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. Currently we are including two years of 5-year data (2018c and 2021c). 5-year 2022 data will be added pending its release.
+Run extract. This will trigger an import process through IPUMS. It is encouraged to add detail to your extract description so it is clear what the extract was used for.
+
+Date of latest extract noted above. If a new IPUMS pull is required the extract_date argument below must be updated to track that new data was downloaded. The extract only needs to be updated if changes or additions are required from the IPUMS pull (such as new dates or variables). 
 
 ```{r}
-acs <- extract_ipums(
-  extract_name = "umf_data_18_22_5year",
-  extract_description = "Microdata pull for Mobility Metric Predictors.
-  American Community Survey, subgroups, years 2018, 2021 (5-year).",
-  survey = list("us2018c", "us2021c")
+acs <- extract_ipums_aws(
+   extract_name = paste0("umf_data_", params$year, "_preschool"),
+    extract_date = ipums_extract_date,
+  extract_description = paste0("Microdata pull for Mobility Metric Predictors.
+  American Community Survey, subgroups,", params$year, "(5-year)."),
+  survey = acs_surveys
 )
 
 ```
@@ -86,13 +125,15 @@ count(acs_hh, sample)
 ### Replicate Weights 
 
 Read in household-level replicate weights for the entire population. These will be used in creating standard errors for the income quantile calculation. 
+
 ```{r}
-repwts <- ipums_repwt_household(
-  extract_name = "household_replicate_weights_5year",
-  extract_description = "Household replicate weights for Income Opportunities 
-  Metric Predictors. American Community Survey, years 2018 and 2021 
-  (5-year).",
-  survey = list("us2018c", "us2021c")
+
+repwts <- ipums_repwt_household_aws(
+  extract_name = paste0("household_replicate_weights_", params$year, "_5year"),
+  extract_date = ipums_repwt_extract_date,
+  extract_description = paste0("Household replicate weights for Income Opportunities 
+  Metric Predictors. American Community Survey,", params$year, "(5-year)."),
+  survey = acs_surveys
 )  %>% 
   select(-cbserial, -cbpernum)
 
@@ -298,6 +339,39 @@ acs_clean %>%
   scale_x_discrete(labels = label_wrap(10))
 ```
 
+### Create gender variable
+
+Evaluate the values in the gender variable.
+
+* IPUMS documented values for SEX: 
+    + 1 Male
+    + 2 Female
+    + 9 Missing/blank 
+
+Look at the distribution of values for the sex variable. There are no missing values in the data and the records are reported in an appropriate format.
+```{r}
+acs_clean %>% 
+  count(sex) %>% 
+  ggplot(mapping = aes(x = sex, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("sex, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Sex",
+       y = NULL)+
+  scale_x_discrete(labels = label_wrap(10))
+```
+
+Rename the variable to subgroup_gender. The variable terms remain the same but any values outside of Male and Female are mutated to NA character variables. Though there are no missing values in the current data let's leave this in the case of future ACS surveys including missing values for this variable. 
+
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(subgroup_gender = case_when(sex == "Male" ~ "Male",
+                                     sex == "Female" ~ "Female",
+                                     TRUE ~ NA_character_))
+```
+
 ## Crosswalk
 
 Read in the PUMA to place crosswalk file. This file is created by the program generate_puma_place_crosswalks.rmd in the geographic-crosswalks folder. 
@@ -490,7 +564,7 @@ results_all_expand <- expanded_place_list %>%
   left_join(results_all, by = c("year", "statefip", "place")) %>% 
   filter(!is.na(year))
 
-stopifnot(nrow(results_all_expand) == 486 * 2)
+stopifnot(nrow(results_all_expand) == 486 * n_distinct(results_all_expand$year))
 ```
 
 ## Create income metric: subgroups
@@ -567,7 +641,80 @@ results_race_ethnicity_expanded <- expanded_place_list_race  %>%
   mutate(subgroup_type = "race-ethnicity") %>% 
   rename(subgroup = subgroup_race)
 
-stopifnot(nrow(results_race_ethnicity_expanded) == 486 * 2 * 4)
+stopifnot(nrow(results_race_ethnicity_expanded) == 486 * n_distinct(results_race_ethnicity_expanded$year) * 4)
+```
+
+## Gender
+
+To save time when processing the metric, calculate the effective sample count for each gender group in each place, defined as the sum of the `afact` variable. This is used to create a cutoff for data quality based on the actual number of survey records being used in the calculation. We will not include counties with less than 30 effective samples.
+
+```{r}
+#| label: gender-effective-samples
+acs_gender <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, place, subgroup_gender) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+# calculate the number of statistics after suppressing values
+acs_gender %>%
+  group_by(year, sample, crosswalk_period, statefip, place, subgroup_gender) %>%
+  summarise(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarise(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+```
+
+Create the income metric for the race/ethnicity subgroup. 
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-gender
+acs_gender <- acs_gender %>% 
+  filter(effective_sample >= 30)
+```
+
+### Calculate metric
+
+```{r}
+#| label: calc-gender
+results_gender <- acs_gender %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_income_quantiles_subgroup(.data = .x,
+                                      .geo_level = place,
+                                      .subgroup = subgroup_gender))
+```
+
+```{r}
+#| label: finalize-gender
+results_gender <- finalize_metric(results_gender)
+```
+
+```{r}
+rm(acs_gender)
+```
+
+### Add Suppressed Rows to Data
+
+Create expanded version for gender.
+```{r}
+expanded_place_list_gender <- place_list %>% 
+  left_join(results_gender, by = c("statefip", "place"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, place)) %>% 
+  expand(year, geoid, subgroup_gender) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         place = str_sub(geoid, 3, 7)) 
+
+results_gender_expanded <- expanded_place_list_gender  %>% 
+  left_join(results_gender, by = c("year", "statefip", "place", "subgroup_gender")) %>% 
+  filter(!is.na(year), !is.na(subgroup_gender)) %>% 
+  mutate(subgroup_type = "gender") %>% 
+  rename(subgroup = subgroup_gender)
+
+stopifnot(nrow(results_gender_expanded) == 486 * n_distinct(results_gender_expanded$year) * 2)
 ```
 
 ## Data Quality Flags
@@ -579,13 +726,13 @@ First combine the subgroup data sets.
 metrics_income_sub <- results_all_expand %>% 
   mutate(subgroup = "All",
          subgroup_type = "all") %>% 
-  bind_rows(results_race_ethnicity_expanded)
+  bind_rows(results_race_ethnicity_expanded) %>%
+  bind_rows(results_gender_expanded)
 ```
-
 
 Add a flag for data quality, this is a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst.
 
-The data quality flag is based on the allocation of the PUMAs that make up a county, which comes from the crosswalk file, and the effective sample size of the county. When the effective sample size is less than 30 all records for that county will be reported as `NA`, including `pctl_income_quality`.  
+The data quality flag is based on the allocation of the PUMAs that make up a place, which comes from the crosswalk file, and the effective sample size of the place. When the effective sample size is less than 30 all records for that place will be reported as `NA`, including `pctl_income_quality`.  
 
 ```{r}
 metrics_income_sub <- metrics_income_sub %>% 
@@ -608,7 +755,68 @@ metrics_income_sub <- metrics_income_sub %>%
   )
 ```
 
+### Write out intermediate data
+
+```{r}
+if(isTRUE(bucket_exists(bucket = my_bucket))){
+ if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_income_sub", "_", params$year, ".csv"), bucket = my_bucket)){
+    
+    # write file to S3
+    tmp <- tempfile()
+    on.exit(unlink(tmp))
+    write_csv(metrics_income_sub, file = tmp)
+    
+    # put object with an upload progress bar
+    put_object(tmp, object = paste0(s3_dir, "/metrics_income_sub", "_", params$year, ".csv"), bucket = my_bucket, 
+               show_progress = TRUE, multipart = FALSE)
+    
+  }
+}
+```
+
+If updating a single year the program ends here. To see validation results re-run with selection that all years of intermediate data are available.
+
+```{r}
+if(single_year_update == "Yes"){
+  knitr::knit_exit()
+}
+```
+
 ## Validation
+
+Validate and test the results.
+
+### Read intermediate files
+
+Read in the intermediate files created for each ACS year available.  
+
+Function reads the CSVs from intermediate folder or from AWS if the user has access.
+
+```{r}
+read_intermediate <- function(year, file_type){
+  
+  if(isTRUE(bucket_exists(bucket = my_bucket))) {
+    
+    s3read_using(FUN=read_csv, 
+                 bucket = my_bucket, 
+                 object=paste0(s3_dir, "/metrics_income_", file_type, "_", year, ".csv"))
+  
+  }
+  else{
+  
+  read_csv(paste0(here::here("01_financial-well-being", "data", "intermediate", "income"), 
+                  "/", "metrics_income_", file_type, "_", year, ".csv"))
+  }
+  
+}
+```
+
+```{r}
+metrics_income_sub <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
+                                                                          file_type = "sub"))
+```
+
+### Summaries and Visualization
 
 Summarize the predictors for the 5-year data.
 
@@ -619,25 +827,25 @@ metrics_income_sub %>%
 
 ```
 
-Look at distributions of income percentiles by place for all (2021).
+Look at distributions of income percentiles by place for all (latest year of data).
 
 ```{r}
 metrics_income_sub %>% 
-  filter(year == 2021, subgroup == "All") %>% 
+  filter(year == params$year, subgroup == "All") %>% 
   select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
   ggplot(aes(x = percentile, color = income, fill = income)) +
   geom_density(alpha = 0.15) +
   theme_minimal() +
-  ggtitle("Income percentiles (5-year data)") +
+  ggtitle(paste0("Income percentiles", params$year, "(5-year data)")) +
   ylab("Density")
   
 ```
 
-Break out distributions by subgroup (2021).
+Break out distributions by subgroup (latest year).
 ```{r}
 metrics_income_sub %>% 
-  filter(year == 2021, subgroup_type == "race-ethnicity") %>%
+  filter(year == params$year, subgroup_type == "race-ethnicity") %>%
   select(subgroup, place, pctl_income_20, pctl_income_50, pctl_income_80) %>% 
   pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), 
                names_to = "income", values_to = "percentile") %>% 
@@ -645,7 +853,7 @@ metrics_income_sub %>%
   geom_density(alpha = 0.15) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Income percentiles, race/ethnicity, by place 2021 (5-year data)",
+    title = paste0("Income percentiles, race/ethnicity, by place", params$year, "(5-year data)"),
     y = "Density"
   ) +
   theme_minimal()
@@ -670,7 +878,7 @@ metrics_income_sub %>%
   count()
 ```
 
-## Export 
+## Final Test and Export
 
 Rename state.
 
@@ -695,14 +903,43 @@ metrics_income_sub  <- metrics_income_sub  %>%
          pctl_income_80_quality)
 ```
 
-Export as CSV.
+Run file through evaluate final data function.
+
+Gender 
 
 ```{r}
 
-metrics_income_sub %>% 
+metrics_income_gender <- metrics_income_sub %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+evaluate_final_data(data = metrics_income_gender, exp_form_path = here::here("10a_final-evaluation", "evaluation_form_income_gender_place.csv"), geography = "place", subgroups = TRUE, confidence_intervals = TRUE)
+
+```
+
+Race-ethnicity
+
+```{r}
+metrics_income_race <- metrics_income_sub %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+evaluate_final_data(data = metrics_income_race, exp_form_path = here::here("10a_final-evaluation", "evaluation_form_income_race_eth_place.csv"), geography = "place", subgroups = TRUE, confidence_intervals = TRUE)
+```
+
+
+### Export as CSVs.
+
+```{r}
+
+metrics_income_gender %>% 
   head(10)
 
-write_csv(metrics_income_sub, 
+write_csv(metrics_income_gender, 
+          here::here("01_financial-well-being", "final", "metrics_income_place_gender_longitudinal.csv"))
+
+metrics_income_race %>% 
+  head(10)
+
+write_csv(metrics_income_race, 
           here::here("01_financial-well-being", "final", "metrics_income_place_race-ethnicity_longitudinal.csv"))
 
 ```
