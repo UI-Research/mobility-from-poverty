@@ -153,7 +153,8 @@ copy "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/S
 		*Then reselect school year: 2022-2023, population: homeless students, and level: local education agency
 		*Make sure data group = 655, which refers to "Homeless students enrolled"
 		*Click "download data" and save to raw folder
-
+		*This csv can be found in the Metrics_2025_round box folder
+		
 	*import csvs
 	*2019
 	import delimited "raw/SY1920_FS118_DG655_LEA.csv", clear
