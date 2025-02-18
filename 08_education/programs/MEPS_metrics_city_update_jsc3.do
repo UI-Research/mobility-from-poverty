@@ -102,6 +102,7 @@ save "raw\ccd_dir_2014-${year}.dta", replace
 	educationdata using "school meps", sub(year=2014:${year}) csv clear
 	save "raw\ccd_meps_2014-${year}.dta", replace
 	*/
+	*This raw dataset is currently saved on Box in the Metrics_2025_round folder
 
 *********************
 *Merge Data together
