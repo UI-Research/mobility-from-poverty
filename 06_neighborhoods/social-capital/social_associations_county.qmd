@@ -61,6 +61,7 @@ Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, a
 **Note:** Running the chunk below can take some time, avoid re-running it to 
 prevent hitting API rate limits. The file is exported and read in once again
 to avoid re-running API requests.
+
 ```{r}
 #| label: get-social-organization-data
 
@@ -101,9 +102,22 @@ fetch_cbp_data <- function(year, naics_codes_to_keep) {
 years <- c(2014:2022)
 naics_codes_to_keep <- c("813410", "713950", "713910", "713940", "711211", "813110", "813940", "813930", "813910", "813920")
 
-cbp_county <- map(years, ~ fetch_cbp_data(.x, naics_codes_to_keep)) %>%
-  compact() %>% # Remove NULLs from failed requests
-  list_rbind() # Combine into a single tibble
+data_dir <- here("06_neighborhoods", "social-capital", "data")
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
+
+cbp_county <- map(years, function(yr) {
+  file_path <- file.path(data_dir, paste0("cbp_county_", yr, ".csv"))
+  if (file.exists(file_path)) {
+    message("Loading local data for year ", yr)
+    read_csv(file_path, show_col_types = FALSE)
+  } else {
+    message("Fetching data for year ", yr)
+    data_year <- fetch_cbp_data(yr, naics_codes_to_keep)
+    if (!is.null(data_year)) write_csv(data_year, file_path)
+    data_year
+  }
+}) %>% compact() %>% bind_rows()
+
 
 # Test if all expected years are present in the resulting data
 test_years <- cbp_county %>%

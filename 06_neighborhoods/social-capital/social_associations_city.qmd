@@ -93,52 +93,52 @@ prevent hitting API rate limits. The file is exported and read in once again
 to avoid re-running API requests.
 ```{r}
 #| label: get-social-organization-data
-
 fetch_cbp_data <- function(year, naics_codes_to_keep) {
-  tryCatch(
-    {
-      Sys.sleep(2) # Add a delay to avoid rate limiting
-
-      # Determine NAICS variable and dataset name based on the year
-      naics_var <- if_else(year >= 2014 & year <= 2016, "NAICS2012", "NAICS2017")
-      dataset_name <- if_else(year >= 2019, "cbp", "zbp")
-
-      data <- getCensus(
-        name = dataset_name,
-        vintage = year,
-        vars = c("EMP", "ESTAB", naics_var),
-        region = "zipcode:*"
-      ) %>%
-        as_tibble() %>%
-        mutate(year = year) %>%
-        mutate(naics = as.numeric(!!sym(naics_var))) %>%
-        filter(naics %in% naics_codes_to_keep) %>%
-        select(zip_code, year, orgs = ESTAB) %>%
-        drop_na(orgs) %>%
-        summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
-
-      return(data)
-    },
-    error = function(e) {
-      message("Error fetching data for year ", year, ": ", e$message)
-      return(NULL) # Return NULL for failed requests
-    }
-  )
+  tryCatch({
+    Sys.sleep(2) # avoid rate limiting
+    naics_var <- if_else(year >= 2014 & year <= 2016, "NAICS2012", "NAICS2017")
+    dataset_name <- if_else(year >= 2019, "cbp", "zbp")
+    
+    getCensus(
+      name = dataset_name,
+      vintage = year,
+      vars = c("EMP", "ESTAB", naics_var),
+      region = "zipcode:*"
+    ) %>%
+      as_tibble() %>%
+      mutate(year = year,
+             naics = as.numeric(!!sym(naics_var))) %>%
+      filter(naics %in% naics_codes_to_keep) %>%
+      select(zip_code, year, orgs = ESTAB) %>%
+      drop_na(orgs) %>%
+      summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
+    
+  }, error = function(e) {
+    message("Error fetching data for year ", year, ": ", e$message)
+    NULL
+  })
 }
 
-
 # Fetch and combine data
-years <- c(2014:2022)
-naics_codes_to_keep <- c(
-  813410, 713950, 713910, 713940, 711211, 813110, 813940,
-  813930, 813910, 813920
-)
+years <- 2014:2022
+naics_codes_to_keep <- c(813410, 713950, 713910, 713940, 711211,
+                           813110, 813940, 813930, 813910, 813920)
 
-cbp_zip_14 <- fetch_cbp_data(years, naics_codes_to_keep)
-cbp_zip <- map(years, ~ fetch_cbp_data(.x, naics_codes_to_keep)) %>%
-  compact() %>% # Remove NULLs from failed requests
-  list_rbind() # Combine into a single tibble
+data_dir <- here("06_neighborhoods", "social-capital", "data")
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
 
+cbp_zip <- map(years, function(yr) {
+  file_path <- file.path(data_dir, paste0("cbp_zip_", yr, ".csv"))
+  if (file.exists(file_path)) {
+    message("Loading local data for year ", yr)
+    read_csv(file_path, show_col_types = FALSE)
+  } else {
+    message("Fetching data for year ", yr)
+    data_year <- fetch_cbp_data(yr, naics_codes_to_keep)
+    if (!is.null(data_year)) write_csv(data_year, file_path)
+    data_year
+  }
+}) %>% compact() %>% bind_rows()
 
 head(cbp_zip)
 write_csv(cbp_zip, "06_neighborhoods/social-capital/data/cbp_zip.csv")
