@@ -344,13 +344,25 @@ merged_associations_zip_city <-
   )
 ```
 
-**Check:** Are there exactly 9 missing values in the `new_est_zip` variable?
+**Check:** Is there exactly 1 missing row per year in the `total_org` variable?
 
 ```{r}
+
 stopifnot(
-  sum(is.na(merged_associations_zip_city$total_org)) == 9
+  merged_associations_zip_city %>%
+    filter(is.na(total_org)) %>%
+    nrow() == length(years)
 )
 ```
+
+Looking at we can see that this observation per year corresponds to a row with 
+missing `state_fips`, `place`, and `zips_in`
+
+```{r}
+  merged_associations_zip_city %>%
+    filter(is.na(total_org))
+```
+
 
 We drop these missing values
 
@@ -371,15 +383,6 @@ places_pop <-
   rename(state_fips = state) %>%
   filter(year %in% years)
 
-pop_2014 <- places_pop %>%
-  filter(year == 2015) %>% # Take only rows for year 2015
-  mutate(
-    year = 2014, # Set year to 2014
-    population = NA
-  ) %>% # Set population to NA
-  distinct(state_fips, place, state_name, place_name, year, population) # Ensure no duplicates
-
-places_pop <- bind_rows(places_pop, pop_2014) |> arrange(year)
 ```
 
 **Check:** Are there 485 places in 2015-2017 and 486 places in 2018-2022 in the population-cutoff file? 
@@ -404,16 +407,21 @@ stopifnot(
 
 Join `places_pop` with `merged_associations_zip_city` in order to get the final associations (numerator) city data.
 
-**Note:** All values for 2014 will be NA since the population file is missing
-2014 data.
-
 ```{r}
 associations_city_data <-
   places_pop %>%
   left_join(merged_associations_zip_city,
     by = c("year", "place", "state_fips")
   )
+
 ```
+
+We can see that there are 485 observations pre-2018 and 486 after 2018
+```{r}
+associations_city_data |> 
+  count(year)
+```
+
 
 ## Use crosswalk population data to construct the ratio (Numerator/Denominator)
 
@@ -495,7 +503,6 @@ associations_city_data <-
 ```{r}
 stopifnot(
   sum(is.na(associations_city_data %>%
-    filter(year != 2014) %>%
     .[["count_membership_associations_per_10k"]])) == 0
 )
 ```
