@@ -55,7 +55,9 @@ Data downloaded from: Census ZCTA Business Patterns
 We pull our data from `library(censusapi)`.
 
 **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html).
-Add the key to `census_api_key-template.R` and then delete then delete "template".
+Add the key to `census_api_key-template.R` and then delete the word "template" 
+from the filename. 
+
 It is sourced below
 
 ```{r}
@@ -131,8 +133,6 @@ naics_codes_to_keep <- c(
   813410, 713950, 713910, 713940, 711211, 813110, 813940,
   813930, 813910, 813920
 )
-
-years <- 2014
 
 cbp_zip_14 <- fetch_cbp_data(years, naics_codes_to_keep)
 cbp_zip <- map(years, ~ fetch_cbp_data(.x, naics_codes_to_keep)) %>%
@@ -234,14 +234,14 @@ Make an indicator for ZIPs that fall wholly into a Place vs. partially (`zcta_to
 #| label: make-indicator-for-zips-in-place
 zcta_20_place_21_xwalk <-
   zcta_20_place_21_xwalk %>%
-  mutate(portion_in = case_when(
+  mutate(zcta_fully_within_place_binary = case_when(
     zcta_to_place_allocation_factor == 1 ~ 1,
     zcta_to_place_allocation_factor < 1 ~ 0
   ))
 
 zcta_10_place_10_xwalk <-
   zcta_10_place_10_xwalk %>%
-  mutate(portion_in = case_when(
+  mutate(zcta_fully_within_place_binary = case_when(
     zcta_to_place_allocation_factor == 1 ~ 1,
     zcta_to_place_allocation_factor < 1 ~ 0
   ))
@@ -254,15 +254,15 @@ zcta_10_place_10_xwalk <-
 
 stopifnot(
   zcta_10_place_10_xwalk %>%
-    count(portion_in) %>%
-    filter(portion_in == 1) %>%
+    count(zcta_fully_within_place_binary) %>%
+    filter(zcta_fully_within_place_binary == 1) %>%
     pull(n) == 9644
 )
 
 stopifnot(
   zcta_20_place_21_xwalk %>%
-    count(portion_in) %>%
-    filter(portion_in == 1) %>%
+    count(zcta_fully_within_place_binary) %>%
+    filter(zcta_fully_within_place_binary == 1) %>%
     pull(n) == 9669
 )
 ```
@@ -276,7 +276,7 @@ zcta_20_place_21_xwalk <-
   zcta_20_place_21_xwalk %>%
   select(
     zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
-    place_to_zcta_allocation_factor, portion_in
+    place_to_zcta_allocation_factor, zcta_fully_within_place_binary
   )
 
 
@@ -284,7 +284,7 @@ zcta_10_place_10_xwalk <-
   zcta_10_place_10_xwalk %>%
   select(
     zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
-    place_to_zcta_allocation_factor, portion_in
+    place_to_zcta_allocation_factor, zcta_fully_within_place_binary
   )
 
 zcta_place_xwalk <- bind_rows(zcta_20_place_21_xwalk, zcta_10_place_10_xwalk)
@@ -338,7 +338,7 @@ merged_sa_zip_city <-
   mutate(count_orgs_afact = count_orgs * zcta_to_place_allocation_factor) %>%
   summarize(
     zip_total = mean(count_zctas_in_place),
-    zips_in = sum(portion_in),
+    zips_in = sum(zcta_fully_within_place_binary),
     total_org = sum(count_orgs_afact),
     .by = c(year, state_fips, place)
   )
@@ -356,8 +356,8 @@ We drop these missing values
 
 ```{r}
 #| label: drop-missing-estimate
-merged_sa_zip_city <-
-  merged_sa_zip_city %>%
+merged_associations_zip_city <-
+  merged_associations_zip_city %>%
   drop_na(total_org)
 ```
 
@@ -402,15 +402,15 @@ stopifnot(
 )
 ```
 
-Join `places_pop` with `merged_sa_zip_city` in order to get the final SA (numerator) city data.
+Join `places_pop` with `merged_associations_zip_city` in order to get the final associations (numerator) city data.
 
 **Note:** All values for 2014 will be NA since the population file is missing
 2014 data.
 
 ```{r}
-sa_city_data <-
+associations_city_data <-
   places_pop %>%
-  left_join(merged_sa_zip_city,
+  left_join(merged_associations_zip_city,
     by = c("year", "place", "state_fips")
   )
 ```
@@ -428,8 +428,8 @@ Rankings.
 ```{r}
 #| label: create-number-of-membership-associations-metric
 
-sa_city_data <-
-  sa_city_data %>%
+associations_city_data <-
+  associations_city_data %>%
   mutate(
     pop_ratio = population / 1e4,
     count_membership_associations_per_10k = round(total_org / pop_ratio, digits = 1)
@@ -478,8 +478,8 @@ crosswalk_data_quality |>
 ```{r}
 #| label: create-data-quality-flag
 
-sa_city_data <-
-  sa_city_data %>%
+associations_city_data <-
+  associations_city_data %>%
   left_join(crosswalk_data_quality, by = c("state_fips", "place")) |>
   select(year, state = state_fips, place, count_membership_associations_per_10k, count_membership_associations_per_10k_quality) %>%
   arrange(
@@ -494,7 +494,7 @@ sa_city_data <-
 
 ```{r}
 stopifnot(
-  sum(is.na(sa_city_data %>%
+  sum(is.na(associations_city_data %>%
     filter(year != 2014) %>%
     .[["count_membership_associations_per_10k"]])) == 0
 )
@@ -503,7 +503,7 @@ stopifnot(
 ## Visualize Metric
 
 ```{r}
-ggplot(sa_city_data, aes(x = count_membership_associations_per_10k)) +
+ggplot(associations_city_data, aes(x = count_membership_associations_per_10k)) +
   geom_histogram(bins = 30, color = "black", fill = "lightblue") +
   labs(
     title = "Distribution of Membership Associations per 10k",
@@ -513,7 +513,7 @@ ggplot(sa_city_data, aes(x = count_membership_associations_per_10k)) +
 ```
 
 ```{r}
-ggplot(sa_city_data, aes(y = count_membership_associations_per_10k)) +
+ggplot(associations_city_data, aes(y = count_membership_associations_per_10k)) +
   geom_boxplot() +
   labs(
     title = "Boxplot of Membership Associations per 10k",
@@ -524,12 +524,12 @@ ggplot(sa_city_data, aes(y = count_membership_associations_per_10k)) +
 
 ```{r}
 # Visualize missing data
-gg_miss_var(sa_city_data) +
+gg_miss_var(associations_city_data) +
   labs(title = "Missing Values by Variable")
 ```
 
 ```{r}
-yearly_avg <- sa_city_data %>%
+yearly_avg <- associations_city_data %>%
   group_by(year) %>%
   summarise(avg_associations = mean(count_membership_associations_per_10k, na.rm = TRUE))
 
@@ -548,14 +548,14 @@ ggplot(yearly_avg, aes(x = year, y = avg_associations)) +
 ```{r}
 source(here("functions/testing/evaluate_final_data.R"))
 
-evaluate_final_data(here("06_neighborhoods/social-capital/data/final_data_evaluation_form.csv"), sa_city_data, "place", subgroups = FALSE, confidence_intervals = FALSE)
+evaluate_final_data(here("06_neighborhoods/social-capital/data/final_data_evaluation_form.csv"), associations_city_data, "place", subgroups = FALSE, confidence_intervals = FALSE)
 ```
 
 
 ## Save the final file
 
 ```{r}
-sa_city_data %>%
+associations_city_data %>%
   arrange(year, state, place) %>%
   write_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv"))
 ```

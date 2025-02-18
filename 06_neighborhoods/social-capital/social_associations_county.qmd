@@ -47,7 +47,8 @@ d) add the year of these data.
 
 We pull our data from `library(censusapi)`.
 
-**Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced below
+**Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete the word "template" 
+from the filename . It is sourced below
 
 ```{r}
 #| label: source-census-api-key
@@ -148,7 +149,7 @@ pop <- bind_rows(pop, pop_2014) |> arrange(year)
 ## Merge the data file(s) & construct the ratio (Numerator/Denominator)
 
 ```{r}
-merged_sa <-
+merged_associations <-
   left_join(pop, cbp_county, by = c("year", "state", "county")) %>%
   select(year, state, county, count_orgs, population)
 ```
@@ -157,8 +158,8 @@ merged_sa <-
 
 ```{r}
 #| label: create-metric
-merged_sa <-
-  merged_sa %>%
+merged_associations <-
+  merged_associations %>%
   mutate(
     pop_ratio = population / 1e4,
     count_membership_associations_per_10k = round(count_orgs / pop_ratio, digits = 1)
@@ -171,8 +172,8 @@ merged_sa <-
 Data quality flag (we have no issues with this metric except overall missings) This is so that the missing values transfer as missing values
 
 ```{r}
-merged_sa <-
-  merged_sa %>%
+merged_associations <-
+  merged_associations %>%
   mutate(
     count_membership_associations_per_10k_quality =
       if_else(is.na(count_membership_associations_per_10k),
@@ -197,7 +198,7 @@ merged_sa <-
 
 ```{r}
 stopifnot(
-  sum(is.na(merged_sa |>
+  sum(is.na(merged_associations |>
     filter(year != 2014) %>%
     .[["count_membership_associations_per_10k"]])) == 925
 )
@@ -207,7 +208,7 @@ stopifnot(
 ## Visualize Metric
 
 ```{r}
-ggplot(merged_sa, aes(x = count_membership_associations_per_10k)) +
+ggplot(merged_associations, aes(x = count_membership_associations_per_10k)) +
   geom_histogram(bins = 30, color = "black", fill = "lightblue") +
   labs(
     title = "Distribution of Membership Associations per 10k",
@@ -217,7 +218,7 @@ ggplot(merged_sa, aes(x = count_membership_associations_per_10k)) +
 ```
 
 ```{r}
-ggplot(merged_sa, aes(y = count_membership_associations_per_10k)) +
+ggplot(merged_associations, aes(y = count_membership_associations_per_10k)) +
   geom_boxplot() +
   labs(
     title = "Boxplot of Membership Associations per 10k",
@@ -229,12 +230,12 @@ ggplot(merged_sa, aes(y = count_membership_associations_per_10k)) +
 
 ```{r}
 # Visualize missing data
-gg_miss_var(merged_sa |> filter(year != 2014)) +
+gg_miss_var(merged_associations |> filter(year != 2014)) +
   labs(title = "Missing Values by Variable")
 ```
 
 ```{r}
-yearly_avg <- merged_sa %>%
+yearly_avg <- merged_associations %>%
   group_by(year) %>%
   summarise(avg_associations = mean(count_membership_associations_per_10k, na.rm = TRUE))
 
@@ -253,13 +254,13 @@ ggplot(yearly_avg, aes(x = year, y = avg_associations)) +
 ```{r}
 source(here("functions/testing/evaluate_final_data.R"))
 
-evaluate_final_data(here("06_neighborhoods/social-capital/data/final_data_evaluation_form.csv"), merged_sa, "county", subgroups = FALSE, confidence_intervals = FALSE)
+evaluate_final_data(here("06_neighborhoods/social-capital/data/final_data_evaluation_form.csv"), merged_associations, "county", subgroups = FALSE, confidence_intervals = FALSE)
 ```
 
 ## Save the final file
 
 ```{r}
-merged_sa %>%
+merged_associations %>%
   arrange(year, state, county) %>%
   write_csv(here("06_neighborhoods/social-capital/final/social_associations_all_county.csv"))
 ```
