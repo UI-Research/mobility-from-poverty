@@ -39,12 +39,12 @@ set_urbn_defaults(style = "print")
 
 This file is a prerequisite file to the following files:
 
-* `reported-crime-county-all.Rmd` which creates the county-level metric for reported property crimes per 100,000 people and reported violent crimes per 100,000 people
-* `juvenile-arrests-county-all.Rmd` which creates the county-level metric for juvenile arrests per 100,000 juveniles
+* `reported-crime-county-all.qmd` which creates the county-level metric for reported property crimes per 100,000 people and reported violent crimes per 100,000 people
+* `juvenile-arrests-county-all.qmd` which creates the county-level metric for juvenile arrests per 100,000 juveniles
 
 You must run this file before either of the above files to create either metric at the county-level.
 
-This file pulls in a universe of law enforcement agencies that have reported criminal activity and arrests in 2023. It then joins on county FIPS codes to those agencies. For agencies that serve more than one county, this program assigns a weight to that agency to determine the percentage of activity that should be associated with each county served by that agency. Next, it pulls in population and demographic information from the American Community Survey (ACS). Lastly, it creates several files that are used in the creation of each metric.
+This file pulls in a universe of law enforcement agencies that have reported criminal activity and arrests in 2021-2023. It then joins on county FIPS codes to those agencies. For agencies that serve more than one county, this program assigns a weight to that agency to determine the percentage of activity that should be associated with each county served by that agency. Next, it pulls in population and demographic information from the American Community Survey (ACS). Lastly, it creates several files that are used in the creation of each metric.
 
 The rest of this file is organized as follows:
 
@@ -98,7 +98,7 @@ bhf22 <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.tsv"))
 Filter the file to the appropriate year, select relevant necessary, and rename as necessary. We use the codebook (`ICPSR_38925\DS0001\38925-0001-Codebook-ICPSR`) to determine what each variable represents.
 ```{r clean-bhf}
 batch_header_file <- batch_header_file_full |>
-  filter(year==2023) |>
+  filter(year %in% c(2021, 2022, 2023)) |>
   select(
     ori,
     agency_indicator,
@@ -107,15 +107,15 @@ batch_header_file <- batch_header_file_full |>
     state_abbreviation,
     city_name,
     core_city,
-    fips_county_code_1,
-    fips_county_code_2,
-    fips_county_code_3,
-    fips_county_code_4,
-    fips_county_code_5
+    county_fips_1 = fips_county_code_1,
+    county_fips_2 = fips_county_code_2,
+    county_fips_3 = fips_county_code_3,
+    county_fips_4 = fips_county_code_4,
+    county_fips_5 = fips_county_code_5
   ) |>
   # Edit county FIPS codes to have three digits
   mutate(
-    across(starts_with("fips_county_code_"),
+    across(starts_with("county_fips_"),
            ~ str_pad(.x, 3, side = "left", pad = "0"))
   )
 
@@ -130,6 +130,7 @@ batch_header_file <- batch_header_file |>
       TRUE ~ NA_real_
     )
   )
+
 ```
 
 
@@ -140,6 +141,10 @@ batch_header_file |>
   group_by(state_name, state_abbreviation) |>
   count()
 
+```
+
+
+```{r clean-bhf}
 batch_header_file <- batch_header_file |>
   # Remove US territories by name because no FIPS codes
   filter(!state_name %in% c("Guam", "Puerto Rico", "Virgin Islands")) |>
@@ -223,7 +228,7 @@ rm(state_fips_xw)
 
 
 ### 2.3 Exclude state police and other state agencies
-Check distribution of agency types. There are 7 types of agencies. Note that I'm not sure what an agency indicator of "5" represents, and I can't find any information about it in the [available documentation](https://ucrbook.com/). In data year 2022, a value of 4 represented "special agencies" (last year's values shown below), so it could be an error in the pre-processing of this data. 
+Check distribution of agency types. There are 7 types of agencies. Note that I'm not sure what an agency indicator of "5" represents, and I can't find any information about it in the [available documentation](https://ucrbook.com/). In data year 2022, a value of 5 represented "special agencies" (last year's values shown below), so it could be an error in the pre-processing of this data. 
 
 | Value | Label                     |
 |:-----:|:--------------------------|
@@ -255,7 +260,10 @@ batch_header_file <- batch_header_file |>
 ```{r check-missing-county}
 # Subset data to examine further
 bhf_missing_county <- batch_header_file |>
-  filter(is.na(fips_county_code_1))
+  filter(is.na(county_fips_1))
+
+bhf_missing_county |>
+  count(year)
 
 ```
 
@@ -304,7 +312,7 @@ leaic <- leaic |>
   select(
     ori = ORI9,
     # state = FIPS_ST,
-    county = FIPS_COUNTY
+    county_fips = FIPS_COUNTY
   ) |>
   # Remove agencies with invalid ORI
   filter(ori != "-1") # Not in UCR/NCIC 
@@ -317,13 +325,13 @@ Join the LEAIC to the 2023 NIBRS Batch Header File by agency.
 ```{r join-missing-bhf-leaic}
 bhf_missing_county <- left_join(
   x = bhf_missing_county |>
-    select(-starts_with("fips_county_code")),
+    select(-starts_with("county_fips")),
   y = leaic,
   by = c("ori")
 )
 
 bhf_missing_county |>
-  filter(is.na(county)) |>
+  filter(is.na(county_fips)) |>
   count(agency_indicator)
 
 ```
@@ -333,7 +341,7 @@ Replace county information in NIBRS data for observations that initially had a m
 ```{r replace-counties}
 batch_header_file <- batch_header_file %>%
   # Drop the 376 NIBRS agencies with a missing county value
-  filter(!is.na(fips_county_code_1)) %>%
+  filter(!is.na(county_fips_1)) %>%
   # Append those 376 agencies back onto main data with the county info gleaned from LEAIC
   bind_rows(bhf_missing_county)
 
@@ -341,13 +349,13 @@ batch_header_file <- batch_header_file |>
   # Drop the 54 NIBRS agencies that had no county info in LEAIC
   # filter(!is.na(county)) %>%
   # Assign county fips from LEAIC to the NIBRS county fips variable
-  mutate(fips_county_code_1 = if_else(
-    is.na(fips_county_code_1) & !is.na(county),
-    county,
-    fips_county_code_1
+  mutate(county_fips_1 = if_else(
+    is.na(county_fips_1) & !is.na(county_fips),
+    county_fips,
+    county_fips_1
   )
   ) |>
-  select(-county)
+  select(-county_fips)
 
 
 # Remove obsolete files
@@ -377,12 +385,16 @@ Note that if they did we would need to split up the code that reads in the years
 Note that future updates of the safety metrics may want to pull data back to 2014, in which case the first year should be changed below.
 ```{r check-acs-variables}
 # Check ACS variables for the first and last years to see if they change over time
-#variables_fy <- tidycensus::load_variables(2021, "acs5")
+variables_fy <- tidycensus::load_variables(2021, "acs5")
 variables_ly <- tidycensus::load_variables(2023, "acs5")
 
-test <- variables_ly |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
+test_fy <- variables_fy |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
 
-rm(test)
+rm(test_fy)
+
+test_ly <- variables_ly |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
+
+rm(test_ly)
 
 ```
 
@@ -392,8 +404,7 @@ Note that if additional subgroups for either safety metric are desired in future
 Note that future updates of the safety metrics may want to pull data back to 2014, in which case the list of years should be changed below.
 ```{r specify-acs-years-vars}
 # Create a list of all our years
-# years <- lst(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023)
-years <- lst(2023)
+years <- lst(2021, 2022, 2023)
 
 # Create a vector for our ACS variables of interest
 my_vars <- c(
@@ -462,8 +473,9 @@ county_demo_full <- map_dfr(
 
 # Remove Puerto Rico from ACS data
 county_demo <- county_demo_full |>
-  mutate(state = substr(GEOID, 1, 2)) |>
-  filter(state != "72")
+  mutate(state_fips = substr(GEOID, 1, 2),
+         county_fips = substr(GEOID, 3, 5)) |>
+  filter(state_fips != "72")
 
 # Remove obsolete files
 rm(variables_fy, variables_ly, years, my_vars)
@@ -529,7 +541,7 @@ Limit ACS data to relevant variables
 ```{r limit-acs-vars}
 # Limit to relevant variables
 county_demo <- county_demo |>
-  select(year, GEOID, total_people, starts_with("age_1017"), starts_with("sex_1017"), ends_with("_all"))
+  select(year, GEOID, state_fips, county_fips, total_people, starts_with("age_1017"), starts_with("sex_1017"), ends_with("_all"))
 
 ```
 
@@ -564,10 +576,10 @@ The NIBRS batch header file is currently long by `ori` (agency), such that there
 
 692 agencies cover 2 counties, 69 agencies cover 3 counties, 10 agencies cover 4 counties, 0 agencies cover 5 counties
 ```{r check-agencies-multiple-counties}
-sum(!is.na(batch_header_file$fips_county_code_2))
-sum(!is.na(batch_header_file$fips_county_code_3))
-sum(!is.na(batch_header_file$fips_county_code_4))
-sum(!is.na(batch_header_file$fips_county_code_5))
+sum(!is.na(batch_header_file$county_fips_2))
+sum(!is.na(batch_header_file$county_fips_3))
+sum(!is.na(batch_header_file$county_fips_4))
+sum(!is.na(batch_header_file$county_fips_5))
 
 ```
 
@@ -576,20 +588,20 @@ We reshape the data to be long by `ori` and `county` such that each observation 
 # Reshape NIBRS data to be long by agency AND county
 batch_header_file_long <- batch_header_file |>
   pivot_longer(
-    cols = starts_with("fips_county_code_"),
-    values_to = "fips_county_code"
+    cols = starts_with("county_fips_"),
+    values_to = "county_fips"
   ) |>
   # Remove observations that are not relevant to more that one county
-  drop_na(fips_county_code) |>
+  drop_na(county_fips) |>
   select(-c(name))
   
   #mutate(across(starts_with("fips"), ~str_pad(., 3, pad = "0"))) |>
-  select(c(ori, agency_indicator, core_city, starts_with("state"), starts_with("fips"))) |>
-  pivot_longer(-c(ori, core_city), values_to = "county")
+  #select(c(ori, agency_indicator, core_city, starts_with("state"), starts_with("fips"))) |>
+  #pivot_longer(-c(ori, core_city), values_to = "county")
 
 
-batch_header_file <- batch_header_file |>
-  filter(!is.na(county))
+#batch_header_file <- batch_header_file |>
+  #filter(!is.na(county_fips))
 
 ```
 
@@ -598,14 +610,15 @@ Join agency/county pairs onto the ACS county/year-level population and demograph
 ```{r join-acs-bhf}
 # Create GEOID
 batch_header_file_long <- batch_header_file_long |>
-  mutate(GEOID = str_c(state_fips, fips_county_code))
+  mutate(GEOID = str_c(state_fips, county_fips))
 
 # Join data
 joined_data <- left_join(
   x = county_demo |> 
-    select(year, GEOID, total_people),
+    select(year, GEOID, total_people) |>
+    mutate(year = as.numeric(year)),
   y = batch_header_file_long,
-  by = "GEOID"
+  by = c("GEOID", "year")
 )
 
 ```
@@ -690,7 +703,7 @@ test |>
 ```{r check-unmatched-acs-2}
 batch_header_file_long <- batch_header_file_long |>
   mutate(
-    fips_county_code = ifelse(state_fips=="46" & fips_county_code=="113", "102", fips_county_code),
+    fips_county_code = ifelse(state_fips=="46" & county_fips=="113", "102", county_fips),
     GEOID = ifelse(state_fips=="46"& GEOID=="46113", "46102", GEOID)
     )
 
