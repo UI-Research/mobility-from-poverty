@@ -295,7 +295,10 @@ county_file |>
 
 ::: panel-tabset
 #### County
-
+To assess the data quality of counties/places with
+larger N, we need to consider what percent of data for the county/place actually
+came from the county/place itself. We have this information in the `sum_products` column obtained from the crosswalk file. For more information on `sum_products`
+see the script that generates the [PUMA to County crosswalk](geographic-crosswalks/generate_puma_county_crosswalks.qmd)
 ```{r}
 #| label: puma-to-county-crosswalk
 
@@ -317,10 +320,12 @@ households_county <-
   right_join(puma_county_crosswalk,
     by = c("state", "puma", "crosswalk_period")
   ) |>
-  # if county isn't present in the ACS use county codes from PUMA-County crosswalk
+
   mutate(
+    # if county isn't present in the ACS use county codes from PUMA-County crosswalk
     county = if_else(county.x != "000", county.x, county.y),
-    hhwt = if_else(county.x != "000", hhwt, hhwt * afact),
+    # the weight of each household is adjusted by the area of the PUMA that falls into a given County
+    hhwt = if_else(county.x != "000", hhwt, hhwt * afact), 
     sum_products = if_else(county.x != "000", 1, sum_products)
   ) |>
   select(-c(county.x, county.y)) |>
@@ -350,6 +355,8 @@ households_place <-
   right_join(puma_place_crosswalk,
     by = c("state", "puma", "crosswalk_period")
   ) |>
+  # there aren't any places missing from the ACS so we just adjust household
+  # weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place)
   mutate(hhwt = hhwt * afact)
 ```
 
