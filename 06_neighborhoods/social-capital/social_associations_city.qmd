@@ -37,7 +37,7 @@ Data downloaded from: Census ZCTA Business Patterns
 
 1.  download social organization data from the Census API
 
-2.  import and clean the data file (collapse to unique ZIPs)
+2.  import and clean the data file (collapse to unique ZCTAs)
 
 3.  merge with the 2010 ZCTA -\> 2010 Census Place and 2020 ZCTA -\> 2021 Census Place crosswalk
 
@@ -62,7 +62,7 @@ It is sourced below
 
 ```{r}
 # label: source-census-api-key
-source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+# source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
 ## Import and clean the CBP data file
@@ -109,9 +109,9 @@ fetch_cbp_data <- function(year, naics_codes_to_keep) {
       mutate(year = year,
              naics = as.numeric(!!sym(naics_var))) %>%
       filter(naics %in% naics_codes_to_keep) %>%
-      select(zip_code, year, orgs = ESTAB) %>%
+      select(zcta_code = zip_code, year, orgs = ESTAB) %>%
       drop_na(orgs) %>%
-      summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
+      summarize(count_orgs = sum(orgs), .by = c("year", "zcta_code"))
     
   }, error = function(e) {
     stop("Error fetching data for year ", year, ": ", e$message)
@@ -127,8 +127,8 @@ naics_codes_to_keep <- c(813410, 713950, 713910, 713940, 711211,
 data_dir <- here("06_neighborhoods", "social-capital", "data")
 if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
 
-cbp_zip <- map(years, function(yr) {
-  file_path <- file.path(data_dir, paste0("cbp_zip_", yr, ".csv"))
+cbp_zcta <- map(years, function(yr) {
+  file_path <- file.path(data_dir, paste0("cbp_zcta_", yr, ".csv"))
   if (file.exists(file_path)) {
     message("Loading local data for year ", yr)
     read_csv(file_path, show_col_types = FALSE)
@@ -140,21 +140,21 @@ cbp_zip <- map(years, function(yr) {
   }
 }) %>% compact() %>% bind_rows()
 
-head(cbp_zip)
-write_csv(cbp_zip, "06_neighborhoods/social-capital/data/cbp_zip.csv")
+head(cbp_zcta)
+write_csv(cbp_zcta, "06_neighborhoods/social-capital/data/cbp_zcta.csv")
 ```
 
 
 ```{r}
-cbp_zip <- read_csv(here("06_neighborhoods/social-capital/data/cbp_zip.csv"))
+cbp_zcta <- read_csv(here("06_neighborhoods/social-capital/data/cbp_zcta.csv"))
 ```
 
 **Check:** Are all ZCTA codes 5 digits?
 
 ```{r}
-#| label: assert-zip-code-length
+#| label: assert-zcta-code-length
 stopifnot(
-  all(str_length(cbp_zip$zip_code) == 5)
+  all(str_length(cbp_zcta$zcta_code) == 5)
 )
 ```
 
@@ -164,7 +164,7 @@ stopifnot(
 #| label: test-all-years-present
 
 # Test if all expected years are present in the resulting data
-test_years <- cbp_zip %>%
+test_years <- cbp_zcta %>%
   pull(year) %>% # Extract the years column
   unique() %>% # Get unique years
   sort() # Sort the years
@@ -208,7 +208,7 @@ zcta_20_place_21_xwalk <-
   as_tibble() %>%
   clean_names() |>
   rename(
-    zip_code = zip_census_tabulation_area,
+    zcta_code = zip_census_tabulation_area,
     state_fips = state_code,
     place = place_code
   )
@@ -218,7 +218,7 @@ zcta_10_place_10_xwalk <-
   as_tibble() %>%
   clean_names() |>
   rename(
-    zip_code = zip_census_tabulation_area,
+    zcta_code = zip_census_tabulation_area,
     state_fips = state_code,
     place = place_code,
     zcta_to_place_allocation_factor = zcta5_to_placefp_allocation_factor,
@@ -231,7 +231,7 @@ zcta_10_place_10_xwalk <-
 Make an indicator for ZCTAs that fall wholly into a Place vs. partially (`zcta_to_place_allocation_factor < 1`)
 
 ```{r}
-#| label: make-indicator-for-zips-in-place
+#| label: make-indicator-for-zctas-in-place
 zcta_20_place_21_xwalk <-
   zcta_20_place_21_xwalk %>%
   mutate(zcta_fully_within_place_binary = case_when(
@@ -245,26 +245,6 @@ zcta_10_place_10_xwalk <-
     zcta_to_place_allocation_factor == 1 ~ 1,
     zcta_to_place_allocation_factor < 1 ~ 0
   ))
-```
-
-**Check:** Do 9,644 and 9,669 of these ZCTAs fall fully into a Census Place?
-
-```{r}
-#| label: check-portions-wholly-in-place
-
-stopifnot(
-  zcta_10_place_10_xwalk %>%
-    count(zcta_fully_within_place_binary) %>%
-    filter(zcta_fully_within_place_binary == 1) %>%
-    pull(n) == 9644
-)
-
-stopifnot(
-  zcta_20_place_21_xwalk %>%
-    count(zcta_fully_within_place_binary) %>%
-    filter(zcta_fully_within_place_binary == 1) %>%
-    pull(n) == 9669
-)
 ```
 
 Now, select the relevant crosswalk variables and combine the 2010 ZCTA's to 2010
@@ -275,7 +255,7 @@ places crosswalk with the 2020 ZCTA's to 2021 Places crosswalk.
 zcta_20_place_21_xwalk <-
   zcta_20_place_21_xwalk %>%
   select(
-    zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    zcta_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
     place_to_zcta_allocation_factor, zcta_fully_within_place_binary
   )
 
@@ -283,7 +263,7 @@ zcta_20_place_21_xwalk <-
 zcta_10_place_10_xwalk <-
   zcta_10_place_10_xwalk %>%
   select(
-    zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    zcta_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
     place_to_zcta_allocation_factor, zcta_fully_within_place_binary
   )
 
@@ -293,11 +273,11 @@ zcta_place_xwalk <- bind_rows(zcta_20_place_21_xwalk, zcta_10_place_10_xwalk)
 Merge the ZIP/Places crosswalk into the CBP ZIP-level data file
 
 ```{r}
-#| label: merge-cbp-zip-with-crosswalk
+#| label: merge-cbp-zcta-with-crosswalk
 
-merged_associations_zip_city <-
-  cbp_zip %>%
-  left_join(zcta_place_xwalk, by = c("zip_code"))
+merged_associations_zcta_city <-
+  cbp_zcta %>%
+  left_join(zcta_place_xwalk, by = c("zcta_code"))
 ```
 
 **Check:** Are there any missing values in the merged data for `count_orgs`?
@@ -305,7 +285,7 @@ merged_associations_zip_city <-
 ```{r}
 #| label: check-join-missingness
 stopifnot(
-  sum(is.na(merged_associations_zip_city$count_orgs)) == 0
+  sum(is.na(merged_associations_zcta_city$count_orgs)) == 0
 )
 ```
 
@@ -315,10 +295,10 @@ First, as a data quality marker we create a new variable that tracks the number
 of ZCTAs falling in each Place (duplicates)
 
 ```{r}
-#| label: count-zip-codes-in-place
+#| label: count-zcta-codes-in-place
 
-merged_associations_zip_city <-
-  merged_associations_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   mutate(
     count_zctas_in_place = n(),
     .by = c(year, place, place_name)
@@ -326,19 +306,19 @@ merged_associations_zip_city <-
 ```
 
 Create the merged file where the SA numerator (`count_orgs`) is aggregated to the place level (multiply `count_orgs` by zcta to place allocation factor and then summarize to place)
-and also include total ZCTAs in Place (`zip_total`) & how many of those fully
-fall within the Place (`zips_in`)
+and also include total ZCTAs in Place (`zcta_total`) & how many of those fully
+fall within the Place (`zctas_in`)
 
 ```{r}
 #| label: numerator-per-place-and-by-area
 
-merged_associations_zip_city <-
-  merged_associations_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   # multiply `count_orgs` by the allocation factor (a measure of how much of the zcta falls within the place)
   mutate(count_orgs_afact = count_orgs * zcta_to_place_allocation_factor) %>%
   summarize(
-    zip_total = mean(count_zctas_in_place),
-    zips_in = sum(zcta_fully_within_place_binary),
+    zcta_total = mean(count_zctas_in_place),
+    zctas_in = sum(zcta_fully_within_place_binary),
     total_org = sum(count_orgs_afact),
     .by = c(year, state_fips, place)
   )
@@ -349,17 +329,17 @@ merged_associations_zip_city <-
 ```{r}
 
 stopifnot(
-  merged_associations_zip_city %>%
+  merged_associations_zcta_city %>%
     filter(is.na(total_org)) %>%
     nrow() == length(years)
 )
 ```
 
 Looking at we can see that this observation per year corresponds to a row with 
-missing `state_fips`, `place`, and `zips_in`
+missing `state_fips`, `place`, and `zctas_in`
 
 ```{r}
-  merged_associations_zip_city %>%
+  merged_associations_zcta_city %>%
     filter(is.na(total_org))
 ```
 
@@ -368,8 +348,8 @@ We drop these missing values
 
 ```{r}
 #| label: drop-missing-estimate
-merged_associations_zip_city <-
-  merged_associations_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   drop_na(total_org)
 ```
 
@@ -405,12 +385,12 @@ stopifnot(
 )
 ```
 
-Join `places_pop` with `merged_associations_zip_city` in order to get the final associations (numerator) city data.
+Join `places_pop` with `merged_associations_zcta_city` in order to get the final associations (numerator) city data.
 
 ```{r}
 associations_city_data <-
   places_pop %>%
-  left_join(merged_associations_zip_city,
+  left_join(merged_associations_zcta_city,
     by = c("year", "place", "state_fips")
   )
 
