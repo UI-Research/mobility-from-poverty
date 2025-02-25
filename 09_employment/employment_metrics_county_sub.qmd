@@ -20,15 +20,15 @@ params:
 
 ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023 and 2025.
 
-Primary data derived from the IPUMS API.
+Primary data derived from the IPUMS API. Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
-Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+*User note* This program depends on extracts from the IPUMS ACS API interface. If you are updating the extract please remember to update the extract_date to reflect the time of the latest extract in the Housekeeping section of this program.
 
-*User note* This program depends on extracts from the IPUMS ACS API interface. If you are updating the extract please remember to update the note of the date of latest extract in the Housekeeping section of this program.
+Please select your year by updating 'params$year' in the YAML parameters above.
 
 *Internal users* If you are an internal tester using the AWS feature of this program remember to enter the passkey into your environment using Sys.setenv(). Authentication steps are nicely explained in this [blog](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/). You will have to request access to the access key.
 
-*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with significant computing power to run this.
+*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with significant computing power to run this. For internal Urban Institute users, the SAS server provides a good option.
 
 ## Housekeeping
 
@@ -64,7 +64,7 @@ source(here::here("09_employment", "R", "calc_survey_mean_subgroup.R"))
 
 Date of IPUMS extract. Denote the latest date that the IPUMS extract was changed and pulled both for the overall data and the repweights. The recommended date notation format is "mm_dd_yy". 
 
-For internal reviewers, if you plan to utilize AWS keep this date as it was last enetered by the metric lead unless you intend to change the extract.
+For internal reviewers, if you plan to utilize AWS keep this date as it was last entered by the metric lead unless you intend to change the extract.
 
 ```{r}
 ipums_extract_date <- "01_13_25"
@@ -103,7 +103,7 @@ Date of latest extract noted above. If a new IPUMS pull is required the extract_
 
 ```{r}
 acs <- extract_ipums_aws(
-  extract_name = paste0("umf_data_", params$year, "_preschool"),
+  extract_name = paste0("umf_data_", params$year, "_5year_acs"),
     extract_date = ipums_extract_date,
   extract_description = paste0("Microdata pull for Employment Opp. Metric Predictor. American Community Survey", params$year, "(5-year)."),
     survey = acs_surveys)
@@ -724,6 +724,8 @@ acs_all <- acs_all %>%
 
 Calculate the county-level metrics. 
 
+Calc_survey_mean_subgroup takes the acs data and transitions it into a srvyr object. This allows the program to apply survey_mean which is a powerful function that calculates precise confidence intervals from datasets with replicate weights.   
+
 ```{r}
 #| label: calc-all
 results_all <- acs_all %>%
@@ -1016,9 +1018,7 @@ metrics_employment_sub <- metrics_employment_sub %>%
 
 ```{r}
 if(isTRUE(bucket_exists(bucket = my_bucket))){
- if (!aws.s3::object_exists(paste0(s3_dir, "/metrics_employment_sub_county", "_", params$year[1], ".csv"), bucket = my_bucket)){
-    
-    # write file to S3
+     # write file to S3
     tmp <- tempfile()
     on.exit(unlink(tmp))
     write_csv(metrics_employment_sub, file = tmp)
@@ -1027,8 +1027,11 @@ if(isTRUE(bucket_exists(bucket = my_bucket))){
     put_object(tmp, object = paste0(s3_dir, "/metrics_employment_sub_county", "_", params$year, ".csv"), bucket = my_bucket, 
                show_progress = TRUE, multipart = FALSE)
     
+ }else{
+  
+  write_csv(paste0(here::here("09_employment", "data", "intermediate"), 
+                  "/", "metrics_employment_sub_county_", params$year, ".csv"))
   }
-}
 ```
 
 If updating a single year the program ends here. To see validation results re-run with selection that all years of intermediate data are available.
@@ -1061,7 +1064,7 @@ read_intermediate <- function(year, file_type){
   }
   else{
   
-  read_csv(paste0(here::here("09_employment", "data", "intermediate", "employed"), 
+  read_csv(paste0(here::here("09_employment", "data", "intermediate"), 
                   "/", "metrics_employment_", file_type, "_", year, ".csv"))
   }
   
@@ -1074,6 +1077,13 @@ metrics_employment_sub <- map_df(.x = existing_years, .f = ~read_intermediate(ye
                                                                           file_type = "sub_county"))
 ```
 
+Tabulate count of results by year.
+
+```{r}
+metrics_employment_sub %>% 
+  group_by(year) %>% 
+  count()
+```
 
 Show summary statistics for the metric across all counties in the 5-year data.
 ```{r}
