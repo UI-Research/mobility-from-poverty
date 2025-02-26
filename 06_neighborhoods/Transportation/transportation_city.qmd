@@ -33,13 +33,12 @@ library(here)
 
 source(here("functions", "testing", "evaluate_final_data.R"))
 
-theme_set(theme_minimal())
+theme_set(theme_bw())
 
 ```
 
 ### Read data
 
-The data from HUD cannot be easily read directly into this program.
 Before running, please download the entirety of the folders listed below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
@@ -85,11 +84,12 @@ Create correct FIPS columns.
 
 ```{r}
 transportation_tracts <- transportation_tracts |>
-  rename (GEOID = tract) |>
+  rename(GEOID = tract) |>
+  mutate(GEOID = str_remove_all(GEOID, pattern = "\"")) |>
   mutate(
-    state = substr(GEOID, start = 2, stop = 3),
-    county = substr(GEOID, start = 4, stop = 6),
-    tract = substr(GEOID, start = 7, stop = 12)
+    state = substr(GEOID, start = 1, stop = 2),
+    county = substr(GEOID, start = 3, stop = 5),
+    tract = substr(GEOID, start = 6, stop = 11)
   )
 
 transportation_tracts <- transportation_tracts |>
@@ -115,21 +115,19 @@ Bring in the crosswalk of interest (we want the year range to be before 2020, wh
 
 ```{r}
 tract_place <- read_csv(
-  here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
-  skip = 1
+  here::here("geographic-crosswalks", "data", "geocorr2018_2010tract_to_2014place.csv")
 ) %>%
-  select(
-    state = `State code`, 
-    county = `County code`, 
-    place = `Place code`, 
-    tract = Tract, 
-    afact = `tract-to-place allocation factor`,
-    afact2 = `place-to-tract allocation factor`
+  rename(
+    place = placefp,
+    state_county = county
   ) %>%
+  mutate(tract = tract * 100) |>
   mutate(
-    county = substring(county, 3, 5),
-    state_place = str_c(state, place),
-    tract = str_remove(string = tract, pattern = "[.]")
+    state_county = str_pad(state_county, width = 5, side = "left", pad = "0"),
+    state = str_sub(state_county, start = 1, end = 2),
+    county = str_sub(state_county, start = 3, end = 5),
+    tract = str_pad(tract, width = 6, side = "left", pad = "0"),
+    place = str_pad(place, width = 5, side = "left", pad = "0")
   )
 
 ```
@@ -146,26 +144,33 @@ Filter the crosswalk to only include the places in the place destination file.
 
 ```{r}
 # tract_place <- tract_place |>
-#   filter(paste0(state, place) %in% paste0(places$state, places$place))
+  # filter(state_place %in% paste0(places$state, places$place))
 
 ```
 
 ## Join and Aggregate
 
-The CNT data contains tracts not included in our places. Our places include tracts not included in the CNT data. 
+The CNT data contains tracts not included in our places. 
 
 ```{r}
 anti_join(
   transportation_tracts, 
   tract_place, 
   by = c("state", "county", "tract")
-)
+) |>
+  count(state, county)
 
+```
+
+Our places include tracts not included in the CNT data. 
+
+```{r}
 anti_join(
   tract_place,
   transportation_tracts, 
   by = c("state", "county", "tract")
-)
+) |>
+  count(state, county)
 
 ```
 

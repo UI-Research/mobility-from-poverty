@@ -40,7 +40,6 @@ theme_set(theme_minimal())
 
 ### Read data
 
-The data from HUD cannot be easily read directly into this program.
 Before running, please download the entirety of the folders listed below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
@@ -83,7 +82,7 @@ Create correct FIPS columns.
 
 ```{r}
 transportation_tracts <- transportation_tracts |>
-  rename (GEOID = tract) |>
+  rename(GEOID = tract) |>
   mutate(
     state = substr(GEOID, start = 2, stop = 3),
     county = substr(GEOID, start = 4, stop = 6),
@@ -365,30 +364,22 @@ anti_join(
 Bring in the crosswalk of interest (we want the year range to be before 2020, when tract definitions changed)
 
 ```{r}
-tract_place <- read_csv(here("geographic-crosswalks", 
-                             "data", 
-                             "geocorr2018_tract_to_place.csv"))
-```
-
-Remove the decimal from the tract variable
-
-```{r}
-tract_place <- tract_place |>
-  mutate(tract = tract * 100)
-
-```
-
-Add in leading zeroes as needed
-
-```{r}
-tract_place <- tract_place |>
+tract_place <- read_csv(
+  here::here("geographic-crosswalks", "data", "geocorr2018_2010tract_to_2014place.csv")
+) %>%
+  rename(
+    place = placefp,
+    state_county = county
+  ) %>%
+  mutate(tract = tract * 100) |>
   mutate(
-    state = sprintf("%0.2d", as.numeric(state)),
-    tract = sprintf("%0.6d", as.integer(as.character(tract))),
-    placefp = sprintf("%0.5d", as.numeric(placefp)),
-    county = substr(county, nchar(county) - 2, nchar(county))
-  ) |>
-  rename(place = placefp)
+    state_county = str_pad(state_county, width = 5, side = "left", pad = "0"),
+    state = str_sub(state_county, start = 1, end = 2),
+    county = str_sub(state_county, start = 3, end = 5),
+    tract = str_pad(tract, width = 6, side = "left", pad = "0"),
+    place = str_pad(place, width = 5, side = "left", pad = "0")
+  )
+
 ```
 
 Limit to the Census Places we want first, bring in the places crosswalk (place-populations.csv).
@@ -402,25 +393,32 @@ places <- read_csv(here("geographic-crosswalks",
 Filter the crosswalk to only include the places in the place destination file. 
 
 ```{r}
-tract_place <- tract_place |>
-  filter(paste0(state, place) %in% paste0(places$state, places$place))
+# tract_place <- tract_place |>
+  # filter(paste0(state, place) %in% paste0(places$state, places$place))
 
 ```
 
-The CNT data contains tons of tracts not included in our places. Our places include tracts not included in the CNT data. 
+The CNT data contains tons of tracts not included in our places.
 
 ```{r}
 anti_join(
   combined_tracts, 
   tract_place, 
   by = c("state", "county", "tract")
-)
+) |>
+  count(state, county)
 
+```
+
+Our places include tracts not included in the CNT data. 
+
+```{r}
 anti_join(
   combined_tracts,
   transportation_tracts, 
   by = c("state", "county", "tract")
-)
+) |>
+  count(state, county)
 
 ```
 
