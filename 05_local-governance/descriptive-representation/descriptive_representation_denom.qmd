@@ -43,7 +43,7 @@ census_api_key(Sys.getenv("CENSUS_API_KEY"), overwrite = TRUE)
 options(scipen = 999)
 
 #Set year of update 
-update_years = c(2014, 2016, 2018, 2021)
+update_years = c(2014, 2016, 2018, 2021, 2023)
 
 source(here::here("functions", "testing", "evaluate_final_data.r"))
 ```
@@ -129,7 +129,7 @@ The Census reports race and ethnicity as many different groups.
 Table 2 in [this publication](https://www.census.gov/prod/cen2010/briefs/c2010br-02.pdf) is helpful. 
 Here, we collapse the detailed groups into the same four groups of interest from the above section. 
 
-Construct asian_other (combined value).
+Construct asian_other (combined value). This is Asian non-Hispanic, American Indian (AIAN), Native Hawaiian, Other and Two plus races.
 
 ```{r}
 county_demo_combined <- county_demo %>%
@@ -276,6 +276,11 @@ wide_places_demo <- wide_places_demo %>%
 Visualize a distribution of county and place population shares for each race/ethnicity group to look for any surprising patterns in the most recent years.
 
 ```{r}
+year_viz <- wide_county_demo %>% 
+  filter(year == max(update_years)) %>% 
+  select(year) %>% 
+  unique() %>% 
+  pull()
 
 wide_county_demo %>% 
   filter(year == max(update_years)) %>% 
@@ -286,7 +291,7 @@ wide_county_demo %>%
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of population share, by county (most recent 5-year ACS data)",
+    title = paste0("Distribution of population share,\n by county (", year_viz, " 5-year ACS data)"),
     y = "Density",
     x = "Population (1,000's)"
   ) +
@@ -302,7 +307,7 @@ wide_places_demo %>%
   geom_density(color = "blue", fill = alpha("blue", 0.3)) +
   facet_wrap(~subgroup) +
   labs(
-    title = "Distribution of population share, by place (most recent 5-year ACS data)",
+    title = paste0("Distribution of population share,\n by place (", year_viz, " 5-year ACS data)"),
     y = "Density",
     x = "Population (1,000's)"
   ) +
@@ -357,6 +362,18 @@ stopifnot(
 
 If this is still running, we are good to proceed!
 
+Show number of places available 
+
+```{r}
+wide_places_demo %>% 
+  group_by(year) %>% 
+  count()
+
+wide_county_demo %>% 
+  group_by(year) %>% 
+  count()
+```
+
 ## Create quality flag
 
 Because we use the census summary tables we can assume all data quality is good.
@@ -371,7 +388,7 @@ wide_places_demo <- wide_places_demo %>%
 ```
 
 
-## Prepare for Export
+## Prepare for Export and Test
 
 Keep only relevant variables before export.
 
@@ -400,8 +417,24 @@ place_pop_by_race <- place_pop_by_race %>%
               ~str_c("share_desc_rep_", .x)) 
 ```
 
+### Final evaluation 
 
-## Export
+Place data.
+
+```{r}
+evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluation_form_desc_rep_overall_place.csv"), data = place_pop_by_race, geography = "place", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+County data.
+
+```{r}
+evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluation_form_desc_rep_overall_county.csv"), data = county_pop_by_race, geography = "county", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+
+
+
+### Export as CSV
 ```{r}
 write_csv(county_pop_by_race, here::here("05_local-governance", "descriptive-representation", "data", "final",
                                          paste0("descriptive_rep_denominator_county_all.csv")))
