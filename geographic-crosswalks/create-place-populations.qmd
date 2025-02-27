@@ -25,10 +25,10 @@ set_urbn_defaults("print")
 options(scipen = 999)
 ```
 
-## 2015-2019
+## 2014 & 2015-2019
 
 ```{r}
-#| label: get-pop-2015-2019
+#| label: get-pop-2014-2019
 #' Get population estimates from the US Census Bureau Population Estimation Program
 #'
 #' @param year An integer for the year of interest
@@ -44,6 +44,7 @@ get_pop <- function(year) {
 
 
 # pull county population data for each year from the Population Estimates Program
+# API only works from 2015 to 2019, 2014 pulled in manually
 pep_2015_2019 <- map_dfr(
   .x = 2015:2019,
   .f = ~ get_pop(year = .x)
@@ -96,9 +97,10 @@ pop <- pop |>
   arrange(year, state, place)
 ```
 
-## 2021-2023
 
 The [Population Estimates Program](https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-total.html) data isn't available through the Census Bureau API for later years. Ideally, we would download the files and use them. Unfortunately, the files have inconsistencies so we skip this step for now. 
+
+## 2021-2023
 
 ```{r}
 # Specify URL where source data file is online
@@ -113,32 +115,32 @@ if (!file.exists(destfileplace)) {
   download.file(placeurl, destfileplace, mode = "wb")
 }
 
-pep_2021_2023 <- read_csv(destfileplace) |>
-  rename_with(tolower) |>
+pep_2021_2023 <- read_csv(destfileplace) %>%
+  rename_with(tolower) %>%
   # Convert state to character and add a leading zero
   mutate(
-    state = sprintf("%02d", state),
-    place = sprintf("%05d", place)
-  ) |>
-  mutate(across(c(state, place), as.character)) |>
-  filter(sumlev == 162) |>
+    state = str_pad(state, width = 2, pad = "0"),
+    place = str_pad(place, width = 2, pad = "0")
+  ) %>%
+  mutate(across(c(state, place), as.character)) %>%
+  filter(sumlev == 162) %>%
   select(
     state, place,
     state_name = stname,
     place_name = name,
     starts_with("popestimate")
-  ) |>
+  ) %>%
   # remove unnecessary data before reshaping
-  filter(place != "00000") |>
+  filter(place != "00000") %>%
   # reshape by place
   pivot_longer(
     cols = starts_with("popestimate"),
     names_to = "year",
     values_to = "population"
-  ) |>
+  ) %>%
   mutate(
     year = as.numeric(str_remove(string = year, pattern = "popestimate")),
-  ) |>
+  ) %>%
   filter(year > 2020)
 ```
 
@@ -150,10 +152,64 @@ pep_2021_2023 <- pep_2021_2023 |>
   distinct(year, state, place, state_name, place_name, population)
 ```
 
+## 2014
+
+```{r}
+# Specify URL where source data file is online
+placeurl14 <-
+  "https://www2.census.gov/programs-surveys/popest/datasets/2010-2014/cities/totals/sub-est2014_all.csv"
+
+# Specify destination where file should be saved (the .gitignore folder for your local branch)
+destfileplace14 <- here("geographic-crosswalks", "data", "raw", "sub-est2014.csv")
+
+# Import the data file & save locally
+if (!file.exists(destfileplace14)) {
+  download.file(placeurl14, destfileplace14, mode = "wb")
+}
+
+pep_2014 <- read_csv(destfileplace14) %>%
+  rename_with(tolower) %>%
+  # Convert state to character and add a leading zero
+  mutate(
+    state = str_pad(state, width = 2, pad = "0"),
+    place = str_pad(place, width = 5, pad = "0")
+  ) %>%
+  mutate(across(c(state, place), as.character)) %>%
+  filter(sumlev == 162) |>
+  select(
+    state, place,
+    state_name = stname,
+    place_name = name,
+    starts_with("popestimate")
+  ) %>%
+  # remove unnecessary data before reshaping
+  filter(place != "00000") %>%
+  # reshape by place
+  pivot_longer(
+    cols = starts_with("popestimate"),
+    names_to = "year",
+    values_to = "population"
+  ) %>%
+  mutate(
+    year = as.numeric(str_remove(string = year, pattern = "popestimate")),
+  ) %>%
+  filter(year > 2013) 
+```
+
+
+The PEP file includes disaggregations of places and duplicate places. We drop these. 
+
+```{r}
+pep_2014 <- pep_2014 %>%
+  filter(!str_detect(place_name, pattern = "(pt\\.)")) %>%
+  distinct(year, state, place, state_name, place_name, population)
+```
+
 ## Combine Data
 
 ```{r}
 final_population <- bind_rows(
+  pep_2014,
   pop,
   pep_2021_2023
 )
@@ -311,10 +367,11 @@ final_population |>
 The PEP data are reported using the geographies at the time the estimates were generated. This means the 2023 data include Connecticut's planning regions in 2021 even though they didn't exist at that point. Accordingly, we will download earlier data. 
 
 ```{r}
-# We have 486 cities, so for 5 years we should have 2430 observations.
-# However, South Fulton city, Georgia was incorporated in 2017, so we only
-# have population estimates for this city from 2018-2020. Therefore, there
-# are 2428 total observations
+# We have 486 cities from 2018-2023, so for 6 years we should have 2916 observations.
+# South Fulton city, Georgia was incorporated in 2017, so we only
+# have population estimates for this city from 2018-2023. Therefore, from 2014-2017, 
+# for 4 years we should have 485 observations for each, or 1940 total.
+# Overall, should have 2916+1940, which is why we have 4856 total observations
 
 write_csv(
   x = final_population,
