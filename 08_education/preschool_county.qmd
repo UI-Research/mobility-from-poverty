@@ -13,7 +13,7 @@ execute:
 editor_options: 
   chunk_output_type: console
 params:
-  year: "2021"
+  year: "2023"
 ---
 
 *Program for the creation of the Access to Pre-Kindergarten Upward Mobility Predictor at the County-level*
@@ -69,8 +69,8 @@ Date of IPUMS extract. Denote the latest date that the IPUMS extract was changed
 For internal reviewers, if you plan to utilize AWS keep this date as it was last entered by the metric lead unless you intend to change the extract.
 
 ```{r}
-ipums_extract_date <- "01_13_25"
-ipums_repwt_extract_date <- "01_13_25"
+ipums_extract_date <- "02_28_25"
+ipums_repwt_extract_date <- "02_28_25"
 ```
 
 If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
@@ -82,7 +82,7 @@ single_year_update = "No"
 Define existing intermediate years and read them into function to combine. 
 
 ```{r}
-existing_years <- c("2014", "2016", "2018", "2021")
+existing_years <- c("2014", "2016", "2018", "2021", "2023")
 ```
 
 
@@ -112,7 +112,7 @@ acs <- extract_ipums_aws(
 
 ```
 
-Look at the survey year of the IPUMS data. The survey should year should match what was selected in the `extract_ipums()` function above.
+Look at the survey year of the IPUMS data. The survey year should match what was selected in the `extract_ipums()` function above.
 
 ```{r}
 count(acs, sample)
@@ -466,7 +466,7 @@ acs_crosswalked <- left_join(
   acs_clean, 
   puma_county_crosswalk, 
   by = c("crosswalk_period", "statefip","puma"),
-  relationship = "many-to-many"
+  relationship = "many-to-many" 
 )
 
 rm(acs_clean)
@@ -648,7 +648,12 @@ results_all_expand <- expanded_county_list %>%
   left_join(results_all, by = c("year", "statefip", "county")) %>% 
   filter(!is.na(year))
 
-stopifnot(nrow(results_all_expand) == 3143 * n_distinct(results_all_expand$year))
+if(params$year < 2022){
+  stopifnot(nrow(results_all_expand) == 3143 * n_distinct(results_all_expand$year))
+
+} else{
+    stopifnot(nrow(results_all_expand) == 3144 * n_distinct(results_all_expand$year))
+}
 ```
 
 ## Data Quality Flags
@@ -883,8 +888,12 @@ metrics_education_sub <-results_all_expand %>%
          subgroup_type = "all") %>% 
   bind_rows(results_race_ethnicity_expanded, results_income_expanded)
 
+if(params$year < 2022){
+  stopifnot(nrow(metrics_education_sub) == 3143 * n_distinct(results_all_expand$year) * 7)
 
-stopifnot(nrow(metrics_education_sub) == 3143 * n_distinct(results_all_expand$year) * 7)
+} else{
+    stopifnot(nrow(metrics_education_sub) == 3144 * n_distinct(results_all_expand$year) * 7)
+}
 ```
 
 Now create the metric quality variable. The `share_in_preschool_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag.
@@ -947,15 +956,17 @@ read_intermediate <- function(year, file_type){
   
   if(isTRUE(bucket_exists(bucket = my_bucket))) {
     
-    s3read_using(FUN=read_csv, 
+   df <- s3read_using(FUN=read_csv, 
                  bucket = my_bucket, 
-                 object=paste0(s3_dir, "/metrics_education_", file_type, "_", year, ".csv"))
+                 object=paste0(s3_dir, "/metrics_education_", file_type, "_", year, ".csv")) %>% 
+      mutate(crosswalk_period = as.character(crosswalk_period))
   
   }
   else{
   
-  read_csv(paste0(here::here("08_education", "data", "intermediate", "preschool"), 
-                  "/", "metrics_education_", file_type, "_", year, ".csv"))
+  df <- read_csv(paste0(here::here("08_education", "data", "intermediate", "preschool"), 
+                  "/", "metrics_education_", file_type, "_", year, ".csv")) %>% 
+      mutate(crosswalk_period = as.character(crosswalk_period))
   }
   
 }
