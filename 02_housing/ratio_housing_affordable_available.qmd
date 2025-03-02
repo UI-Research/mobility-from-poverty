@@ -46,6 +46,8 @@ tibble::tribble(
 
 ### Analysis notes
 
+-   Some parallel approaches used to calculate housing affordability and availability make adjustments to what is considered affordable based on the number of bedrooms in the unit and based on the number of people in the household. At present, we do not make these adjustments
+
 -   Unlike some other scripts and metrics in the Upward Mobility Metrics repository, this script produces two metrics. This is because these metrics, and the underlying data used to generate them, are closely interrelated. This script also produces estimates at two geographies (the place and county levels). To specify the intended geography, users need only change the `geography` variable in the YAML `params` section at the top of the document. Similarly, the years can be specified in the `params` section.
 
 -   This analysis relies on 1-year American Community Survey (ACS) microdata from IPUMS. These data are used to generate estimates of housing units and households by income at the Public Use Microdata Area (PUMA) geography. We then attribute PUMA-level estimates to our geography of interest (either places or counties).
@@ -901,13 +903,7 @@ if (geography == "place") {
 
 Here we calculate indicator variables that designate which units are affordable at 80%, 50%, and 30% of AMI and which households--including breakdowns for renter and owner subgroups--fall below those same AMI levels.
 
-The base AMI level is for a four-person household living in a three-bedroom unit (technically, 2.67 bedrooms, because it is assumed that each bedroom houses 1.5 people). We adjust AMI levels based on the number of bedrooms in each unit and the number of people in each household.
-
-This means that for a household with fewer members, the AMI level is lower. For example, if the base level of 50% AMI is \$35,000, then the modified 50% AMI level for a three-person household would be \$31,500 (discounted by 10%).
-
-This means that for a unit with fewer bedrooms, the AMI level is lower. For example, if the base level of 50% AMI is \$35,000, then the modified 50% AMI level for a two-bedroom unit would be \$31,500 (discounted by 10%).
-
-These adjustments are applied for each unit and household. For a three-person household in a five-bedroom unit, a base AMI of \$35,000 would be adjusted down by 10% and up by 16%, respectively, resulting in an AMI of \$36,540.
+The base AMI level is for a four-person household living in a three-bedroom unit (technically, 2.67 bedrooms, because it is assumed that each bedroom houses 1.5 people). As noted above, we do not make adjustments to our estimates based on the number of people in each household, nor on the number of bedrooms in each unit. Instead, we apply the base AMI level uniformly across all households and units.
 
 ```{r}
 ## these are data on occupied housing units
@@ -917,30 +913,6 @@ household_affordability = tidylog::left_join(
     by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>% 
   mutate(
-    # ## adjusting AMI levels to account for household size, per Worst
-    # ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
-    # across(
-    #   .cols = matches("level_[0-9]{2}ami"),
-    #   .fns = ~ case_when(
-    #     household_size == 1 ~ .x * .7,
-    #     household_size == 2 ~ .x * .8,
-    #     household_size == 3 ~ .x * .9,
-    #     household_size == 4 ~ .x,
-    #     ## for all household sizes greater than four, we add 8% of the AMI threshold per
-    #     ## household member above four
-    #     household_size > 4 ~ .x * (1 + ((household_size - 4) * .08)))),
-    ## adjusting AMI levels to account for the number of bedrooms per unit, per Worst
-    ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
-    across(
-      .cols = matches("level_[0-9]{2}ami"),
-      .fns = ~ case_when(
-        BEDROOMS == 0 ~ .x * .7,
-        BEDROOMS == 1  ~ .x * .75,
-        BEDROOMS == 2  ~ .x * .9,
-        BEDROOMS == 3  ~ .x * 1.04,
-        ## for all household sizes greater than four, we add 8% of the AMI threshold per 
-        ## household member above four
-        BEDROOMS >= 4 ~ .x * (1.04 + ((BEDROOMS - 4) * .12)))),
     ## all households below ami levels
     across(
       .cols = matches("ami$"),
@@ -1019,18 +991,6 @@ vacant_affordability = tidylog::left_join(
     by = c("statefip" = "state", geography, "year"),
     relationship = "many-to-one") %>%
   mutate(
-    ## adjusting AMI levels to account for the number of bedrooms per unit, per Worst
-    ## Case Housing Needs Report (pg. 84): https://www.huduser.gov/portal//portal/sites/default/files/pdf/Worst-Case-Housing-Needs-2023.pdf
-    across(
-      .cols = matches("level_[0-9]{2}ami"),
-      .fns = ~ case_when(
-        BEDROOMS == 0 ~ .x * .7,
-        BEDROOMS == 1  ~ .x * .75,
-        BEDROOMS == 2  ~ .x * .9,
-        BEDROOMS == 3  ~ .x * 1.04,
-        ## for all household sizes greater than four, we add 8% of the AMI threshold per 
-        ## household member above four
-        BEDROOMS >= 4 ~ .x * (1.04 + ((BEDROOMS - 4) * .12)))),
     ## binary indicators 
     ## for rental units, if adjusted annual rent is less than or equal to the given
       ## AMI level
@@ -1213,13 +1173,33 @@ housing_subgroups = housing_summed_quality %>%
     across(
       .cols = matches("quality"), 
       .fns = ~ if_else(is.na(get(cur_column() %>% str_remove("_quality"))), NA, .x))) %>%
-  select(year, state, !!geography, subgroup_type, subgroup, matches("ratio")) %>%
+  ## renaming to maintain consistency with prior productions / external references to
+  ## this metric historically (though this is a ratio, not a percentage)
+  rename_with(
+      .cols = everything(),
+      .fn = ~ str_replace_all(.x, c("ratio" = "share", "ami" = "_ami"))) %>%
+  rename_with(
+    .cols = matches("available"), 
+    .fn = ~ str_replace(.x, "available", "affordable_available")) %>%
+  select(
+    year, 
+    state, 
+    !!geography, 
+    subgroup_type, 
+    subgroup, 
+    matches("share_affordable_[0-9]{2}_ami$"),
+    matches("share_affordable_[0-9]{2}_ami_quality$"),
+    matches("share_affordable_available.*ami$"),
+    matches("share_affordable_available.*quality$")) %>%
   arrange(state, .data[[geography]], subgroup, desc(year)) %>%
   ## due to crosswalking non-alignment, we drop south fulton georgia for 2018-2021
   { if (geography == "place") filter(., ! (place == "72122" & state == "13" & (year %in% c(2018:2021)))) else . }
 
 housing_overall = housing_subgroups %>% 
   filter(subgroup == "All")
+
+housing_subgroups %>%
+  colnames()
 
 years = if_else(
   geography == "county", 
@@ -1228,20 +1208,11 @@ years = if_else(
 
 # export the final data
 write_csv(
-  ## renaming to maintain consistency with prior productions / external references to
-  ## this metric historically (though this is a ratio, not a percentage)
-  housing_overall %>% 
-    rename_with(
-      .cols = everything(),
-      .fn = ~ str_replace(.x, "ratio", "share")), 
+  housing_overall,
   here("02_housing", "data", "final", str_c("housing_", geography, "_", years, ".csv")))
+
 write_csv(
-  ## renaming to maintain consistency with prior productions / external references to
-  ## this metric historically (though this is a ratio, not a percentage)
-  housing_subgroups %>% 
-    rename_with(
-      .cols = everything(),
-      .fn = ~ str_replace(.x, "ratio", "share")),
+  housing_subgroups,
   here("02_housing", "data", "final", str_c("housing_", geography, "_", years, "_subgroups.csv")))
 ```
 
@@ -1274,7 +1245,7 @@ test_that(
             exp_form_path = .,
             data = housing_subgroups %>%
               { if (str_detect(.x, "availability")) 
-                  select(., -matches("affordable")) 
+                  select(., -matches("affordable_[0-9]{2}")) 
                 else select(., -matches("available"))} %>%
               rename_with(
                 .cols = everything(),
@@ -1387,7 +1358,7 @@ test_that(
   "No ratios are negative or zero", {
   expect_true(
     housing_overall %>%
-      filter(if_any(.cols = c(matches("ratio"), -matches("quality")), .fns = ~ .x <= 0)) %>%
+      filter(if_any(.cols = c(matches("share"), -matches("quality")), .fns = ~ .x <= 0)) %>%
       nrow() == 0)})
 ```
 
@@ -1401,13 +1372,13 @@ test_that(
   expect_true(
     housing_subgroups %>%
       filter(subgroup == "All") %>%
-      select(c(year, state, !!geography, matches("ratio"), -matches("quality"))) %>%
+      select(c(year, state, !!geography, matches("share"), -matches("quality"))) %>%
       group_by(state, year) %>%
       summarize(
         across(
           .cols = where(is.numeric), 
           .fns = ~ sum(!is.na(.x)))) %>%
-      pivot_longer(cols = matches("ratio")) %>%
+      pivot_longer(cols = matches("share")) %>%
       filter(value == 0) %>%
       nrow() == 0) })
 ```
@@ -1424,10 +1395,10 @@ test_that(
       select(-matches("quality")) %>%
       mutate(
         across(
-          .cols = c(matches("ratio_affordable"), ),
-          .fns = ~ .x - get(str_replace(cur_column(), "affordable", "available")),
+          .cols = c(matches("share_affordable_[0-9]")),
+          .fns = ~ .x - get(str_replace(cur_column(), "affordable", "affordable_available")),
           .names = "{.col}_difference")) %>%
-      arrange(ratio_affordable_80ami_difference) %>%
+      arrange(share_affordable_80_ami_difference) %>%
       filter(if_any(.cols = matches("difference"), .fns = ~ .x < 0)) %>% 
       nrow() == 0)})
 ```
@@ -1461,8 +1432,7 @@ metrics_prior = metrics_prior1 %>%
   filter(year %in% c(place_years, county_years), subgroup != "All") %>%
   rename_with(
     .cols = matches("share"),
-    .fn = ~ str_replace_all(
-      .x, c("share" = "ratio", "affordable_available" = "available", "_ami" = "ami")) %>% str_c("_prior")) %>%
+    .fn = ~ str_c(.x, "_prior")) %>%
   mutate(year = as.character(year))
 
 metrics_differences_wide = metrics_prior %>%
@@ -1555,7 +1525,7 @@ We anticipate that missingness is greater for the more restrictive income subgro
 
 ```{r}
 housing_subgroups %>% 
-  select(year, c(matches("ratio"), -matches("quality"))) %>%
+  select(year, c(matches("share"), -matches("quality"))) %>%
   group_by(year) %>%
   summarize(
     across(
@@ -1570,10 +1540,10 @@ We anticipate the the distributions for a given metric will be similar across ye
 
 ```{r, fig.width = 10}
 housing_subgroups %>% 
-  select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
+  select(c(subgroup, year, matches("share"), -matches("quality"))) %>%
   pivot_longer(-c(subgroup, year)) %>%
-  filter(str_detect(name, "affordable")) %>%
-  mutate(name = name %>% str_replace_all(c("_" = " ", "ratio" = "", "affordable" = "aff.", "available" = "avail.")) %>% str_to_sentence()) %>%
+  filter(str_detect(name, "affordable_[0-9]")) %>%
+  mutate(name = name %>% str_replace_all(c("_" = " ", "share" = "", "affordable" = "aff.", "available" = "avail.")) %>% str_to_sentence()) %>%
   ggplot() +
     geom_histogram(aes(x = value, fill = subgroup)) +
     facet_wrap(~ name + year, ncol = 9) +
@@ -1582,10 +1552,10 @@ housing_subgroups %>%
     theme_urbn_print()
 
 housing_subgroups %>% 
-  select(c(subgroup, year, matches("ratio"), -matches("quality"))) %>%
+  select(c(subgroup, year, matches("share"), -matches("quality"))) %>%
   pivot_longer(-c(subgroup, year)) %>%
   filter(str_detect(name, "available")) %>%
-  mutate(name = name %>% str_replace_all(c("_" = " ", "ratio" = "", "affordable" = "aff.", "available" = "avail.")) %>% str_to_sentence()) %>%
+  mutate(name = name %>% str_replace_all(c("_" = " ", "share" = "", "affordable " = "", "available" = "avail.")) %>% str_to_sentence()) %>%
   ggplot() +
     geom_histogram(aes(x = value, fill = subgroup)) +
     facet_wrap(~ name + year, ncol = 9) +
@@ -1607,7 +1577,7 @@ if (length(c(county_years, place_years) %>% unique) > 1) {
 
 year_over_year_changes = housing_subgroups %>%
   select(-matches("quality")) %>%
-  pivot_longer(cols = c(matches("ratio"))) %>%
+  pivot_longer(cols = c(matches("share"))) %>%
   filter(value > .01) %>%
   arrange(desc(year), state, .data[[geography]], subgroup, name) %>%
   group_by(state, .data[[geography]], subgroup, name) %>%
@@ -1631,7 +1601,6 @@ year_over_year_changes %>%
     scale_x_continuous(labels = scales::percent)
 }
 ```
-
 ***Alignment with NLIHC Estimates***
 
 Estimates should generally align with estimates produced by NLIHC as part of their "The GAP" series. We've provided values from their most recent (as of writing) publication, which relies on 2022 data.
@@ -1727,7 +1696,7 @@ nlihc_estimates_metro %>%
     housing_subgroups %>% 
       filter(year == 2022, subgroup == "Renter") %>%
       mutate(geoid = str_c(state, county)) %>%
-      select(c(matches("ratio_available"), -matches("quality")), geoid),
+      select(c(matches("share_affordable_available"), -matches("quality")), geoid),
     by = c("county_match_geoid" = "geoid")) %>%
   filter(!is.na(ratio_available_30ami)) %>%
   mutate(
