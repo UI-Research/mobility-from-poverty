@@ -1287,22 +1287,13 @@ if (geography == "county") {
     filter(geoid != "02261") %>%
     bind_rows(adjusted_ak_counties)
 } else {
-  ## this file doesn't have place-level data for 2014, so we duplicate records
-  ## from 2015, and assign population values to NA (we don't use these, but...
-  ## just in case)
-  population_listing = population_listing1 %>%
-    bind_rows(
-      population_listing1 %>%
-        filter(year == "2015") %>%
-        mutate(
-          year = "2014",
-          population = NA))
-}
+  population_listing = population_listing1 
+  }
 
 warning("This geography universe listing is modified here because, at the time
         of writing, it had not been updated to include the eight CT county-equivalents
-        that were used in years preceding 2022. However, in future updates, the original
-        universe file should be updated, and this manual modification should be removed.")
+        that were used in years preceding 2022 (except that in 2014, it does reflect these counties. 
+        However, in future updates, the original universe file should be updated, and this manual modification should be removed.")
 
 geography_universe = population_listing %>%
   group_by(year) %>%
@@ -1310,7 +1301,7 @@ geography_universe = population_listing %>%
   {if (geography == "county") 
     mutate(.,
       geography_count = case_when(
-        year < 2022 ~ geography_count + 8,
+        year < 2022 & year > 2014 ~ geography_count + 8,
         TRUE ~ geography_count)) 
     else mutate(.,
       ## we don't have a valid crosswalk for South Fulton, GA for 2018-2021
@@ -1668,9 +1659,9 @@ nlihc_estimates_metro = tribble(
   clean_names() %>%
   select(
     metro_area,
-    ratio_available_30ami_nlihc = at_or_below_eli_2,
-    ratio_available_50ami_nlihc = at_or_below_50_percent_ami_2,
-    ratio_available_80ami_nlihc = at_or_below_80_percent_ami) %>%
+    share_affordable_available_30_ami_nlihc = at_or_below_eli_2,
+    share_affordable_available_50_ami_nlihc = at_or_below_50_percent_ami_2,
+    share_affordable_available_80_ami_nlihc = at_or_below_80_percent_ami) %>%
   mutate(
     county_match_geoid = case_when(
       str_detect(metro_area, "Tucson") ~ "04019",
@@ -1698,7 +1689,7 @@ nlihc_estimates_metro %>%
       mutate(geoid = str_c(state, county)) %>%
       select(c(matches("share_affordable_available"), -matches("quality")), geoid),
     by = c("county_match_geoid" = "geoid")) %>%
-  filter(!is.na(ratio_available_30ami)) %>%
+  filter(!is.na(share_affordable_available_30_ami)) %>%
   mutate(
     across(matches("nlihc"), ~ .x / 100),
     across(matches("nlihc"), .fns = ~ .x - get(cur_column() %>% str_remove("_nlihc")), .names = "{.col}_diff")) %>%
