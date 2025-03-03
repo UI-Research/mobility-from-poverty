@@ -471,70 +471,74 @@ The county-level version of this metric was more straightforward because [census
 
 Census tract populations range from [1,200 - 8,000 with an average of 4,000 inhabitants](https://www2.census.gov/geo/pdfs/education/CensusTracts.pdf). The smallest population in our list of places for 2020 is 74,793 (North Port city, FL), so all tracts are smaller than the places that we're working with. However, "Tract 1" may be located in both "Place A" and "Place B" - therefore, we need to know what percentage of "Tract 1" area overlaps with the area of "Place A" and what percentage overlaps with the area of "Place B." Then we can multiply the total population of "Tract 1" by those percentages to interpolate what share of that total population is located in "Place A" and what share is located in "Place B." This is a technique known as [areal interpolation](https://cran.r-project.org/web/packages/areal/vignettes/areal-weighted-interpolation.html).
 
-We need to know which census places have any overlap with each census tract. We construct a census tract to place crosswalk using the [Missouri Census Data Center's Geocorr 2022 tool](https://mcdc.missouri.edu/applications/geocorr2022.html). We construct the crosswalk using the following options:
+We need to know which census places have any overlap with each census tract. We read in two census-tract-to-place crosswalks that were originally downloaded from the [Missouri Census Data Center's Geocorr tool](https://mcdc.missouri.edu/applications/geocorr2022.html). One crosswalk translates 2010-vintage tracts to 2014-vintage places (note that we use Geocorr 2018 for this crosswalk, originally), and the other translates 2020-vintage tracts to 2020-vintage places. We read these files in directly from the repository, but the process for creating them from scratch is as follows:
 
   * Input Options
       + Select the state(s) (including DC and/or PR) to process:
           - Select all states including DC but excluding PR
       + Select one or more source geographies:
-          - 2020 Geographies: census tract
+          - 2010/2020 Geographies: census tract
       + Select one or more target geographies:
-          - 2020 Geographies: Place (city, town, village, CDP, etc.)
+          - 2014/2020 Geographies: Place (city, town, village, CDP, etc.)
       + Weighting variable:
-          - Population (2020 census)
+          - Population (2010/2020 census)
       + Ignore census blocks with a value of 0 for the weighting variable: TRUE (select this option)
   * Output options
       + Generate second allocation factor `[AFACT2]` showing portion of target geocodes in source geocodes
-  * Geographic Filtering Options
-      + Combine geographic filters using:
-          - AND (intersection)
-
-Then click "Run request" at the bottom of the screen. After the crosswalk finished processing we downloaded it, renamed it, and moved it to the `geographic-crosswalks` folder for this project.
-
-Now we read in the tract to place crosswalk and clean it.
-
-For years 2016 and 2018 we use the [Geocorr 2014](https://mcdc.missouri.edu/applications/geocorr2014.html) with the same options and step as above but pulling 2010 geographies for the source and target 
-as well as for population.
 
 ```{r}
+## this has updated geographies for the revised (in 2022) connecticut "counties"
+crosswalk_20_ct = read_csv(here::here("geographic-crosswalks", "data", "tract_crosswalk_2022_connecticut.csv")) %>%
+  janitor::clean_names() %>%
+  select(
+    tract_fips_2020,
+    tract_fips_2022)
+
 crosswalk_20 <- read_csv(
   here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
-  skip = 1
-) %>%
+  skip = 1) %>%
   select(
     state = `State code`,
     county = `County code`,
     place = `Place code`,
     tract = Tract,
     afact = `tract-to-place allocation factor`,
-    afact2 = `place-to-tract allocation factor`
-  ) %>%
+    afact2 = `place-to-tract allocation factor`) %>%
   mutate(
     county = substring(county, 3, 5),
     state_place = str_c(state, place),
-    tract = str_remove(string = tract, pattern = "[.]")
-  ) %>%
+    tract = str_remove(string = tract, pattern = "[.]")) %>%
   # place GEOIDs of 99999 indicate tracts that are not located within a
   # census place
   filter(place != 99999)
 
-crosswalk_10 <- read_csv(
-  here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2010.csv"),
-  skip = 1
-) %>%
-  select(
-    state = `State code`,
-    county = `County code`,
-    place = `Place code`,
-    tract = Tract,
-    afact = `tract to placefp allocation factor`,
-    afact2 = `placefp to tract allocation factor`
-  ) %>%
+## adjusting for the revised 2022 CT counties
+crosswalk_22 = crosswalk_20 %>%
+  mutate(tract_fips_2020 = str_c(state, county, tract)) %>%
+  left_join(crosswalk_20_ct, by = "tract_fips_2020") %>%
   mutate(
-    county = substring(county, 3, 5),
+    county = case_when(
+      !is.na(tract_fips_2022) ~ str_sub(tract_fips_2022, 3, 5),
+      TRUE ~ county)) %>%
+  select(-matches("tract_fips"))
+
+crosswalk_10 <- read_csv(
+  here::here("geographic-crosswalks", "data", "geocorr2018_2010tract_to_2014place.csv"),
+  col_types = cols(
+    state = col_character(),
+    county= col_character(),
+    placefp = col_character(),
+    tract = col_character(),
+    afact = col_double(),
+    afact2 = col_double())) %>%
+  transmute(
+    state = str_pad(state, side = "left", pad = "0", width = 2),
+    county = str_pad(county, side = "left", pad = "0", width = 5) %>% str_sub(3, 5),
+    place = str_pad(placefp14, side = "left", pad = "0", width = 5),
+    tract = str_remove(string = tract, pattern = "[.]") %>% str_pad(side = "right", pad = "0", width = 6),
     state_place = str_c(state, place),
-    tract = str_remove(string = tract, pattern = "[.]")
-  ) %>%
+    afact,
+    afact2) %>%
   # place GEOIDs of 99999 indicate tracts that are not located within a
   # census place
   filter(place != 99999)
@@ -544,16 +548,15 @@ Expand the crosswalks to include a column with the years in `tracts` the crosswa
 can apply to
 ```{r}
 # Create a tibble for the years you want to expand
-years_20 <- tibble(year = c(2021, 2023))
 years_10 <- tibble(year = c(2016, 2018))
 # Perform cross join to repeat for each year
-crosswalk_20 <- crosswalk_20 %>%
-  crossing(years_20)
-
 crosswalk_10 <- crosswalk_10 |>
   crossing(years_10)
 
-crosswalk <- bind_rows(crosswalk_10, crosswalk_20) |>
+crosswalk <- bind_rows(
+  crosswalk_10, 
+  crosswalk_20 %>% mutate(year = 2021),
+  crosswalk_22 %>% mutate(year = 2023)) |>
   relocate(year, .before = everything())
 ```
 
@@ -584,12 +587,10 @@ crosswalk <- crosswalk %>%
   mutate(afact_product = afact * afact2)
 ```
 
-
-
 Join data to match each census tract with every census place that the tract overlaps with.
 
 ```{r}
-tracts_joined <- left_join(tracts, crosswalk, by = c("year", "state", "county", "tract")) %>%
+tracts_joined <- tidylog::left_join(tracts, crosswalk, by = c("year", "state", "county", "tract")) %>%
   arrange(state_place)
 ```
 
@@ -689,28 +690,23 @@ place_data <- indices %>%
     afact_sum_product = sum(afact_product),
     .by = c(year, state, place, state_place, place_name)
   )
-
-
 ```
 
-We have some missing places for all years
+We don't have data for South Fulton in 2018, but otherwise we have data for every
+year-place combination:
 ```{r}
-
 place_data |> 
-  count(year)
+  count(year) %>%
+  rename(analysis_places = n) %>%
+  left_join(
+    places_of_interest %>%
+      filter(year %in% years) |>
+      count(year) %>%
+      rename(target_places = n))
 
-
-stopifnot(nrow(place_data) == 486 * length(years))
-```
-
-Specifically, these are:
-
-```{r}
 places_of_interest |>
   filter(year %in% years) |>
   anti_join(place_data, by = c("year", "state", "place"))
-
-
 ```
 
 We turn these into explicit missing values below.
@@ -721,7 +717,6 @@ place_data <-
   filter(year %in% years) |> 
   select(year, state, place, place_name, state_place) |> 
   left_join(place_data, by = c("year", "state_place", "state", "place", "place_name"), relationship = "many-to-many") 
-
 ```
 
 And we now have the correct number of observations per year:
@@ -916,7 +911,7 @@ place_data %>%
     limits = c(0, 1)
   ) +
   labs(
-    title = "There is negative relationship between a group's share and exposure",
+    title = "There is a negative relationship between a group's share and exposure",
     subtitle = "Black non-Hispanic share vs. Black non-Hispanic exposure"
   ) +
   scatter_grid() +
@@ -933,7 +928,7 @@ place_data %>%
     limits = c(0, 1)
   ) +
   labs(
-    title = "There is negative relationship between a group's share and exposure",
+    title = "There is a negative relationship between a group's share and exposure",
     subtitle = "Hispanic share vs. non-Hispanic exposure"
   ) +
   scatter_grid() +
@@ -950,7 +945,7 @@ place_data %>%
     limits = c(0, 1)
   ) +
   labs(
-    title = "There is negative relationship between a group's share and exposure",
+    title = "There is a negative relationship between a group's share and exposure",
     subtitle = "Other Races and Etnicities' share vs. Other Races and Etnicities exposure"
   ) +
   scatter_grid() +
@@ -967,7 +962,7 @@ place_data %>%
     limits = c(0, 1)
   ) +
   labs(
-    title = "There is negative relationship between a group's share and exposure",
+    title = "There is a negative relationship between a group's share and exposure",
     subtitle = "White non-Hispanic share vs. white non-Hispanic exposure"
   ) +
   scatter_grid() +
@@ -1143,7 +1138,7 @@ count(place_data, share_other_nh_exposure_quality)
 count(place_data, share_white_nh_exposure_quality)
 ```
 
-There are no missing values.
+There is very limited missingness.
 
 ```{r}
 missing <- place_data %>%
@@ -1155,8 +1150,6 @@ missing <- place_data %>%
   )
 
 nrow(missing)
-max(missing$people_interpolated)
-max(missing$tracts_interpolated)
 ```
 
 ## 8. Save the Data

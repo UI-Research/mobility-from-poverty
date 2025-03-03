@@ -37,8 +37,6 @@ This metric measures the exposure of a given race/ethnicity group to other race/
 6. Add data quality flags
 7. Save the data
 
-
-
 ```{r}
 #| label: setup
 options(scipen = 999)
@@ -183,9 +181,6 @@ if(!file.exists(here::here("06_neighborhoods/race-ethnicity-exposure/data/tracts
 }
   write_csv(tracts_raw, here("06_neighborhoods/race-ethnicity-exposure/data/tracts.csv"))
 }
-
-
-
 ```
 
 Since the code chunk above takes roughly 30 minutes to run, we export and import
@@ -845,18 +840,29 @@ max(missing$people)
 max(missing$tracts)
 ```
 
-### 7. Save the Data
+We've produced estimates for every county in every analysis year:
+```{r}
+## our universe of counties, by year
+county_targets = read_csv(here("geographic-crosswalks", "data", "county-populations.csv"))
 
-We need to include all counties in the published data even if we don't have a metric for the county. We load the county file and join our metrics to the county file.
+## the number of calculated counties should be the same as the number of target counties
+stopifnot(
+  county_targets %>%
+    count(year) %>%
+    filter(year %in% years) %>%
+    rename(target_counts = n) %>%
+  left_join(
+    county_data %>%
+    count(year) %>%
+      rename(analysis_counts = n)) %>%
+  filter(target_counts != analysis_counts) %>% 
+    nrow == 0)
+```
+
+### 7. Save the Data
 
 ```{r}
 #| label: save-data
-
-# load the 2021 county file
-all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
-  filter(year %in% years)
-
-county_data <- full_join(county_data, all_counties, by = c("year", "state", "county"))
 
 county_data %>%
   select(
