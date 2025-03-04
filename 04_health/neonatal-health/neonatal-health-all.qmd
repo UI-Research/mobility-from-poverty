@@ -16,6 +16,9 @@ The data for this metric are national natality data produced by the National Cen
 
 We download two sets of births data from this source: all births and low birthweight births (under 2500 grams). To create the metric, we divide the number of low birthweight births by the total number of births to calculate the county-level share of low birthweight births. Additionally, we create this metric for 8 subgroups: 4 for race/ethnicity (Non-Hispanic white, Non-Hispanic Black, Hispanic, and Non-Hispanic other), and 4 for mother's education (less than high school, high school graduate or GED, some college, and bachelor's degree or greater). Therefore, each year requires 18 data extracts downloaded from CDC WONDER.
 
+## Considerations for future updates
++ 
+
 
 # 2. Manually download natality data from CDC WONDER
 
@@ -240,6 +243,7 @@ births_raw <- paths |>
   )
 ```
 
+The `.txt` files from CDC WONDER all have a `Notes` section at the bottom of the file with information about the data. We remove these rows by filtering out observations with missing county information.
 ```{r clean-births}
 births_clean <- births_raw |>
   select(
@@ -249,8 +253,7 @@ births_clean <- births_raw |>
     year,
     birth_type
   ) |>
-  filter(!is.na(county_fips),
-         year==2022)
+  filter(!is.na(county_fips))
 
 ```
 
@@ -300,17 +303,9 @@ births_subgroups_clean <- births_subgroups_raw |>
     subgroup_type,
     subgroup
   ) |>
-  filter(!is.na(county_fips),
-         year==2022)
+  filter(!is.na(county_fips))
 
 ```
-
-```{r remove-files1}
-# Remove obsolete files
-rm(paths, births_raw, paths_subgroups, births_subgroups_raw)
-```
-
-
 
 
 # 4. Use crosswalk to add missing counties to data
@@ -368,16 +363,28 @@ master_births_clean <- master_births |>
   
 ```
 
+```{r}
+master_births_clean |>
+  filter (state=="09")
+```
+
+
 ## 4.3 Bring in crosswalk containing all counties and join births
 ```{r read-crosswalk}
 county_pop <- read_csv(
   file = here::here("geographic-crosswalks", "data", "county-populations.csv")
 ) |>
-  filter(year==2022) |>
+  filter(year>=2016) |>
   select(-c(state_name, county_name))
 
 ```
 
+```{r}
+county_pop |>
+  filter (state=="09")
+```
+
+In the 2022 and 2023 CDC WONDER data, Connecticut's outdated 8 counties are still used (09001, 09003, 09005, 09007, 09009, 09011, 09013, 09015), but in Urban's universe of counties the updated 9 planning regions are used (09110, 09120, 09130, 09140, 09150, 09160, 09170, 09180, 09190). CDC WONDER intends to move to the updated planning regions in the future, so we leave these years as missing until that transition takes place.
 ```{r join-crosswalk-births}
 county_pop_births <- tidylog::full_join(
   x = county_pop,
@@ -650,6 +657,11 @@ test <- test |>
 
 
 # 9. Save and write out data
+
+```{r remove-files1}
+# Remove obsolete files
+rm(paths, births_raw, paths_subgroups, births_subgroups_raw)
+```
 
 ```{r write-data}
 # Remove unnecessary variables and sort by year, state, and county
