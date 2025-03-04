@@ -36,6 +36,8 @@ source(here("functions", "testing", "evaluate_final_data.R"))
 
 theme_set(theme_minimal())
 
+options(scipen = 999)
+
 ```
 
 ### Read data
@@ -45,8 +47,9 @@ folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder
 `"mobility-from-poverty\06_neighborhoods\Transportation\data"`
 
--   htaindex2015_data_counties.csv
--   htaindex2019_data_counties.csv
+- htaindex2015_data_counties.csv
+- htaindex2019_data_counties.csv
+- htaindex2022_data_counties.csv   
 
 Import all the files (and/or combine into one file) with only the
 relevant variables and years
@@ -66,19 +69,27 @@ transport_county_2019 <- read_csv(
        "htaindex2019_data_counties.csv")
 )
 
+transport_county_2022 <- read_csv(
+  here("06_neighborhoods",
+       "Transportation", 
+       "data", 
+       "htaindex2022_data_counties.csv")
+)
+
 transport_county <- bind_rows(
   `2015` = transport_county_2015,
   `2019` = transport_county_2019,
+  `2022` = transport_county_2022,
   .id = "year"
 ) |>
   mutate(year = as.numeric(year))
 
-rm(transport_county_2015, transport_county_2019)
+rm(transport_county_2015, transport_county_2019, transport_county_2022)
 ```
 
 ## Clean Data
 
-Create correct FIPS columns.
+Create correct FIPS variables.
 
 ```{r}
 transport_county <- transport_county |>
@@ -95,19 +106,17 @@ transportation_county <- transport_county |>
   select(year, state, county, blkgrps, population, households, transit_trips_80ami, t_80ami)
 ```
 
-Compare to our official county file to make sure we have all needed counties. 
+Load our target counties file to compare the transportation counties to the counties we need for 2015, 2019, and 2022.
 
 ```{r}
-counties <- read_csv(here("geographic-crosswalks", 
-                          "data", 
-                          "county-populations.csv"))
-```
-
-```{r}
-counties <- counties |>
-  filter(year %in% c(2015, 2019))
+counties <- read_csv(
+  here("geographic-crosswalks", "data", "county-populations.csv")
+) |>
+  filter(year %in% c(2015, 2019, 2022))
 
 ```
+
+Test the counties.
 
 ```{r}
 stopifnot(
@@ -134,13 +143,32 @@ transportation_county <- transportation_county |>
 
 ```
 
+We transform transportation cost from an unlabeled percentage to a proportion. 
+
+```{r}
+transportation_county <- transportation_county |>
+  mutate(
+    index_transportation_cost = index_transportation_cost / 100
+  )
+
+```
+
+The transit trips index is very noisy and tough to interpret. We topcode values at 1,095 (365 *3), divide the range into 100 bins, and assign values to those bins (using a linear transformation and rounding). Percentile ranking did not work well because there were many ties and it obfuscated the distribution of the variable.  
+
+```{r}
+transportation_county <- transportation_county |>
+  mutate(count_transit_trips = pmin(1065, count_transit_trips)) |>
+  mutate(score_transit_trips = round((count_transit_trips / 1065) * 100))
+
+```
+
 ## Transit Trips Quality Control Checks
 
 ### Missing Data
 
 ```{r}
 transportation_county |>
-  filter(is.na(count_transit_trips))
+  filter(is.na(score_transit_trips))
 
 ```
 
@@ -152,15 +180,15 @@ Use stopifnot to check if all values in `transportation_county` are
 non-negative
 
 ```{r}
-stopifnot(min(transportation_county$count_transit_trips, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_county$score_transit_trips, na.rm = TRUE) >= 0)
 ```
 
 Create a histogram plot and summary stats for each dataframe check that
 all values are non-negative & count missing values examine outliers.
 
 ```{r}
-ggplot(transportation_county, aes(x = count_transit_trips)) +
-  geom_histogram(binwidth = 5) + 
+ggplot(transportation_county, aes(x = score_transit_trips)) +
+  geom_histogram() + 
   facet_wrap(~ year, nrow = 2) +
   labs(
     x = "Annual Transit Trips for the Regional Moderate Income Household", 
@@ -168,14 +196,12 @@ ggplot(transportation_county, aes(x = count_transit_trips)) +
   )
 ```
 
-Makes sense for most counties to fall in really low transit trip numbers
-since most of the US has no public infrastructure that can be used for
-daily transport
+Most counties have really low transit trip numbers. Some counties are extreme values. 
 
 Look at summary stats
 
 ```{r}
-summary(transportation_county$count_transit_trips)
+summary(transportation_county$score_transit_trips)
 ```
 
 Examine extreme values
@@ -183,7 +209,9 @@ Examine extreme values
 ```{r}
 transportation_county |>
   group_by(year) |>
-  slice_max(n = 10, order_by = count_transit_trips)
+  slice_max(n = 10, order_by = score_transit_trips) |>
+  select(-population, -index_transportation_cost) |>
+  print(n = Inf)
 
 ```
 
@@ -191,13 +219,28 @@ transportation_county |>
 
 ```{r}
 transportation_county |>
-  select(state, county, year, households, count_transit_trips) |>
+  filter(year %in% c(2015, 2019)) |>
+  select(state, county, year, households, score_transit_trips) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, count_transit_trips)
+    values_from = c(households, score_transit_trips)
   ) |>
   mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(count_transit_trips_2015, count_transit_trips_2019, size = households_2019)) +
+  ggplot(aes(score_transit_trips_2015, score_transit_trips_2019, size = households_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
+
+transportation_county |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, county, year, households, score_transit_trips) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, score_transit_trips)
+  ) |>
+  mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(score_transit_trips_2019, score_transit_trips_2022, size = households_2022)) +
   geom_point(alpha = 0.1) +
   facet_wrap(~ size) +
   coord_equal() +
@@ -206,10 +249,18 @@ transportation_county |>
 
 transportation_county |>
   group_by(state, county) |>
-  mutate(count_transit_trips_change = count_transit_trips - lag(count_transit_trips)) |>
+  mutate(score_transit_trips_change = score_transit_trips - lag(score_transit_trips)) |>
   ungroup() |>
-  filter(year == 2019) |>
-  slice_max(order_by = abs(count_transit_trips_change), n = 10)
+  filter(year %in% c(2019, 2022)) |>
+  slice_max(order_by = abs(score_transit_trips_change), n = 10) |>
+  print(n = Inf)
+
+transportation_county |>
+  filter(score_transit_trips > 10) |>
+  mutate(state_county = paste0(state, county)) |>
+  ggplot(aes(year, score_transit_trips, group = state_county)) +
+  geom_line(alpha = 0.1) +
+  labs(title = "Patterns over time four countes with score > 10")
 
 ```
 
@@ -239,7 +290,7 @@ all values are non-negative & count missing values examine outliers.
 
 ```{r}
 ggplot(transportation_county, aes(x = index_transportation_cost)) +
-  geom_histogram(binwidth = 5) + 
+  geom_histogram() + 
   facet_wrap(~ year, nrow = 2) +
   labs(
     x = "Annual Transportation Costs for the Regional Moderate Income Household", 
@@ -247,10 +298,6 @@ ggplot(transportation_county, aes(x = index_transportation_cost)) +
   )
 
 ```
-
-Makes sense for most counties to fall in really low transit trip numbers
-since most of the US has no public infrastructure that can be used for
-daily transport
 
 Look at summary stats
 
@@ -263,7 +310,9 @@ Examine extreme values
 ```{r}
 transportation_county |>
   group_by(year) |>
-  slice_max(n = 10, order_by = index_transportation_cost)
+  slice_max(n = 10, order_by = index_transportation_cost) |>
+  select(-population, -score_transit_trips) |>
+  print(n = Inf)
 
 ```
 
@@ -271,6 +320,7 @@ transportation_county |>
 
 ```{r}
 transportation_county |>
+  filter(year %in% c(2015, 2019)) |>
   select(state, county, year, households, index_transportation_cost) |>
   pivot_wider(
     names_from = year, 
@@ -283,45 +333,84 @@ transportation_county |>
   coord_equal() +
   labs(subtitle = "Large counties have at least 200,000 households")
 
+transportation_county |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, county, year, households, index_transportation_cost) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, index_transportation_cost)
+  ) |>
+  mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(index_transportation_cost_2019, index_transportation_cost_2022, size = households_2022)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
+
 
 transportation_county |>
   group_by(state, county) |>
   mutate(index_transportation_cost_change = index_transportation_cost - lag(index_transportation_cost)) |>
   ungroup() |>
-  filter(year == 2019) |>
-  slice_max(order_by = abs(index_transportation_cost_change), n = 10)
+  filter(year %in% c(2019, 2022)) |>
+  slice_max(order_by = abs(index_transportation_cost_change), n = 10) |>
+  print(n = Inf)
 
 ```
 
 ## Data Quality Marker
 
-We pull `B00002_001`, which is the UNWEIGHTED SAMPLE HOUSING UNITS for the data quality measure. This series discontinues in the 2019, so we use 2018 as an approximation for 2019.
+We used to use `B00002_001`, which is the UNWEIGHTED SAMPLE HOUSING UNITS for the data quality measure. This variable was [discontinued](https://www.census.gov/programs-surveys/acs/technical-documentation/user-notes/2020-05.html) after 2018. H+T doesn't report margins of error. Median household income (`B19013_001`) is an important predictor in H+T's models so we use the coefficient of variation for median household income to determine data quality. 
 
 ```{r}
 acs_sample_size <- bind_rows(
   `2015` = get_acs(
     geography = "county",
-    variables = "B00002_001",
+    variables = c("B00002_001", "B19013_001"),
     year = 2015,
     survey = "acs5",
     output = "wide"
   ),
   `2019` = get_acs(
     geography = "county",
-    variables = "B00002_001",
-    year = 2018,
+    variables = "B19013_001",
+    year = 2019,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2022` = get_acs(
+    geography = "county",
+    variables = "B19013_001",
+    year = 2022,
     survey = "acs5",
     output = "wide"
   ),
   .id = "year"
 ) |>
-  rename(sample_size = B00002_001E) |>
+  rename(
+    sample_size = B00002_001E,
+    med_hh_income = B19013_001E,
+    med_hh_income_moe = B19013_001M,
+  ) |>
   mutate(
     year = as.numeric(year),
     state = str_sub(GEOID, start = 1, end = 2),
     county = str_sub(GEOID, start = 3, end = 5)
   )
 
+```
+
+```{r}
+acs_sample_size <- acs_sample_size |>
+  # turn a 90% MOE into a standard error
+  mutate(med_hh_income_se = med_hh_income_moe / qnorm(0.95)) |>
+  # calculate the coefficient of variation
+  mutate(med_hh_income_cv = med_hh_income_se / med_hh_income) |>
+  select(-med_hh_income, -med_hh_income_se, -med_hh_income_moe)
+
+```
+
+```{r}
 transportation_county <- left_join(
   transportation_county,
   acs_sample_size,
@@ -333,21 +422,35 @@ transportation_county <- left_join(
 Determine data quality cutoffs based on number of observations (all at the HH level for these values).
 
 ```{r}
-summary(transportation_county$sample_size) 
+summary(transportation_county$med_hh_income_cv) 
 
 ```
 
-We use a 30 HH cutoff for Data Quality 3 for the ACS variables, so for
-the sake of consistency, since none of these are less than 30 (all
-minimum values are at least 30 HHs), Data Quality can be 1 for all these
-observations
+Elsewhere, we use 0.2 and 0.4 as cutoffs for the coefficient of variation. These metrics contain extra uncertainty from other variables and modelings, so we 0.1 and 0.3 as cutoffs. 
 
 ```{r}
 transportation_county <- transportation_county |>
   mutate(
-    count_transit_trips_quality = ifelse(sample_size > 30, 1, 3),
-    index_transportation_cost_quality = ifelse(sample_size > 30, 1, 3)
+    score_transit_trips_quality = case_when(
+      med_hh_income_cv < 0.1 ~ 1,
+      med_hh_income_cv < 0.3 ~ 2,
+      TRUE ~ 3
+    ),
+    index_transportation_cost_quality  = case_when(
+      med_hh_income_cv < 0.1 ~ 1,
+      med_hh_income_cv < 0.3 ~ 2,
+      TRUE ~ 3
+    )
   )
+
+```
+
+Examine the data quality flags. 
+
+```{r}
+count(transportation_county, year, score_transit_trips_quality)
+
+count(transportation_county, year, index_transportation_cost_quality)
 
 ```
 
@@ -357,7 +460,7 @@ Keep variables of interest and order them appropriately.
 
 ```{r}
 final_data <- transportation_county |>
-  select(year, state, county, count_transit_trips, count_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) |>
+  select(year, state, county, score_transit_trips, score_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) |>
   arrange(year, state, county) 
 
 ```

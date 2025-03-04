@@ -36,6 +36,8 @@ source(here("functions", "testing", "evaluate_final_data.R"))
 
 theme_set(theme_minimal())
 
+options(scipen = 999)
+
 ```
 
 ### Read data
@@ -46,8 +48,9 @@ folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
 `"mobility-from-poverty\06_neighborhoods\transportation\data"`
 
--   2015_tract
--   2019_tract
+- 2015_tract
+- 2019_tract
+- 2022_tract
 
 ```{r}
 tractpath15 <- list.files(
@@ -68,9 +71,19 @@ tractpath19 <- list.files(
   full.names = TRUE
 )
 
+tractpath22 <- list.files(
+  path = here("06_neighborhoods",
+              "Transportation", 
+              "data", 
+              "2022_tract"), 
+  pattern = "*.csv", 
+  full.names = TRUE
+)
+
 transportation_tracts <- bind_rows(
-  `2015` = map_df(tractpath15, read_csv),
-  `2019` = map_df(tractpath19, read_csv),
+  `2015` = map_dfr(tractpath15, read_csv),
+  `2019` = map_dfr(tractpath19, read_csv),
+  `2022` = map_dfr(tractpath22, read_csv),
   .id = "year"
 ) |>
   mutate(year = as.numeric(year))
@@ -118,6 +131,16 @@ transportation_tracts <- transportation_tracts |>
 
 ```
 
+We transform transportation cost from an unlabeled percentage to a proportion. 
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  mutate(
+    index_transportation_cost = index_transportation_cost / 100
+  )
+
+```
+
 ## Clean Census Data
 
 ```{r}
@@ -128,8 +151,6 @@ my_states <- fips_codes |>
 
 ```
 
-We pull `B00002_001`, which is the UNWEIGHTED SAMPLE HOUSING UNITS for the data quality measure. This series discontinues in the 2019, so we use 2018 as an approximation. 
-
 ```{r}
 acs_sample_size <- bind_rows(
   `2015` = map_dfr(
@@ -137,7 +158,7 @@ acs_sample_size <- bind_rows(
     .f = ~ get_acs(
       geography = "tract",
       state = .x,
-      variables = "B00002_001",
+      variables = c("B00002_001", "B25001_001"),
       year = 2015,
       survey = "acs5",
       output = "wide"
@@ -148,24 +169,61 @@ acs_sample_size <- bind_rows(
     .f = ~ get_acs(
       geography = "tract",
       state = .x,
-      variables = "B00002_001",
-      year = 2018,
+      variables = c("B25001_001"),
+      year = 2019,
+      survey = "acs5",
+      output = "wide"
+    )
+  ),
+  `2022` = map_dfr(
+    .x = my_states,
+    .f = ~ get_acs(
+      geography = "tract",
+      state = .x,
+      variables = c("B25001_001"),
+      year = 2022,
       survey = "acs5",
       output = "wide"
     )
   ),
   .id = "year"
 ) |>
-  rename(sample_size = B00002_001E) |>
-  mutate(year = as.numeric(year))
+  rename(
+    sample_size = B00002_001E,
+    households_est = B25001_001E,
+    households_moe = B25001_001M
+  ) |>
+  mutate(
+    year = as.numeric(year),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  )
  
 ```
 
-`sample_size` is `NA` in some tracts that are reported in the transportation data. Exploration shows that some of these tracts bounced between a few households and no households during this time period. We impute `1` as the sample size for all of these households. 
+```{r}
+acs_sample_size <- acs_sample_size |>
+  # turn a 90% MOE into a standard error
+  mutate(
+    households_se = households_moe / qnorm(0.95)
+  )
+
+```
+
+`sample_size` is only pulled for exploratory uses. 
 
 ```{r}
 acs_sample_size <- acs_sample_size |>
-  replace_na(list(sample_size = 1))
+  select(-sample_size)
+
+```
+
+After this, there shouldn't be any missing values.
+
+```{r}
+stopifnot(
+  all(map_dbl(acs_sample_size, ~sum(is.na(.x))) == 0)
+)
 
 ```
 
@@ -220,9 +278,22 @@ acs_tract_pop19 <- map_dfr(
   )
 )
 
+acs_tract_pop22 <- map_dfr(
+  .x = my_states,
+  .f = ~ get_acs(
+    geography = "tract",
+    state = .x,
+    table = "B03002",
+    year = 2022,
+    survey = "acs5",
+    output = "wide"
+  )
+)
+
 acs_tracts <- bind_rows(
   `2015` = acs_tract_pop15,
   `2019` = acs_tract_pop19,
+  `2022` = acs_tract_pop22,
   .id = "year"
 ) |>
   mutate(year = as.numeric(year))
@@ -234,15 +305,17 @@ acs_tracts <- acs_tracts |>
     tract = substr(GEOID, start = 6, stop = 11)
   )
 
+rm(acs_tract_pop15, acs_tract_pop19, acs_tract_pop22)
+
 ```
 
-We join the unweighted sample size information to the main demographic information. 
+We join the data quality information to the main demographic information. 
 
 ```{r}
 acs_tracts <- full_join(
   acs_tracts,
   acs_sample_size,
-  by = c("year", "GEOID"), 
+  by = c("year", "state", "county", "GEOID"), 
   relationship = "one-to-one"
 )
 
@@ -287,7 +360,10 @@ Keep only vars we want.
 
 ```{r}
 acs_tracts <- acs_tracts |>
-  select(year, GEOID, state, county, tract, total_population, white_nh, poc, sample_size)
+  select(
+    year, GEOID, state, county, tract, total_population, white_nh, poc, 
+    households_est, households_se
+  )
 
 ```
 
@@ -304,7 +380,7 @@ combined_tracts <- left_join(
 
 ```
 
-No tracts with transportation data are missing demographic data. There are demographic tracts without transportation information but this is expected because of empty tracts and tracts without households. A few tracts have `sample_size > 0`. We speculate this is because of using different ACS years.
+No tracts with transportation data are missing demographic data. There are demographic tracts without transportation information but this is expected because of empty tracts and tracts without households.
 
 ```{r}
 anti_join(
@@ -319,14 +395,6 @@ anti_join(
   by = c("year", "GEOID", "state", "county", "tract")
 ) |>
   filter(total_population > 0)
-
-anti_join(
-  acs_tracts, 
-  transportation_tracts, 
-  by = c("year", "GEOID", "state", "county", "tract")
-) |>
-  filter(sample_size > 0) |>
-  arrange(desc(sample_size))
 
 ```
 
@@ -370,17 +438,19 @@ combined_tracts |>
 
 ## Calculate metrics
 
-We average census tracts to the county-race/ethnicity group with weights for the number of households in each tract. 
+We average census tracts to the county-race/ethnicity group with weights for the number of households in each tract. [This document](https://www2.census.gov/programs-surveys/acs/tech_docs/accuracy/2018_ACS_Accuracy_Document_Worked_Examples.pdf?) outlines the strategy for approximating the standard error.
 
 ```{r}
 transportation_county_all <- combined_tracts |>
   filter(subgroup != "No population") |>
   group_by(year, state, county) |>
   summarize(
+    n = n(),
     count_transit_trips = weighted.mean(x = count_transit_trips, w = households),
     index_transportation_cost = weighted.mean(x = index_transportation_cost, w = households),
-    households = sum(households),
-    sample_size = sum(sample_size)
+    households_est = sum(households_est),
+    households_se = sqrt(sum(households_se ^ 2)),
+    households = sum(households)
   ) |>
   mutate(
     subgroup_type = "all",
@@ -392,10 +462,12 @@ transportation_county_subgroup <- combined_tracts |>
   filter(subgroup != "No population") |>
   group_by(year, state, county, subgroup) |>
   summarize(
+    n = n(),
     count_transit_trips = weighted.mean(x = count_transit_trips, w = households),
     index_transportation_cost = weighted.mean(x = index_transportation_cost, w = households),
-    households = sum(households),
-    sample_size = sum(sample_size)
+    households_est = sum(households_est),
+    households_se = sqrt(sum(households_se ^ 2)),
+    households = sum(households)
   ) |>
   mutate(
     subgroup_type = "race-ethnicity"
@@ -409,11 +481,20 @@ transportation_county <- bind_rows(
 
 ```
 
+The transit trips index is very noisy and tough to interpret. We topcode values at 1,095 (365 *3), divide the range into 100 bins, and assign values to those bins (using a linear transformation and rounding). Percentile ranking did not work well because there were many ties and it obfuscated the distribution of the variable.  
+
+```{r}
+transportation_county <- transportation_county |>
+  mutate(count_transit_trips = pmin(1065, count_transit_trips)) |>
+  mutate(score_transit_trips = round((count_transit_trips / 1065) * 100))
+
+```
+
 Some county-race/ethnicity groups are missing. This is because some race/ethnicity groups don't exist in each county. We load the target geography file, join our statistics to the target geography file, and then add zeros for household sizes.
 
 ```{r}
 target_statistics <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) |>
-  filter(year %in% c(2015, 2019)) |>
+  filter(year %in% c(2015, 2019, 2022)) |>
   select(year, state, county) |>
   expand_grid(subgroup = c("All", "Neighborhoods of color", "White neighborhoods", "Mixed neighborhoods")) |>
   mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
@@ -425,7 +506,11 @@ transportation_county <- full_join(
 )
 
 transportation_county <- transportation_county |>
-  mutate(households = if_else(is.na(households), 0, households))
+  mutate(
+    households = if_else(is.na(households), 0, households),
+    households_est = if_else(is.na(households_est), 0, households_est),
+    households_se = if_else(is.na(households_se), 4, households_se)
+  )
 
 ```
 
@@ -435,7 +520,7 @@ transportation_county <- transportation_county |>
 
 ```{r}
 transportation_county |>
-  filter(is.na(count_transit_trips)) |>
+  filter(is.na(score_transit_trips)) |>
   count(subgroup)
 
 ```
@@ -445,14 +530,14 @@ transportation_county |>
 Use stopifnot to check if all values in `transportation_county` are non-negative.
 
 ```{r}
-stopifnot(min(transportation_county$count_transit_trips, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_county$score_transit_trips, na.rm = TRUE) >= 0)
 ```
 
 Create a histogram.
 
 ```{r}
-ggplot(transportation_county, aes(x = count_transit_trips)) +
-  geom_histogram(binwidth = 5) + 
+ggplot(transportation_county, aes(x = score_transit_trips)) +
+  geom_histogram() + 
   facet_grid(year ~ subgroup) +
   labs(
     x = "Annual Transit Trips for the Regional Moderate Income Household", 
@@ -465,7 +550,7 @@ Makes sense for most counties to fall in really low transit trip numbers since m
 Look at summary stats
 
 ```{r}
-summary(transportation_county$count_transit_trips)
+summary(transportation_county$score_transit_trips)
 ```
 
 Examine extreme values
@@ -473,8 +558,9 @@ Examine extreme values
 ```{r}
 transportation_county |>
   group_by(year) |>
-  slice_max(n = 10, order_by = count_transit_trips) |>
-  select(year, state, county, subgroup, count_transit_trips)
+  slice_max(n = 10, order_by = score_transit_trips) |>
+  select(year, state, county, subgroup, score_transit_trips) |>
+  print(n = Inf)
 
 ```
 
@@ -484,13 +570,28 @@ We look at the change from 2015 to 2019. Transit trips changes a lot, which may 
 
 ```{r}
 transportation_county |>
-  select(state, county, year, subgroup, households, count_transit_trips) |>
+  filter(year %in% c(2015, 2019)) |>
+  select(state, county, year, subgroup, households, score_transit_trips) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, count_transit_trips)
+    values_from = c(households, score_transit_trips)
   ) |>
   mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(count_transit_trips_2015, count_transit_trips_2019, size = households_2019)) +
+  ggplot(aes(score_transit_trips_2015, score_transit_trips_2019, size = households_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_grid(size ~ subgroup) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
+
+transportation_county |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, county, year, subgroup, households, score_transit_trips) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, score_transit_trips)
+  ) |>
+  mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(score_transit_trips_2019, score_transit_trips_2022, size = households_2022)) +
   geom_point(alpha = 0.1) +
   facet_grid(size ~ subgroup) +
   coord_equal() +
@@ -498,11 +599,11 @@ transportation_county |>
 
 transportation_county |>
   group_by(state, county, subgroup) |>
-  mutate(change_count_transit_trips = count_transit_trips - lag(count_transit_trips)) |>
+  mutate(change_score_transit_trips = score_transit_trips - lag(score_transit_trips)) |>
   ungroup() |>
-  filter(year == 2019) |>
-  slice_max(order_by = abs(change_count_transit_trips), n = 10) |>
-  select(year, state, county, subgroup, change_count_transit_trips)
+  filter(year %in% c(2019, 2022)) |>
+  slice_max(order_by = abs(change_score_transit_trips), n = 10) |>
+  select(year, state, county, subgroup, change_score_transit_trips)
 
 ```
 
@@ -528,7 +629,7 @@ Create a histogram.
 
 ```{r}
 ggplot(transportation_county, aes(x = index_transportation_cost)) +
-  geom_histogram(binwidth = 5) + 
+  geom_histogram() + 
   facet_grid(year ~ subgroup) +
   labs(
     x = "Annual Transportation Costs for the Regional Moderate Income Household", 
@@ -549,7 +650,8 @@ Examine extreme values
 transportation_county |>
   group_by(year) |>
   slice_max(n = 10, order_by = index_transportation_cost) |>
-  select(year, state, county, subgroup, index_transportation_cost)
+  select(year, state, county, subgroup, index_transportation_cost) |>
+  print(n = Inf)
 
 ```
 
@@ -559,6 +661,7 @@ We look at the change from 2015 to 2019. Transportation costs are very stable du
 
 ```{r}
 transportation_county |>
+  filter(year %in% c(2015, 2019)) |>
   select(state, county, year, subgroup, households, index_transportation_cost) |>
   pivot_wider(
     names_from = year, 
@@ -571,12 +674,25 @@ transportation_county |>
   coord_equal() +
   labs(subtitle = "Large counties have at least 200,000 households")
 
+transportation_county |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, county, year, subgroup, households, index_transportation_cost) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(households, index_transportation_cost)
+  ) |>
+  mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
+  ggplot(aes(index_transportation_cost_2019, index_transportation_cost_2022, size = households_2022)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 200,000 households")
 
 transportation_county |>
   group_by(state, county, subgroup) |>
   mutate(change_index_transportation_cost = index_transportation_cost - lag(index_transportation_cost)) |>
   ungroup() |>
-  filter(year == 2019) |>
+  filter(year %in% c(2019, 2022)) |>
   slice_max(order_by = abs(change_index_transportation_cost), n = 10)  |>
   select(year, state, county, subgroup, index_transportation_cost)
 
@@ -591,24 +707,128 @@ summary(transportation_county$households)
 
 ```
 
-We use 30 households as a quality cutoff. Estimates with fewer than 30 responses receive a data quality of 3 and everything else gets data quality of 1. 
+Elsewhere, we use 0.2 and 0.4 as cutoffs for the coefficient of variation. These metrics contain extra uncertainty from other variables and modelings, so we 0.08 and 0.15 as cutoffs. 
 
 ```{r}
 transportation_county <- transportation_county |>
+  mutate(households_cv = households_se / households_est)
+
+transportation_county <- transportation_county |>
   mutate(
-    count_transit_trips_quality = if_else(sample_size > 30, true = 1, false = 3),
-    index_transportation_cost_quality = if_else(sample_size > 30, true = 1, false = 3)
+    score_transit_trips_quality = case_when(
+      households_cv < 0.08 ~ 1,
+      households_cv < 0.15 ~ 2,
+      TRUE ~ 3
+    ),
+    index_transportation_cost_quality  = case_when(
+      households_cv < 0.08 ~ 1,
+      households_cv < 0.15 ~ 2,
+      TRUE ~ 3
+    )
   ) |>
   mutate(
-    count_transit_trips_quality = if_else(is.na(count_transit_trips), NA, count_transit_trips_quality),
+    score_transit_trips_quality = if_else(is.na(score_transit_trips), NA, score_transit_trips_quality),
     index_transportation_cost_quality = if_else(is.na(index_transportation_cost), NA, index_transportation_cost_quality)
   )
 
+```
+
+Next, we load and calculate the coefficient of variation for median household income at the county level. 
+
+```{r}
+med_hh_income_cv <- bind_rows(
+  `2015` = get_acs(
+    geography = "county",
+    variables = "B19013_001",
+    year = 2015,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2019` = get_acs(
+    geography = "county",
+    variables = "B19013_001",
+    year = 2019,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2022` = get_acs(
+    geography = "county",
+    variables = "B19013_001",
+    year = 2022,
+    survey = "acs5",
+    output = "wide"
+  ),
+  .id = "year"
+) |>
+  rename(
+    med_hh_income = B19013_001E,
+    med_hh_income_moe = B19013_001M,
+  ) |>
+  mutate(
+    year = as.numeric(year),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  )
+
+med_hh_income_cv <- med_hh_income_cv |>
+  mutate(med_hh_income_se = med_hh_income_moe / qnorm(0.95)) |>
+  # calculate the coefficient of variation
+  mutate(med_hh_income_cv = med_hh_income_se / med_hh_income) |>
+  mutate(med_hh_income_cv = ifelse(is.na(med_hh_income_cv), 0.5, med_hh_income_cv)) |>
+  mutate(
+    score_transit_trips_quality = case_when(
+      med_hh_income_cv < 0.1 ~ 1,
+      med_hh_income_cv < 0.3 ~ 2,
+      TRUE ~ 3
+    ),
+    index_transportation_cost_quality  = case_when(
+      med_hh_income_cv < 0.1 ~ 1,
+      med_hh_income_cv < 0.3 ~ 2,
+      TRUE ~ 3
+    )
+  ) |>
+  select(
+    year, state, county, 
+    score_transit_trips_quality_county = score_transit_trips_quality, 
+    index_transportation_cost_quality_county = index_transportation_cost_quality
+  )
+
+```
+
+We use the worse quality between county median household income and aggregated census tracts coefficient of variation. 
+
+```{r}
+transportation_county <- left_join(
+  transportation_county,
+  med_hh_income_cv,
+  by = c("year", "state", "county")
+)
+
+transportation_county <- transportation_county |>
+  mutate(
+    score_transit_trips_quality = 
+      pmax(score_transit_trips_quality, score_transit_trips_quality_county),
+    index_transportation_cost_quality = 
+      pmax(index_transportation_cost_quality, index_transportation_cost_quality_county)
+  )
+
+```
+
+Examine the data quality flags. 
+
+```{r}
+count(transportation_county, year, score_transit_trips_quality)
+
+count(transportation_county, year, index_transportation_cost_quality)
+
+```
+
+```{r}
 stopifnot(
   transportation_county |>
     filter(
-      (is.na(count_transit_trips) | is.na(index_transportation_cost)) &
-        (!is.na(count_transit_trips_quality) | !is.na(index_transportation_cost_quality))
+      (is.na(score_transit_trips) | is.na(index_transportation_cost)) &
+        (!is.na(score_transit_trips_quality) | !is.na(index_transportation_cost_quality))
     ) |>
     nrow() == 0
 )
@@ -621,7 +841,7 @@ Keep variables of interest and order them appropriately.
 
 ```{r}
 final_data <- transportation_county |>
-  select(year, state, county, subgroup_type, subgroup, count_transit_trips, count_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) 
+  select(year, state, county, subgroup_type, subgroup, score_transit_trips, score_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) 
 
 ```
 
