@@ -982,6 +982,7 @@ skimr::skim(ratio_house_value_households_place_subgroup)
 #| label: export-data
 
 export_metric <- function(data, file_type) {
+  
   geography <- ifelse("place" %in% colnames(data), "city", "county")
 
   geo_var <- ifelse(geography == "city", "place", "county")
@@ -995,28 +996,15 @@ export_metric <- function(data, file_type) {
 
   if (file_type == "subgroup") {
     if (geo_var == "county") {
-      missing_geo <- tribble(
-        ~state, ~county, ~state_name, ~county_name, ~subgroup_type, ~subgroup,
-        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "All",
-        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "Age 45 and Over",
-        "02", "261", "Alaska", "Valdez-Cordova Census Area", "age", "Under Age 45"
-      ) |> expand(nesting(state, county, state_name, county_name, subgroup_type, subgroup),
-        year = c(2014, 2015, 2016, 2017, 2018, 2019)
-      )
 
       data <-
         data |>
-        filter(county_name != "Valdez-Cordova Census Area") |>
         mutate(subgroup_type = "age", .before = "subgroup") |>
         bind_rows(ratio_house_value_households_county |>
           mutate(
             subgroup_type = "age",
             subgroup = "All"
           )) |>
-        full_join(missing_geo, by = c(
-          "year", "state", "county", "state_name", "county_name",
-          "subgroup", "subgroup_type"
-        )) |>
         mutate(subgroup = factor(subgroup,
           levels = c(
             "All",
@@ -1025,34 +1013,18 @@ export_metric <- function(data, file_type) {
           )
         )) |>
         arrange(year, state, county, subgroup_type, subgroup) |>
-        relocate("subgroup_type", .before = subgroup) |>
-        group_by(year, state, county) |>
-        fill(c(state_name, county_name), .direction = "downup") |>
-        ungroup()
+        relocate("subgroup_type", .before = subgroup) 
+      
     } else if (geo_var == "place") {
-      missing_geo <- tribble(
-        ~state, ~place, ~state_name, ~place_name, ~subgroup_type, ~subgroup,
-        "13", "72122", "Georgia", "South Fulton city", "age", "All",
-        "13", "72122", "Georgia", "South Fulton city", "age", "Age 45 and Over",
-        "13", "72122", "Georgia", "South Fulton city", "age", "Under Age 45"
-      ) |>
-        expand(nesting(state, place, state_name, place_name, subgroup_type, subgroup),
-          year = c(2014, 2015, 2016, 2017, 2018, 2019)
-        )
 
       data <-
         data |>
-        # Filter out South Fulton city, which is NA for all years for this metric
-        # and then add the table with complete year-state-county-subgroup
-        # combinations
-        filter(place_name != "South Fulton city") |>
         mutate(subgroup_type = "age", .before = "subgroup") |>
         bind_rows(ratio_house_value_households_place |>
           mutate(
             subgroup_type = "age",
             subgroup = "All"
           )) |>
-        full_join(missing_geo, by = c("year", "state", "place", "state_name", "place_name", "subgroup", "subgroup_type")) |>
         mutate(subgroup = factor(subgroup,
           levels = c(
             "All",
