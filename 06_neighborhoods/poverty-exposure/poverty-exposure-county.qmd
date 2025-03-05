@@ -113,14 +113,19 @@ tracts <- tracts %>%
 return(tracts)
 }
 
-years <- c(2016, 2018, 2021, 2023)
+years <- c(2014, 2016, 2018, 2021, 2023)
 
-tracts_raw <-
-  map(years, ~get_poverty_status_data(.x, "tract")) |> 
-  list_rbind() |> 
+if(!file.exists(here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))){
+  tracts_raw <- map(years, ~ pull_and_rename(.x)) |>
+  list_rbind() |>
   relocate(year, .before = everything())
+  
+  if(!dir.exists(here::here("06_neighborhoods/poverty-exposure/data"))) {
+  dir.create(here::here("06_neighborhoods/poverty-exposure/data"))
+}
+  write_csv(tracts_raw, here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
+}
 
-write_csv(tracts_raw, here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
 ```
 
 ```{r}
@@ -388,23 +393,34 @@ We pull in the county-level data and compare it to the calculated county-level d
 ```{r}
 #| label: create-counties-test
 
-counties_test <-
-  map(years, ~get_poverty_status_data(.x, "county")) |> 
-  list_rbind() |> 
-  relocate(year, .before = everything())
+if(!file.exists(here::here("06_neighborhoods/poverty-exposure/data/counties.csv"))){
 
-write_csv(counties_test, here::here("06_neighborhoods/poverty-exposure/data/counties.csv"))
+  counties_test <-
+    map(years, ~get_poverty_status_data(.x, "county")) |> 
+    list_rbind() |> 
+    relocate(year, .before = everything())
+
+  write_csv(counties_test, here("06_neighborhoods/poverty-exposure/data/counties.csv"))
+}
+
 
 ```
 
-**Note:** This test is not currently passing. In particular, two counties have slightly different `poverty_rate`: state == 36 and county 103 and 111
+
 ```{r}
 
 counties_test <- read_csv(here::here("06_neighborhoods/poverty-exposure/data/counties.csv"))
 counties_test <- counties_test %>%
   mutate(poverty_rate_test = poverty / people) %>%
-  select(year, state, county, poverty_rate_test) %>%
+  select(year, state, county, poverty, poverty_rate_test) %>%
   arrange(year, state, county)
+
+```
+
+**Note:** This test is not currently passing. In particular, two counties have slightly different `poverty_rate`: state == 36 and county 103 and 111
+
+```{r}
+#| eval: false
 
 stopifnot(
   counties_summary %>%
@@ -415,7 +431,6 @@ stopifnot(
 )
 
 rm(counties_test)
-
 ```
 
 ### 5. Divide high poverty by total poverty

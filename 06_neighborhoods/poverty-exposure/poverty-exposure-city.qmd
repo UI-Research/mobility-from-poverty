@@ -47,7 +47,7 @@ library(kableExtra)
 
 set_urbn_defaults(style = "print")
 
-# source(here::here("06_neighborhoods", "R", "census_api_key.R"))
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 source(here::here("06_neighborhoods", "R", "get_vars.R"))
 
 ```
@@ -112,18 +112,19 @@ tracts <- tracts %>%
 return(tracts)
 }
 
-years <- c(2016, 2018, 2021, 2023)
+years <- c(2014, 2016, 2018, 2021, 2023)
 
-tracts_raw <-
-  map(years, ~get_poverty_status_data(.x, geography = "tract")) |> 
-  list_rbind() |> 
+if(!file.exists(here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))){
+  tracts_raw <- map(years, ~ pull_and_rename(.x)) |>
+  list_rbind() |>
   relocate(year, .before = everything())
-
-if(!fs::dir_exists(here::here("06_neighborhoods/poverty-exposure/data"))){
-  fs::dir_create(here::here("06_neighborhoods/poverty-exposure/data"))
+  
+  if(!dir.exists(here::here("06_neighborhoods/poverty-exposure/data"))) {
+  dir.create(here::here("06_neighborhoods/poverty-exposure/data"))
+}
+  write_csv(tracts_raw, here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
 }
 
-write_csv(tracts_raw, here::here("06_neighborhoods/poverty-exposure/data/tracts.csv"))
 ```
 
 ```{r}
@@ -389,11 +390,11 @@ First we need to know which census places have any overlap with each census trac
       + Select the state(s) (including DC and/or PR) to process:
           - Select all states including DC but excluding PR
       + Select one or more source geographies:
-          - 2020 Geographies: census tract
+          - 2010/2020 Geographies: census tract
       + Select one or more target geographies:
-          - 2020 Geographies: Place (city, town, village, CDP, etc.)
+          - 2014/2020 Geographies: Place (city, town, village, CDP, etc.)
       + Weighting variable:
-          - Population (2020 census)
+          - Population (2010/2020 census)
       + Ignore census blocks with a value of 0 for the weighting variable: TRUE (select this option)
   * Output options
       + Generate second allocation factor `[AFACT2]` showing portion of target geocodes in source geocodes
@@ -406,6 +407,14 @@ Then click "Run request" at the bottom of the screen. After the crosswalk finish
 Now we read in the tract to place crosswalk and clean it.
 
 ```{r}
+
+## this has updated geographies for the revised (in 2022) connecticut "counties"
+crosswalk_20_ct = read_csv(here::here("geographic-crosswalks", "data", "tract_crosswalk_2022_connecticut.csv")) %>%
+  janitor::clean_names() %>%
+  select(
+    tract_fips_2020,
+    tract_fips_2022)
+
 crosswalk_20 <- read_csv(
   here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2020.csv"),
   skip = 1
@@ -424,37 +433,54 @@ crosswalk_20 <- read_csv(
   # place GEOIDs of 99999 indicate tracts that are not located within a census place
   filter(place != 99999)
 
-crosswalk_10 <-
-  read_csv(here::here("geographic-crosswalks", "data", "tract-place-crosswalk_2018.csv"), skip = 1) |> 
-    select(
-    state = `State code`, 
-    county = `County code`, 
-    place = `Place (2014)`, 
-    tract = Tract, 
-    afact = `tract to placefp14 allocation factor`,
-    afact2 = `placefp14 to tract allocation factor`
-  ) %>%
-  mutate(county = substring(county, 3, 5),
-         state_place = str_c(state, place),
-         tract = str_remove(string = tract, pattern = "[.]")) %>%
-  # place GEOIDs of 99999 indicate tracts that are not located within a census place
-  filter(place != 99999) 
+## adjusting for the revised 2022 CT counties
+crosswalk_22 = crosswalk_20 %>%
+  mutate(tract_fips_2020 = str_c(state, county, tract)) %>%
+  left_join(crosswalk_20_ct, by = "tract_fips_2020") %>%
+  mutate(
+    county = case_when(
+      !is.na(tract_fips_2022) ~ str_sub(tract_fips_2022, 3, 5),
+      TRUE ~ county)) %>%
+  select(-matches("tract_fips"))
+
+crosswalk_10 <- read_csv(
+  here::here("geographic-crosswalks", "data", "geocorr2018_2010tract_to_2014place.csv"),
+  col_types = cols(
+    state = col_character(),
+    county= col_character(),
+    placefp = col_character(),
+    tract = col_character(),
+    afact = col_double(),
+    afact2 = col_double())) %>%
+  transmute(
+    state = str_pad(state, side = "left", pad = "0", width = 2),
+    county = str_pad(county, side = "left", pad = "0", width = 5) %>% str_sub(3, 5),
+    place = str_pad(placefp14, side = "left", pad = "0", width = 5),
+    tract = str_remove(string = tract, pattern = "[.]") %>% str_pad(side = "right", pad = "0", width = 6),
+    state_place = str_c(state, place),
+    afact,
+    afact2) %>%
+  # place GEOIDs of 99999 indicate tracts that are not located within a
+  # census place
+  filter(place != 99999)
 ```
+
+
 
 Expand the crosswalks to include a column with the years in `tracts` the crosswalk can apply to
 ```{r}
 # Create a tibble for the years you want to expand
-years_20 <- tibble(year = c(2021, 2023))
-years_10 <- tibble(year = c(2016, 2018))
+years_10 <- tibble(year = c(2014, 2016, 2018))
 # Perform cross join to repeat for each year
-crosswalk_20 <- crosswalk_20 %>%
-  crossing(years_20)
-
 crosswalk_10 <- crosswalk_10 |>
   crossing(years_10)
 
-crosswalk <- bind_rows(crosswalk_10, crosswalk_20) |>
+crosswalk <- bind_rows(
+  crosswalk_10, 
+  crosswalk_20 %>% mutate(year = 2021),
+  crosswalk_22 %>% mutate(year = 2023)) |>
   relocate(year, .before = everything())
+
 ```
 We are only interested in places with large populations. We load the crosswalk containing those places and filter to the places of interest. 
 
@@ -546,11 +572,13 @@ places_summary <- places_summary %>%
 
 ```
 
-**Note:** There are 479 places in 2023, why?
+There are 485 observations through 2014-2018 and 486 after 2021
+
 ```{r}
 
 places_summary |> 
   count(year)
+8
 ```
 
 We pull in the place-level data and compare it to the calculated place-level data. The poverty rates should be identical; however, they may differ from numbers published elsewhere (like [here](https://www.census.gov/quickfacts/autaugacountyalabama)) that use Small-Area Income and Poverty Estimates (SAIPE). 
@@ -559,12 +587,16 @@ We pull in the place-level data and compare it to the calculated place-level dat
 ```{r}
 #| label: create-places-test
 
-places_test <-
-  map(years, ~get_poverty_status_data(.x, "place")) |> 
-  list_rbind() |> 
-  relocate(year, .before = everything())
 
-write_csv(places_test, here::here("06_neighborhoods/poverty-exposure/data/places.csv"))
+if(!file.exists(here::here("06_neighborhoods/poverty-exposure/data/places.csv"))){
+
+  places_test <-
+    map(years, ~get_poverty_status_data(.x, "place")) |> 
+    list_rbind() |> 
+    relocate(year, .before = everything())
+
+  write_csv(places_test, here("06_neighborhoods/poverty-exposure/data/places.csv"))
+}
 
 ```
 
@@ -574,8 +606,8 @@ places_test <- read_csv(here::here("06_neighborhoods/poverty-exposure/data/place
 places_test <- places_test %>%
   mutate(state_place = paste0(state, place)) |> 
   filter(state_place %in% places_of_interest$state_place) |> 
-  mutate(poverty_rate_test = poverty / people) %>%
-  select(year, state, place, state_place, poverty_rate_test, people) %>%
+  mutate(poverty_rate = poverty / people) %>%
+  # select(year, state, place, state_place, poverty, poverty_rate, people) %>%
   arrange(year, state, place, state_place)
 
 ```
@@ -620,13 +652,14 @@ bind_rows(
   .id = "source"
 ) %>%
   select(
+    year, 
     state_place,
     source,
     poverty_black,
     poverty_white_nonhispanic,
     poverty_hispanic
   ) %>%
-  pivot_longer(-c(state_place, source), names_to = "var", values_to = "value") %>%
+  pivot_longer(-c(year, state_place, source), names_to = "var", values_to = "value") %>%
   pivot_wider(names_from = "source", values_from = "value") %>%
   ggplot(aes(reported, interpolated, color = var)) +
   geom_abline() +
@@ -637,7 +670,7 @@ bind_rows(
   labs(
     title = "Reported poverty and interpolated poverty are similar",
     subtitle = "By race/ethncity subgroup"
-  )
+  ) 
 
 bind_rows(
   reported = places_test,
@@ -646,13 +679,14 @@ bind_rows(
 ) %>%
   filter(people < 200000) %>%
   select(
+    year,
     state_place,
     source,
     poverty_black,
     poverty_white_nonhispanic,
     poverty_hispanic
   ) %>%
-  pivot_longer(-c(state_place, source), names_to = "var", values_to = "value") %>%
+  pivot_longer(-c(year, state_place, source), names_to = "var", values_to = "value") %>%
   pivot_wider(names_from = "source", values_from = "value") %>%
   ggplot(aes(reported, interpolated, color = var)) +
   geom_abline() +
@@ -1014,8 +1048,7 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty <= 30 in yellow") +
-  scatter_grid() +
-  facet_wrap(. ~ year)
+  scatter_grid() 
   
 places_summary %>%
   filter(poverty_black_cv >= 0.4) %>%
@@ -1023,8 +1056,7 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Black: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_black <= 30 in yellow") +
-  scatter_grid() +
-  facet_wrap(. ~ year)
+  scatter_grid() 
   
 places_summary %>%
   filter(poverty_hispanic_cv >= 0.4) %>%
@@ -1032,8 +1064,7 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Hispanic: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_hispanic <= 30 in yellow") +
-  scatter_grid() +
-  facet_wrap(. ~ year)
+  scatter_grid()
 
 places_summary %>%
   filter(poverty_other_races_cv >= 0.4) %>%
@@ -1041,8 +1072,7 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "Other Races and Ethnicities: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, poverty_other_races <= 30 in yellow") +
-  scatter_grid() +
-  facet_wrap(. ~ year)
+  scatter_grid() 
 
 places_summary %>%
   filter(poverty_white_nonhispanic_cv >= 0.4) %>%
@@ -1050,8 +1080,7 @@ places_summary %>%
   geom_point(alpha = 0.2) +
   labs(title = "White, non_hispanic: The Worst CVs Will be Dropped for n <= 30",
        subtitle = "Places with CV > 0.4, white_nh <= 30 in yellow") +
-  scatter_grid() +
-  facet_wrap(. ~ year)
+  scatter_grid()
 
 ```
 
@@ -1213,7 +1242,7 @@ places_summary_subgroups <- places_summary_subgroups %>%
 # create a frame with all possible rows
 all_places_subgroups <- 
   expand_grid(
-    places_of_interest, 
+    places_of_interest |> filter(year %in% years), 
     subgroup = c("All", "Black", "Hispanic", "Other Races and Ethnicities", "White, Non-Hispanic")
   ) %>%
   mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
@@ -1256,19 +1285,15 @@ evaluate_final_data(
 
 ```{r}
 
-final_city_data_subgroups <- read_csv(here::here("06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_county.csv"), show_col_types = FALSE)
+final_city_data_subgroups <- read_csv(here::here("06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_city.csv"), show_col_types = FALSE)
 
 
 evaluate_final_data(
-  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_race_eth_county.csv",
-  data = final_city_data_subgroups, geography = "county",
+  exp_form_path = "10a_final-evaluation/evaluation_form_exposure_poverty_race_eth_city.csv",
+  data = final_city_data_subgroups, geography = "place",
   subgroups = TRUE, confidence_intervals = FALSE
 )
 
 ```
 
-```{r}
-anti_join(places_of_interest |> filter(year %in% years), final_data,
-          by= c("year", "state", "place"))
-```
 
