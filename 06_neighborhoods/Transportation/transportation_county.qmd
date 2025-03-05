@@ -1,6 +1,7 @@
 ---
 title: "Transit Trips and Transportation Costs -- County"
 author: "Tina Chelidze and Aaron R. Williams"
+abstract: This script calculates `share_transportation_cost` and `score_transit_trips` using Center for Neighborhood Technology (CNT) and Census Bureau data. 
 date: today
 format:
   html:
@@ -15,12 +16,13 @@ editor_options:
 ---
 
 ::: {.callout-tip}
-Raw data pulled from https://htaindex.cnt.org/download/ The Housing and Transportation (H+T) Affordability Index from the Center for Neighborhood Technology (CNT)
-:::
+Raw CNT data pulled from https://htaindex.cnt.org/download/. 
 
-::: {.callout-tip}
-*User Notice: This program requires downloading raw files from the Metrics_2024_round Box folder prior to running. See details under the Read Data section.*
+1. Navigate to the data download page. 
+2. Select "County".
+3. Download the data for all counties. 
 
+To save time, we store data on Box in Metrics_2024_round/. See details under the Read Data section.*
 :::
 
 ## Setup
@@ -45,7 +47,7 @@ options(scipen = 999)
 Before running, please download the files below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder
-`"mobility-from-poverty\06_neighborhoods\Transportation\data"`
+`"mobility-from-poverty/06_neighborhoods/transportation/data/"`
 
 - htaindex2015_data_counties.csv
 - htaindex2019_data_counties.csv
@@ -55,36 +57,25 @@ Import all the files (and/or combine into one file) with only the
 relevant variables and years
 
 ```{r}
-transport_county_2015 <- read_csv(
-  here("06_neighborhoods",
-       "Transportation", 
-       "data", 
-       "htaindex2015_data_counties.csv")
+read_transportation_data <- function(year) {
+  
+  data <- read_csv(
+    here("06_neighborhoods",
+         "Transportation", 
+         "data", 
+         str_glue("htaindex{year}_data_counties.csv"))
+  ) |>
+    mutate(year = year)
+  
+  return(data)
+  
+}
+
+transport_county <- map_dfr(
+  .x = c(2015, 2019, 2022),
+  .f = read_transportation_data
 )
 
-transport_county_2019 <- read_csv(
-  here("06_neighborhoods",
-       "Transportation", 
-       "data", 
-       "htaindex2019_data_counties.csv")
-)
-
-transport_county_2022 <- read_csv(
-  here("06_neighborhoods",
-       "Transportation", 
-       "data", 
-       "htaindex2022_data_counties.csv")
-)
-
-transport_county <- bind_rows(
-  `2015` = transport_county_2015,
-  `2019` = transport_county_2019,
-  `2022` = transport_county_2022,
-  .id = "year"
-) |>
-  mutate(year = as.numeric(year))
-
-rm(transport_county_2015, transport_county_2019, transport_county_2022)
 ```
 
 ## Clean Data
@@ -99,7 +90,7 @@ transport_county <- transport_county |>
   )
 ```
 
-Only keep variables of interest.
+Only keep variables of interest. `transit_trips_80ami` is "Annual Transit Trips for the Regional Moderate Household." `t_80ami` is "Transportation Costs % Income for the Regional Typical Household."
 
 ```{r}
 transportation_county <- transport_county |>
@@ -132,13 +123,13 @@ stopifnot(
 
 ```
 
-As shown by `full_join()` and `anti_join()`, the transportation data contain the correct counties, so we don't need to merge the data. 
+As shown by `full_join()` and `anti_join()`, the transportation data contain the counties included in the target counties file, so we don't need to merge the data. 
 
 ```{r}
 transportation_county <- transportation_county |>
   rename(
     count_transit_trips = transit_trips_80ami,
-    index_transportation_cost = t_80ami
+    share_transportation_cost = t_80ami
   )
 
 ```
@@ -148,17 +139,26 @@ We transform transportation cost from an unlabeled percentage to a proportion.
 ```{r}
 transportation_county <- transportation_county |>
   mutate(
-    index_transportation_cost = index_transportation_cost / 100
+    share_transportation_cost = share_transportation_cost / 100
   )
 
 ```
 
-The transit trips index is very noisy and tough to interpret. We topcode values at 1,095 (365 *3), divide the range into 100 bins, and assign values to those bins (using a linear transformation and rounding). Percentile ranking did not work well because there were many ties and it obfuscated the distribution of the variable.  
+The transit trips index is very noisy and tough to interpret. Some of the values are outlandishly high so we topcode and rescale the data. We topcode values at 1,095 (365 days * 3 trips), divide the range into 100 bins, and assign values to those bins (using a linear transformation and rounding). Percentile ranking did not work well because there were many ties and it obfuscated the distribution of the variable.  
 
 ```{r}
 transportation_county <- transportation_county |>
-  mutate(count_transit_trips = pmin(1065, count_transit_trips)) |>
-  mutate(score_transit_trips = round((count_transit_trips / 1065) * 100))
+  mutate(score_transit_trips = round((pmin(1095, count_transit_trips) / 1095) * 100))
+
+```
+
+Let's look at the before and after.
+
+```{r}
+transportation_county |>
+  ggplot(aes(count_transit_trips, score_transit_trips)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "Score Transit Trips vs. Count Transit Trips")
 
 ```
 
@@ -210,7 +210,7 @@ Examine extreme values
 transportation_county |>
   group_by(year) |>
   slice_max(n = 10, order_by = score_transit_trips) |>
-  select(-population, -index_transportation_cost) |>
+  select(-population, -share_transportation_cost) |>
   print(n = Inf)
 
 ```
@@ -246,21 +246,19 @@ transportation_county |>
   coord_equal() +
   labs(subtitle = "Large counties have at least 200,000 households")
 
+```
 
+Examine extreme changes. 
+
+```{r}
 transportation_county |>
   group_by(state, county) |>
   mutate(score_transit_trips_change = score_transit_trips - lag(score_transit_trips)) |>
   ungroup() |>
   filter(year %in% c(2019, 2022)) |>
   slice_max(order_by = abs(score_transit_trips_change), n = 10) |>
+  select(year, state, county, households, score_transit_trips, score_transit_trips_change) |>
   print(n = Inf)
-
-transportation_county |>
-  filter(score_transit_trips > 10) |>
-  mutate(state_county = paste0(state, county)) |>
-  ggplot(aes(year, score_transit_trips, group = state_county)) +
-  geom_line(alpha = 0.1) +
-  labs(title = "Patterns over time four countes with score > 10")
 
 ```
 
@@ -270,7 +268,7 @@ transportation_county |>
 
 ```{r}
 transportation_county |>
-  filter(is.na(index_transportation_cost))
+  filter(is.na(share_transportation_cost))
 
 ```
 
@@ -282,14 +280,14 @@ Use stopifnot to check if all values in `transportation_county` are
 non-negative
 
 ```{r}
-stopifnot(min(transportation_county$index_transportation_cost, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_county$share_transportation_cost, na.rm = TRUE) >= 0)
 ```
 
 Create a histogram plot and summary stats for each dataframe check that
 all values are non-negative & count missing values examine outliers.
 
 ```{r}
-ggplot(transportation_county, aes(x = index_transportation_cost)) +
+ggplot(transportation_county, aes(x = share_transportation_cost)) +
   geom_histogram() + 
   facet_wrap(~ year, nrow = 2) +
   labs(
@@ -302,7 +300,7 @@ ggplot(transportation_county, aes(x = index_transportation_cost)) +
 Look at summary stats
 
 ```{r}
-summary(transportation_county$index_transportation_cost)
+summary(transportation_county$share_transportation_cost)
 ```
 
 Examine extreme values
@@ -310,7 +308,7 @@ Examine extreme values
 ```{r}
 transportation_county |>
   group_by(year) |>
-  slice_max(n = 10, order_by = index_transportation_cost) |>
+  slice_max(n = 10, order_by = share_transportation_cost) |>
   select(-population, -score_transit_trips) |>
   print(n = Inf)
 
@@ -321,13 +319,13 @@ transportation_county |>
 ```{r}
 transportation_county |>
   filter(year %in% c(2015, 2019)) |>
-  select(state, county, year, households, index_transportation_cost) |>
+  select(state, county, year, households, share_transportation_cost) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, index_transportation_cost)
+    values_from = c(households, share_transportation_cost)
   ) |>
   mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(index_transportation_cost_2015, index_transportation_cost_2019, size = households_2019)) +
+  ggplot(aes(share_transportation_cost_2015, share_transportation_cost_2019, size = households_2019)) +
   geom_point(alpha = 0.1) +
   facet_wrap(~ size) +
   coord_equal() +
@@ -335,25 +333,30 @@ transportation_county |>
 
 transportation_county |>
   filter(year %in% c(2019, 2022)) |>
-  select(state, county, year, households, index_transportation_cost) |>
+  select(state, county, year, households, share_transportation_cost) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, index_transportation_cost)
+    values_from = c(households, share_transportation_cost)
   ) |>
   mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(index_transportation_cost_2019, index_transportation_cost_2022, size = households_2022)) +
+  ggplot(aes(share_transportation_cost_2019, share_transportation_cost_2022, size = households_2022)) +
   geom_point(alpha = 0.1) +
   facet_wrap(~ size) +
   coord_equal() +
   labs(subtitle = "Large counties have at least 200,000 households")
 
+```
 
+Examine extreme changes.
+
+```{r}
 transportation_county |>
   group_by(state, county) |>
-  mutate(index_transportation_cost_change = index_transportation_cost - lag(index_transportation_cost)) |>
+  mutate(share_transportation_cost_change = share_transportation_cost - lag(share_transportation_cost)) |>
   ungroup() |>
   filter(year %in% c(2019, 2022)) |>
-  slice_max(order_by = abs(index_transportation_cost_change), n = 10) |>
+  slice_max(order_by = abs(share_transportation_cost_change), n = 10) |>
+  select(year, state, county, households, share_transportation_cost, share_transportation_cost_change) |>
   print(n = Inf)
 
 ```
@@ -436,11 +439,24 @@ transportation_county <- transportation_county |>
       med_hh_income_cv < 0.3 ~ 2,
       TRUE ~ 3
     ),
-    index_transportation_cost_quality  = case_when(
+    share_transportation_cost_quality  = case_when(
       med_hh_income_cv < 0.1 ~ 1,
       med_hh_income_cv < 0.3 ~ 2,
       TRUE ~ 3
     )
+  )
+
+```
+
+Suppress data quality flags if the metric is missing.
+
+```{r}
+transportation_county <- transportation_county |>
+  mutate(
+    score_transit_trips_quality = 
+      if_else(is.na(score_transit_trips), NA, score_transit_trips_quality), 
+    share_transportation_cost_quality = 
+      if_else(is.na(share_transportation_cost), NA, share_transportation_cost_quality), 
   )
 
 ```
@@ -450,7 +466,30 @@ Examine the data quality flags.
 ```{r}
 count(transportation_county, year, score_transit_trips_quality)
 
-count(transportation_county, year, index_transportation_cost_quality)
+count(transportation_county, year, share_transportation_cost_quality)
+
+```
+
+Confirm there isn't a mismatch between missing values and missing quality flags.
+
+```{r}
+stopifnot(
+  transportation_county |>
+    filter(
+      (!is.na(score_transit_trips) & is.na(score_transit_trips_quality)) |
+        (!is.na(share_transportation_cost) & is.na(share_transportation_cost_quality))
+    ) |>
+    nrow() == 0
+)
+
+stopifnot(
+  transportation_county |>
+    filter(
+      (is.na(score_transit_trips) & !is.na(score_transit_trips_quality)) |
+        (is.na(share_transportation_cost) & !is.na(share_transportation_cost_quality))
+    ) |>
+    nrow() == 0
+)
 
 ```
 
@@ -460,7 +499,7 @@ Keep variables of interest and order them appropriately.
 
 ```{r}
 final_data <- transportation_county |>
-  select(year, state, county, score_transit_trips, score_transit_trips_quality, index_transportation_cost, index_transportation_cost_quality) |>
+  select(year, state, county, score_transit_trips, score_transit_trips_quality, share_transportation_cost, share_transportation_cost_quality) |>
   arrange(year, state, county) 
 
 ```
@@ -469,10 +508,7 @@ Run the evaluation function.
 
 ```{r}
 evaluate_final_data(
-  exp_form_path = here("06_neighborhoods", 
-       "Transportation", 
-       "final", 
-       "final_data_evaluation_form.csv"), 
+  exp_form_path = here("10a_final-evaluation", "evaluation_form_transportation.csv"), 
   data = final_data, 
   geography = "county",
   confidence_intervals = FALSE
