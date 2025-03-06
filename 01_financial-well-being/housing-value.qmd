@@ -338,10 +338,9 @@ households_county <-
     sum_products = if_else(county.x != "000", 1, sum_products)
   ) |>
   select(-c(county.x, county.y)) |>
-  # Remove old counties from 2022 Conneticut data
-  filter(!(year == 2022 & state == "09" & str_starts(county, "0")))
-
-puma_county_crosswalk |>
+  # Remove old counties from 2022 Connecticut data, but keep county "000"
+  filter(!(year == 2022 & state == "09" & str_starts(county, "0") & county != "000"))
+  puma_county_crosswalk |>
   filter(state == "09", crosswalk_period == "2022") |>
   distinct(county)
 ```
@@ -452,7 +451,7 @@ skimr::skim(share_households_county)
 
 
 ```{r}
-#| label: check-share-hh-county-check
+#| label: check-share-hh-county-subgroup-check
 stopifnot(min(share_households_county_subgroup$share_households) >= 0)
 stopifnot(max(share_households_county_subgroup$share_households) <= 1)
 ```
@@ -601,10 +600,11 @@ In particular,
 
   - Data quality is good (`1`): N is greater than 30 and more than 75% of
     observations are from the county/place.
-  - Data quality is marginal (`2`): N is greater than 30 but only 35% to 75% of
+  - Data quality is marginal (`2`): N is greater than 30 but more than 35% but less than 75% or equal of
     observations are from the county/place.
-  - Data quality is poor (`3`): N is less than or equal to 30 **or** if less
+  - Data quality is poor (`3`): If less
     than or equal 35% of observations are from the county/place
+  - Data quality is NA if N is less than or equal to 30.
 
 
 ```{r}
@@ -614,7 +614,8 @@ construct_quality_flag <- function(x, y) {
   case_when(
     x > 30 & y > 0.75 ~ 1,
     x > 30 & (y > 0.35 & y <= 0.75) ~ 2,
-    x <= 30 | y <= 0.35 ~ 3,
+    y <= 0.35 ~ 3,
+    x <= 30 ~ NA_integer_,
     .default = NA_integer_
   )
 }
@@ -967,7 +968,7 @@ stopifnot(
   ratio_house_value_households_county |>
     distinct(year, state, county) |>
     count(year) |>
-    filter(year %in% c(2022, 2023)) |>
+    filter(year >= 2022) |>
     pull(n) |> unique() == 3144
 )
 ```
