@@ -5,10 +5,12 @@ Before using this file, download the relevant year of data from QCEW NAICS-Based
 
 The overall county metric was originally programmed by Kevin Werner + this file was further developed by Kassandra Martinchek in 2024 and 2025, including adding additional years, programming the metrics across years, and adding subgroups.
 
-Current update date: 2/21/2025
+Current update date: 3/6/2025
 
 ****************************/
 */
+
+ssc install distinct
 
 /***** update these directories *****/
 global raw "C:\Users\KMartinchek\Documents\upward-mobility-2025\mobility-from-poverty\09_employment"
@@ -30,11 +32,10 @@ Import all the files in the Box folder here.
 
 /***** save living wage as .dta *****/
 
-foreach year in 2014 2018 2021 {
+foreach year in 2014 2018 {
 	
 	clear
-	cd `wages'
-	import delimited using "mit-living-wage.csv", clear // remember the MIT data here is 2019 (important for inflation/deflation step later)
+	import delimited using "$wages/mit-living-wage.csv", clear // remember the MIT data here is 2019 (important for inflation/deflation step later)
 
 	replace year = `year' // correct to proper year
 	
@@ -47,8 +48,6 @@ foreach year in 2014 2018 2021 {
 			replace wage_adj = wage *  251.107/255.657 if year == 2018
 			replace wage_adj = wage *  236.736/255.657 if year == 2014
 
-			replace wage_adj = wage *  270.970/255.657 if year == 2021
-
 		/* duplicates are an issue here because they repeat two counties */	
 		duplicates report state county
 		duplicates tag state county, generate(dup_tag)
@@ -60,11 +59,10 @@ foreach year in 2014 2018 2021 {
 
 }
 
-foreach year in 2022 {
+foreach year in 2021 2022 {
 	
 	clear
-	cd `wages'
-	import delimited using "mit-living-wage-2022.csv", clear // remember the MIT data here is 2022 
+	import delimited using "$wages/mit-living-wage-2022.csv", clear // remember the MIT data here is 2022 
 
 	replace year = `year' // correct to proper year
 	
@@ -73,7 +71,9 @@ foreach year in 2022 {
 	
 		/* inflate/deflate MIT data, depending on year */
 		** using the first table from here (CPI-U, US City Average, Annual Average column): https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm 
-		generate wage_adj = wage
+		generate wage_adj = wage 
+			replace wage_adj = wage if year == 2022 // no need to deflate 2022 data because this is the data year
+			replace wage_adj = wage * 270.970/288.347 if year == 2021
 		
 		duplicates report state county
 
@@ -84,8 +84,8 @@ foreach year in 2022 {
 foreach year in 2023 {
 	
 	clear
-	cd `wages'
-	import delimited using "mit-living-wage-2023.csv", clear // remember the MIT data here is 2023 
+	import delimited using "$wages/mit-living-wage-2023.csv", clear // remember the MIT data here is 2023 
+	mdesc hourly_living_wage // check missingness
 
 	replace year = `year' // correct to proper year
 	
@@ -109,8 +109,7 @@ foreach year in 2023 {
 foreach year in 2014 2018 2021 2022 2023 {
 	
 	clear
-	cd `raw'
-	import delimited using "`year'_data.csv", numericcols(14 15 16 17 18) varnames(1) clear
+	import delimited using "$raw/`year'_data.csv", numericcols(14 15 16 17 18) varnames(1) clear
 
 	/* keep only county totals */
 	keep if areatype == "County" & ownership == "Total Covered"
@@ -122,6 +121,9 @@ foreach year in 2014 2018 2021 2022 2023 {
 	rename cnty county
 
 	destring state, replace // make numeric for merging with MIT data
+	
+	di `year'
+	mdesc // check missingness -- high missingness could indicate an error
 	
 	save "temp-qecw-`year'.dta", replace 
 	
@@ -136,6 +138,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 	keep if areatype == "County" 
 
 	** recode industries into MM categories
+		// see ownership codes here (own variable): https://www.bls.gov/cew/classifications/ownerships/ownership-titles.htm 
 	generate industry_type = .
 		replace industry_type = 1 if naics == 10 & own == 0 // all
 		replace industry_type = 2 if naics == 101 // goods producing
@@ -205,8 +208,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 foreach year in 2014 2018 2021 2022 2023 {
 	
 	clear
-	cd `raw'
-	use "temp-qecw-`year'.dta", clear
+	use "$raw/temp-qecw-`year'.dta", clear
 	
 	merge 1:m state county using "mit_living_wage-`year'.dta"
 
@@ -265,7 +267,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 	replace ratio_living_wage_quality = 3 if annualaverageestablishmentcount < 30 & annualaverageestablishmentcount != .
 	replace ratio_living_wage_quality = . if annualaverageestablishmentcount == .
 
-	/* test flag */
+	/* tab quality */
 	tab ratio_living_wage_quality, missing
 	
 	/* put state and county in string with leading 0s */
@@ -335,7 +337,8 @@ foreach year in 2014 2018 2021 2022 2023 {
 foreach year in 2014 2018 2021 2022 2023 {
 	
 	use "$wages/temp-merged-industry-`year'.dta", clear
-		
+	drop _merge	
+	
 	/* convert living hourly wage to weekly */
 	gen weekly_living_wage = wage * 40
 
@@ -354,12 +357,10 @@ foreach year in 2014 2018 2021 2022 2023 {
 	replace ratio_living_wage_quality = . if avgestct == .
 	replace ratio_living_wage_quality = . if statuscode == 1
 
-	/* test flag */
+	/* tab quality */
 	tab ratio_living_wage_quality, missing
 
 	/* put state and county in string with leading 0s */
-	drop _merge
-
 	** generate county name and state name
 	gen new_state = string(state,"%02.0f")
 	drop state
@@ -445,7 +446,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 	replace subgroup = 1 if subgroup == .
 	label values subgroup industry_labels_mm
 
-	fillin fips_code subgroup
+	fillin fips_code subgroup // this ensures that there is a row for each industry for each county to create a balanced dataset
 
 	bysort fips_code: generate state_b = state[1]
 	bysort fips_code: generate county_b = county[1]
@@ -494,20 +495,25 @@ foreach year in 2014 2018 2021 2022 2023 {
 
 *** overall
 {
-use "wage_ratio_final_2014.dta", clear
+use "$wages/wage_ratio_final_2014.dta", clear
 	append using "wage_ratio_final_2018.dta"
 	append using "wage_ratio_final_2021.dta"
 	append using "wage_ratio_final_2022.dta"
 	append using "wage_ratio_final_2023.dta"
 
-save "wage_ratio_overall_allyears.dta", replace
+save "$wages/wage_ratio_overall_allyears.dta", replace
 
 // final counts
 count // should be 15,715
 bysort year: count
 
+*** assert 
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
+
+bysort year: count if ratio_living_wage == "NA"
+
 // export final file
-export delimited using "living_wage_county_all_longitudinal.csv", replace
+export delimited using "$wages/data/final/living_wage_county_all_longitudinal.csv", replace
 
 // summarize the final variable -- need to make some changes before doing so
 gen living_wage_test = ratio_living_wage
@@ -533,8 +539,13 @@ distinct state county subgroup, joint // to confirm there are 8 obs for county
 count // should be 15,715 (times 8!) so 125,720
 bysort year: count
 
+*** assert 
+assert ratio_living_wage_quality == "NA" if ratio_living_wage == "NA"
+
+bysort year: count if ratio_living_wage == "NA"
+
 // export final dataset
-export delimited using "$wages/living_wage_county_industry_longitudinal.csv", replace	
+export delimited using "$wages/data/final/living_wage_county_industry_longitudinal.csv", replace	
 
 // summarize the final variable -- need to make some changes before doing so
 gen living_wage_test = ratio_living_wage
@@ -546,6 +557,8 @@ bysort subgroup: summarize living_wage_test, detail
 }
 
 /* delete unneeded files -- do this as a last step */
+erase "$wages\wage_ratio_overall_allyears.dta"
+erase "$wages\wage_ratio_overall_allyears_subgroup.dta"
 
 foreach year in 2014 2018 2021 2022 2023 {
 	erase "$wages\wage_ratio_final_`year'.dta"
@@ -556,4 +569,5 @@ foreach year in 2014 2018 2021 2022 2023 {
 	erase "$wages\temp-qecw-industry-`year'.dta"
 	erase "$wages\metrics_wage_ratio_`year'.csv"
 	erase "$wages\metrics_wage_ratio_`year'_subgroup.csv"
+	erase "$wages\mit_living_wage-`year'.dta"
 }
