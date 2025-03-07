@@ -1,7 +1,7 @@
 
 /************************************************
 Created by Mingli Zhong (mzhong@urban.org)
-2-11-2025
+3-7-2025
 * This do file is based on Jen Andre's do file county-debt-coll-shares-2022 in the same folder (C:\GitHub\mobility-from-poverty\01_financial-well-being). It generates county-level debt in collection results based on Debt in America data. 
 * Debt in Collections County-Level Shares 2022 and 2023*
 * Data & Program Source: Debt in America
@@ -28,8 +28,8 @@ assert !mi("$output")
 
 global raw "Box\Data\Metrics_2025_round\debt_in_collections"  // USER: must set raw data path here
 
-global directory "C:\GitHub\mobility-from-poverty\01_financial-well-being"
-global master "C:\GitHub\mobility-from-poverty"
+global directory "GitHub\mobility-from-poverty\01_financial-well-being"
+global master "GitHub\mobility-from-poverty"
 
 
 **# [1] Import data 
@@ -74,9 +74,9 @@ gen subgroup_type = "race-ethnicity"
 * create data quality fields - most 1, some 3 for missing/suppression
 replace share_debt_coll = "NA" if inlist(share_debt_coll, "n/a*", "n/a**", "NA")
 destring share_debt_coll, replace
-gen share_debt_coll_quality = .
-	replace share_debt_coll_quality = 1 if !mi(share_debt_coll)
-	replace share_debt_coll_quality = 3 if share_debt_coll == "NA" // suppressed or no subgroup
+gen share_debt_coll_quality = "."
+	replace share_debt_coll_quality = "1" if !mi(share_debt_coll)
+	replace share_debt_coll_quality = "NA" if share_debt_coll == "NA" // suppressed or no subgroup
 
 **# [2] Export -----------------------------------
 gen year = 2023
