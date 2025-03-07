@@ -1,7 +1,7 @@
 ---
 title: "Transit Trips and Transportation Costs -- County -- Subgroups"
 author: "Tina Chelidze and Aaron R. Williams"
-abstract: This script calculates `share_transportation_cost` and `share_transit_trips` using Center for Neighborhood Technology (CNT) and Census Bureau data. 
+abstract: This script calculates `share_transportation_cost` and `share_transit_commuter` using Center for Neighborhood Technology (CNT) and Census Bureau data. 
 date: today
 format:
   html:
@@ -107,7 +107,7 @@ Only keep variables of interest. `pct_transit_commuters_80ami` is "Transit Rider
 transportation_tracts <- transportation_tracts |>
   select(
     year, GEOID, state, county, tract, blkgrps, population, households, 
-    share_transit_trips = pct_transit_commuters_80ami, 
+    share_transit_commuter = pct_transit_commuters_80ami, 
     share_transportation_cost = t_80ami
   )
 
@@ -126,9 +126,24 @@ We transform transportation cost from an unlabeled percentage to a proportion.
 ```{r}
 transportation_tracts <- transportation_tracts |>
   mutate(
-    share_transit_trips = share_transit_trips / 100,
+    share_transit_commuter = share_transit_commuter / 100,
     share_transportation_cost = share_transportation_cost / 100
   )
+
+```
+
+```{r}
+transportation_tracts |>
+  ggplot(aes(share_transit_commuter)) +
+  geom_histogram() +
+  facet_wrap(~ year) +
+  labs(title = "Distribution of share_transit_commuter")
+
+transportation_tracts |>
+  ggplot(aes(share_transportation_cost)) +
+  geom_histogram() +
+  facet_wrap(~ year) +
+  labs(title = "Distribution of share_transportation_cost")
 
 ```
 
@@ -440,7 +455,7 @@ transportation_county_all <- combined_tracts |>
   group_by(year, state, county) |>
   summarize(
     n = n(),
-    share_transit_trips = weighted.mean(x = share_transit_trips, w = households),
+    share_transit_commuter = weighted.mean(x = share_transit_commuter, w = households),
     share_transportation_cost = weighted.mean(x = share_transportation_cost, w = households),
     households_est = sum(households_est),
     households_se = sqrt(sum(households_se ^ 2)),
@@ -457,7 +472,7 @@ transportation_county_subgroup <- combined_tracts |>
   group_by(year, state, county, subgroup) |>
   summarize(
     n = n(),
-    share_transit_trips = weighted.mean(x = share_transit_trips, w = households),
+    share_transit_commuter = weighted.mean(x = share_transit_commuter, w = households),
     share_transportation_cost = weighted.mean(x = share_transportation_cost, w = households),
     households_est = sum(households_est),
     households_se = sqrt(sum(households_se ^ 2)),
@@ -505,7 +520,7 @@ transportation_county <- transportation_county |>
 
 ```{r}
 transportation_county |>
-  filter(is.na(share_transit_trips)) |>
+  filter(is.na(share_transit_commuter)) |>
   count(subgroup)
 
 ```
@@ -515,13 +530,13 @@ transportation_county |>
 Use stopifnot to check if all values in `transportation_county` are non-negative.
 
 ```{r}
-stopifnot(min(transportation_county$share_transit_trips, na.rm = TRUE) >= 0)
+stopifnot(min(transportation_county$share_transit_commuter, na.rm = TRUE) >= 0)
 ```
 
 Create a histogram.
 
 ```{r}
-ggplot(transportation_county, aes(x = share_transit_trips)) +
+ggplot(transportation_county, aes(x = share_transit_commuter)) +
   geom_histogram() + 
   facet_grid(year ~ subgroup) +
   labs(
@@ -535,7 +550,7 @@ Makes sense for most counties to fall in really low transit trip numbers since m
 Look at summary stats
 
 ```{r}
-summary(transportation_county$share_transit_trips)
+summary(transportation_county$share_transit_commuter)
 ```
 
 Examine extreme values
@@ -543,8 +558,8 @@ Examine extreme values
 ```{r}
 transportation_county |>
   group_by(year) |>
-  slice_max(n = 10, order_by = share_transit_trips) |>
-  select(year, state, county, subgroup, share_transit_trips) |>
+  slice_max(n = 10, order_by = share_transit_commuter) |>
+  select(year, state, county, subgroup, share_transit_commuter) |>
   print(n = Inf)
 
 ```
@@ -556,13 +571,13 @@ We look at the change from 2015 to 2019. Transit trips changes a lot, which may 
 ```{r}
 transportation_county |>
   filter(year %in% c(2015, 2019)) |>
-  select(state, county, year, subgroup, households, share_transit_trips) |>
+  select(state, county, year, subgroup, households, share_transit_commuter) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, share_transit_trips)
+    values_from = c(households, share_transit_commuter)
   ) |>
   mutate(size = if_else(households_2019 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(share_transit_trips_2015, share_transit_trips_2019, size = households_2019)) +
+  ggplot(aes(share_transit_commuter_2015, share_transit_commuter_2019, size = households_2019)) +
   geom_point(alpha = 0.1) +
   facet_grid(size ~ subgroup) +
   coord_equal() +
@@ -570,13 +585,14 @@ transportation_county |>
 
 transportation_county |>
   filter(year %in% c(2019, 2022)) |>
-  select(state, county, year, subgroup, households, share_transit_trips) |>
+  select(state, county, year, subgroup, households, share_transit_commuter) |>
   pivot_wider(
     names_from = year, 
-    values_from = c(households, share_transit_trips)
+    values_from = c(households, share_transit_commuter)
   ) |>
   mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
-  ggplot(aes(share_transit_trips_2019, share_transit_trips_2022, size = households_2022)) +
+  filter(!is.na(households_2022)) |>
+  ggplot(aes(share_transit_commuter_2019, share_transit_commuter_2022, size = households_2022)) +
   geom_point(alpha = 0.1) +
   facet_grid(size ~ subgroup) +
   coord_equal() +
@@ -584,11 +600,11 @@ transportation_county |>
 
 transportation_county |>
   group_by(state, county, subgroup) |>
-  mutate(change_share_transit_trips = share_transit_trips - lag(share_transit_trips)) |>
+  mutate(change_share_transit_commuter = share_transit_commuter - lag(share_transit_commuter)) |>
   ungroup() |>
   filter(year %in% c(2019, 2022)) |>
-  slice_max(order_by = abs(change_share_transit_trips), n = 10) |>
-  select(year, state, county, subgroup, change_share_transit_trips)
+  slice_max(order_by = abs(change_share_transit_commuter), n = 10) |>
+  select(year, state, county, subgroup, change_share_transit_commuter)
 
 ```
 
@@ -667,6 +683,7 @@ transportation_county |>
     values_from = c(households, share_transportation_cost)
   ) |>
   mutate(size = if_else(households_2022 > 200000, "Large counties", "Small counties")) |>
+  filter(!is.na(households_2022)) |>
   ggplot(aes(share_transportation_cost_2019, share_transportation_cost_2022, size = households_2022)) +
   geom_point(alpha = 0.1) +
   facet_wrap(~ size) +
@@ -687,7 +704,7 @@ transportation_county |>
 
 We calculate data quality using the coefficient of variation for the number of households and median household income. We use the "worse" data quality from these two tests. 
 
-Elsewhere, we use 0.2 and 0.4 as cutoffs for the coefficient of variation. These metrics contain extra uncertainty from other variables and modelings, so we 0.08 and 0.15 as cutoffs. 
+Elsewhere, we use 0.2 and 0.4 as cutoffs for the coefficient of variation. These metrics contain extra uncertainty from other variables and modelings, so we use 0.08 and 0.15 as cutoffs. 
 
 ```{r}
 transportation_county <- transportation_county |>
@@ -695,7 +712,7 @@ transportation_county <- transportation_county |>
 
 transportation_county <- transportation_county |>
   mutate(
-    share_transit_trips_quality = case_when(
+    share_transit_commuter_quality = case_when(
       households_cv < 0.08 ~ 1,
       households_cv < 0.15 ~ 2,
       TRUE ~ 3
@@ -707,7 +724,7 @@ transportation_county <- transportation_county |>
     )
   ) |>
   mutate(
-    share_transit_trips_quality = if_else(is.na(share_transit_trips), NA, share_transit_trips_quality),
+    share_transit_commuter_quality = if_else(is.na(share_transit_commuter), NA, share_transit_commuter_quality),
     share_transportation_cost_quality = if_else(is.na(share_transportation_cost), NA, share_transportation_cost_quality)
   )
 
@@ -756,7 +773,7 @@ med_hh_income_cv <- med_hh_income_cv |>
   mutate(med_hh_income_cv = med_hh_income_se / med_hh_income) |>
   mutate(med_hh_income_cv = ifelse(is.na(med_hh_income_cv), 0.5, med_hh_income_cv)) |>
   mutate(
-    share_transit_trips_quality = case_when(
+    share_transit_commuter_quality = case_when(
       med_hh_income_cv < 0.1 ~ 1,
       med_hh_income_cv < 0.3 ~ 2,
       TRUE ~ 3
@@ -769,7 +786,7 @@ med_hh_income_cv <- med_hh_income_cv |>
   ) |>
   select(
     year, state, county, 
-    share_transit_trips_quality_county = share_transit_trips_quality, 
+    share_transit_commuter_quality_county = share_transit_commuter_quality, 
     share_transportation_cost_quality_county = share_transportation_cost_quality
   )
 
@@ -786,8 +803,8 @@ transportation_county <- left_join(
 
 transportation_county <- transportation_county |>
   mutate(
-    share_transit_trips_quality = 
-      pmax(share_transit_trips_quality, share_transit_trips_quality_county),
+    share_transit_commuter_quality = 
+      pmax(share_transit_commuter_quality, share_transit_commuter_quality_county),
     share_transportation_cost_quality = 
       pmax(share_transportation_cost_quality, share_transportation_cost_quality_county)
   )
@@ -797,7 +814,7 @@ transportation_county <- transportation_county |>
 Examine the data quality flags. 
 
 ```{r}
-count(transportation_county, year, share_transit_trips_quality)
+count(transportation_county, year, share_transit_commuter_quality)
 
 count(transportation_county, year, share_transportation_cost_quality)
 
@@ -809,7 +826,7 @@ Confirm no metrics are missing quality flags.
 stopifnot(
   transportation_county |>
     filter(
-      (!is.na(share_transit_trips) & is.na(share_transit_trips_quality)) |
+      (!is.na(share_transit_commuter) & is.na(share_transit_commuter_quality)) |
         (!is.na(share_transportation_cost) & is.na(share_transportation_cost_quality))
     ) |>
     nrow() == 0
@@ -818,7 +835,7 @@ stopifnot(
 stopifnot(
   transportation_county |>
     filter(
-      (is.na(share_transit_trips) & !is.na(share_transit_trips_quality)) |
+      (is.na(share_transit_commuter) & !is.na(share_transit_commuter_quality)) |
         (is.na(share_transportation_cost) & !is.na(share_transportation_cost_quality))
     ) |>
     nrow() == 0
@@ -831,7 +848,7 @@ Keep variables of interest and order them appropriately.
 
 ```{r}
 final_data <- transportation_county |>
-  select(year, state, county, subgroup_type, subgroup, share_transit_trips, share_transit_trips_quality, share_transportation_cost, share_transportation_cost_quality) 
+  select(year, state, county, subgroup_type, subgroup, share_transit_commuter, share_transit_commuter_quality, share_transportation_cost, share_transportation_cost_quality) 
 
 ```
 
