@@ -5,12 +5,13 @@ Before using this file, download the relevant year of data from QCEW NAICS-Based
 
 The overall county metric was originally programmed by Kevin Werner + this file was further developed by Kassandra Martinchek in 2024 and 2025, including adding additional years, programming the metrics across years, and adding subgroups.
 
-Current update date: 3/6/2025
+Current update date: 3/7/2025
 
 ****************************/
 */
 
 ssc install distinct
+ssc install mdesc
 
 /***** update these directories *****/
 global raw "C:\Users\KMartinchek\Documents\upward-mobility-2025\mobility-from-poverty\09_employment"
@@ -55,7 +56,7 @@ foreach year in 2014 2018 {
 		bysort state county (dup_tag): keep if (_n == 1 & dup_tag == 1) | dup_tag == 0 // doesn't work, deletes all observations
 		drop dup_tag
 		
-	save "mit_living_wage-`year'.dta", replace 
+	save "$wages/mit_living_wage-`year'.dta", replace 
 
 }
 
@@ -77,7 +78,7 @@ foreach year in 2021 2022 {
 		
 		duplicates report state county
 
-	save "mit_living_wage-`year'.dta", replace 
+	save "$wages/mit_living_wage-`year'.dta", replace 
 
 }
 
@@ -99,7 +100,7 @@ foreach year in 2023 {
 		
 		duplicates report state county
 
-	save "mit_living_wage-`year'.dta", replace 
+	save "$wages/mit_living_wage-`year'.dta", replace 
 
 }
 
@@ -125,7 +126,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 	di `year'
 	mdesc // check missingness -- high missingness could indicate an error
 	
-	save "temp-qecw-`year'.dta", replace 
+	save "$wages/temp-qecw-`year'.dta", replace 
 	
 }
 
@@ -208,7 +209,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 foreach year in 2014 2018 2021 2022 2023 {
 	
 	clear
-	use "$raw/temp-qecw-`year'.dta", clear
+	use "$wages/temp-qecw-`year'.dta", clear
 	
 	merge 1:m state county using "mit_living_wage-`year'.dta"
 
@@ -226,7 +227,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 	tab year
 	count 
 
-	save "temp-merged-`year'.dta", replace
+	save "$wages/temp-merged-`year'.dta", replace
 }
 	
 *** subgroup: industry	
@@ -253,7 +254,7 @@ foreach year in 2014 2018 2021 2022 2023 {
 *** overall 
 foreach year in 2014 2018 2021 2022 2023 {
 	clear
-	use "temp-merged-`year'.dta", clear
+	use "$wages/temp-merged-`year'.dta", clear
 
 	/* convert living hourly wage to weekly */
 	gen weekly_living_wage = wage_adj * 40
@@ -295,12 +296,12 @@ foreach year in 2014 2018 2021 2022 2023 {
 
 	keep state county year ratio_living_wage ratio_living_wage_quality
 
-	save "wage_ratio_final_`year'.dta",replace
+	save "$wages/wage_ratio_final_`year'.dta",replace
 
 	** add in county name and state name
 	import delimited using "$crosswalk\county-populations.csv", stringcols(2 3 4 5) varnames(1) clear
 
-	merge 1:1 year state county using "wage_ratio_final_`year'.dta"
+	merge 1:1 year state county using "$wages/wage_ratio_final_`year'.dta"
 
 	keep if year == `year'
 	
@@ -323,9 +324,9 @@ foreach year in 2014 2018 2021 2022 2023 {
 	keep year state county ratio_living_wage ratio_living_wage_quality
 	order year state county ratio_living_wage ratio_living_wage_quality
 
-	export delimited using "metrics_wage_ratio_`year'.csv", replace
+	export delimited using "$wages/metrics_wage_ratio_`year'.csv", replace
 
-	save "wage_ratio_final_`year'.dta", replace
+	save "$wages/wage_ratio_final_`year'.dta", replace
 
 	/* count obs -- this should match the Wiki numbers for each year */
 	tab year
@@ -496,10 +497,10 @@ foreach year in 2014 2018 2021 2022 2023 {
 *** overall
 {
 use "$wages/wage_ratio_final_2014.dta", clear
-	append using "wage_ratio_final_2018.dta"
-	append using "wage_ratio_final_2021.dta"
-	append using "wage_ratio_final_2022.dta"
-	append using "wage_ratio_final_2023.dta"
+	append using "$wages/wage_ratio_final_2018.dta"
+	append using "$wages/wage_ratio_final_2021.dta"
+	append using "$wages/wage_ratio_final_2022.dta"
+	append using "$wages/wage_ratio_final_2023.dta"
 
 save "$wages/wage_ratio_overall_allyears.dta", replace
 
@@ -559,8 +560,12 @@ bysort subgroup: summarize living_wage_test, detail
 /* delete unneeded files -- do this as a last step */
 erase "$wages\wage_ratio_overall_allyears.dta"
 erase "$wages\wage_ratio_overall_allyears_subgroup.dta"
+erase "$wages\mit-living-wage.csv"
+erase "$wages\mit-living-wage-2022.csv"
+erase "$wages\mit-living-wage-2023.csv"
 
 foreach year in 2014 2018 2021 2022 2023 {
+	erase "$wages\\`year'_data.csv"
 	erase "$wages\wage_ratio_final_`year'.dta"
 	erase "$wages\wage_ratio_final_`year'_subgroup.dta"
 	erase "$wages\temp-merged-`year'.dta"
