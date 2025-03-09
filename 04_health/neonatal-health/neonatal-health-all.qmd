@@ -1,23 +1,58 @@
 ---
-title: "neonatal-health-all"
-format: html
-editor: source
+title: "Neonatal Health"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
 ---
+
+```{=html}
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+```
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
 ```{r setup}
+options(scipen = 999)
+
+library(urbnthemes)
 library(tidyverse)
+library(tidylog)
+library(testthat)
+
+set_urbn_defaults(style = "print")
 
 ```
 
-# 1. Background
+# 1. Background and changes
 
-This section provides background for the data used to create this metric. 
+This section provides background for the data used to create this metric, changes from previous updates, and considerations for future updates. 
+
+## 1.1 Changes from last update
++ The code for this metric was previously written in Stata. I've rewritten it in R and simplified it to be more streamlined and intuitive.
++ This update includes the latest year of data available (2023) as well as all years back to 2016.
++ In the last round of updates, the calculation of the quality value included counties with between [10, 29] low birthweight births as a criterion for a quality value of `2`. We removed that criterion in this round of updates.
+
+## 1.2 Background
 
 The data for this metric are national natality data produced by the National Center for Health Statistics (NCHS) at the Centers for Disease Control and Prevention (CDC). We access these natality data through [CDC WONDER](https://wonder.cdc.gov/natality.html), an online system that makes CDC data available to the public.
 
 We download two sets of births data from this source: all births and low birthweight births (under 2500 grams). To create the metric, we divide the number of low birthweight births by the total number of births to calculate the county-level share of low birthweight births. Additionally, we create this metric for 8 subgroups: 4 for race/ethnicity (Non-Hispanic white, Non-Hispanic Black, Hispanic, and Non-Hispanic other), and 4 for mother's education (less than high school, high school graduate or GED, some college, and bachelor's degree or greater). Therefore, each year requires 18 data extracts downloaded from CDC WONDER.
 
-## Considerations for future updates
-+ 
+## 1.3 Considerations for future updates
++ In the CDC WONDER data used for this metric, county-level data are shown for counties with populations of 100,000 persons or more. All counties with fewer than 100,000 persons are shown combined together under the label "Unidentified Counties" for the state. Historically, we just assign the aggregate values for "Unidentified Counties" in each state to the rest of the counties for each year (e.g., all of the unidentified counties are assigned the same value). Future updates may want to consider a more sophisticated imputation strategy that imputes based on the proportion of the county's population to the state population or another imputation method to not double-count births.
 
 
 # 2. Manually download natality data from CDC WONDER
@@ -267,7 +302,7 @@ paths_subgroups <- list.files(here::here("04_health", "neonatal-health", "data",
 ```{r read-births-subgroups}
 births_subgroups_raw <- paths_subgroups |> 
   set_names(basename(paths_subgroups)) |>  # Name elements of paths by their filenames
-  map_dfr(
+  purrr::map_dfr(
     ~ utils::read.delim(.x) |> 
       mutate(
         Births = as.character(Births)  # Convert Births to character for consistency
@@ -292,6 +327,7 @@ births_subgroups_raw <- paths_subgroups |>
   )
 ```
 
+The `.txt` files from CDC WONDER all have a `Notes` section at the bottom of the file with information about the data. We remove these rows by filtering out observations with missing county information.
 ```{r clean-births-subgroups}
 births_subgroups_clean <- births_subgroups_raw |>
   select(
@@ -349,7 +385,23 @@ master_births <- tidylog::full_join(
   y = births_subgroups_wide,
   by = c("year", "county_name", "county_fips")
 )
+```
 
+After 2013, births data for Cape May County, NJ (34009); Portsmouth city, VA (51740) were recoded to the "Unidentified Counties" category within the state, because these counties did not meet minimum population standards ([source](https://wonder.cdc.gov/wonder/help/natality.html#)). 
+```{r check-recoded-counties}
+master_births |>
+  filter(births_all == "Missing County") |>
+  group_by(year, county_fips)
+```
+
+```{r remove-recoded-counties}
+master_births <- master_births |>
+  filter(!county_fips %in% c(34009, 51740))
+  
+```
+
+
+```{r clean-births-geo-info}
 master_births_clean <- master_births |>
   mutate(
     county_fips = str_pad(as.character(county_fips),
@@ -363,15 +415,23 @@ master_births_clean <- master_births |>
   
 ```
 
-```{r}
+In the 2022 and 2023 CDC WONDER data, Connecticut's outdated 8 counties are still used (09001, 09003, 09005, 09007, 09009, 09011, 09013, 09015), but in Urban's universe of counties the updated 9 planning regions are used (09110, 09120, 09130, 09140, 09150, 09160, 09170, 09180, 09190). CDC WONDER intends to move to the updated planning regions in the future, so we leave these years as missing until that transition takes place.
+
+```{r check-ct}
 master_births_clean |>
-  filter (state=="09")
+  filter(state=="09") |>
+  select(year, state, county)
+```
+
+```{r remove-ct-2022-2023}
+master_births_clean <- master_births_clean |>
+  filter(!(state=="09" & year %in% c(2022, 2023)))
 ```
 
 
 ## 4.3 Bring in crosswalk containing all counties and join births
-```{r read-crosswalk}
-county_pop <- read_csv(
+```{r read-urban-counties}
+urban_counties <- read_csv(
   file = here::here("geographic-crosswalks", "data", "county-populations.csv")
 ) |>
   filter(year>=2016) |>
@@ -379,39 +439,70 @@ county_pop <- read_csv(
 
 ```
 
-```{r}
-county_pop |>
-  filter (state=="09")
+```{r clean-urban-ct}
+urban_counties_clean <- urban_counties |>
+  # Remove CT counties in 2022 and 2023
+  filter(!(state=="09" & year %in% c(2022, 2023)))
+
 ```
 
-In the 2022 and 2023 CDC WONDER data, Connecticut's outdated 8 counties are still used (09001, 09003, 09005, 09007, 09009, 09011, 09013, 09015), but in Urban's universe of counties the updated 9 planning regions are used (09110, 09120, 09130, 09140, 09150, 09160, 09170, 09180, 09190). CDC WONDER intends to move to the updated planning regions in the future, so we leave these years as missing until that transition takes place.
-```{r join-crosswalk-births}
-county_pop_births <- tidylog::full_join(
-  x = county_pop,
+In the CDC WONDER births data, all counties with fewer than 100,000 persons are shown combined together under the label "Unidentified Counties" for the state. So, we expect a lot of unmatched observations. The code below shows that there should be 390 unmatched observations (unidentified counties) from the births data.
+```{r check-wont-match-births}
+master_births_clean |>
+  filter(county=="999") |>
+  count()
+```
+
+Below, we check the total number of counties in the population file and the total number of counties in the births data for each year. This shows us that we should expect 20,516 observations in only the Urban county population file
+```{r check-wont-match-counties}
+urban_counties_clean |>
+  group_by(year) |>
+  count()
+
+master_births_clean |>
+  filter(county!="999") |>
+  group_by(year) |>
+  count()
+
+# Checking the total number of counties in each year and subtracting those that are included in the births data
+((3142-578)*4) + ((3143-578)*2) + ((3135-570)*2)
+
+```
+
+
+
+```{r join-counties-births}
+county_births <- tidylog::full_join(
+  x = urban_counties_clean,
   y = master_births_clean,
-  #y = births_wide,
   by = c("year", "state", "county")
 )
+
 ```
 
 Reshape the data to be long again by subgroup
 ```{r reshape-long}
-county_pop_births_long <- county_pop_births |>
+county_births_long <- county_births |>
   pivot_longer(
     cols = starts_with(c("births_")),
     names_to = c(".value", "subgroup"),
     names_pattern = "(births_[^_]+)_?([^_]*)",
     values_to = "births"
+  ) |>
+  mutate(
+    subgroup = if_else(subgroup=="", "all", subgroup)
   )
 
 ```
 
 
-# 5. Assign "unidentified county" values to counties with missing values
 
-Counties with a total population less than 100,000 report births under "Unidentified Counties" to protect personal privacy ([source](https://wonder.cdc.gov/wonder/help/natality.html)). Here, we want to replace every value from the total county populations that did not have a match in the births data with the "Unidentified Counties" value from that state.
+# 5. Assign "unidentified county" values to counties with missing values
+Counties with fewer than 100,000 persons are shown combined together under the label "Unidentified Counties" for the state ([source](https://wonder.cdc.gov/wonder/help/natality.html)). 
+
+In the code below, we replace every value from the counties that did not have a match in the Urban counties universe (i.e., the counties that were combined under the label "Unidentified Counties" in the CDC WONDER births data) for each state and apply the values from the state's "Unidentified Counties" observation. This means that a lot of counties within states will have the same observations. Future updates may want to consider a more sophisticated imputation method.
 ```{r assign-unidentified}
-county_pop_births_clean <- county_pop_births_long |>
+county_births_clean <- county_births_long |>
   mutate(
     unidentified_all = ifelse(county=="999", births_all, NA),
     unidentified_lbw = ifelse(county=="999", births_lbw, NA)
@@ -440,174 +531,224 @@ county_pop_births_clean <- county_pop_births_long |>
 
 ```
 
-If the value for all births and low birthweight births match the state unidentified values, we know that the births data from that county were initially missing, so we create a flag to keep track of these counties.
-```{r create-unidentified-tag}
-county_pop_births_clean <- county_pop_births_clean |>
+If the value for all births and low birthweight births match the state unidentified values, we know that the births data from that county were initially missing, so we create a flag to keep track of these counties. Because the "Unidentified Counties" label is based on total county population, it will apply to all births and lbw births, so we could generate the flag based on either/or of these variables.
+```{r create-unidentified-flag}
+# Show that observations for each birth group are missing (i.e., "unidentified") when the other is missing
+stopifnot(all(is.na(county_births_long$births_all) == is.na(county_births_long$births_lbw)))
+
+county_births_clean <- county_births_clean |>
   mutate(
     unidentified_county = if_else(
       births_all==state_unidentified_all & births_lbw==state_unidentified_lbw, 
       1, 
-      0),
+      0)
+  ) |>
+  select(-c(state_unidentified_all, state_unidentified_lbw))
+
+```
+
+The unidentified_county flag is missing for Delaware and Washington, DC because these states did not have any unidentified county observations. We replace these with 0.
+```{r replace-unidentified-flag}
+county_births_clean |>
+  filter(is.na(unidentified_county)) |>
+  group_by(state) |>
+  count()
+
+county_births_clean <- county_births_clean |>
+  mutate(
+    unidentified_county = if_else(is.na(unidentified_county), 0, unidentified_county)
+  )
+```
+
+
+Birth counts are marked "Suppressed" when the figure represents fewer than ten (1-9) births. We create a flag for these observations, because eventually we will have to change the values to missing, and we want to be explicit about the cause of their missingness being from data suppression.
+```{r change-suppressed-to-missing}
+county_births_clean <- county_births_clean |>
+  mutate(
     # Generate flag for suppressed values
     suppressed_county = if_else(
       births_all == "Suppressed" | births_lbw == "Suppressed",
       1,
       0
-    )
-  ) |>
-  select(-c(state_unidentified_all, state_unidentified_lbw))
+    ),
+    births_all = if_else(births_all=="Suppressed", NA, births_all),
+    births_lbw = if_else(births_lbw=="Suppressed", NA, births_lbw)
+  )
+
+```
+
+
+```{r check-total-missing}
+sum(is.na(county_births_clean$births_all))
+sum(is.na(county_births_clean$births_lbw))
 
 ```
 
 
 # 6. Create neonatal health share low birthweight metric
 ```{r calculate-metric}
-county_pop_births_clean <- county_pop_births_clean |>
+county_births_clean <- county_births_clean |>
   mutate(
     births_all = as.numeric(births_all),
-    births_lbw = as.numeric(births_lbw),
-    subgroup = if_else(subgroup=="", "all", subgroup)
+    births_lbw = as.numeric(births_lbw)
   )
 
-county_pop_births_metric <- county_pop_births_clean |>
+sum(is.na(county_births_clean$births_all))
+sum(is.na(county_births_clean$births_lbw))
+
+lbw_rates <- county_births_clean |>
   mutate(
-    share_low_birth_weight = births_lbw / births_all
+    rate_low_birth_weight = round(births_lbw / births_all, 2)
   )
 
 ```
 
-If the denominator (low birthweight births) for the "all" group is less than 30, we assign the value to be missing
+If the denominator (all births) is less than 30, we assign the value to be missing
 ```{r replace-low-denominators}
-county_pop_births_metric <- county_pop_births_metric |>
+lbw_rates <- lbw_rates |>
   mutate(
-    share_low_birth_weight = if_else((births_lbw < 30 & subgroup=="all"), NA, share_low_birth_weight)
+    rate_low_birth_weight = if_else((births_all < 30), NA, rate_low_birth_weight)
   )
   
 ```
 
+```{r check-rate-distribution-by-year}
+lbw_rates |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(quantile(rate_low_birth_weight, 
+                              probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), 
+                              na.rm = TRUE))
+  ) |>
+  unnest_wider(quantiles)
+
+```
+
+```{r check-rate-distribution-by-subgroup}
+lbw_rates |>
+  group_by(subgroup) |>
+  summarise(
+    quantiles = list(quantile(rate_low_birth_weight, 
+                              probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), 
+                              na.rm = TRUE))
+  ) |>
+  unnest_wider(quantiles)
+
+```
 
 # 7. Data Quality
+This section creates a variable to indicate the quality of the rate of low birthweight births. A value of `1` indicates a high-quality calculated metric for the observation, a value of `2` indicates medium-quality (limited issues with the calculated metric for the observation), and a value of `3` indicates low-quality (serious issues with the calculated metric for the observation).
 
-todo(): No matter what I do, I can't seem to get the quality values for 2022 to match those from last year (last year's code was written in Stata and is available [here](https://docs.google.com/document/d/1PT4pb4_r6x7-RmVNYnIJmh6H02FHbPRqx4GRAUUgeIQ/edit?usp=sharing)). Initially, I read the code and aggregated all the different conditions for each quality value and tried to simplify the code. The values didn't match, so I thought it was an issue with the hierarchy of assigning values. I re-wrote the code to exactly match the hierarchy in the Stata code from last year, but they still don't match, and I'm not sure why.
+In the last round of updates, the calculation of the quality value included counties with between [10, 29] low birthweight births as a criterion for a quality value of `2`. We removed that criterion in this round of updates.
 
-## 7.1 All births
-```{r filter-all}
-county_pop_births_metric_all <- county_pop_births_metric |>
-  filter(subgroup=="all")
-
-```
-
-
-If the denominator is less than 30, the metric value and quality value should be NA. If the value is missing, keep it missing. If the denominator is 30-100, data quality is 3, and if the denominator is 101-200, data quality is 2.
-
-```{r assign-quality-all}
-# Create variables that quality conditions will rely on
-county_pop_births_metric_all <- county_pop_births_metric_all |>
-    group_by(year, state) |>
-  mutate(num_unidentified_counties = sum(unidentified_county),
-         num_counties = n()) |>
-  ungroup() |>
-  mutate(ratio = num_unidentified_counties / num_counties)
-
-# Initialize lbw_quality to NA
-county_pop_births_metric_all <- county_pop_births_metric_all |>
-  mutate(quality = NA_real_)
-
-# Assign lbw_quality based on conditions
-county_pop_births_metric_all <- county_pop_births_metric_all |>
-  mutate(
-    quality = case_when(
-      is.na(unidentified_county) ~ 1, # Assign quality score 1 if county flag is missing
-      births_lbw < 30 | births_all < 200 ~ 2, # Numerator < 30 or Denominator [100-200]
-      births_all < 100 ~ 3, # Denominator [30-100)
-      unidentified_county == 1 ~ 3, # Assign quality score 3 for flagged counties
-      births_all < 30 ~ -1, # Denominator < 30
-      is.na(share_low_birth_weight) ~ NA_real_, # Missing share_lbw_nomiss
-      TRUE ~ quality # Retain existing values if no condition is met
-    )
-  )
-
-# Update lbw_quality based on state-level conditions
-county_pop_births_metric_all <- county_pop_births_metric_all |>
-  mutate(
-    quality = case_when(
-      num_unidentified_counties > 0 & num_unidentified_counties < 5 ~ 2, # Condition for unidentified counties
-      num_counties <= 15 & ratio < 0.5 ~ 2, # Condition for small states
-      quality == -1 ~ NA_real_, # Quality missing for suppressed denominators
-      TRUE ~ quality # Retain existing values
-    ),
-    share_low_birth_weight = if_else(quality == -1, NA_real_, share_low_birth_weight) # Suppression for small denominators
-  )
-    
-```
-
-
-```{r check-quality-distribution-all}
-county_pop_births_metric_all |> group_by(quality) |> count()
-
-```
-
-## 7.2 Subgroup births
-```{r filter-subgroups}
-county_pop_births_metric_subgroup <- county_pop_births_metric |>
-  filter(subgroup!="all")
-  
-```
-
-```{r assign-quality-subgroups}
-# Create variables that quality conditions will rely on (checking numbers and proportions of unidentified counties by state)
-county_pop_births_metric_subgroup <- county_pop_births_metric_subgroup |>
+We use the number and ratio of unidentified counties within each state in the construction of the quality values. We create these variables first before assigning quality values.
+```{r create-num-ratio-unidentified-counties}
+lbw_rates <- lbw_rates |>
     group_by(year, state, subgroup) |>
   mutate(num_unidentified_counties = sum(unidentified_county),
          num_counties = n()) |>
   ungroup() |>
   mutate(ratio = num_unidentified_counties / num_counties)
 
-# Initialize lbw_quality to NA
-county_pop_births_metric_subgroup <- county_pop_births_metric_subgroup |>
-  mutate(quality = NA_real_)
+```
 
-# Assign lbw_quality based on conditions
-county_pop_births_metric_subgroup <- county_pop_births_metric_subgroup |>
+
+The data quality value should be:
+
+* `NA` if the rate of low birthweight births is missing, OR if the denominator (`births_all`) is missing.
+
+* `3` if the county was originally unidentified (counties with populations under 100,000 for which the metric reflects the pooled share low birthweight for all "Unidentified Counties" in the state and are not county-specific) or suppressed, OR if the denominator (`births_all`) is between [30, 100) (we want to indicate poor data quality for counties with small denominators).
+
+* `2` if the number of unidentified counties in the state is between (0, 5) OR the percentage of unidentified counties in the state is less than 0.5 and the total number of counties is less than or equal to 15 OR the denominator (`births_all`) is between [100, 200)
+
+* `1` if the county was not unidentified or suppressed OR the denominator (`births_all`) is greater than or equal to 200
+
+```{r quality-criteria}
+lbw_rates <- lbw_rates |>
   mutate(
-    quality = case_when(
-      is.na(unidentified_county) & is.na(suppressed_county) ~ 1,
-      births_lbw < 30 | births_all < 200 ~ 2,
-      births_all < 100 ~ 3,
-      unidentified_county == 1 | suppressed_county == 1 ~ 3,
-      births_all < 30 ~ -1,
-      is.na(share_low_birth_weight) ~ NA_real_,
-      TRUE ~ quality # Retain existing values if no condition is met
+    quality3 = if_else(
+      unidentified_county==1 | births_all <100 & births_all>=30 | suppressed_county==1, 
+      1, 
+      0
     )
   )
 
-# Adjust lbw_quality based on state-level conditions
-county_pop_births_metric_subgroup <- county_pop_births_metric_subgroup |>
+lbw_rates <- lbw_rates |>
   mutate(
-    quality = case_when(
-      num_unidentified_counties > 0 & num_unidentified_counties < 5 ~ 2,
-      num_counties <= 15 & ratio < 0.5 ~ 2,
-      quality == -1 ~ NA_real_,
-      TRUE ~ quality
-    ),
-    share_low_birth_weight = if_else(quality == -1, NA_real_, share_low_birth_weight)
+    quality2 = if_else(
+       births_all < 200 & births_all >=100 |
+      num_unidentified_counties > 0 & num_unidentified_counties < 5 |
+      num_counties <= 15 & ratio < 0.5,
+      1, 
+      0
+    )
+  )
+
+lbw_rates <- lbw_rates |>
+  mutate(
+    quality1 = if_else(
+      births_all >= 200 | unidentified_county==0 & suppressed_county==0,
+      1, 
+      0
+    )
+  )
+
+lbw_rates <- lbw_rates |>
+  mutate(
+    qualityNA = if_else(
+      births_all < 30 | is.na(rate_low_birth_weight),
+      1, 
+      0
+    )
+  )
+```
+
+Some of these criteria overlap, but we assign the quality values appropriately in the next code chunk.
+```{r check-quality}
+lbw_rates |> 
+  count(quality1, quality2, quality3, qualityNA)
+
+```
+
+Construct the quality values based on the hierarchy of lowest quality to highest quality.
+```{r assign-quality}
+lbw_rates <- lbw_rates |> 
+  mutate(
+    rate_low_birth_weight_quality = case_when(
+      qualityNA==1 ~ NA_real_,
+      quality3==1 ~ 3,
+      quality2==1 ~ 2,
+      quality1==1 ~ 1,
+      # A value to check if any of the observations don't meet any of our criteria
+      TRUE ~ 9
+    )
   )
 
 ```
 
-```{r check-quality-distribution-subgroups}
-county_pop_births_metric_subgroup |> group_by(quality) |> count()
+Check quality values for non-subgroup rates
+```{r check-quality-non-subgroup}
+lbw_rates |>
+  filter(subgroup == "all") |>
+  count(rate_low_birth_weight_quality)
+```
+
+Check quality values for subgroup rates
+```{r check-quality-subgroup}
+lbw_rates |>
+  filter(subgroup != "all") |>
+  count(rate_low_birth_weight_quality)
 
 ```
 
+
+
 # 8. Confidence Intervals
-
-todo(): There are a few more tests from the original code that I need to include here, but I've been trying to sort out the data quality issue first, because I'm concerned there may be an error earlier in the code that may cause some of the test conditions to fail.
-
 Following the guidance provided in the User Guide to the 2010 Natality Public Use File, we use the following process to compute 95 percent confidence intervals for the neonatal health measure.
 
 The neonatal health measure is share low birthweight births in a county. Because this is a percentage, we follow the guidelines for computing 95-percent confidence intervals for percents and proportions.
 
+## 8.1 Tests for confidence intervals
 First, we confirm that the conditions are met:
 
 Bp ≥ 5 and Bq ≥ 5
@@ -630,50 +771,143 @@ p = percent of low birthweight births divided by 100
 q = 1 – p
 B = number of all births with non-missing birthweight data in the denominator
 
-These steps are repeated for births to all mothers, non-Hispanic white mothers, non-Hispanic Black mothers, Hispanic mothers, and mothers with other races or ethnicities
+These steps are applied to births to all mothers and subgroup mothers
 
 ```{r ci-test1}
 # Generate and test conditions from User Guide
-test <- county_pop_births_metric_all |>
-  filter(state != "09") |>
+lbw_rates <- lbw_rates |>
   mutate(
-    test_1 = share_low_birth_weight * births_all,
-    test_2 = (1 - share_low_birth_weight) * births_all
+    test_1 = rate_low_birth_weight * births_all,
+    test_2 = (1 - rate_low_birth_weight) * births_all
   )
 
-test |>
-  count(test_1 >= 5)
 ```
 
+The (non-missing) observations for which test 1 isn't passed are because there are 0 low birthweight births, and therefore the rate is 0.
+```{r ci-test1-check}
+lbw_rates |>
+  count(test_1 >= 5)
 
-```{r ci-test2}
-test <- test |>
+lbw_rates |>
+  filter(test_1 < 5) |>
+  count(rate_low_birth_weight, births_lbw)
+
+```
+
+All (non-missing) observations pass test 2.
+```{r ci-test2-check}
+lbw_rates |> 
+  count(test_2 >= 5)
+
+lbw_rates |>
+  filter(test_2 < 5) |>
+  count(rate_low_birth_weight)
+
+```
+
+## 8.2 Construct confidence intervals
+```{r construct-CIs}
+lbw_rates <- lbw_rates |>
   mutate(
-    share_low_birth_weight_lb = (share_low_birth_weight) -  (1.96*sqrt(share_low_birth_weight*(1-share_low_birth_weight)/as.numeric(births_all))),
+    rate_low_birth_weight_lb = round((rate_low_birth_weight) -  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all)), 3),
     
-    share_low_birth_weight_ub = (share_low_birth_weight) +  (1.96*sqrt(share_low_birth_weight*(1-share_low_birth_weight)/as.numeric(births_all)))
+    rate_low_birth_weight_ub = round((rate_low_birth_weight) +  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all)), 3)
   )
+
+```
+
+## 8.3 Validate confidence intervals
+```{r test-CIs}
+testthat::test_that("If rate is missing, then lower bound is also missing", {
+  # Check that wherever rate_low_birth_weight is NA, rate_low_birth_weight_lb is also NA
+  testthat::expect_true(all(is.na(lbw_rates$rate_low_birth_weight) == is.na(lbw_rates$rate_low_birth_weight_lb)))
+})
+
+testthat::test_that("Lower bound is less than estimate", {
+  # Subset to rows where rate_low_birth_weight is not NA and not 0
+  relevant_rows <- !is.na(lbw_rates$rate_low_birth_weight) &
+    lbw_rates$rate_low_birth_weight != 0
+  
+  # Apply the condition only to those rows
+  testthat::expect_true(all(lbw_rates$rate_low_birth_weight_lb[relevant_rows] < lbw_rates$rate_low_birth_weight[relevant_rows]))
+})
+
+testthat::test_that("Lower bound is a percentage", {
+  # Subset to rows where rate_low_birth_weight is not NA and not 0
+  relevant_rows <- !is.na(lbw_rates$rate_low_birth_weight) &
+    lbw_rates$rate_low_birth_weight != 0
+  
+  # Apply the condition only to those rows
+  testthat::expect_true(all(lbw_rates$rate_low_birth_weight_lb[relevant_rows] > 0 &  lbw_rates$rate_low_birth_weight_lb[relevant_rows] < 1))
+})
+
+testthat::test_that("Upper bound is greater than estimate", {
+  # Subset to rows where rate_low_birth_weight is not NA and not 0
+  relevant_rows <- !is.na(lbw_rates$rate_low_birth_weight) &
+    lbw_rates$rate_low_birth_weight != 0
+  
+  # Apply the condition only to those rows
+  testthat::expect_true(all(lbw_rates$rate_low_birth_weight_ub[relevant_rows] > lbw_rates$rate_low_birth_weight[relevant_rows]))
+})
+
+
+testthat::test_that("Upper bound is a percentage", {
+  # Subset to rows where rate_low_birth_weight is not NA and not 0
+  relevant_rows <- !is.na(lbw_rates$rate_low_birth_weight) &
+    lbw_rates$rate_low_birth_weight != 0
+  
+  # Apply the condition only to those rows
+  testthat::expect_true(all(lbw_rates$rate_low_birth_weight_ub[relevant_rows] > 0 &  lbw_rates$rate_low_birth_weight_ub[relevant_rows] < 1))
+})
+
 ```
 
 
 # 9. Save and write out data
 
-```{r remove-files1}
-# Remove obsolete files
-rm(paths, births_raw, paths_subgroups, births_subgroups_raw)
+We removed Connecticut counties in 2022 and 2023 earlier in the file, because the counties for these years in the CDC WONDER data do not match our target counties. We add them back to the final file below
+```{r add-ct-2022-2023}
+# Define the counties, years, and subgroups
+state <- c("09")
+counties <- c("110", "120", "130", "140", "150", "160", "170", "180", "190")
+years <- c(2022, 2023)
+subgroups <- unique(lbw_rates$subgroup)
+
+# Create a new data frame with the necessary combinations
+ct_2022_2023 <- expand.grid(
+  state = state, 
+  county = counties,
+  year = years,
+  subgroup = subgroups
+)
+
+# Set variables to missing for these observations
+ct_2022_2023 <- ct_2022_2023 %>%
+  mutate(
+    rate_low_birth_weight = NA,
+    rate_low_birth_weight_lb = NA, 
+    rate_low_birth_weight_ub = NA, 
+    rate_low_birth_weight_quality = NA
+  )
+
+# Append rows to the existing data
+lbw_rates <- bind_rows(lbw_rates, ct_2022_2023)
+
 ```
 
-```{r write-data}
+
+```{r write-data-all}
 # Remove unnecessary variables and sort by year, state, and county
-final_all <- county_pop_births_metric_all |>
+final_all <- lbw_rates |>
+  filter(subgroup=="all") |>
   select(
     year, 
     state, 
     county, 
-    share_low_birth_weight, 
-    share_low_birth_weight_lb, 
-    share_low_birth_weight_ub, 
-    share_low_birth_weight_quality
+    rate_low_birth_weight, 
+    rate_low_birth_weight_lb, 
+    rate_low_birth_weight_ub, 
+    rate_low_birth_weight_quality
   ) |>
   arrange(year, state, county)
 
@@ -683,23 +917,48 @@ write_csv(x = final_all,
           file = here::here(
             "04_health",
             "neonatal-health",
+            "data",
             "final",
-            "share_low_birth_weight_metric_all_county.csv"
+            "rate_low_birth_weight_metric_all_county.csv"
           )
 )
 
+```
+
+
+```{r write-data-subgroup}
 # Remove unnecessary variables and sort by year, state, county, and subgroup
-final_subgroup <- county_pop_births_metric_subgroup |>
+final_subgroup <- lbw_rates |>
+  mutate(
+    subgroup_type = case_when(
+      subgroup %in% c("nhwhite", "nhblack", "hisp", "nhother") ~ "race-ethncity",
+      subgroup %in% c("lths", "hs", "somecol", "baplus") ~ "mothers-education",
+      subgroup == "all" ~ "all",
+      TRUE ~ NA
+    ),
+    subgroup = case_when(
+      subgroup == "nhwhite" ~ "White, Hon-Hispanic",
+      subgroup == "nhblack" ~ "Black, Non-Hispanic",
+      subgroup == "hisp" ~ "Hispanic",
+      subgroup == "nhother" ~ "Other Races and Ethnicities",
+      subgroup == "lths" ~ "Less than High School",
+      subgroup == "hs" ~ "GED/High School Degree",
+      subgroup == "somecol" ~ "Some College",
+      subgroup == "baplus" ~ "College Degree or Higher",
+    )
+  ) |>
   select(
     year, 
     state, 
     county, 
-    share_low_birth_weight, 
-    share_low_birth_weight_lb, 
-    share_low_birth_weight_ub, 
-    share_low_birth_weight_quality
+    subgroup_type,
+    subgroup,
+    rate_low_birth_weight, 
+    rate_low_birth_weight_lb, 
+    rate_low_birth_weight_ub, 
+    rate_low_birth_weight_quality
   ) |>
-  arrange(year, state, county, subgroup)
+  arrange(year, state, county, subgroup_type, subgroup)
 
 
 # Write out final data - subgroups
@@ -707,8 +966,9 @@ write_csv(x = final_subgroup,
           file = here::here(
             "04_health",
             "neonatal-health",
+            "data",
             "final",
-            "share_low_birth_weight_metric_subgroup_county.csv"
+            "rate_low_birth_weight_metric_subgroup_county.csv"
           )
 )
 
