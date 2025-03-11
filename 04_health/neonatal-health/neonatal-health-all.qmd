@@ -52,7 +52,13 @@ The data for this metric are national natality data produced by the National Cen
 We download two sets of births data from this source: all births and low birthweight births (under 2500 grams). To create the metric, we divide the number of low birthweight births by the total number of births to calculate the county-level share of low birthweight births. Additionally, we create this metric for 8 subgroups: 4 for race/ethnicity (Non-Hispanic white, Non-Hispanic Black, Hispanic, and Non-Hispanic other), and 4 for mother's education (less than high school, high school graduate or GED, some college, and bachelor's degree or greater). Therefore, each year requires 18 data extracts downloaded from CDC WONDER.
 
 ## 1.3 Considerations for future updates
-+ In the CDC WONDER data used for this metric, county-level data are shown for counties with populations of 100,000 persons or more. All counties with fewer than 100,000 persons are shown combined together under the label "Unidentified Counties" for the state. Historically, we just assign the aggregate values for "Unidentified Counties" in each state to the rest of the counties for each year (e.g., all of the unidentified counties are assigned the same value). Future updates may want to consider a more sophisticated imputation strategy that imputes based on the proportion of the county's population to the state population or another imputation method to not double-count births.
++ In the CDC WONDER data used for this metric, county-level data are shown for counties with populations of 100,000 persons or more. All counties with fewer than 100,000 persons are shown combined together under the label "Unidentified Counties" for the state. Historically, we just assign the aggregate values for "Unidentified Counties" in each state to the rest of the counties for each year (e.g., all of the unidentified counties are assigned the same value). Future updates may want to consider a more sophisticated imputation strategy that imputes based on the proportion of the county's population to the state population or another imputation method to not double-count births. One strategy would be to:
+  + Create a variable that is the total state population for each year by aggregating the county-level population values
+  + Create a variable that is the share of the state's population in each county by dividing county population/state population
+  + Assign the "Unidentified Counties" values for all births and low birthweight births for each state/year to the Urban counties that do not have a match in the CDC WONDER natality data (e.g., the counties that are "Unidentified") in the CDC WONDER data (this is a step we already take).
+  + Multiply the counts of all birthweight births and low birthweight births by the county population share before constructing the rate
+
+One challenge of this approach would be getting subgroup population denominators. I'm not sure if we can construct the education-level population denominators from the ACS. 
 
 
 # 2. Manually download natality data from CDC WONDER
@@ -598,7 +604,7 @@ sum(is.na(county_births_clean$births_lbw))
 
 lbw_rates <- county_births_clean |>
   mutate(
-    rate_low_birth_weight = round(births_lbw / births_all, 2)
+    rate_low_birth_weight = births_lbw / births_all
   )
 
 ```
@@ -809,9 +815,9 @@ lbw_rates |>
 ```{r construct-CIs}
 lbw_rates <- lbw_rates |>
   mutate(
-    rate_low_birth_weight_lb = round((rate_low_birth_weight) -  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all)), 3),
+    rate_low_birth_weight_lb = (rate_low_birth_weight) -  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all)),
     
-    rate_low_birth_weight_ub = round((rate_low_birth_weight) +  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all)), 3)
+    rate_low_birth_weight_ub = (rate_low_birth_weight) +  (1.96*sqrt(rate_low_birth_weight*(1-rate_low_birth_weight)/births_all))
   )
 
 ```
@@ -937,6 +943,7 @@ final_subgroup <- lbw_rates |>
       TRUE ~ NA
     ),
     subgroup = case_when(
+      subgroup == "all" ~ "All",
       subgroup == "nhwhite" ~ "White, Hon-Hispanic",
       subgroup == "nhblack" ~ "Black, Non-Hispanic",
       subgroup == "hisp" ~ "Hispanic",
