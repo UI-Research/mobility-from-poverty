@@ -31,13 +31,14 @@ global raw "Box\Data\Metrics_2025_round\debt_in_collections"  // USER: must set 
 global directory "GitHub\mobility-from-poverty\01_financial-well-being"
 global master "GitHub\mobility-from-poverty"
 
-
 **# [1] Import data 
 *****************************************************
 ** Delinquent debt by debt category: overall, medical
 *****************************************************
 * source: Debt in America: raw data are direct download from DiA using 2023 data updated in 2024: https://datacatalog.urban.org/dataset/debt-america-2024 
 * raw data saved here: Box\Data\Metrics_2025_round\debt_in_collections\dia-2023 
+
+* Starting in 2022, the three nationwide credit-reporting companies made significant changes to medical debt reporting. These changes reduced the share of people with medical debt in collections reported on their credit records but not necessarily the share of people with medical debt in collections.
 
 *** Use FIPS code in DiA 
 foreach x in overall medical {
@@ -49,7 +50,7 @@ rename CountyFIPS county
 gen state = substr(county, 1, 2)
 
 * keep the leading zeros for both state and county FIPS
-replace county = substr("00000" + county, -5, .)
+replace county = substr("00000" + county, -3, .)
 replace state = substr("00" + state, -2, .)
 
 drop CountyName StateName 
@@ -65,6 +66,7 @@ drop if county == "OID"
 * format long and adjust subgroups to match standard
 reshape long share_debt_coll, i(county state) j(subgroup) string
 
+* For the 2023 data, Debt in America changed the threshold for white communities and communities of color from at least 60 percent of a given zip code's population to at least 50 percent. As a result, the data for white communities and communities of color are not directly comparable with prior data releases.
 replace subgroup = "All" if subgroup == "_all"
 replace subgroup = "Majority Non-White" if subgroup == "_majnonwhite"
 replace subgroup = "Majority White" if subgroup == "_majwhite"
@@ -82,7 +84,7 @@ gen share_debt_coll_quality = "."
 gen year = 2023
 
 compress
-order year state county share_debt_coll share_debt_coll_quality subgroup_type subgroup 
+order year state county subgroup_type subgroup share_debt_coll share_debt_coll_quality  
 gsort year state county subgroup
 
 export delimited using "$output\metrics_`x'_debt_coll_race_ethnicity_county_2023.csv", datafmt replace
