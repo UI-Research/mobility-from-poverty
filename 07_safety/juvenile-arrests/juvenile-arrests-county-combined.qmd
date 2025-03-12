@@ -78,7 +78,7 @@ The age bracket of ages 10 to 17 was chosen for this metric because the majority
 # 1. Instructions to download both NIBRS arrest segments
 This section describes the steps for manually downloading the NIBRS data segments necessary for this metric.
 
-We get arrest counts from two segments of the NIBRS: the Arrestee Segment and the Group B Arrest Report Segment. These are mutually exclusive observations; [a single arrest cannot be in both segments](https://ucrbook.com/arrestee.html).
+We get arrest counts from two segments of the NIBRS: the Arrestee Segment and the Group B Arrest Report Segment. There are two categories of offenses reported in the NIBRS: Group A (incidents like assault and homicide) and Group B (incidents like bad checks and disorderly conduct). The two categories have different reporting requirements. Group A offenses must include relevant incident data represented in multiple segments (Administrative, Offense, Property, Victim, Offender, and Arrestee) while Group B reports include only arrest data. These are mutually exclusive observations; [a single arrest cannot be in both segments](https://ucrbook.com/arrestee.html). We have to use both the Arrestee segment and the Group B segment to get the full count of arrests.
 
 Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
 
@@ -126,6 +126,10 @@ arrests_a_clean <- arrests_a |>
   )
 
 ```
+NA values are introduced above when converting `age_of_arrestee` to a numeric variable because there are two character values: `over 98 years old` and `unknown`. This is fine. They won't be included in the juvenile arrest rates, but the observations will still be used later to calculate the percentage of agencies that report any arrest data which is used in the construction of the quality indicator.
+```{r}
+arrests_a |> group_by(age_of_arrestee) |> count()
+```
 
 ## 2.2 Read and clean files for 2021-2023 from the Group B Arrest Report Segment
 ```{r read-groupb}
@@ -154,6 +158,12 @@ arrests_b_clean <- arrests_b |>
 
 ```
 
+NA values are introduced above when converting `age_of_arrestee` to a numeric variable because there are two character values: `over 98 years old` and `unknown`. This is fine. They won't be included in the juvenile arrest rates, but the observations will still be used later to calculate the percentage of agencies that report any arrest data which is used in the construction of the quality indicator.
+```{r}
+arrests_b |> group_by(age_of_arrestee) |> count()
+```
+
+
 ## 2.3 Append Group A and Group B files for all arrests
 We are only interested in juvenile arrests for the creation of this metric, but we use all arrests to determine agency reporting rates that are used in construction of the quality values.
 ```{r append-arrests}
@@ -179,6 +189,14 @@ Note that this metric includes the following subgroups by race, sex, and age sub
   * Race: white, Black, Hispanic, Asian/other
   * Sex: male, female
   * Age: ages 10-14, ages 15-17
+
+```{r}
+arrests_juv |>
+  group_by(race_of_arrestee, ethnicity_of_arrestee) |>
+  count()
+
+```
+
     
 ```{r aggregate-agencies}
 arrests_juv_agency <- arrests_juv |>
@@ -213,16 +231,15 @@ This section uses the Batch Header Segment of the NIBRS. The Batch Header Segmen
 Some police agencies have jurisdiction in more than one county. The Batch Header Segment includes county information for all counties associated with each agency. This section reshapes the file to be long by agency/county-pairs, merges on county population by county and year, and creates weights to more accurately aggregate arrest counts from the agency-level to the county-level.
 
 ## 4.1 Instructions to manually download NIBRS Batch Header Segment
-REVIEWER - the storage of these files has changed on Harvard Dataverse since I downloaded them and wrote this section, but there has been an error, and the Batch Header File section now lists the Group B Arrest Report Files. These instructions will need to be updated next year once Jacob Kaplan fixes the file storage.
+Manually downloading these data from the Harvard Dataverse is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
 
-Manually downloading these data from the Harvard Dataverse is a four-step process, but you will only need to do each of these steps once for the creation of this metric:
-
-  1. Navigate to the Uniform Crime Reporting (UCR) Program Data > National Incident-Based Reporting System (NIBRS) data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/CIQIVF).
-  2. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10592187&version=1.0).
-  3. Select `Access File`
+  1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
+  2. Select National Incident-Based Reporting System - Batch Header Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HUI9WF).
+  3. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10899624&version=2.0).
+  4. Select `Access File`
       + Select `Gzip Archive` under `Download Options`
       + Agree to the Dataset Terms by entering your `Name`, `Email`, `Institution`, `Position`, and answer `How will this data be used`, and then select `Accept` at the bottom of the pop-up
-  4. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
+  5. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
 
 ## 4.2 Load and clean NIBRS Batch Header Files
 Load Batch Header File
@@ -246,6 +263,7 @@ batch_header_file <- batch_header_file_full |>
     state_abbreviation,
     city_name,
     core_city,
+    # A single agency may have jurisdiction in up to five counties. We keep all counties. 
     county_fips_1 = fips_county_code_1,
     county_fips_2 = fips_county_code_2,
     county_fips_3 = fips_county_code_3,
@@ -438,7 +456,7 @@ leaic <- read_tsv(here::here("07_safety", "data", "batch-header-segment-and-agen
 
 ```
 
-324 of the 376 agencies with missing county information from the Batch Header File are in the LEAIC.
+971 of the 1113 agency-years with missing county information from the Batch Header File are in the LEAIC.
 ```{r check-missing}
 # Check how many agencies with missing county are in LEAIC
 sum(bhf_missing_county$ori %in% leaic$ORI9)
@@ -479,9 +497,9 @@ bhf_missing_county |>
 Replace county information in NIBRS data for observations that initially had a missing county value with the updated county information from LEAIC.
 ```{r replace-counties}
 batch_header_file <- batch_header_file |>
-  # Drop the 376 NIBRS agencies with a missing county value
+  # Drop the NIBRS agencies with a missing county value
   filter(!is.na(county_fips_1)) |>
-  # Append those 376 agencies back onto main data with the county info gleaned from LEAIC
+  # Append those agencies back onto main data with the county info gleaned from LEAIC
   bind_rows(bhf_missing_county)
 
 
@@ -521,7 +539,7 @@ rm(test_ly)
 
 ### 4.4b Pull 5-year ACS data for each year at the county level
 
-First create vectors for years and variables of interest
+First create vectors for years and variables of interest, which are county-level population totals for the entire county and for our subgroups.
 ```{r specify-acs-years-vars}
 # Create a list of all our years
 years <- lst(2021, 2022, 2023)
@@ -663,7 +681,7 @@ batch_header_file_long <- batch_header_file |>
     cols = starts_with("county_fips_"),
     values_to = "county_fips"
   ) |>
-  # Remove observations that are not relevant to more that one county
+  # Some agencies only have jurisdiction in a single county, and their values for `county_fips_2`, `county_fips_3`, etc. are missing. These observations are still reshaped above (i.e., each agency observation becomes five agency-county observations), but we only want to keep actual agency-county pairs, so we drop the observations that are missing county.
   drop_na(county_fips) |>
   select(-c(name))
 
@@ -1080,9 +1098,9 @@ rate_juv_arrest_county_all <- arrest_rates_county_all |>
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 # Write out this data set
-juv_arrest_county |>
+rate_juv_arrest_county_all |>
   write_csv(here::here("07_safety",
                        "final",
                        "rate_arrests_county_all.csv"))
@@ -1167,9 +1185,9 @@ juv_arrest_county_all_subgroup <- juv_arrest_county_all_subgroup |>
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 # Write out this data set
-juv_arrest_county_all_subgroup %>%
+juv_arrest_county_all_subgroup |>
   write_csv(here::here("07_safety",
                        "final",
                        "rate_arrests_county_all_subgroup.csv"))
