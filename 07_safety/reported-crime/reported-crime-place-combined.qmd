@@ -43,7 +43,7 @@ The rest of this program is organized as follows:
 1. Manually download NIBRS offense data
 2. Clean and append NIBRS offense data
 3. Aggregate offenses from individual to agency-level
-4. Aggregate offenses from agency to county-level
+4. Aggregate offenses from agency to place-level
 5. Calculate metric
 6. Construct quality indicators
 7. Validation
@@ -74,19 +74,20 @@ This section describes the steps for manually downloading the NIBRS data segment
 
 We get offense counts from one segment of the NIBRS: the Offense Segment.
 
-Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program. Manually downloading these data is a six-step process, but you will only need to do each of these steps once for the creation of this metric:
 
-1. Navigate to the National Incident-Based Reporting System (NIBRS) - Offense Segment webpage on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/TODXCL).
-2. For each year you need to download, click on the relevant `.rds` file (e.g., `nibrs_offense_segment_YYYY.rds`).
-3. Towards the top right of the screen, select `Access File` and, from the dropdown menu, select `Original File Format` under `Download Options`.
-4. Complete the `License/Data Use Agreement` by entering your `Name`, `Email`, `Institution`, `Position`, and the `Additional Questions` (`How will this data be used (e.g. personal project, academic paper, for-profit project)`, `What is your research question?`, and `Do you agree to cite the data properly if used in publications?`).
-5. Move the zip file from your `Downloads` folder to the `\mobility-from-poverty\07_safety\data\offense-segment` directory.
+1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
+2. Select National Incident-Based Reporting System (NIBRS) - Offense Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/TODXCL).
+3. For each year you need to download, click on the relevant `.rds` file (e.g., `nibrs_offense_segment_YYYY.rds`).
+4. Towards the top right of the screen, select `Access File` and, from the dropdown menu, select `Original File Format` under `Download Options`.
+5. Complete the `License/Data Use Agreement` by entering your `Name`, `Email`, `Institution`, `Position`, and the `Additional Questions` (`How will this data be used (e.g. personal project, academic paper, for-profit project)`, `What is your research question?`, and `Do you agree to cite the data properly if used in publications?`).
+6. Move the zip file from your `Downloads` folder to the `\mobility-from-poverty\07_safety\data\offense-segment` directory.
 
 # 2. Prepare to read in and clean NIBRS Offense Segment
 This section reads in and cleans the NIBRS Offense Segment data for 2021-2023. Each offense in the data has an offense code. We are interested in the rate of both violent crimes and property crimes. We first identify each offense type in the data using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf) so that we can later aggregate offenses from the individual-level to the agency-level by offense type.
 
 ## 2.1 Identify violent and property crimes
-```{r, eval=FALSE}
+```{r identify-crime-type, eval = FALSE}
 # Create data frame for all offense and type combinations for 2021-2023.
 codes <- tribble(
   ~offense,	~crime_against,
@@ -158,7 +159,7 @@ codes <- tribble(
 ```
 
 Using the data frame above, group offenses into violent crimes and property crimes.
-```{r, eval=FALSE}
+```{r subset-crimes, eval = FALSE}
 # Extract offenses into vectors for property crimes and violent crimes
 property <- subset(codes, crime_against=="property")$offense
 violent <- subset(codes, crime_against=="person")$offense
@@ -167,7 +168,7 @@ violent <- subset(codes, crime_against=="person")$offense
 
 ## 2.2 Function to read in NIBRS data and aggregate from individual-level to agency-level
 Create a function to read in each year of offense segment data, clean it, and aggregate offense counts from the individual-level to the agency-level
-```{r read-offense, eval = FALSE}
+```{r read-offense-function, eval=FALSE}
 clean_offense_data <- function(year) {
   # Construct the file name based on year
   file_name <- here::here("07_safety", "data", "offense-segment", paste0("nibrs_offense_segment_", year, ".rds"))
@@ -203,14 +204,14 @@ clean_offense_data <- function(year) {
 # 3. Read in NIBRS offense data, clean, and aggregate from individual- to agency-level
 
 Apply the function to each year of the offense segment data
-```{r}
+```{r read-offenses, eval = FALSE}
 offenses_21_agency <- clean_offense_data(year = 2021)
 offenses_22_agency <- clean_offense_data(year = 2022)
 offenses_23_agency <- clean_offense_data(year = 2023)
 ```
 
 Append agency/year-level offense counts and remove extraneous files
-```{r}
+```{r append-offenses, eval=FALSE}
 offenses_agency <- bind_rows(offenses_21_agency, offenses_22_agency, offenses_23_agency)
 
 rm(codes, violent, property, clean_offense_data, offenses_21_agency, offenses_22_agency, offenses_23_agency)
@@ -218,16 +219,43 @@ rm(codes, violent, property, clean_offense_data, offenses_21_agency, offenses_22
 ```
 
 For ease of use, I write out the agency-level data and then read it back in.
-```{r, eval = FALSE}
+```{r write-offenses, eval=FALSE}
 # Write out agency-level offense data
-write_csv(offenses_agency, file = here::here("07_safety", "data", "offense-segment", "offenses_agency.csv"))
+write_csv(offenses_agency, file = here::here("07_safety", "data", "offense-segment", "offenses_agency_place.csv"))
 ```
 
-```{r}
-offenses_agency <- read.csv(here::here("07_safety", "data", "offense-segment", "offenses_agency.csv"))
+```{r read-appended-offenses}
+offenses_agency <- read.csv(here::here("07_safety", "data", "offense-segment", "offenses_agency_place.csv"))
 
 ```
 
+Check the distribution of each crime type by year. 2023 has a much higher maximum number of reported crime counts for each type of crime.
+```{r check-distribution-crime-types}
+offenses_agency |>
+  pivot_longer(
+    cols = c(all, property, violent),
+    names_to = "crime_type",
+    values_to = "crime_count"
+  ) |>
+  group_by(crime_type, year) |>
+  summarize(
+    quantiles = list(quantile(crime_count,
+                                      probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
+                                      na.rm = TRUE))
+  ) |>
+  unnest_wider(quantiles)
+
+```
+
+Check the number of agencies that are included in the NIBRS offense data in each year. More agencies report to NIBRS each year.
+```{r check-offense-agencies}
+offenses_agency |>
+  group_by(year) |>
+  summarize(
+    n_agencies = n_distinct(ori)
+  )
+
+```
 
 
 # 4. Aggregate offenses to place-level
@@ -243,16 +271,15 @@ At each step, we split the data into observations that have a place FIPS code ma
 
 
 ## 4.1 Instructions to manually download NIBRS Batch Header Segment
-REVIEWER - the storage of these files has changed on Harvard Dataverse since I downloaded them and wrote this section, but there has been an error, and the Batch Header File section now lists the Group B Arrest Report Files. These instructions will need to be updated next year once Jacob Kaplan fixes the file storage.
+Manually downloading these data from the Harvard Dataverse is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
 
-Manually downloading these data from the Harvard Dataverse is a four-step process, but you will only need to do each of these steps once for the creation of this metric:
-
-  1. Navigate to the Uniform Crime Reporting (UCR) Program Data > National Incident-Based Reporting System (NIBRS) data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/CIQIVF).
-  2. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10592187&version=1.0).
-  3. Select `Access File`
+  1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
+  2. Select National Incident-Based Reporting System - Batch Header Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HUI9WF).
+  3. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10899624&version=2.0).
+  4. Select `Access File`
       + Select `Gzip Archive` under `Download Options`
       + Agree to the Dataset Terms by entering your `Name`, `Email`, `Institution`, `Position`, and answer `How will this data be used`, and then select `Accept` at the bottom of the pop-up
-  4. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
+  5. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
 
 ## 4.2 Load and clean NIBRS Batch Header Files
 Load Batch Header File
@@ -420,7 +447,7 @@ batch_header_file |>
 
 ```
 
-State agencies cover multiple counties, so we remove these agencies for simplicity. Note that in data year 2022, we also removed "other state agencies" but that isn't a category in data year 2023. They could be included in the new "other agencies" category, but I'm not sure how to be certain, so leaving this category for now.
+State agencies cover multiple counties, so we remove these agencies for simplicity. In the last round of updates, Metric Round 2024, which used an older version of these data, "other state agencies" were removed. In this round, Metric Round 2025, which uses the most recent version of these data, the value "other state agencies" no longer exists for any of the years. They could be included in the new "other agencies" category, but I'm not sure how to be certain, so leaving this category for now.
 ```{r remove-state-agencies}
 batch_header_file <- batch_header_file |>
   filter(!agency_indicator %in% c("state police"))
@@ -429,7 +456,7 @@ batch_header_file <- batch_header_file |>
 
 Further limit batch header segment to variables we need
 **Note that I'm not sure why we don't make this file long and try to deal with places that are associated with more than one county more explicitly**
-```{r}
+```{r limit-bhf-vars}
 batch_header_file <- batch_header_file |>
   select(
     year,
@@ -545,7 +572,7 @@ urban_places |>
 
 ```
 
-```{r}
+```{r clean-urban-places}
 urban_places <- urban_places |>
   rename(state_fips = state) |>
   mutate(
@@ -580,7 +607,7 @@ urban_places <- urban_places |>
 
 ### 4.4c Join
 
-```{r load-urban-places, message=FALSE}
+```{r join-urb-places, message=FALSE}
 joined_ba_urb <- left_join(
   x = ba_mis_leaic,
   y = urban_places,
@@ -590,7 +617,7 @@ joined_ba_urb <- left_join(
 ```
 
 ### 4.4d Create subsets of matched and unmatched observations
-```{r load-urban-places, message=FALSE}
+```{r subset-missing-urb-places, message=FALSE}
 # Create a subset of observations that still do not have a place FIPS code
 ba_mis_urb <- joined_ba_urb |>
   filter(is.na(place)) |>
@@ -614,7 +641,7 @@ We want to use this crosswalk to merge a single place code onto each remaining a
 
 ### 4.5b Load and clean county-place crosswalk
 
-```{r}
+```{r load-geocorr-xw}
 county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_county_place.csv"))
 
 ```
@@ -657,7 +684,7 @@ county_place_xw <- county_place_xw |>
 ```
 
 ### 4.5c Join county-place crosswalk onto NIBRS by county FIPS
-```{r}
+```{r join-missing-geocorr}
 joined_ba_cpxw <- left_join(
   x = ba_mis_urb,
   y = county_place_xw,
@@ -667,7 +694,7 @@ joined_ba_cpxw <- left_join(
 ```
 
 ### 4.5d Create subsets of matched and unmatched observations
-```{r}
+```{r create-subset-geocorr}
 # Create a subset of observations that now have a place FIPS code
 ba_place_cpxw <- joined_ba_cpxw |>
   filter(!is.na(place))
@@ -679,6 +706,11 @@ ba_mis_cpxw <- joined_ba_cpxw |>
 ```
 
 ## 4.6 Append all subsets of the NIBRS Batch Header File back together and limit to places of interest
+The data sets appended below are as follows:
++ The subset of batch header segment observations for which we were able to match a place to using the LEAIC
++ The subset of batch header segment observations for which we were able to match a place to using the Urban universe of places
++ The subset of batch header segment observations for which we were able to match a place to using the GeoCorr county-place crosswalk
++ The subset of batch header segment observations for which we were not able to match a place to
 ```{r append-all-bhf}
 bhf_place <- bind_rows(
   ba_place_leaic,
@@ -707,7 +739,7 @@ bhf_place_urb <- bhf_place |>
 
 
 ## 4.7 Join agency-level offenses for all years onto the place-agency file
-```{r}
+```{r join-agency-place}
 bhf_place_urb <- bhf_place_urb |>
   select(year, ori, state_fips, place, core_city, agency_indicator, GEOID)
 
@@ -729,7 +761,7 @@ offenses_agency_place <- left_join(
 Count number of crimes and number of reporting agencies at the place-level.
 
 Note that this section calculates the percent of agencies reporting violent crimes and property crimes separately from all crimes because the 2022 update requires separate quality measures for each rate. However, all agencies either report both types of crime or no crime, so the numbers are identical.
-```{r}
+```{r aggregate-to-place}
 offenses_place <- offenses_agency_place |>
   group_by(year, state_fips, place) |>
   summarize(
@@ -765,7 +797,9 @@ This section relies on the `tidycensus` package, which requires a Census API key
 ```
 
 ### 5.1a  Check ACS variable names and identify those we need
-Load ACS variables for our first and last years. Manually explore each file and spot check several observations. The naming conventions of ACS variables do not seem to change during our time period. Note that if they did we would need to split up the code that reads in the years below.
+The only variable we use from the ACS in this metric is `B01003_001` (total population) which we pull at the place-level to get population denominators for the crime rates.
+
+Load ACS variable for our first and last years. Manually explore each file and spot check several observations. The naming conventions of ACS variables do not seem to change during our time period. Note that if they did we would need to split up the code that reads in the years below.
 ```{r check-acs-variables, eval = FALSE}
 # Check ACS variables for the first and last years to see if they change over time
 variables_fy <- tidycensus::load_variables(2021, "acs5")
@@ -834,7 +868,7 @@ acs_pops <- acs_pops |>
 
 ```
 
-```{r}
+```{r limit-to-urban-places}
 # Limit places to those in the Urban file
 acs_pops <- acs_pops |>
   filter(GEOID %in% urban_places$GEOID)
@@ -842,7 +876,7 @@ acs_pops <- acs_pops |>
 ```
 
 ### 5.1d Join denominators and offense counts
-```{r}
+```{r join-offenses-pop}
 offense_place_demo <- left_join(
   x = acs_pops,
   y = offenses_place |>
@@ -855,7 +889,7 @@ offense_place_demo <- left_join(
 
 ## 5.2 Calculate crime rates
 Calculate place-level rates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people.
-```{r}
+```{r calculate-crime-rates}
 rates_place <- offense_place_demo |>
   mutate(
     rate_crime_violent = if_else(
@@ -868,7 +902,7 @@ rates_place <- offense_place_demo |>
 ```
 
 Check numbers of zeros and missings for both crime types in each year. More places had rates of missing in 2021 than 2023 for both crime types. This makes sense, because more agencies reported data to NIBRS in 2023 than in 2021.
-```{r}
+```{r check-zeros-miss-violent}
 rates_place |>
   filter(rate_crime_violent==0 | is.na(rate_crime_violent)) |>
   group_by(year) |>
@@ -876,7 +910,7 @@ rates_place |>
 
 ```
 
-```{r}
+```{r check-zeros-miss-property}
 rates_place |>
   filter(rate_crime_property==0 | is.na(rate_crime_property)) |>
   group_by(year) |>
@@ -887,7 +921,7 @@ rates_place |>
 
 
 Suppress rates for places that have population less than 30 people. Note that no places have a population of less than 30. Future updates may consider changing the population threshold for suppression.
-```{r}
+```{r suppress-pop-lt30}
 rates_place <- rates_place |>
   mutate(
     rate_crime_violent = ifelse(total_people < 30, NA, rate_crime_violent),
@@ -897,12 +931,16 @@ rates_place <- rates_place |>
 
 
 # 6. Construct quality indicators
-This section constructs an indicator used to assess the quality of data for each place. Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
+This section constructs an indicator used to assess the quality of data for each place. 
+
+A core city refers to a major urban area that is typically the primary focus of law enforcement agencies. The Batch Header File has a flag to identify whether agencies are in a core city.
+
+Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
 
 The quality indicator is constructed separately for agencies reporting violent crimes and agencies reporting property crimes, though the values are identical.
 
 Construct the quality indicator.
-```{r}
+```{r construct-quality}
 rates_place <- rates_place |>
   mutate(
     rate_crime_violent_quality = case_when(
@@ -1112,7 +1150,7 @@ rates_place |>
 This section saves and write out the final data file. This file is long by place and year (2021-2023). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
 
 Construct the final file.
-```{r}
+```{r prepare-final}
 rates_crime_place_all <- rates_place |>
   mutate(
     rate_crime_property = ifelse(is.na(rate_crime_property_quality), NA, rate_crime_property),
@@ -1131,30 +1169,12 @@ rates_crime_place_all <- rates_place |>
 ```
 
 Write out the final file in `.csv` format.
-```{r}
+```{r write-final}
 write_csv(
   rates_crime_place_all,
   file = here::here("07_safety", "final", "rates_crime_place_all.csv")
 )
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
