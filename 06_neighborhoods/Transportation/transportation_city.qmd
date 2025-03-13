@@ -1,0 +1,761 @@
+---
+title: "Transit Trips and Transportation Costs -- City"
+author: "Tina Chelidze and Aaron R. Williams"
+abstract: This script calculates `share_transportation_cost` and `share_transit_commuter` using Center for Neighborhood Technology (CNT) and Census Bureau data. 
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+::: {.callout-tip}
+Raw CNT data pulled from https://htaindex.cnt.org/download/. 
+
+1. Navigate to the data download page. 
+2. Select "Tracts".
+3. Download the data for all tracts. 
+
+To save time, we store data on Box in Metrics_2024_round/. See details under the Read Data section.*
+:::
+
+## Setup
+
+### Load Packages
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+library(here)
+
+source(here("functions", "testing", "evaluate_final_data.R"))
+
+theme_set(theme_bw())
+
+options(scipen = 999)
+
+```
+
+### Read data
+
+Before running, please download the entirety of the folders listed below from the following [Box
+folder](https://urbanorg.app.box.com/folder/250262697073) into the
+repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
+`"mobility-from-poverty/06_neighborhoods/Transportation/data/"`
+
+- 2015_tract
+- 2019_tract
+- 2022_tract
+
+Import all the files (and/or combine into one file) with only the
+relevant variables and years
+
+```{r}
+read_transportation_data <- function(year) {
+  
+  tractpath <- list.files(
+    path = here("06_neighborhoods",
+                "Transportation", 
+                "data", 
+                str_glue("{year}_tract")), 
+    pattern = "*.csv", 
+    full.names = TRUE
+  )
+  
+  data <- map_dfr(tractpath, read_csv) |>
+    mutate(year = year)
+  
+  return(data)
+  
+}
+
+transportation_tracts <- map_dfr(
+  .x = c(2015, 2019, 2022),
+  .f = read_transportation_data
+)
+
+```
+
+## Clean Data
+
+Create correct FIPS columns.
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  rename(GEOID = tract) |>
+  mutate(
+    state = substr(GEOID, start = 2, stop = 3),
+    county = substr(GEOID, start = 4, stop = 6),
+    tract = substr(GEOID, start = 7, stop = 12)
+  )
+
+```
+
+Only keep variables of interest. `pct_transit_commuters_80ami` is "Transit Ridership % of Workers for the Regional Moderate Household." `t_80ami` is "Transportation Costs % Income for the Regional Typical Household."
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  select(
+    year, GEOID, state, county, tract, blkgrps, population, households, 
+    share_transit_commuter = pct_transit_commuters_80ami, 
+    share_transportation_cost = t_80ami
+  )
+
+```
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  mutate(GEOID = paste0(state, county, tract))
+
+```
+
+Many tracts have no households. We drop these tracts.
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  filter(households > 0)
+
+```
+
+We transform transportation cost from an unlabeled percentage to a proportion. 
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  mutate(
+    share_transit_commuter = share_transit_commuter / 100,
+    share_transportation_cost = share_transportation_cost / 100
+  )
+
+```
+
+```{r}
+transportation_tracts |>
+  ggplot(aes(share_transit_commuter)) +
+  geom_histogram() +
+  facet_wrap(~ year) +
+  labs(title = "Distribution of share_transit_commuter")
+
+transportation_tracts |>
+  ggplot(aes(share_transportation_cost)) +
+  geom_histogram() +
+  facet_wrap(~ year) +
+  labs(title = "Distribution of share_transportation_cost")
+
+```
+
+## Clean Census Data
+
+We need to pull Census Bureau data to calculate data quality. We start by pulling `B25001_001`, which is the estimate and margin of error for the number of households in the tract. 
+
+```{r}
+my_states <- fips_codes |> 
+  filter(!state %in% c("PR", "UM", "VI", "GU", "AS", "MP")) |>
+  pull(state) |>
+  unique()
+
+```
+
+```{r}
+acs_sample_size <- bind_rows(
+  `2015` = map_dfr(
+    .x = my_states,
+    .f = ~ get_acs(
+      geography = "tract",
+      state = .x,
+      variables = c("B00002_001", "B25001_001"),
+      year = 2015,
+      survey = "acs5",
+      output = "wide"
+    )
+  ),
+  `2019` = map_dfr(
+    .x = my_states,
+    .f = ~ get_acs(
+      geography = "tract",
+      state = .x,
+      variables = c("B25001_001"),
+      year = 2019,
+      survey = "acs5",
+      output = "wide"
+    )
+  ),
+  `2022` = map_dfr(
+    .x = my_states,
+    .f = ~ get_acs(
+      geography = "tract",
+      state = .x,
+      variables = c("B25001_001"),
+      year = 2022,
+      survey = "acs5",
+      output = "wide"
+    )
+  ),
+  .id = "year"
+) |>
+  rename(
+    sample_size = B00002_001E,
+    households_est = B25001_001E,
+    households_moe = B25001_001M
+  ) |>
+  mutate(
+    year = as.numeric(year),
+    state = str_sub(GEOID, start = 1, end = 2),
+    county = str_sub(GEOID, start = 3, end = 5)
+  )
+ 
+```
+
+Turn a 90% MOE into a standard error.
+
+```{r}
+acs_sample_size <- acs_sample_size |>
+  mutate(
+    households_se = households_moe / qnorm(0.95)
+  )
+
+```
+
+`sample_size` is only pulled for exploratory uses. 
+
+```{r}
+acs_sample_size <- acs_sample_size |>
+  select(-sample_size)
+
+```
+
+After this, there shouldn't be any missing values.
+
+```{r}
+stopifnot(
+  all(map_dbl(acs_sample_size, ~sum(is.na(.x))) == 0)
+)
+
+```
+
+We join the ACS quality information to the transportation information. 
+
+```{r}
+transportation_tracts <- left_join(
+  transportation_tracts,
+  acs_sample_size, 
+  by = c("year", "GEOID", "state", "county"), 
+  relationship = "one-to-one"
+)
+
+```
+
+## Crosswalk to Cities
+
+Build a multi-year cross walk that uses 2010 and 2020 tract/place definitions. 
+
+```{r}
+tract_place_crosswalk_2010s <- read_csv(
+  here::here("geographic-crosswalks", "data", "geocorr2018_2010tract_to_2014place.csv")
+) %>%
+  rename(
+    place = placefp,
+    state_county = county
+  ) %>%
+  mutate(tract = tract * 100) |>
+  mutate(
+    state_county = str_pad(state_county, width = 5, side = "left", pad = "0"),
+    state = str_sub(state_county, start = 1, end = 2),
+    county = str_sub(state_county, start = 3, end = 5),
+    tract = str_pad(tract, width = 6, side = "left", pad = "0"),
+    place = str_pad(place, width = 5, side = "left", pad = "0")
+  ) |>
+  rename(population_crosswalk = pop10)
+
+tract_place_crosswalk_2020s <- read_csv(
+  here::here("geographic-crosswalks", "data", "geocorr2022_tract_to_place.csv")
+) %>%
+  rename(
+    state_county = county
+  ) %>%
+  mutate(tract = tract * 100) |>
+  mutate(
+    state_county = str_pad(state_county, width = 5, side = "left", pad = "0"),
+    state = str_sub(state_county, start = 1, end = 2),
+    county = str_sub(state_county, start = 3, end = 5),
+    tract = str_pad(tract, width = 6, side = "left", pad = "0"),
+    place = str_pad(place, width = 5, side = "left", pad = "0")
+  ) |>
+  rename(population_crosswalk = pop20)
+
+tract_place_crosswalk <- bind_rows(
+  `2015` = tract_place_crosswalk_2010s,
+  `2019` = tract_place_crosswalk_2010s,
+  `2022` = tract_place_crosswalk_2020s,
+  .id = "year"
+) |>
+  mutate(year = as.numeric(year)) |>
+  select(year, state, county, tract, place, state_county, afact, population_crosswalk)
+
+```
+
+Limit to the Census Places we want.
+
+```{r}
+places <- read_csv(here("geographic-crosswalks", 
+                        "data", 
+                        "place-populations.csv")) |>
+  filter(year %in% c(2015, 2019, 2022))
+
+```
+
+## Join and Aggregate
+
+Joins are dangerous. 
+
+First, let's see if all places in our target places file are present in the crosswalk. Only South Fulton, Georgia is missing in 2019. 
+
+```{r}
+anti_join(
+  places,
+  tract_place_crosswalk,
+  by = c("year", "state", "place")
+)
+
+```
+
+Second let's compare the aggregated population from the crosswalk to the populations in the places target geography file. 
+
+```{r}
+full_join(
+  places,
+  tract_place_crosswalk |>
+    group_by(year, state, place) |>
+    summarize(population_crosswalk = sum(population_crosswalk)),
+  by = c("year", "state", "place"), 
+  relationship = "one-to-one"
+) |>
+  ggplot(aes(population, population_crosswalk)) +
+  geom_abline() +
+  geom_point(alpha = 0.05) 
+
+```
+
+Third let's see if the CNT contain tracts not included in our places. Most of the missing tracts are Connecticut Planning Regions in the transportation data. 
+
+```{r}
+# rows from transportation_tracts that are not in the crosswalk
+anti_join(
+  transportation_tracts, 
+  tract_place_crosswalk, 
+  by = c("state", "county", "tract")
+) |>
+  group_by(year, state, county) |>
+  summarize(tracts = n(), households = sum(households), population = sum(population)) |>
+  print(n = Inf)
+
+```
+
+Finally, let's join the crosswalk to the transportation data. 
+
+```{r}
+transportation_tracts_places <- left_join(
+  transportation_tracts, 
+  tract_place_crosswalk, 
+  by = c("year", "state", "county", "tract")
+)
+
+transportation_tracts_places <- transportation_tracts_places |>
+  filter(!is.na(place))
+
+```
+
+Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2.
+
+```{r}
+transportation_places <- transportation_tracts_places |> 
+  dplyr::group_by(year, state, place) |> 
+  dplyr::summarize(
+    n = n(),
+    share_transit_commuter = weighted.mean(share_transit_commuter, w = households * afact, na.rm = TRUE),
+    share_transportation_cost = weighted.mean(share_transportation_cost, w = households * afact, na.rm = TRUE),
+    households_est = sum(households_est * afact),
+    households_se = sqrt(sum(households_se ^ 2)),
+    match_pop = sum(population * afact),
+    match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE)
+  ) |>
+  ungroup() 
+
+```
+
+Left join with places file to get rid of irrelevant places data
+
+```{r}
+transportation_city <- left_join(
+  places, 
+  transportation_places, 
+  by = c("year", "state", "place")
+) |>
+  filter(year %in% c(2015, 2019, 2022))
+
+transportation_city |>
+  ggplot(aes(population, match_pop)) +
+  geom_abline(color = "red") +
+  geom_point(alpha = 0.2) +
+  labs(
+    title = "Points on the line suggest high-quality"
+  )
+
+```
+
+```{r}
+map_dbl(transportation_city, ~sum(is.na(.x)))
+
+```
+
+## Transit Trips Quality Control Checks
+
+### Missing Data
+
+```{r}
+transportation_city |>
+  filter(is.na(share_transit_commuter))
+
+```
+
+### Distribution
+
+Use stopifnot to check if all values in `transportation_city` are non-negative.
+
+```{r}
+stopifnot(min(transportation_city$share_transit_commuter, na.rm = TRUE) >= 0)
+```
+
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
+
+```{r}
+ggplot(transportation_city, aes(x = share_transit_commuter)) +
+  geom_histogram() + 
+  facet_wrap(~ year, nrow = 2) +
+  labs(
+    x = "Annual Transit Trips for the Regional Moderate Income Household", 
+    y = "number of counties"
+  )
+```
+
+Look at summary stats
+
+```{r}
+summary(transportation_city$share_transit_commuter)
+```
+
+Examine extreme values
+
+```{r}
+transportation_city |>
+  group_by(year) |>
+  slice_max(n = 10, order_by = share_transit_commuter)
+
+```
+
+### Change
+
+```{r}
+transportation_city |>
+  filter(year %in% c(2015, 2019)) |>
+  select(state, place, year, population, share_transit_commuter) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(population, share_transit_commuter)
+  ) |>
+  mutate(size = if_else(population_2019 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(share_transit_commuter_2015, share_transit_commuter_2019, size = population_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 400,000 people")
+
+transportation_city |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, place, year, population, share_transit_commuter) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(population, share_transit_commuter)
+  ) |>
+  mutate(size = if_else(population_2022 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(share_transit_commuter_2019, share_transit_commuter_2022, size = population_2022)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 400,000 people")
+
+
+transportation_city |>
+  group_by(year, state, place) |>
+  mutate(change = share_transit_commuter - lag(share_transit_commuter)) |>
+  ungroup() |>
+  filter(year %in% c(2019, 2022)) |>
+  slice_max(order_by = abs(change), n = 10)
+
+```
+
+## Cost Quality Control Checks
+
+### Missing Data
+
+```{r}
+transportation_city |>
+  filter(is.na(share_transportation_cost))
+
+```
+
+### Distribution
+
+Use stopifnot to check if all values in `transportation_city` are
+non-negative
+
+```{r}
+stopifnot(min(transportation_city$share_transportation_cost, na.rm = TRUE) >= 0)
+```
+
+Create a histogram plot and summary stats for each dataframe check that
+all values are non-negative & count missing values examine outliers.
+
+```{r}
+ggplot(transportation_city, aes(x = share_transportation_cost)) +
+  geom_histogram() + 
+  facet_wrap(~ year, nrow = 2) +
+  labs(
+    x = "Annual Transportation Costs for the Regional Moderate Income Household", 
+    y = "number of counties"
+  )
+
+```
+
+Makes sense for most counties to fall in really low transit trip numbers
+since most of the US has no public infrastructure that can be used for
+daily transport
+
+Look at summary stats
+
+```{r}
+summary(transportation_city$share_transportation_cost)
+```
+
+Examine extreme values
+
+```{r}
+transportation_city |>
+  group_by(year) |>
+  slice_max(n = 10, order_by = share_transportation_cost)
+
+```
+
+### Change
+
+```{r}
+transportation_city |>
+  filter(year %in% c(2015, 2019)) |>
+  select(state, place, year, population, share_transportation_cost) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(population, share_transportation_cost)
+  ) |>
+  mutate(size = if_else(population_2019 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(share_transportation_cost_2015, share_transportation_cost_2019, size = population_2019)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 400,000 people")
+
+transportation_city |>
+  filter(year %in% c(2019, 2022)) |>
+  select(state, place, year, population, share_transportation_cost) |>
+  pivot_wider(
+    names_from = year, 
+    values_from = c(population, share_transportation_cost)
+  ) |>
+  mutate(size = if_else(population_2022 > 400000, "Large cities", "Small cities")) |>
+  ggplot(aes(share_transportation_cost_2019, share_transportation_cost_2022, size = population_2022)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ size) +
+  coord_equal() +
+  labs(subtitle = "Large counties have at least 400,000 people")
+
+transportation_city |>
+  group_by(year, state, place) |>
+  mutate(change = share_transportation_cost - lag(share_transportation_cost)) |>
+  ungroup() |>
+  filter(year %in% c(2019, 2022)) |>
+  slice_max(order_by = abs(change), n = 10)
+```
+
+## Data Quality Marker
+
+We calculate data quality using the coefficient of variation for the number of households, coefficient of variation for median household income, and match quality. We use the "worst" data quality from these three tests. 
+
+Elsewhere, we use 0.2 and 0.4 as cutoffs for the coefficient of variation. These metrics contain extra uncertainty from other variables and modelings, so we use 0.08 and 0.15 as cutoffs. 
+
+```{r}
+transportation_city <- transportation_city |>
+  mutate(households_cv = households_se / households_est) |>
+  dplyr::mutate(
+    cv_quality = case_when(
+      households_cv < 0.08 ~ 1,
+      households_cv < 0.15 ~ 2,
+      TRUE ~ 3
+    ),
+    match_quality = case_when(
+      match_quality >= 0.5 ~ 1,
+      match_quality < 0.5 ~ 2,
+      TRUE ~ NA
+    )
+  )
+  
+```
+
+Next, we load and calculate the coefficient of variation for median household income at the place level. 
+
+```{r}
+med_hh_income_cv <- bind_rows(
+  `2015` = get_acs(
+    geography = "place",
+    variables = "B19013_001",
+    year = 2015,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2019` = get_acs(
+    geography = "place",
+    variables = "B19013_001",
+    year = 2019,
+    survey = "acs5",
+    output = "wide"
+  ),
+  `2022` = get_acs(
+    geography = "place",
+    variables = "B19013_001",
+    year = 2022,
+    survey = "acs5",
+    output = "wide"
+  ),
+  .id = "year"
+) |>
+  rename(
+    med_hh_income = B19013_001E,
+    med_hh_income_moe = B19013_001M,
+  ) |>
+  mutate(
+    year = as.numeric(year),
+    state = str_sub(GEOID, start = 1, end = 2),
+    place = str_sub(GEOID, start = 3, end = 7)
+  )
+
+med_hh_income_cv <- med_hh_income_cv |>
+  mutate(med_hh_income_se = med_hh_income_moe / qnorm(0.95)) |>
+  # calculate the coefficient of variation
+  mutate(med_hh_income_cv = med_hh_income_se / med_hh_income) |>
+  mutate(med_hh_income_cv = ifelse(is.na(med_hh_income_cv), 0.5, med_hh_income_cv)) |>
+  mutate(
+    income_quality = case_when(
+      med_hh_income_cv < 0.1 ~ 1,
+      med_hh_income_cv < 0.3 ~ 2,
+      TRUE ~ 3
+    )
+  ) |>
+  select(year, state, place, income_quality)
+
+```
+
+We use the worse quality of the 1. household estimates CV, 2. median household income CV, and 3. match quality CV. 
+
+```{r}
+transportation_city <- left_join(
+  transportation_city,
+  med_hh_income_cv,
+  by = c("year", "state", "place")
+)
+
+transportation_city <- transportation_city |>
+  mutate(
+    share_transit_commuter_quality = pmax(cv_quality, income_quality, match_quality),
+    share_transportation_cost_quality = pmax(cv_quality, income_quality, match_quality)
+  ) |>
+  mutate(
+    share_transit_commuter_quality = 
+      ifelse(is.na(share_transit_commuter), NA, share_transit_commuter_quality),
+    share_transportation_cost_quality = 
+      ifelse(is.na(share_transportation_cost_quality), NA, share_transportation_cost_quality)
+  )
+
+```
+
+```{r}
+transportation_city |>
+  count(year, share_transit_commuter_quality)
+
+```
+
+Confirm there isn't a mismatch between missing values and missing quality flags.
+
+```{r}
+stopifnot(
+  transportation_city |>
+    filter(
+      (!is.na(share_transit_commuter) & is.na(share_transit_commuter_quality)) |
+        (!is.na(share_transportation_cost) & is.na(share_transportation_cost_quality))
+    ) |>
+    nrow() == 0
+)
+
+stopifnot(
+  transportation_city |>
+    filter(
+      (is.na(share_transit_commuter) & !is.na(share_transit_commuter_quality)) |
+        (is.na(share_transportation_cost) & !is.na(share_transportation_cost_quality))
+    ) |>
+    nrow() == 0
+)
+
+```
+
+## Export final files
+
+Keep variables of interest and order them appropriately.
+
+```{r}
+final_data <- transportation_city |>
+  select(
+    year, state, place, share_transit_commuter, share_transit_commuter_quality,
+    share_transportation_cost, share_transportation_cost_quality
+  ) |>
+  arrange(year, state, place)
+
+```
+
+Run the evaluation function. 
+
+```{r}
+evaluate_final_data(
+  exp_form_path = here("10a_final-evaluation", "evaluation_form_transportation.csv"), 
+  data = final_data, 
+  geography = "place", 
+  confidence_intervals = FALSE
+)
+
+```
+
+Write the final data.
+
+```{r}
+final_data |>
+  write_csv(
+    here("06_neighborhoods", 
+         "Transportation", 
+         "final", 
+         "transportation_all_city.csv")
+  )
+
+```
+
