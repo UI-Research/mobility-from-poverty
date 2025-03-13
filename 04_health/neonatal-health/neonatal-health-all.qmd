@@ -32,6 +32,8 @@ library(tidyverse)
 library(tidylog)
 library(testthat)
 
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+
 set_urbn_defaults(style = "print")
 
 ```
@@ -902,7 +904,7 @@ lbw_rates <- bind_rows(lbw_rates, ct_2022_2023)
 ```
 
 
-```{r write-data-all}
+```{r create-data-all}
 # Remove unnecessary variables and sort by year, state, and county
 final_all <- lbw_rates |>
   filter(subgroup=="all") |>
@@ -916,8 +918,21 @@ final_all <- lbw_rates |>
     rate_low_birth_weight_quality
   ) |>
   arrange(year, state, county)
+```
+
+```{r evaluate-data-all}
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_low_birth_overall_county.csv",
+  data = final_all,
+  geography = "county",
+  subgroups = FALSE,
+  confidence_intervals = TRUE
+  )
+
+```
 
 
+```{r write-data-all}
 # Write out final data
 write_csv(x = final_all,
           file = here::here(
@@ -932,19 +947,19 @@ write_csv(x = final_all,
 ```
 
 
-```{r write-data-subgroup}
+```{r create-data-subgroup}
 # Remove unnecessary variables and sort by year, state, county, and subgroup
 final_subgroup <- lbw_rates |>
   mutate(
     subgroup_type = case_when(
-      subgroup %in% c("nhwhite", "nhblack", "hisp", "nhother") ~ "race-ethncity",
+      subgroup %in% c("nhwhite", "nhblack", "hisp", "nhother") ~ "race-ethnicity",
       subgroup %in% c("lths", "hs", "somecol", "baplus") ~ "mothers-education",
       subgroup == "all" ~ "all",
       TRUE ~ NA
     ),
     subgroup = case_when(
       subgroup == "all" ~ "All",
-      subgroup == "nhwhite" ~ "White, Hon-Hispanic",
+      subgroup == "nhwhite" ~ "White, Non-Hispanic",
       subgroup == "nhblack" ~ "Black, Non-Hispanic",
       subgroup == "hisp" ~ "Hispanic",
       subgroup == "nhother" ~ "Other Races and Ethnicities",
@@ -967,7 +982,34 @@ final_subgroup <- lbw_rates |>
   ) |>
   arrange(year, state, county, subgroup_type, subgroup)
 
+```
 
+```{r evaluate-data-subgroup}
+final_subgroup_raceth <- final_subgroup |>
+  filter(subgroup_type != "mothers-education")
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_low_birth_race-ethnicity_county.csv",
+  data = final_subgroup_raceth,
+  geography = "county",
+  subgroups = TRUE,
+  confidence_intervals = TRUE
+  )
+
+final_subgroup_ed <- final_subgroup |>
+  filter(subgroup_type != "race-ethnicity")
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_low_birth_mothers-education_county.csv",
+  data = final_subgroup_ed,
+  geography = "county",
+  subgroups = TRUE,
+  confidence_intervals = TRUE
+  )
+
+```
+
+```{r write-data-subgroup}
 # Write out final data - subgroups
 write_csv(x = final_subgroup,
           file = here::here(
