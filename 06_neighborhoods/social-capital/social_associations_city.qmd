@@ -7,7 +7,7 @@ format:
     self-contained: true
     toc: true
     css: ../../06_neighborhoods/www/web_report.css
-editor_options: 
+editor_options:
   chunk_output_type: console
 execute:
   warning: false
@@ -24,29 +24,30 @@ library(censusapi)
 library(tigris)
 library(janitor)
 library(tidylog)
+library(naniar)
 options(tigris_use_cache = TRUE)
 ```
 
 ## Process:
 
-This notebook creates city-level `Number of membership associations per 10,000 people` 
+This notebook creates city-level `Number of membership associations per 10,000 people`
 (one of two Social Capital Gates Mobility Metrics)
 
-Data downloaded from: Census County Business Patterns 2021
+Data downloaded from: Census ZCTA Business Patterns (CBP)
 
-1.  download social organization data from https://www.census.gov/data/datasets/2021/econ/cbp/2021-cbp.html (this is the numerator)
+1.  download social organization data from the Census API
 
-2.  import and clean the data file (collapse to unique ZIPs)
+2.  import and clean the data file (collapse to unique ZCTAs)
 
-3.  merge with the 2010 ZCTA -\> 2021 Census Place crosswalk
+3.  merge with the 2010 ZCTA -\> 2010 Census Place and 2020 ZCTA -\> 2021 Census Place crosswalk
 
 4.  collapse estimates to unique Places
 
-5.  check against official Census Place file & limit to population cutoff Places
+5.  check against Census Place file & limit to population cutoff Places
 
 6.  use crosswalk population data to construct the ratio (Numerator/Denominator)
 
-7.  add data quality tag, final file cleaning and export to .csv file
+7.  add data quality tag, final file cleaning, visualize metric and export to .csv file
 
 ## Download social organization data
 
@@ -54,36 +55,18 @@ Data downloaded from: Census County Business Patterns 2021
 We pull our data from `library(censusapi)`.
 
 **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html).
-Add the key to `census_api_key-template.R` and then delete then delete "template". 
-It is sourced below 
+Add the key to `census_api_key-template.R` and then delete the word "template" 
+from the filename. 
+
+It is sourced below
 
 ```{r}
 # label: source-census-api-key
-#source(here::here("06_neighborhoods", "R", "census_api_key.R"))
-```
-
-```{r}
-#| label: get-social-organization-data
-
-years <- c(2020, 2021)
-cbp_zip <-
-  map(
-    years,
-    ~ getCensus(
-      name = "cbp",
-      vintage = .x,
-      vars = c("EMP", "ESTAB", "NAICS2017"),
-      region = "zipcode:*"
-    ) %>%
-      as_tibble() %>%
-      mutate(year = .x)
-  ) %>%
-  list_rbind()
-
-head(cbp_zip)
+source(here::here("06_neighborhoods", "R", "census_api_key.R"))
 ```
 
 ## Import and clean the CBP data file
+
 
 This means:
 
@@ -96,54 +79,124 @@ This means:
 -   add the year of these data.
 
 Below are the codes/associations included in the County Health Rankings metric.
-See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022) 
+See [here](https://www.countyhealthrankings.org/explore-health-rankings/county-health-rankings-model/health-factors/social-economic-factors/family-and-social-support/social-associations?year=2022)
 for more
 
-Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910, 
+Codes: 813410, 713950, 713910, 713940, 711211, 813110, 813940, 813930, 813910,
 and 813920.
+
+These codes consistently denote the same categories across NAICS2012
+and NAICS2017. You can check this by visitng the [NAICS page](https://www.census.gov/naics/)
+
+**Note:** Running the chunk below can take some time, avoid re-running it to 
+prevent hitting API rate limits. The file is exported and read in once again
+to avoid re-running API requests.
+```{r}
+#| label: get-social-organization-data
+fetch_cbp_data <- function(year, naics_codes_to_keep) {
+  tryCatch({
+    Sys.sleep(2) # avoid rate limiting
+    naics_var <- if_else(year >= 2014 & year <= 2016, "NAICS2012", "NAICS2017")
+    dataset_name <- if_else(year >= 2019, "cbp", "zbp")
+    
+    getCensus(
+      name = dataset_name,
+      vintage = year,
+      vars = c("EMP", "ESTAB", naics_var),
+      region = "zipcode:*"
+    ) %>%
+      as_tibble() %>%
+      mutate(year = year,
+             naics = as.numeric(!!sym(naics_var))) %>%
+      filter(naics %in% naics_codes_to_keep) %>%
+      select(zcta_code = zip_code, year, orgs = ESTAB) %>%
+      drop_na(orgs) %>%
+      summarize(count_orgs = sum(orgs), .by = c("year", "zcta_code"))
+    
+  }, error = function(e) {
+    stop("Error fetching data for year ", year, ": ", e$message)
+    NULL
+  })
+}
+
+# Fetch and combine data
+years <- 2014:2022
+naics_codes_to_keep <- c(813410, 713950, 713910, 713940, 711211,
+                           813110, 813940, 813930, 813910, 813920)
+
+data_dir <- here("06_neighborhoods", "social-capital", "data")
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
+
+cbp_zcta <- map(years, function(yr) {
+  file_path <- file.path(data_dir, paste0("cbp_zcta_", yr, ".csv"))
+  if (file.exists(file_path)) {
+    message("Loading local data for year ", yr)
+    read_csv(file_path, show_col_types = FALSE)
+  } else {
+    message("Fetching data for year ", yr)
+    data_year <- fetch_cbp_data(yr, naics_codes_to_keep)
+    if (!is.null(data_year)) write_csv(data_year, file_path)
+    data_year
+  }
+}) %>% compact() %>% bind_rows()
+
+head(cbp_zcta)
+
+if(!file.exists(here::here("06_neighborhoods/social-capital/data/cbp_zcta.csv"))){
+  write_csv(cbp_zcta, "06_neighborhoods/social-capital/data/cbp_zcta.csv")
+}
+
+```
+
+
+```{r}
+cbp_zcta <- read_csv(here("06_neighborhoods/social-capital/data/cbp_zcta.csv"))
+```
 
 **Check:** Are all ZCTA codes 5 digits?
 
 ```{r}
-#| label: assert-zip-code-length
+#| label: assert-zcta-code-length
 stopifnot(
-  all(str_length(cbp_zip$zip_code) == 5)
+  all(str_length(cbp_zcta$zcta_code) == 5)
 )
 ```
+
+**Check:** Are all years present?
 
 ```{r}
-#| label: import-and-clean-cbp
-naics_codes_to_keep <- c(
-  813410, 713950, 713910, 713940, 711211, 813110, 813940,
-  813930, 813910, 813920
-)
+#| label: test-all-years-present
 
-cbp_zip <-
-  cbp_zip %>%
-  mutate(naics = as.numeric(NAICS2017)) %>%
-  filter(naics %in% naics_codes_to_keep) %>%
-  # 5,812,778 to 57,297 rows
-  select(zip_code, year, orgs = ESTAB) %>%
-  # remove observations with missing data for our orgs variable
-  drop_na(orgs) %>%
-  # no missings (observations still at 57,297)
-  # aggregate the total # of orgs per ZIP
-  summarize(count_orgs = sum(orgs), .by = c("year", "zip_code"))
-# 57,297 observations to 33,238 observations
+# Test if all expected years are present in the resulting data
+test_years <- cbp_zcta %>%
+  pull(year) %>% # Extract the years column
+  unique() %>% # Get unique years
+  sort() # Sort the years
+
+# Check if the expected years match the test years
+if (all(years %in% test_years)) {
+  message("Test passed: All expected years are present in the data.")
+} else {
+  missing_years <- setdiff(years, test_years)
+  stop("Test failed: Missing years - ", paste(missing_years, collapse = ", "))
+}
 ```
 
-## Merge with the 2020 ZCTA -\> 2021 Census Place crosswalk
+## Merge with the 2020 ZCTA -\> 2021 Census Place crosswalk 
 
-Download the 2020 ZCTA -\> 2021 Census Place crosswalk file from [Geocorr 2022](https://mcdc.missouri.edu/applications/geocorr2022.html) as follows:
+Since Census data are only available at the ZCTA level and not at the place 
+level, we need to crosswalk from ZCTA's to Places.
+
+Download the 2010/2020 ZCTA -\> 2010/2021 Census Place crosswalk file from [Geocorr 2022](https://mcdc.missouri.edu/applications/geocorr2022.html) as follows:
 
 - Ctrl-click select every state to get the whole country (where is says Select
 the state(s) (including DC and/or PR) to process:)
 
-- Then, choose ZIP/ZCTA from the 2020 Geographies in the left rectangle, and 
-Place (city. town, etc) from the 2020 Geographies in the right one
+- Then, choose ZIP/ZCTA from the 2010/2020 Geographies in the left rectangle, and
+Place (city. town, etc) from the 2010/2020 Geographies in the right one
 
 - Choose population as the weighting variable you're using to do interpolation
- 
+
 - In Output Options, pick CSV
 
 - Check select for Generate second allocation factor AFACT2 showing portion of
@@ -152,86 +205,107 @@ target geocodes in source geocodes
 - Hit Run Request, and it will generate the crosswalk for you!
 
 
-Now, import and clean the 2020 ZCTA -\> 2021 Census Place crosswalk file to 
+Now, import and clean the 2010/2020 ZCTA -\> 2010/2021 Census Place crosswalk file to
 prepare for merging
 
 ```{r}
 #| label: import-and-clean-xwalk
-zcta_place_xwalk <-
+zcta_20_place_21_xwalk <-
   read_csv(here("06_neighborhoods/social-capital/data/2020_ZCTA_2021_Census_Places_Crosswalk.csv"), skip = 1) %>%
   as_tibble() %>%
   clean_names() |>
   rename(
-    zip_code = zip_census_tabulation_area,
+    zcta_code = zip_census_tabulation_area,
     state_fips = state_code,
     place = place_code
   )
+
+zcta_10_place_10_xwalk <-
+  read_csv(here("06_neighborhoods/social-capital/data/2010_ZCTA_2010_Census_Places_Crosswalk.csv"), skip = 1) %>%
+  as_tibble() %>%
+  clean_names() |>
+  rename(
+    zcta_code = zip_census_tabulation_area,
+    state_fips = state_code,
+    place = place_code,
+    zcta_to_place_allocation_factor = zcta5_to_placefp_allocation_factor,
+    place_to_zcta_allocation_factor = placefp_to_zcta5_allocation_factor
+  )
 ```
 
-Make an indicator for ZIPs that fall wholly into a Place vs. partially (`zcta_to_place_allocation_factor < 1`)
+
+
+Make an indicator for ZCTAs that fall wholly into a Place vs. partially (`zcta_to_place_allocation_factor < 1`)
 
 ```{r}
-#| label: make-indicator-for-zips-in-place
-zcta_place_xwalk <-
-  zcta_place_xwalk %>%
-  mutate(portion_in = case_when(
+#| label: make-indicator-for-zctas-in-place
+zcta_20_place_21_xwalk <-
+  zcta_20_place_21_xwalk %>%
+  mutate(zcta_fully_within_place_binary = case_when(
+    zcta_to_place_allocation_factor == 1 ~ 1,
+    zcta_to_place_allocation_factor < 1 ~ 0
+  ))
+
+zcta_10_place_10_xwalk <-
+  zcta_10_place_10_xwalk %>%
+  mutate(zcta_fully_within_place_binary = case_when(
     zcta_to_place_allocation_factor == 1 ~ 1,
     zcta_to_place_allocation_factor < 1 ~ 0
   ))
 ```
 
-**Check:** Do 9,669 of these ZCTAs fall fully into a Census Place?
-
-```{r}
-#| label: check-portions-wholly-in-place
-stopifnot(
-  zcta_place_xwalk %>%
-    count(portion_in) %>%
-    filter(portion_in == 1) %>%
-    pull(n) == 9669
-)
-```
-
+Now, select the relevant crosswalk variables and combine the 2010 ZCTA's to 2010
+places crosswalk with the 2020 ZCTA's to 2021 Places crosswalk. 
 ```{r}
 #| label: select-crosswalk-variables
 
-zcta_place_xwalk <-
-  zcta_place_xwalk %>%
+zcta_20_place_21_xwalk <-
+  zcta_20_place_21_xwalk %>%
   select(
-    zip_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
-    place_to_zcta_allocation_factor, portion_in
+    zcta_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    place_to_zcta_allocation_factor, zcta_fully_within_place_binary
   )
+
+
+zcta_10_place_10_xwalk <-
+  zcta_10_place_10_xwalk %>%
+  select(
+    zcta_code, state_fips, place, place_name, zcta_to_place_allocation_factor,
+    place_to_zcta_allocation_factor, zcta_fully_within_place_binary
+  )
+
+zcta_place_xwalk <- bind_rows(zcta_20_place_21_xwalk, zcta_10_place_10_xwalk)
 ```
 
 Merge the ZIP/Places crosswalk into the CBP ZIP-level data file
 
 ```{r}
-#| label: merge-cbp-zip-with-crosswalk
+#| label: merge-cbp-zcta-with-crosswalk
 
-merged_sa_zip_city <-
-  cbp_zip %>%
-  left_join(zcta_place_xwalk, by = c("zip_code"))
+merged_associations_zcta_city <-
+  cbp_zcta %>%
+  left_join(zcta_place_xwalk, by = c("zcta_code"))
 ```
 
-**Check:** Are there any missing values in the merged data for `est_total`?
+**Check:** Are there any missing values in the merged data for `count_orgs`?
 
 ```{r}
 #| label: check-join-missingness
 stopifnot(
-  sum(is.na(merged_sa_zip_city$count_orgs)) == 0
+  sum(is.na(merged_associations_zcta_city$count_orgs)) == 0
 )
 ```
 
 ## Collapse estimates to unique Places
 
-First, as a data quality marker we create a new variable that tracks the number 
-of ZCTAs falling in each Place (duplicates)
+First, as a data quality marker we create a new variable that tracks the number
+of ZCTAs falling in each place
 
 ```{r}
-#| label: count-zip-codes-in-place
+#| label: count-zcta-codes-in-place
 
-merged_sa_zip_city <-
-  merged_sa_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   mutate(
     count_zctas_in_place = n(),
     .by = c(year, place, place_name)
@@ -239,38 +313,50 @@ merged_sa_zip_city <-
 ```
 
 Create the merged file where the SA numerator (`count_orgs`) is aggregated to the place level (multiply `count_orgs` by zcta to place allocation factor and then summarize to place)
-and also include total ZCTAs in Place (`zip_total`) & how many of those fully 
-fall within the Place (`zips_in`)
+and also include total ZCTAs in Place (`zcta_total`) & how many of those fully
+fall within the Place (`zctas_in`)
 
 ```{r}
 #| label: numerator-per-place-and-by-area
 
-merged_sa_zip_city <-
-  merged_sa_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   # multiply `count_orgs` by the allocation factor (a measure of how much of the zcta falls within the place)
-  mutate(count_orgs_afact = count_orgs*zcta_to_place_allocation_factor) %>% 
+  mutate(count_orgs_afact = count_orgs * zcta_to_place_allocation_factor) %>%
   summarize(
-    zip_total = mean(count_zctas_in_place),
-    zips_in = sum(portion_in),
+    zcta_total = mean(count_zctas_in_place),
+    zctas_in = sum(zcta_fully_within_place_binary),
     total_org = sum(count_orgs_afact),
     .by = c(year, state_fips, place)
   )
 ```
 
-**Check:** Are there exactly 2 missing values in the `new_est_zip` variable?
+**Check:** Is there exactly 1 missing row per year in the `total_org` variable?
 
 ```{r}
+
 stopifnot(
-  sum(is.na(merged_sa_zip_city$total_org)) == 2
+  merged_associations_zcta_city %>%
+    filter(is.na(total_org)) %>%
+    nrow() == length(years)
 )
 ```
+
+Looking at we can see that this observation per year corresponds to a row with 
+missing `state_fips`, `place`, and `zctas_in`
+
+```{r}
+  merged_associations_zcta_city %>%
+    filter(is.na(total_org))
+```
+
 
 We drop these missing values
 
 ```{r}
 #| label: drop-missing-estimate
-merged_sa_zip_city <-
-  merged_sa_zip_city %>%
+merged_associations_zcta_city <-
+  merged_associations_zcta_city %>%
   drop_na(total_org)
 ```
 
@@ -283,28 +369,46 @@ places_pop <-
   read_csv(here("geographic-crosswalks/data/place-populations.csv")) %>%
   rename(state_fips = state) %>%
   filter(year %in% years)
+
 ```
 
-**Check:** Are there 486 Places in the population-cutoff file?
+**Check:** Are there 485 places in 2015-2017 and 486 places in 2018-2022 in the population-cutoff file? 
 
 ```{r}
 #| label: check-number-of-places
+
 stopifnot(
   count(places_pop, year) %>%
+    filter(year <= 2017) |>
+    pull(n) %>%
+    unique() == 485
+)
+
+stopifnot(
+  count(places_pop, year) %>%
+    filter(year > 2017) |>
     pull(n) %>%
     unique() == 486
 )
 ```
 
-Join `places_pop` with `merged_sa_zip_city` in order to get the final SA (numerator) city data
+Join `places_pop` with `merged_associations_zcta_city` in order to get the final associations (numerator) city data.
 
 ```{r}
-sa_city_data <-
+associations_city_data <-
   places_pop %>%
-  left_join(merged_sa_zip_city,
+  left_join(merged_associations_zcta_city,
     by = c("year", "place", "state_fips")
   )
+
 ```
+
+We can see that there are 485 observations pre-2018 and 486 after 2018
+```{r}
+associations_city_data |> 
+  count(year)
+```
+
 
 ## Use crosswalk population data to construct the ratio (Numerator/Denominator)
 
@@ -319,8 +423,8 @@ Rankings.
 ```{r}
 #| label: create-number-of-membership-associations-metric
 
-sa_city_data <-
-  sa_city_data %>%
+associations_city_data <-
+  associations_city_data %>%
   mutate(
     pop_ratio = population / 1e4,
     count_membership_associations_per_10k = round(total_org / pop_ratio, digits = 1)
@@ -369,15 +473,15 @@ crosswalk_data_quality |>
 ```{r}
 #| label: create-data-quality-flag
 
-sa_city_data <-
-  sa_city_data %>%
+associations_city_data <-
+  associations_city_data %>%
   left_join(crosswalk_data_quality, by = c("state_fips", "place")) |>
   select(year, state = state_fips, place, count_membership_associations_per_10k, count_membership_associations_per_10k_quality) %>%
   arrange(
     year, state, place,
     count_membership_associations_per_10k,
     count_membership_associations_per_10k_quality
-  ) %>% 
+  ) %>%
   distinct()
 ```
 
@@ -385,20 +489,69 @@ sa_city_data <-
 
 ```{r}
 stopifnot(
-  sum(is.na(sa_city_data$count_membership_associations_per_10k)) == 0
+  sum(is.na(associations_city_data %>%
+    .[["count_membership_associations_per_10k"]])) == 0
 )
 ```
+
+## Visualize Metric
+
+```{r}
+ggplot(associations_city_data, aes(x = count_membership_associations_per_10k)) +
+  geom_histogram(bins = 30, color = "black", fill = "lightblue") +
+  labs(
+    title = "Distribution of Membership Associations per 10k",
+    x = "Membership Associations per 10k", y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(associations_city_data, aes(y = count_membership_associations_per_10k)) +
+  geom_boxplot() +
+  labs(
+    title = "Boxplot of Membership Associations per 10k",
+    y = "Membership Associations per 10k"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Visualize missing data
+gg_miss_var(associations_city_data) +
+  labs(title = "Missing Values by Variable")
+```
+
+There is a precipitous decline in population-standarized association counts from 
+2016 to 2017
+```{r}
+yearly_avg <- associations_city_data %>%
+  group_by(year) %>%
+  summarise(avg_associations = mean(count_membership_associations_per_10k, na.rm = TRUE))
+
+ggplot(yearly_avg, aes(x = year, y = avg_associations)) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    title = "Trend of Average Membership Associations per 10k Over Years",
+    x = "Year", y = "Average Associations per 10k"
+  ) +
+  theme_minimal()
+```
+
+## Run Final Tests
+
+```{r}
+source(here("functions/testing/evaluate_final_data.R"))
+
+evaluate_final_data(here("10a_final-evaluation", "evaluation_form_social_cap1_overall_place.csv"), associations_city_data, "place", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
 
 ## Save the final file
 
 ```{r}
-sa_city_data %>%
+associations_city_data %>%
   arrange(year, state, place) %>%
   write_csv(here("06_neighborhoods/social-capital/final/social_associations_all_city.csv"))
-
-sa_city_data %>%
-  filter(year == 2021) %>%
-  select(-year) %>%
-  arrange(state, place) %>%
-  write_csv(here("06_neighborhoods/social-capital/final/social_associations_2021_city.csv"))
 ```
