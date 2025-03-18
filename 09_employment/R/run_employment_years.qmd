@@ -1,0 +1,99 @@
+---
+title: "Run employment"
+date: today
+format:html
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Housekeeping
+
+Import necessary libraries.
+
+```{r}
+library(quarto)
+library(here)
+library(tidyverse)
+
+```
+
+
+## Render QMD Years
+
+Select which years of new data you want to run the preschool place calculate file for.
+
+```{r}
+
+years = c("2017", "2018", "2019", "2021", "2022")
+
+```
+
+Update the quorto render function so it reads out in the correct folder
+
+```{r}
+quarto_render_move <- function(
+    input,
+    output_file = NULL,
+    output_dir = NULL,
+    ...
+) {
+  
+  # Get all the input / output file names and paths
+  x <- quarto::quarto_inspect(input)
+  output_format <- names(x$formats)
+  output <- x$formats[[output_format]]$pandoc$`output-file`
+  if (is.null(output_file)) { output_file <- output }
+  input_dir <- dirname(input)
+  if (is.null(output_dir)) { output_dir <- input_dir }
+  output_path_from <- file.path(input_dir, output)
+  output_path_to <- file.path(output_dir, output_file)
+  
+  # Render qmd file to input_dir
+  quarto::quarto_render(input = input, ... = ...)
+  
+  # If output_dir is different from input_dir, copy the rendered output
+  # there and delete the original file
+  if (input_dir != output_dir) {
+    
+    # Try to make the folder if it doesn't yet exist
+    if (!dir.exists(output_dir)) { dir.create(output_dir) }
+    
+    # Now move the output to the output_dir and remove the original output
+    file.copy(
+      from = output_path_from,
+      to = output_path_to,
+      overwrite = TRUE
+    )
+    file.remove(output_path_from)
+    
+    # If the output_dir is the same as input_dir, but the output_file
+    # has a different name from the input file, then just rename it
+  } else if (output_file != output) {
+    file.rename(from = output_path_from, to = output_path_to)
+  }
+}
+```
+
+Render files.
+```{r}
+
+reports <-
+  tibble(
+    input = here::here("09_employment", "employment_metrics_county_all.qmd"),
+    output_file = glue::glue("calculate-employ-county-{years}.html"),
+    execute_params = map(years, ~ list(year = .))
+  )
+
+pwalk(reports, quarto_render_move)
+
+reports <-
+  tibble(
+    input = here::here("09_employment", "employment_metrics_place_all.qmd"),
+    output_file = glue::glue("calculate-employ-place-{years}.html"),
+    execute_params = map(years, ~ list(year = .))
+  )
+
+pwalk(reports, quarto_render_move)
+```
