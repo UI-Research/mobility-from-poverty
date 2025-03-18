@@ -1,0 +1,357 @@
+---
+title: "Exploring IPUMS Data to Construct a Measure for Digital Access"
+author: "Ridhi Purohit"
+date: now
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc_float: true
+    code-fold: show
+    code-tools: true
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+---
+
+```{=html}
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+```
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+This document investigates and programs the **Digital Access** variable which encapsulates households with the presence of a computer (laptop, desktop, notebook computer, tablet, or portable wireless computer) and access to broadband (high speed) internet service. In this program, data from 2017-21 ACS 5 year sample available through IPUMS is used to investigate the potential of creating a digital access variable by combining ACS computer and internet use variables from IPUMS.
+
+## Process
+
+-   [Housekeeping](#housekeeping)
+-   [Get IPUMS Data](#get-ipums-data)
+-   [Format Data](#format-data)
+
+## Housekeeping {#housekeeping}
+
+```{r}
+#| label: setup
+
+options(scipen = 999)
+librarian::shelf(
+  tidyverse,
+  ipumsr,
+  here,
+  UrbanInstitute / urbnthemes,
+  tidylog,
+  warn.conflicts = FALSE
+  )
+set_urbn_defaults(style = "print")
+
+```
+
+**Instructions to run this code book**
+
+-   This Quarto markdown document uses the `here` R library to set and access file paths. Please check your root directory by executing `here::here()` to verify that it points to the root folder of the `mobility-from-poverty` GitHub repository.
+-   To avoid manually setting up file paths, open the GitHub repository as an R project by leveraging the `mobility-from-poverty.Rproj` file present in the root folder of the `mobility-from-poverty` GitHub repository when you clone it.
+-   Un-comment all of the code in @lst-query-ipums-api code block (lines 70 through 105) when you run the code in this file for the first time to download the IPUMS data.
+-   In @lst-load-ipums code block, you'd be asked to update the microdata file name (line number 126) that you download through the @lst-query-ipums-api block, so please make a note of it.
+
+## Get IPUMS Data {#get-ipums-data}
+
+This code book uses the 2017-2021 5-year ACS extract from the IPUMS API using R package `ipumsr`. To access this data, an IPUMS API key is required. This can be obtained by registering on the [IPUMS USA](https://uma.pop.umn.edu/usa/user/new?return_url=https%3A%2F%2Fusa.ipums.org%2Fusa-action%2Fmenu) website and creating an API key. For more information see the `ipumsr` [getting started vignette](https://tech.popdata.org/ipumsr/articles/ipums.html).
+
+```{r}
+#| label: query-ipums-api
+#| lst-label: lst-query-ipums-api
+#| lst-cap: Query IPUMS API
+
+# Run the code in this block the first time this notebook is executed to get the 
+# data and avoid repeated downloads 
+
+# define variables to be queried from IPUMS API
+
+# NOTE: running var_spec("CIHISPEED", data_quality_flags = TRUE) produced following error: Error in `ipums_api_request()`: 
+# ! API request failed with status 400.
+# ✖ CIHISPEED has data quality flags, but none are available in the selected samples
+
+# acs_vars <- list("YEAR", "MULTYEAR", "SAMPLE", "SERIAL", "CBSERIAL", "HHWT", 
+#              "CLUSTER", "STRATA", "GQ", "REGION", "STATEFIP", "COUNTYFIP", "PUMA",
+#              "HHINCOME", var_spec("CILAPTOP", data_quality_flags = TRUE), 
+#              var_spec("CITABLET", data_quality_flags = TRUE),
+#              "CIHISPEED", "CINETHH",
+#              "PERNUM", "PERWT", "RACE", "HISPAN")
+
+
+# define the IPUMS extract
+# acs_2021_extract <- ipumsr::define_extract_micro(
+#  collection = "usa",
+#  description = "2017-2021 ACS 5-yr Sample",
+#  samples = "us2021c",
+#  variables = acs_vars)
+
+# submit and wait for IPUMS extract
+# acs_ext_submit <- ipumsr::submit_extract(acs_2021_extract)
+# acs_ext_complete <- ipumsr::wait_for_extract(acs_ext_submit)
+
+# check if data download directory is present
+fs::dir_create(here("08_education/data/raw"))
+
+#download IPUMS extract
+# data_path <- ipumsr::download_extract(
+#  acs_ext_complete, 
+#  download_dir = here("08_education/data/raw")
+#  )
+
+```
+
+## Format Data {#format-data}
+
+Now, the downloaded data needs to be cleaned and formatted so that it can be used further to generate the metric. The 2017-2021 5-year ACS microdata extract for computer and internet use is in the form of household level data set with person level variables added for this analysis.
+
+### Clean Household-Level Data
+
+To analyze the data at the household level, only the first person sampled in the household is retained in the data.
+
+```{r}
+#| label: load-ipums
+#| lst-label: lst-load-ipums
+#| lst-cap: Load IPUMS Data
+
+# Manually set the file name downloaded in the previous code chunk which is 
+# 'usa_00018.xml' for me but will have some different value for whoever re-runs this
+
+micro_filepath <- "usa_00018.xml"
+
+# load acs data and filter for household level analysis
+acs5_2021_raw <- ipumsr::read_ipums_micro(
+  here(paste0("08_education/data/raw/", micro_filepath))
+  ) |>
+  filter(PERNUM == 1)
+
+```
+
+The IPUMS data consists of labelled vectors ([ipumsr](https://tech.popdata.org/ipumsr/articles/value-labels.html#remove-unused-value-labels)). We find the missing labels using the `ipums_var_info(acs5_2021_raw)` and inspecting the `val_labels` column.
+
+For the "Total household income" i.e. `HHINCOME` column, "N/A" values are denoted by `9999999` which needs to be updated before proceeding.
+
+```{r}
+#| label: handle-missingness
+
+# re-label `HHINCOME` when value is 9999999 denoting "N/A "
+
+acs5_2021_raw <- acs5_2021_raw |>
+  mutate(
+    HHINCOME = lbl_na_if(HHINCOME, ~ .lbl %in% c("N/A "))
+  )
+
+```
+
+Since the digital access metric is at the household level, individuals who live in group quarters need to be excluded from the data. For more information, see the [variable description](https://usa.ipums.org/usa-action/variables/GQ#codes_section) on IPUMS USA.
+
+Running `ipums_var_info(acs5_2021_raw)` shows the value labels for the group quarters variable `GQ`:
+
+val lbl\
+0 Vacant unit\
+1 Households under 1970 definition\
+2 Additional households under 1990 definition 3 Group quarters--Institutions\
+4 Other group quarters\
+5 Additional households under 2000 definition 6 Fragment
+
+```{r}
+#| label: remove-group-quarters
+
+# Only retain people who live in housing units in the data
+acs5_2021_raw <- acs5_2021_raw |>
+  filter((GQ %in% c(1,2,5)))
+
+# Check if only required GQ values remain in data
+assertthat::assert_that(all(acs5_2021_raw$GQ %in% c(1, 2, 5)))
+```
+
+FIPS codes require re-formatting by padding with leading zeros so that state codes are two digits, county codes are three digits, and place codes are five digits.
+
+```{r}
+#| label: format-fips-codes
+
+acs5_2021_raw <-
+  acs5_2021_raw |>
+  mutate(
+    across(c(STATEFIP, COUNTYFIP, PUMA), as.character),
+    STATEFIP = str_pad(STATEFIP, width = 2, pad = "0", side = "left"),
+    COUNTYFIP = str_pad(COUNTYFIP, width = 3, pad = "0", side = "left"),
+    PUMA = str_pad(PUMA, width = 5, pad = "0", side = "left")
+  ) |>
+  rename(
+    STATE = STATEFIP,
+    COUNTY = COUNTYFIP
+  ) |>
+  # Reformat the YEAR variable
+  mutate(YEAR = as.integer(YEAR))
+```
+
+### Computer and Internet Use Variables
+
+-   For measuring digital access, a composite variable `DIGITAL_ACCESS` is created using `CIHISPEED`, `CILAPTOP`, and `CITABLET` IPUMS variables.
+
+- `CILAPTOP` indicates whether the respondent or any member of their household owned or used a desktop, laptop, netbook, or notebook computer. 
+
+- `CITABLET` indicates whether the respondent or any member of their household owned or used a tablet or other portable wireless computer.
+
+-   `CINETHH` is derived from Question 9 in the ACS listed below:
+
+```         
+  9. At this house, apartment, or mobile home - do you or any member of this 
+      household have access to the internet?
+    [ ] Yes, by paying a cell phone company or Internet service provider
+    [ ] Yes, without paying a cell phone company of Internet service provider -> 
+    SKIP to question 11
+    [ ] No access to the Internet at this house, apartment, or mobile home -> 
+    SKIP to question 11
+```
+
+-   `CIHISPEED` is derived from Question 10, part (b) in the ACS listed below:
+
+```         
+  10. Do you or any member of this household have access to the Internet using a -
+
+  b) broadband (high speed) Internet service such as cable, fiber optic, or DSL 
+      service installed in this household?
+      [ ]Yes
+      [ ]No
+```
+
+We first investigate the unique values and labels that exist for the computer and internet use variables in the IPUMS data.
+
+```{r}
+#| label: data-exploration
+
+# Find unique values and corresponding label values in the data
+
+# In this data, we only observe values "1" and "2" corresponding to labels
+# "Yes" and "No" respectively for `CITABLET`
+unique(acs5_2021_raw$CITABLET)
+
+
+# In this data, we only observe values "1" and "2" corresponding to labels
+# "Yes" and "No" respectively for `CILAPTOP`
+unique(acs5_2021_raw$CILAPTOP)
+
+
+# In this data, we only observe values "0", "10" , and "20" corresponding to labels
+# "N/A (GQ)", "Yes (Cable modem, fiber optic or DSL service)", and "No" 
+# respectively for `CIHISPEED`
+
+#### NOTE: It seems like "N/A (GQ)" value exists in the data even after group quarters 
+# are removed from the data. Casual inspection of data frame suggests that even 
+# if a household is classified as a housing unit, it might still have value "N/A (GQ)"
+# in the `CIHISPEED` variable.
+unique(acs5_2021_raw$CIHISPEED)
+
+
+# In this data, we observe values "1", "2", and "3" corresponding to labels 
+# 'Yes, with a subscription to an Internet Service', 'Yes, without a subscription 
+# to an Internet Service' and 'No Internet access at this house, apartment, or 
+# mobile home' for `CINETHH`
+unique(acs5_2021_raw$CINETHH)
+```
+
+In the data, it seems that `CIHISPEED` has N/A(GQ) values present. This needs to be investigated because group quarters were filtered out from the data so it is not clear why the `CIHISPEED` variable would have `N/A(GQ)` values. Investigating based on [this](https://forum.ipums.org/t/cihispeed-group-quarters/3453) discussion on IPUMS forum.
+
+> We consider the `CINETHH` variable to find the universe of observations for households with digital access. This variable indicates whether any member of a household has access to the internet (by either paying or without paying a cellphone company) or nobody in the household has access to the internet.
+
+Since, `CINETHH` is the universe of observations, first, let's observe the relationship between `CINETHH` and `CIHISPEED` in relation to the `CIHISPEED` variable taking the value `0` corresponding to label `N/A(GQ)`.
+
+```{r}
+#| label: investigate-data-issue-1
+
+# Subset dataframe so that only `CIHISPEED` = 0 values are retained and check
+# the values that exist for `CINETHH`
+
+print(paste0("When `CIHISPEED` equals `0` i.e. 'N/A (GQ)' then `CINETHH` takes up ", 
+              "following values:"))
+
+acs5_2021_raw |>
+  filter(CIHISPEED==0) |>
+  distinct(CIHISPEED, CINETHH)
+```
+
+
+```{r}
+#| label: investigate-data-issue-2
+
+# Subset dataframe so that `CIHISPEED` = 0 values are removed and check
+# the values that exist for `CINETHH`
+
+print(paste0("When `CIHISPEED` does not equal `0` i.e. 'N/A (GQ)' then `CINETHH` ", 
+              "takes up following values:"))
+acs5_2021_raw |>
+  filter(CIHISPEED!=0) |>
+  distinct(CIHISPEED, CINETHH)
+```
+
+```{r}
+# Assert that when `CIHISPEED` == 0 then there aren't any instances where `CINETHH` is not equal to
+# either 3 or 2
+assertthat::assert_that(!any(
+                             acs5_2021_raw$CIHISPEED==0 & 
+                             !(acs5_2021_raw$CINETHH %in% c(3, 2))  
+                             ))
+
+```
+
+```{r}
+# Assert that when `CIHISPEED` != 0 then there aren't any instances where `CINETHH` is not equal to 1
+assertthat::assert_that(!any(
+                             acs5_2021_raw$CIHISPEED!=0 & 
+                             !(acs5_2021_raw$CINETHH %in% 1)  
+                             ))
+
+```
+
+The above results imply that `CIHISPEED` takes on 'N/A(GQ)' value when `CINETHH` indicates either 'No Internet access at this house, apartment, or mobile home' or 'Yes, without a subscription to an Internet Service'.
+
+It is reasonable to assume based on the data values in the IPUMS extract that whenever a household skipped to question 11 while answering question 9 referenced earlier (i.e. answered access to internet without subscription or no subscription for question 9), the corresponding value assigned to `CIHISPEED` was 'N/A(GQ)' as for these households the question of having access to paid high speed broadband was inapplicable.
+
+This finding tracks with the [IPUMS forum discussion](https://forum.ipums.org/t/cihispeed-group-quarters/3453) indicating that a household could have 'N/A(GQ)' values for reasons other than being categorized as a group quarter.
+
+In light of this, our assumption stands that the universe of households to answer questions regarding digital access comes from the data encapsulated by the `CINETHH` variable. This will feed into the denominator to compute share of digital access in a geography. The target households are those which answered Question 9 in the ACS. We will remove any households that have `CINETHH` equals `0` i.e. `N/A(GQ)` as they will not be a part of our target universe of households. 
+
+```{r}
+#| label: universe-for-digital-access
+
+# Remove `0` values labelled `N/A (GQ)` for `CINETHH` as they do not represent households of interest
+
+# Check if any `0` values exist in `CINETHH`
+if ( any(acs5_2021_raw$CINETHH == 0) ) {
+  
+  acs5_2021_raw <- acs5_2021_raw |> 
+                                 filter(CINETHH!=0)
+} else {
+  print("Variable `CINETHH` represents households of interest.")
+}
+
+```
+
+### Digital Access
+
+Create `DIGITAL_ACCESS`as a composite binary variable that takes on the value `1` when a household has access to high speed internet and either a tablet or laptop computer or both.
+
+For computing `DIGITAL_ACCESS`, we consider that access relies on whether `CIHISPEED` indicates household has access to high speed internet or not. If `CIHISPEED` has value `N/A(GQ)` after filtering for group quarters, we assume that the corresponding `DIGITAL_ACCESS` for those households would be `N/A` as they did not answer question 10 and instead skipped to Question 11.
+
+```{r}
+#| label: create-composite-digital-access
+
+# Create `DIGITAL_ACCESS` composite binary variable using `CIHISPEED`, `CILAPTOP`, 
+# and `CITABLET`
+
+acs5_2021_raw <- acs5_2021_raw |>
+  mutate(
+    DIGITAL_ACCESS = case_when(
+      ((CILAPTOP == 1 | CITABLET == 1) & CIHISPEED == 10) ~ 1,
+      CIHISPEED == 20 ~ 0,
+      .default = NA_integer_)
+    )
+
+skimr::skim(acs5_2021_raw$DIGITAL_ACCESS)
+
+```
+
