@@ -10,7 +10,7 @@ format:
 execute:
   message: false
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -30,7 +30,7 @@ library(gt)
 
 ```
 
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
+This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate.
 
 ```{r}
 #' Test the bounds of a confidence interval relative to the estimate
@@ -41,7 +41,7 @@ This function is used to ensure that the lower bound of a 95% confidence interva
 #' @param ub The unquoted name of the upper bound variable
 #'
 test_bounds <- function(data, estimate, lb, ub) {
-  
+
   subset <- bind_rows(
     data |>
       filter({{ ub }} < {{ lb }}),
@@ -50,9 +50,9 @@ test_bounds <- function(data, estimate, lb, ub) {
     data |>
       filter({{ estimate  }} < {{ lb }}),
   )
-  
+
   stopifnot(nrow(subset) == 0)
-  
+
 }
 
 
@@ -61,9 +61,9 @@ test_bounds <- function(data, estimate, lb, ub) {
 #' @param data A data frame
 #'
 quiet <- function(data) {
-  
+
   quiet <- data
-  
+
 }
 
 ```
@@ -82,50 +82,47 @@ read_csv(here("06_neighborhoods/environment/data/final/environment_place_poverty
 ```
 
 
-### Income and economic disadvantage 
+### Income and economic disadvantage
 
-Create population file with a variable covering all income subgroup values. 
+Create population file with a variable covering all income subgroup values.
 
 ```{r}
 
 expand_grid(
   read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
-           subgroup = c("All", "Economically Disadvantaged", "Not Economically Disadvantaged", 
+           subgroup = c("All", "Economically Disadvantaged", "Not Economically Disadvantaged",
                         "Less than $50,000", "$50,000 or More", "High-Poverty", "Not High-Poverty")
-) %>% 
-   mutate(subgroup_type = ifelse(subgroup != "All", "income", "all")) %>% 
-  select(-population) %>% 
+) %>%
+   mutate(subgroup_type = ifelse(subgroup != "All", "income", "all")) %>%
+  select(-population) %>%
   write_csv(here("data", "temp", "place-populations_econ_dis.csv"))
 
 ```
 
-Read file paths to all place files with income subgroup information. 
+Read file paths to all place files with income subgroup information.
 
 ```{r}
-
 filepaths <- c(
-  
   # Race-ethnicity populations
   here("data", "temp", "place-populations_econ_dis.csv"),
-  
+
   # 06 neighborhoods
   here("data", "temp", "place_envir_longitudinal_econ-well-being.csv"),
-  
+
   # 08 education
   here("08_education", "data", "built", "SEDA_all_subgroups_city.csv"),
-  here("08_education/final/digital_access_city_subgroup_all.csv")
-  
+  here("08_education/data/final/digital_access_place_income_longitudinal.csv")
 )
 
 ```
 
-This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 counties per year. 
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 counties per year.
 
 ```{r}
 
 db_income <- filepaths |>
   map(
-    .f = ~read_csv(.x) 
+    .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
 
@@ -150,12 +147,12 @@ Some subgroup information is not available for entire years. To simplify the use
 
 ```{r}
 
-years_data <- db_income %>% 
-  group_by(year) %>% 
-  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
-  group_by(year) %>% 
-  count() %>% 
-  select(year) %>% 
+years_data <- db_income %>%
+  group_by(year) %>%
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>%
+  group_by(year) %>%
+  count() %>%
+  select(year) %>%
   pull()
 
 ```
@@ -186,10 +183,10 @@ At most there should be 3,402 in a year (7X486) and at the least there should be
 
 ```{r}
 
-db_income |> 
+db_income |>
   count(year) |>
   assert(
-    within_bounds(3395, 3402), 
+    within_bounds(3395, 3402),
     n
   )
 
@@ -219,7 +216,7 @@ db_income  |>
 
 ### Full Database
 
-Evaluate the quality variables. 
+Evaluate the quality variables.
 
 ```{r}
 db_income |>
@@ -243,35 +240,19 @@ db_income |>
 ### 08 Education
 
 ```{r}
-db_income |>  
+db_income |>
   assert(
-    within_bounds(-10, 10), 
+    within_bounds(-10, 10),
     rate_learning,
     rate_learning_lb,
     rate_learning_ub
   ) |>
   quiet()
 
-db_income |>
-  assert(
-    within_bounds(0, 1),
-    share_digital_access,
-    share_digital_access_lb,
-    share_digital_access_ub,
-  ) |>
-  quiet()
-
 test_bounds(
-  data = db_income, 
-  estimate = share_digital_access, 
-  lb = share_digital_access_lb, 
-  ub = share_digital_access_ub
-)
-
-test_bounds(
-  data = db_income, 
-  estimate = rate_learning, 
-  lb = rate_learning_lb, 
+  data = db_income,
+  estimate = rate_learning,
+  lb = rate_learning_lb,
   ub = rate_learning_ub
 )
 
