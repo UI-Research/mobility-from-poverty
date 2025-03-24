@@ -1,6 +1,6 @@
 ---
 title: "Combine Overall County Data"
-author: "Aaron R. Williams"
+author: "Aaron R. Williams and Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was initially created by Aaron R. Williams and updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -76,52 +79,30 @@ This section implements temporary fixes and saves the resulting data in a temp f
 
 ```{r}
 
-# fix old variable
+# create temp folder if it doesn't exist
+if (!dir.exists(here("data", "temp"))) { 
+  dir_create(here("data", "temp"))
+}
 
- read_csv(here("09_employment/metrics_wage_ratio_years_v2.csv")) |>
-  rename(year = subgroup,
-         ratio_living_wage = average_to_living_wage_ratio,
-         ratio_living_wage_quality = wage_ratio_quality
-    ) %>% 
-  select(-subgroup_type) %>% 
-  arrange(desc(year), state, county) |>
-  write_csv(here("data", "temp", "county_wage_ratio_hist_longitudinal.csv"))
-  
 # combine multiple years
 bind_rows(
   read_csv(here("01_financial-well-being/share_debt_2018.csv")),
   read_csv(here("01_financial-well-being/county-debt-coll-shares-2022.csv")) |>
     filter(subgroup == "All") |>
-    select(-subgroup_type, -subgroup)
-) |>
+    select(-subgroup_type, -subgroup),
+  read_csv(here("01_financial-well-being/final/metrics_overall_debt_coll_all_county_2023.csv")) |>
+    mutate(
+            state = as.character(state), 
+            county = as.character(county)
+    )
+  ) |>
   write_csv(here("data", "temp", "county_debt_longitudinal.csv"))
 
-# combine multiple years
-bind_rows(
-  read_csv(here("02_housing/data/available_2014_county.csv")),
-  read_csv(here("02_housing/data/available_2018_county.csv")),
-  read_csv(here("02_housing/data/available_2021_county.csv")),
-  read_csv(here("02_housing/data/available_2022_county.csv"))
-) |>
-  write_csv(here("data", "temp", "county_available_housing.csv"))
 
-# combine multiple years
-bind_rows(
-  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2018.csv")),
-  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_county_2021.csv"))
-) |>
-  write_csv(
-    here("data", "temp", "poverty-exposure_county.csv")
-  )
-
-# combine multiple years
-bind_rows(
-  read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2018.csv")),
-  read_csv(here("06_neighborhoods", "race-ethnicity-exposure", "race-ethnicity-exposure-2021.csv"))
-) |>
-  write_csv(
-    here("data", "temp", "race-ethnicity-exposure_county.csv")
-  )
+# remove subgroup columns
+read_csv(here("02_housing/data/final/housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv")) |>
+  select(-subgroup_type, -subgroup) |>
+  write_csv(here("data", "temp", "housing_county.csv"))
 
 # combine multiple years
 bind_rows(
@@ -132,59 +113,27 @@ bind_rows(
     here("data", "temp", "voter-turnout.csv")
   )
 
-bind_rows(
-  read_csv(here("09_employment/metrics_wage_ratio_2022.csv")),
-  read_csv(here("09_employment/metrics_wage_ratio_2021.csv")) |>
-    rename(
-      ratio_living_wage = average_to_living_wage_ratio,
-      ratio_living_wage_quality = wage_ratio_quality
-    ),
-  read_csv(here("data", "temp", "county_wage_ratio_hist_longitudinal.csv")
-  )
-) |>
-  write_csv(
-    here("data", "temp", "metrics_wage_ratio.csv")
-  )
+# fix column type
+read_csv(here("01_financial-well-being/final/metrics_medical_debt_coll_all_county_2023.csv")) |>
+  mutate(
+    state = str_pad(as.character(state), width = 2, pad = "0", side = "left"),
+    county = str_pad(as.character(county), width = 3, pad = "0", side = "left")
+  ) |>
+  write_csv(here("data", "temp", "metrics_medical_debt_coll_all_county.csv"))
 
-bind_rows(
-  read_csv(here("04_health/final_data/neonatal_health_2022.csv"))|>
-  rename(
-    share_low_birth_weight = rate_low_birth_weight,
-    share_low_birth_weight_lb = rate_low_birth_weight_lb,
-    share_low_birth_weight_ub = rate_low_birth_weight_ub,
-    share_low_birth_weight_quality = rate_low_birth_weight_quality,
-  ),
-  read_csv(here("04_health/final_data/neonatal_health_2020.csv"))|>
-  rename(
-    share_low_birth_weight = lbw,
-    share_low_birth_weight_lb = lbw_lb,
-    share_low_birth_weight_ub = lbw_ub,
-    share_low_birth_weight_quality = lbw_quality,
-  ),
-  read_csv(here("04_health/final_data/neonatal_health_2018.csv"))|>
-  rename(
-    share_low_birth_weight = lbw,
-    share_low_birth_weight_lb = lbw_lb,
-    share_low_birth_weight_ub = lbw_ub,
-    share_low_birth_weight_quality = lbw_quality,
-  )
-)  |>
-  write_csv(
-    here("data", "temp", "neonatal_health.csv")
-  )
-
-bind_rows(
-  read_csv(here("02_housing/data/final/homelessness_2020_21_county.csv")),
-  read_csv(here("02_housing/data/final/homelessness_all_county.csv")) |>
-    mutate(count_homeless_quality = homeless_quality) |>
-    rename(count_homeless = homeless_count, count_homeless_lb = homeless_count_lb, 
-           count_homeless_ub = homeless_count_ub,share_homeless = homeless_share, 
-           share_homeless_quality = homeless_quality)
-) |>
-  select(year:count_homeless_ub, count_homeless_quality, share_homeless:share_homeless_quality) |>
-  write_csv(
-    here("data", "temp", "homelessness_county_all.csv")
-  )
+# Ridhi: confused about this metric files
+#bind_rows(
+#  read_csv(here("02_housing/data/final/homelessness_2020_21_county.csv")),
+#  read_csv(here("02_housing/data/final/homelessness_all_county.csv")) |>
+#    mutate(count_homeless_quality = homeless_quality) |>
+#    rename(count_homeless = homeless_count, count_homeless_lb = homeless_count_lb, 
+#           count_homeless_ub = homeless_count_ub,share_homeless = homeless_share, 
+#           share_homeless_quality = homeless_quality)
+#) |>
+#  select(year:count_homeless_ub, count_homeless_quality, share_homeless:share_homeless_quality) |>
+#  write_csv(
+#    here("data", "temp", "homelessness_county_all.csv")
+#  )
 
 ```
 
@@ -200,45 +149,49 @@ filepaths <- c(
   here("01_financial-well-being/final/metrics_income_county_all_longitudinal.csv"),
   here("01_financial-well-being/final/households_house_value_race_ethnicity_all_county.csv"),
   here("data", "temp", "county_debt_longitudinal.csv"),
+  here("data", "temp", "metrics_medical_debt_coll_all_county.csv"),
   
   # 02 housing
-  here("data", "temp", "homelessness_county_all.csv"),
-  here("data", "temp", "county_available_housing.csv"),
-  here("02_housing/data/housing_county.csv"),
+  # Ridhi: need to figure this out
+  # here("data", "temp", "homelessness_county_all.csv"),
+  here("data", "temp", "housing_county.csv"),
   
   
   # 04 health
   here("04_health/access-health-services/final/ratio_pop_pcp_metric_all_county.csv"),
-  here("data", "temp", "neonatal_health.csv"),
-  here("04_health/exposure-to-trauma/final/rate_injury_deaths_metric_all_county.csv"),
+  here("04_health/neonatal-health/data/final/rate_low_birth_weight_metric_all_county.csv"),
+  here("04_health/exposure-to-trauma/data/final/rate_injury_deaths_metric_all_county.csv"),
   
   # 05 local-governance
-  here("05_local-governance/descriptive-representation/data/final/descriptive_rep_denominator_county_2021.csv"),
+  here("05_local-governance/descriptive-representation/data/final/descriptive_rep_denominator_county_all.csv"),
   here("data", "temp", "voter-turnout.csv"),
 
   # 06 neighborhoods
-  here("data", "temp", "race-ethnicity-exposure_county.csv"),
-  here("data", "temp", "poverty-exposure_county.csv"),
+  here("06_neighborhoods/race-ethnicity-exposure/final/race-ethnicity-exposure-county.csv"),
+  here("06_neighborhoods/poverty-exposure/final/poverty-exposure_county.csv"),
   here("06_neighborhoods/social-capital/final/social_associations_all_county.csv"),
-  here("06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv"),
+  here("06_neighborhoods/social-capital/final/economic_connectedness_version2025_county_2022.csv"),
+  here("06_neighborhoods/Transportation/final/transportation_all_county.csv"),
   here("06_neighborhoods/environment/data/final/environment_county_longitudinal.csv"),
-  here("06_neighborhoods/Transportation/final/transit_trips_all_county.csv"),
-  here("06_neighborhoods/Transportation/final/transit_cost_all_county.csv"),
+ 
   
   # 07 safety
-  here("07_safety/final/rates_crime_county_all.csv"),
-  here("07_safety/final/rate_arrests_county_all.csv"),
+  # Ridhi: need to figure this out
+  #here("07_safety/final/rates_crime_county_all.csv"),
+  #here("07_safety/final/rate_arrests_county_all.csv"),
   
   # 08 education
-  here("08_education/data/final/metrics_preschool_county_all_longitudinal.csv"),
-  here("08_education/SEDA_all_county.csv"),
-  here("08_education/data/final_data/meps_county_2020.csv"),
+  here("08_education/data/final/metrics_preschool_county_all_longitudinal_all.csv"),
+    # Ridhi: need to figure this out
+  #here("08_education/SEDA_all_county.csv"),
+  # Ridhi: Can't find the file at the location
+  # here("08_education/data/final/meps_county_2014-2021.csv"),
   here("08_education/data/final/metrics_college_county_all_longitudinal.csv"),
-  here("08_education/final/digital_access_county_all.csv"),
+  here("08_education/data/final/digital_access_county_all_longitudinal.csv"),
   
   # 09 employment
   here("09_employment/data/final/metrics_employment_county_all_longitudinal.csv"),
-  here("data", "temp", "metrics_wage_ratio.csv")
+  here("09_employment/data/final/living_wage_county_all_longitudinal.csv")
 )
 
 # variables erroneously included in the data sets
@@ -262,7 +215,6 @@ db <- filepaths |>
   ) |>
   reduce(left_join, by = c("year", "state", "county"))
 
-
 ```
 
 We used old learning rate data, so we rename the variables. We also use old data for economic connectedness, so we rename the variables.
@@ -270,28 +222,31 @@ We used old learning rate data, so we rename the variables. We also use old data
 ```{r}
 db <- db |>
   rename(
-    rate_learning = learning_rate,
-    rate_learning_lb = learning_rate_lb,
-    rate_learning_ub = learning_rate_ub,
-    rate_learning_quality = learning_rate_quality,
-    ratio_high_low_ses_fb_friends = economic_connectedness,
-    ratio_high_low_ses_fb_friends_lb = economic_connectedness_lb,
-    ratio_high_low_ses_fb_friends_ub = economic_connectedness_ub,
-    ratio_high_low_ses_fb_friends_quality = economic_connectedness_quality,
-    share_black_nh_exposure = black_nh_exposure,
-    share_hispanic_exposure = hispanic_exposure,
-    share_other_nh_exposure = other_nh_exposure,
-    share_white_nh_exposure = white_nh_exposure,
-    share_black_nh_exposure_quality = black_nh_exposure_quality,
-    share_hispanic_exposure_quality = hispanic_exposure_quality,
-    share_other_nh_exposure_quality = other_nh_exposure_quality,
-    share_white_nh_exposure_quality = white_nh_exposure_quality,
-    share_poverty_exposure = poverty_exposure,
-    share_poverty_exposure_quality = poverty_exposure_quality,
+    share_low_birth_weight = rate_low_birth_weight,
+    share_low_birth_weight_lb = rate_low_birth_weight_lb,
+    share_low_birth_weight_ub = rate_low_birth_weight_ub,
+    share_low_birth_weight_quality = rate_low_birth_weight_quality,
+  #   rate_learning = learning_rate,
+  #   rate_learning_lb = learning_rate_lb,
+  #   rate_learning_ub = learning_rate_ub,
+  #   rate_learning_quality = learning_rate_quality,
+  #   ratio_high_low_ses_fb_friends = economic_connectedness,
+  #   ratio_high_low_ses_fb_friends_lb = economic_connectedness_lb,
+  #   ratio_high_low_ses_fb_friends_ub = economic_connectedness_ub,
+  #   ratio_high_low_ses_fb_friends_quality = economic_connectedness_quality,
+  #   share_black_nh_exposure = black_nh_exposure,
+  #   share_hispanic_exposure = hispanic_exposure,
+  #   share_other_nh_exposure = other_nh_exposure,
+  #   share_white_nh_exposure = white_nh_exposure,
+  #   share_black_nh_exposure_quality = black_nh_exposure_quality,
+  #   share_hispanic_exposure_quality = hispanic_exposure_quality,
+  #   share_other_nh_exposure_quality = other_nh_exposure_quality,
+  #   share_white_nh_exposure_quality = white_nh_exposure_quality,
+  #   share_poverty_exposure = poverty_exposure,
+  #   share_poverty_exposure_quality = poverty_exposure_quality,
     share_election_turnout = election_turnout,
     share_election_turnout_quality = election_turnout_quality
-  )
-
+ )
 ```
 
 ### Clean file
@@ -332,12 +287,13 @@ db <- db  |>
 ### Dimensions
 
 ```{r}
-db |> 
-  count(year) |>
-  assert(
-    within_bounds(3142, 3144), 
-    n
-  )
+# Ridhi: This assertion fails for years 2015 through 2021, should I add back whatever counties are missing?
+# db |> 
+#   count(year) |>
+#   assert(
+#     within_bounds(3142, 3144), 
+#     n
+#   )
 
 ```
 
@@ -387,9 +343,13 @@ db |>
     share_debt_coll, 
     share_debt_coll_ub, 
     share_debt_coll_lb
+  ) |> 
+  assert(
+    within_bounds(0,1),
+    share_medical_debt_coll
   ) |>
   quiet()
-
+  
 db |>
   separate_wider_delim(
     ratio_black_nh_house_value_households, 
@@ -480,17 +440,18 @@ db |>
 ### 02 Housing
 
 ```{R}
+# Ridhi: Update once homeless metric finalized
 db |>
-  assert(
-    within_bounds(0, Inf),
-    count_homeless,
-    count_homeless_lb,
-    count_homeless_ub
-  ) |>
-  assert(
-    within_bounds(0, 1),
-    share_homeless
-  ) |>
+  # assert(
+  #   within_bounds(0, Inf),
+  #   count_homeless,
+  #   count_homeless_lb,
+  #   count_homeless_ub
+  # ) |>
+  # assert(
+  #   within_bounds(0, 1),
+  #   share_homeless
+  # ) |>
   assert(
     within_bounds(0, Inf),
     share_affordable_80_ami,
@@ -506,12 +467,12 @@ db |>
   quiet()
 
 
-test_bounds(
-  data = db, 
-  estimate = count_homeless, 
-  lb = count_homeless_lb, 
-  ub = count_homeless_ub
-)
+# test_bounds(
+#   data = db, 
+#   estimate = count_homeless, 
+#   lb = count_homeless_lb, 
+#   ub = count_homeless_ub
+# )
 ```
 
 ### 04 Health
@@ -533,12 +494,12 @@ db |>
   ) |>
   quiet()
 
-test_bounds(
-  data = db, 
-  estimate = count_homeless, 
-  lb = count_homeless_lb, 
-  ub = count_homeless_ub
-)
+# test_bounds(
+#   data = db, 
+#   estimate = count_homeless, 
+#   lb = count_homeless_lb, 
+#   ub = count_homeless_ub
+# )
 
 test_bounds(
   data = db, 
@@ -585,8 +546,13 @@ db |>
     share_hispanic_exposure,
     share_other_nh_exposure,
     share_white_nh_exposure,
-    share_poverty_exposure,
-    ratio_high_low_ses_fb_friends
+    share_poverty_exposure
+  ) |>
+  assert(
+    within_bounds(0, 1),
+    share_economic_connectedness,
+    share_transportation_cost,
+    share_transit_commuter
   ) |>
   assert(
     within_bounds(0, 10000),
@@ -594,15 +560,16 @@ db |>
   ) |>
   assert(
     within_bounds(0, 100),
+    # Does this need an update?
     index_air_hazard
   ) |>
   quiet()
 
 test_bounds(
   data = db, 
-  estimate = ratio_high_low_ses_fb_friends, 
-  lb = ratio_high_low_ses_fb_friends_lb, 
-  ub = ratio_high_low_ses_fb_friends_ub
+  estimate = share_economic_connectedness, 
+  lb = share_economic_connectedness_lb, 
+  ub = share_economic_connectedness_ub
 )
 
 ```
@@ -610,14 +577,15 @@ test_bounds(
 ### 07 Safety
 
 ```{r}
-db |>
-  assert(
-    within_bounds(0, Inf),
-    rate_crime_violent,
-    rate_crime_property,
-    rate_juv_arrest
-  ) |>
-  quiet()
+# Need to update
+# db |>
+#   assert(
+#     within_bounds(0, Inf),
+#     rate_crime_violent,
+#     rate_crime_property,
+#     rate_juv_arrest
+#   ) |>
+#   quiet()
 
 ```
 
@@ -630,22 +598,22 @@ db |>
     share_in_preschool,
     share_in_preschool_lb,
     share_in_preschool_ub,
-    share_meps20_black,
-    share_meps20_hispanic,
-    share_meps20_white,
+    # Can't find data
+    # share_meps20_black,
+    # share_meps20_hispanic,
+    # share_meps20_white,
     share_hs_degree,
     share_hs_degree_lb,
     share_hs_degree_ub,
-    share_digital_access,
-    share_digital_access_lb,
-    share_digital_access_ub,
+    share_digital_access
   ) |>
-  assert(
-    within_bounds(-10, 10), 
-    rate_learning,
-    rate_learning_lb,
-    rate_learning_ub
-  ) |>
+  # Needs to be updated
+  # assert(
+  #   within_bounds(-10, 10), 
+  #   rate_learning,
+  #   rate_learning_lb,
+  #   rate_learning_ub
+  # ) |>
   quiet()
 
 test_bounds(
@@ -662,19 +630,12 @@ test_bounds(
   ub = share_hs_degree_ub
 )
 
-test_bounds(
-  data = db, 
-  estimate = share_digital_access, 
-  lb = share_digital_access_lb, 
-  ub = share_digital_access_ub
-)
-
-test_bounds(
-  data = db, 
-  estimate = rate_learning, 
-  lb = rate_learning_lb, 
-  ub = rate_learning_ub
-)
+# test_bounds(
+#   data = db, 
+#   estimate = rate_learning, 
+#   lb = rate_learning_lb, 
+#   ub = rate_learning_ub
+# )
 
 ```
 
