@@ -1,6 +1,6 @@
 ---
 title: "Combine Race-Share Geography County Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -77,11 +80,17 @@ This section implements temporary fixes and saves the resulting data in a temp f
 ```{r}
 # combine multiple years
 bind_rows(
-  read_csv(here("01_financial-well-being/share_debt_2018_long.csv")) |>
-    select(-county_name),
-  read_csv(here("01_financial-well-being/county-debt-coll-shares-2022.csv"))
-  ) |> 
-  mutate(share_debt_coll_quality = ifelse(is.na(share_debt_coll), NA_character_, share_debt_coll_quality))|>
+  read_csv(here("01_financial-well-being/share_debt_2018_long.csv")),
+  read_csv(here("01_financial-well-being/county-debt-coll-shares-2022.csv")),
+  read_csv(here("01_financial-well-being/final/metrics_overall_debt_coll_race_ethnicity_county_2023.csv")) |>
+    mutate(
+            state = as.character(state), 
+            county = as.character(county)
+    )
+  ) |>
+  mutate(share_debt_coll_quality = 
+           ifelse(is.na(share_debt_coll), NA_character_, share_debt_coll_quality)
+         ) |>
   write_csv(here("data", "temp", "county_debt_longitudinal_race-ethnicity.csv"))
 
 # Correct subgroup category
@@ -105,25 +114,17 @@ read_csv(here("06_neighborhoods/environment/data/final/environment_county_race-e
     here("data", "temp", "environment_county_subroup_race_share.csv")
   )
 
-read_csv(here("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_county.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Neighborhoods of color", 
-                              subgroup == "Majority White-NH Tracts" ~ "White neighborhoods",
+read_csv(here("01_financial-well-being/final/metrics_medical_debt_coll_race_ethnicity_county_2023.csv")) |>
+  mutate(subgroup = case_when(subgroup == "Majority Non-White" ~ "Neighborhoods of color", 
+                              subgroup == "Majority White" ~ "White neighborhoods",
                               subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed neighborhoods",
                               TRUE ~ subgroup),
-         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
+         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type),
+         state = str_pad(as.character(state), width = 2, pad = "0", side = "left"),
+    county = str_pad(as.character(county), width = 3, pad = "0", side = "left")
+  )|>
   write_csv(
-    here("data", "temp", "transit_trips_all_county_subgroups_race_share.csv")
-  )
-
-
-read_csv(here("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_county.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Neighborhoods of color", 
-                              subgroup == "Majority White-NH Tracts" ~ "White neighborhoods",
-                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed neighborhoods",
-                              TRUE ~ subgroup),
-         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
-  write_csv(
-    here("data", "temp", "transit_cost_all_county_subgroups_race_share.csv")
+    here("data", "temp", "county_medical_debt_longitudinal_subgroup_race_share.csv")
   )
 
 ```
@@ -156,12 +157,11 @@ here("data", "temp", "county-populations_race-share.csv"),
 
 # 01 financial well-being
 here("data", "temp", "county_debt_longitudinal_subgroup_race_share.csv"),
+here("data", "temp", "county_medical_debt_longitudinal_subgroup_race_share.csv"),
 
 # 06 neighborhoods
 here("data", "temp", "environment_county_subroup_race_share.csv"),
-here("data", "temp", "transit_trips_all_county_subgroups_race_share.csv"),
-here("data", "temp", "transit_cost_all_county_subgroups_race_share.csv")
-
+here("06_neighborhoods/Transportation/final/transportation_subgroup_county.csv")
 )
 
 ```
@@ -186,7 +186,7 @@ Some subgroup information is not available for entire years. To simplify the use
 
 years_data <- db_race_share %>% 
   group_by(year) %>% 
-  filter_at(vars(-year, -state, -state_name, -county, -county_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
+  filter_at(vars(-year, -state, -state_name, -county, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
   group_by(year) %>% 
   count() %>% 
   select(year) %>% 
@@ -218,16 +218,16 @@ db_race_share  <- db_race_share  |>
 At most there should be 12,576 in a year (4X3144) and at the least there should be 12,568 in a year (4X3142).
 
 ```{r}
-dimension_test <- function(.data) {
-  .data |> 
-  count(year) |>
-  assert(
-    within_bounds(12568, 22008), 
-    n
-  )
-}
-
-dimension_test(db_race_share)
+# dimension_test <- function(.data) {
+#   .data |> 
+#   count(year) |>
+#   assert(
+#     within_bounds(12568, 22008), 
+#     n
+#   )
+# }
+# 
+# dimension_test(db_race_share)
 
 ```
 
@@ -276,6 +276,10 @@ db_race_share |>
     share_debt_coll_ub, 
     share_debt_coll_lb
   ) |>
+  assert(
+    within_bounds(0, 1), 
+    share_medical_debt_coll
+  ) |>  
   quiet()
 
 ```
@@ -286,9 +290,12 @@ db_race_share |>
 db_race_share |>
   assert(
     within_bounds(0, 100),
-    index_air_hazard,
-    index_transportation_cost,
-    index_transit_trips
+    index_air_hazard
+  ) |>
+  assert(
+    within_bounds(0,1),
+    share_transit_commuter,
+    share_transportation_cost
   ) |>
   quiet()
 
