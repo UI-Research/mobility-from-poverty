@@ -6,9 +6,9 @@
 // Function call: evaluate_final_data
 // Inputs:
 //   exp_form_path (str): the file path (including csv name) to the expectation form for this data file
-global exp_form_path "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\10a_final-evaluation\evaluation_form_homeless_student_place"
+global exp_form_path "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\10a_final-evaluation\evaluation_form_homeless_student_race_eth_place"
 //   data (str): the data that is staged to be read out as the final file
-global data "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\02_housing\data\final\homelessness_2014-2018_city"
+global data "C:\Users\ekgut\OneDrive\Desktop\urban\Github\mobility-from-poverty\02_housing\data\final\homelessness_2019-2022_subgroups_city"
 //   geography (str): either "place" or "county" depending on the level of data being tested
 global geography "place"
 //   subgroups (logical): a true or false value indicating if the final file has subgroups'
@@ -40,20 +40,10 @@ program define evaluate_final_data
 	global state = "state"
     global year = "year"
 	*a gloabl for all the years listed in the final eval form
-	preserve
 	gen year_form = subinstr(allyearsusenospace, ";", " ", .)
 	global year_form = year_form[_n]
+	*subgroup global 
 	/*
-	split year_form, gen(n) destring
-	gen obs=_n
-	keep if obs==1
-	reshape long n, i(year_form) j(num_years)
-	valuesof n
-	global year_form = r(values)
-	restore
-	*a global for all subgroup types
-	*/
-	preserve
 	if subgrouptypeleaveblankifnone != "" {
 	split subgroupvaluesincludeallanduseno, gen(subgroupvalues) p(;)
 	gen obs=_n
@@ -61,8 +51,8 @@ program define evaluate_final_data
 	reshape long subgroupvalues, i(subgroupvaluesincludeallanduseno) j(num_types)
 	valuesof subgroupvalues
 	global subgroupvalues = r(subgroupvalues)
-	restore
 	}
+	*/
 	
     // Read in the data
     import delimited using $data, clear stringcols(_all)
@@ -139,25 +129,40 @@ program define evaluate_final_data
         exit 1
 		}
 	restore
-/*	
+
 	// Check if the subgroups in final eval form are same in output file
    preserve
-	if "$subgroups" != "" {
-	bysort year: gen obs=_n
+	if subgroup_type != "" {
+	bysort year subgroup: gen obs=_n
 	keep if obs==1
-	destring year, replace
-	valuesof year
-	gen year_data = r(values)
-	capture confirm year_data = "$year_form"
-    if _rc {
-        di as error "Years do not match those found in the data."
+	drop obs
+	sort year subgroup
+	bysort year: gen obs=_n
+	egen max = max(obs)
+	keep subgroup year obs
+	reshape wide subgroup, i(year) j(obs) 
+	forvalues n = 1/max {
+	gen subgroupvalues_data = subgroup1 + ";" + subgroup2 
+	
+	
+	
+	/*
+	
+	global subgroup_obs = r(values)
+	foreach 
+	reshape wide subgroup, i(tot) j(obs)
+	valuesof subgroup
+	global subgroupvalues_data = r(values)
+	if "$subgroupvalues" == "$subgroupvalues_data" {
+		di "Subgroup names match those in the data"
+	else {
+        di as error "Subgroup names do not match those in the data."
         exit 1
-    }
+		}
 	restore
-	*/
+	
 end
 
 evaluate_final_data $data $exp_form_path "place" 0 1
 
-// Example usage:
-// evaluate_final_data "path/to/expectation_form.csv" "path/to/data.csv" "place" 0 1
+
