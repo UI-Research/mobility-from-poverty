@@ -1,0 +1,1360 @@
+---
+title: "Juvenile Arrests - Place"
+author: "Vincent Pancini"
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: false
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(tidylog)
+library(urbnthemes)
+
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+
+set_urbn_defaults(style = "print")
+
+```
+
+This file creates the place-level metric for juvenile arrests per 100,000 juveniles (age 10-17) for years 2021-2022.
+
+All data used for the creation of metrics in this program are available on Box [here](https://urbanorg.box.com/s/3emanjkl5rw1jhcnj3zuiwddt3x6s70u). Data stored on Box are only available to Urban Institute researchers.
+
+This file assumes that you have cloned the GitHub repository for this project to your local computer. You can find the project repository [here](https://github.com/UI-Research/mobility-from-poverty) and learn how to clone a repository [here](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+
+# 0. Background and Changes
+This section provides background information for the data used to create this metric and describes changes from the previous round of metric updates.
+
+## 0.1 Background
+The creation of this metric relies on data from the FBI's National Incident-Based Reporting System (NIBRS) data. To learn more about the data, see criminologist Jacob Kaplan's book ["Decoding FBI Crime Data"](https://ucrbook.com/nibrs-overview.html). There are two important things to consider in the creation of this metric:
+
+1. Most police agencies do not report NIBRS data prior to 2021. In 2019, only 8,500 out of approximately 18,000 police agencies in the United States (covering about 45% of the US population) reported NIBRS data. Therefore, we do not create metrics using this data from years prior to 2021. Many agencies still do not submit data to NIBRS, and those that do may not submit complete information, so this metric is inherently inaccurate.
+2. Data may become more comprehensive over time as more agencies report their information. E.g., the full 2022 NIBRS data may not be available until later in 2023. Therefore, previous years should be re-run with each metric update, and the values for the same year are not expected to match in newer metric updates.
+
+We use criminologist Jacob Kaplan's pre-processed NIBRS data available [here](https://dataverse.harvard.edu/dataverse/ucrdata) instead of raw data downloaded directly from the FBI. Instructions for downloading the data are included in the next section.
+
+The age bracket of ages 10 to 17 was chosen for this metric because the majority of states have an age of adult criminal liability of 18, at least one state has a minimum age of criminal liability of 12, and arrests of very young children are unlikely. Each instance of an arrest, citation, or summons for an offense is counted as an arrest. An individual can be arrested more than once, and therefore rates constructed are of arrests and not of persons arrested. Arrest rates are calculated for all offense types available in NIBRS data, including offenses against property, persons, and society.
+
+## 0.2 Changes from previous round of updates
++ Added the newest year of data, 2023.
++ Previous versions of the metric relied on two files: One that separately tried to match place FIPS codes onto the agency-level data and brought in population denominators from the ACS, and one that actually calculated the metric. I've integrated the two programs into one in this round of updates to be more straightforward and intuitive.
++ Access to the data changed from OpenICPSR to Harvard Dataverse, and the storage format of the data changed. Therefore, the section of the program that reads in the data has changed.
++ The code for this metric used to contain a section that classified crimes into `violent` and `property` crimes. However, this classification isn't used in the calculation of juvenile arrest rates and has been removed in this version.
++ Last update, the codes for `race` and `ethnicity` were not consistent between the Group A and Group B files. There was no codebook to describe the values, but I used my best judgement to recode them. The variables in the data have the same values this year, so this section was removed.
+
+
+# 1. Instructions to download both NIBRS arrest segments
+This section describes the steps for manually downloading the NIBRS data segments necessary for this metric.
+
+We get arrest counts from two segments of the NIBRS: the Arrestee Segment and the Group B Arrest Report Segment. There are two categories of offenses reported in the NIBRS: Group A (incidents like assault and homicide) and Group B (incidents like bad checks and disorderly conduct). The two categories have different reporting requirements. Group A offenses must include relevant incident data represented in multiple segments (Administrative, Offense, Property, Victim, Offender, and Arrestee) while Group B reports include only arrest data. These are mutually exclusive observations; [a single arrest cannot be in both segments](https://ucrbook.com/arrestee.html). We have to use both the Arrestee segment and the Group B segment to get the full count of arrests.
+
+Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+
+## 1.1 Arrestee Segment
+1. Navigate to the National Incident-Based Reporting System (NIBRS) - Arrestee Segment webpage on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/ZULQVE&version=1.0).
+2. For each year you need to download, click on the relevant `.rds` file (e.g., `nibrs_arrestee_segment_YYYY.rds`).
+3. Towards the top right of the screen, select `Access File` and, from the dropdown menu, select `Original File Format` under `Download Options`.
+4. Complete the `License/Data Use Agreement` by entering your `Name`, `Email`, `Institution`, `Position`, and the `Additional Questions` (`How will this data be used (e.g. personal project, academic paper, for-profit project)`, `What is your research question?`, and `Do you agree to cite the data properly if used in publications?`).
+5. Move the zip file from your `Downloads` folder to the `\mobility-from-poverty\07_safety\data\arrestee-segment` directory.
+
+## 1.2 Group B Arrest Report Segment
+1. Navigate to the National Incident-Based Reporting System (NIBRS) - Group B Arrest Report Segment webpage on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/ZULQVE&version=1.0).
+2. For each year you need to download, click on the relevant `.rds` file (e.g., `nibrs_group_b_arrest_report_segment_YYYY.rds`).
+3. Towards the top right of the screen, select `Access File` and, from the dropdown menu, select `Original File Format` under `Download Options`.
+4. Complete the `License/Data Use Agreement` by entering your `Name`, `Email`, `Institution`, `Position`, and the `Additional Questions` (`How will this data be used (e.g. personal project, academic paper, for-profit project)`, `What is your research question?`, and `Do you agree to cite the data properly if used in publications?`).
+5. Move the zip file from your `Downloads` folder to the `\mobility-from-poverty\07_safety\data\group-b-arrest-report-segment` directory.
+
+# 2. Read in, clean, and append both NIBRS arrest segments
+This section reads in, cleans, and appends the NIBRS Arrest Segment and Group B Arrest Report Segment data for 2021-2023.
+
+## 2.1 Read and clean files for 2021-2023 from the Arrestee Segment
+```{r read-arrestee}
+# List all files in the Arrestee Segment folder (Group A)
+file_list <- list.files(here::here(
+  "07_safety", "data", "arrestee-segment"),
+  pattern = "[.]rds$", full.names = TRUE)
+
+# Read in Group A files and append them
+arrests_a <- file_list |>
+  set_names(basename) |>
+  purrr::map_df(readRDS)
+
+# Select only necessary variables from Group A and filter to ages 10-17
+arrests_a_clean <- arrests_a |>
+  select(
+    year, 
+    ori, # ORI is a unique agency identifier
+    age_of_arrestee,
+    sex_of_arrestee, 
+    race_of_arrestee, 
+    ethnicity_of_arrestee
+  ) |>
+  mutate(
+    age_of_arrestee = as.numeric(age_of_arrestee)
+  )
+
+```
+
+NA values are introduced above when converting `age_of_arrestee` to a numeric variable because there are two character values: `over 98 years old` and `unknown`. This is fine. They won't be included in the juvenile arrest rates, but the observations will still be used later to calculate the percentage of agencies that report any arrest data which is used in the construction of the quality indicator.
+```{r}
+arrests_a |> group_by(age_of_arrestee) |> count()
+```
+
+## 2.2 Read and clean files for 2021-2023 from the Group B Arrest Report Segment
+```{r read-groupb}
+# List all files in the Arrest Report Segment folder (Group B)
+file_list <- list.files(here::here(
+  "07_safety", "data", "group-b-arrest-report-segment"),
+  pattern = "[.]rds$", full.names = TRUE)
+
+# Read in Group B files and append them
+## I read these files in using a different method than the Group A arrests, because the variable `automatic_weapon_indicator_2` has inconsistent data types across the files. We don't use this variable anyway.
+arrests_b <- data.table::rbindlist(lapply(file_list, readRDS), fill = TRUE)
+
+# Select only necessary variables from Group B and filter to ages 10-17
+arrests_b_clean <- arrests_b |>
+  select(
+    year, 
+    ori, # ORI is a unique agency identifier
+    age_of_arrestee, 
+    sex_of_arrestee, 
+    race_of_arrestee, 
+    ethnicity_of_arrestee
+  ) |>
+  mutate(
+    age_of_arrestee = as.numeric(age_of_arrestee)
+  )
+
+```
+
+NA values are introduced above when converting `age_of_arrestee` to a numeric variable because there are two character values: `over 98 years old` and `unknown`. This is fine. They won't be included in the juvenile arrest rates, but the observations will still be used later to calculate the percentage of agencies that report any arrest data which is used in the construction of the quality indicator.
+```{r}
+arrests_b |> group_by(age_of_arrestee) |> count()
+```
+
+## 2.3 Append Group A and Group B files for all arrests
+We are only interested in juvenile arrests for the creation of this metric, but we use all arrests to determine agency reporting rates that are used in construction of the quality values.
+```{r append-arrests}
+# Append files
+arrests_all <- bind_rows(arrests_a_clean, arrests_b_clean)
+
+```
+
+## 2.4 Create juvenile arrests file
+Filter the file of all arrests to just juveniles between the ages of 10 and 17.
+```{r create-juv-arrests}
+arrests_juv <- arrests_all |>
+  filter(age_of_arrestee >= 10 & age_of_arrestee <= 17)
+
+```
+
+
+# 3. Aggregate individual arrest counts to the reporting agency level
+Aggregate arrests by agency and finish race construction
+
+Note that this metric includes the following subgroups by race, sex, and age subgroups, so those subgroups are also aggregated in this section:
+
+  * Race: white, Black, Hispanic, Asian/other
+  * Sex: male, female
+  * Age: ages 10-14, ages 15-17
+  
+```{r}
+arrests_juv |>
+  group_by(race_of_arrestee, ethnicity_of_arrestee) |>
+  count()
+
+```
+    
+```{r aggregate-agencies}
+arrests_juv_agency <- arrests_juv |>
+  group_by(year, ori) |>
+  summarize(
+    arr_total_juv = n(),
+    # Race subgroups
+    arr_white = sum(race_of_arrestee == "white"),
+    arr_black = sum(race_of_arrestee == "black"),
+    arr_hispanic = sum(ethnicity_of_arrestee == "hispanic or latino"),
+    arr_asian_other = sum(race_of_arrestee %in% c("asian", "native hawaiian or other pacific islander", "american indian/alaskan native")),
+    # Sex subgroups
+    arr_male = sum(sex_of_arrestee == "male"),
+    arr_female = sum(sex_of_arrestee == "female"),
+    # Age subgroups
+    arr_1014 = sum(age_of_arrestee >= 10 & age_of_arrestee <= 14),
+    arr_1517 = sum(age_of_arrestee >= 15 & age_of_arrestee <= 17)
+  ) |>
+  ungroup()
+
+```
+
+
+```{r clean-environment}
+rm(file_list, arrests_a, arrests_a_clean, arrests_b, arrests_b_clean, arrests_juv)
+```
+
+
+# 4. Aggregate arrests to place-level
+This section uses the Batch Header Segment of the NIBRS. The Batch Header Segment includes metadata about each participating police agency. Each individual police agency (identified by originating agency identifier, or ORI) that has submitted any information to NIBRS for that year will appear in this segment only once. Police agencies that have not submitted their data to NIBRS do not appear in this segment, so it is inherently incomplete.
+
+The Batch Header Segment includes the city name for each agency, as well as each county associated with each agency, but does not include a geographic identifier for the cities. This section attempts to assign a place FIPS to each agency in the Batch Header Segment using three separate data sets:
+
+1. Law Enforcement Agency Identifiers Crosswalk (LEAIC), 2012 - This crosswalk matches police agencies to place FIPS codes. We can join the place FIPS codes on by originating agency identifier (`ori`).
+2. Urban Institute's universe of Census Places - This project identified 486 Census Designated Places for which to calculate these metrics. We use this file to match place FIPS onto agencies by name.
+3. Geocorr 2022 County-Place Crosswalk - This is a crosswalk of all place/county combinations. For counties with only one place associated with it, we join on place FIPS codes onto agencies by county.
+
+At each step, we split the data into observations that have a place FIPS code matched on and those that do not. We take those observations that still do not have a place FIPS code and proceed to the next join method. At the end, we append each subset to recreate the full Batch Header Segment.
+
+
+## 4.1 Instructions to manually download NIBRS Batch Header Segment
+Manually downloading these data from the Harvard Dataverse is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+
+  1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
+  2. Select National Incident-Based Reporting System - Batch Header Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HUI9WF).
+  3. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10899624&version=2.0).
+  4. Select `Access File`
+      + Select `Gzip Archive` under `Download Options`
+      + Agree to the Dataset Terms by entering your `Name`, `Email`, `Institution`, `Position`, and answer `How will this data be used`, and then select `Accept` at the bottom of the pop-up
+  5. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
+
+## 4.2 Load and clean NIBRS Batch Header Files
+Load Batch Header File
+```{r load-bhf, message=FALSE}
+batch_header_file_full <- readRDS(here::here("07_safety", "data", "batch-header-segment-and-agencies", "nibrs_batch_header_1991_2023.rds"))
+
+```
+
+Filter the file to the appropriate year, select relevant variables, and rename as necessary.
+```{r clean-bhf}
+batch_header_file <- batch_header_file_full |>
+  filter(
+    year %in% c(2021, 2022, 2023),
+    # number_of_months_reported != "0"
+    ) |>
+  select(
+    ori,
+    agency_indicator,
+    year,
+    state_name = state,
+    state_abbreviation,
+    city_name,
+    core_city,
+    # A single agency may have jurisdiction in up to five counties. We keep all counties.
+    county_fips_1 = fips_county_code_1,
+    county_fips_2 = fips_county_code_2,
+    county_fips_3 = fips_county_code_3,
+    county_fips_4 = fips_county_code_4,
+    county_fips_5 = fips_county_code_5
+  ) |>
+  # Edit county FIPS codes to have three digits
+  mutate(
+    across(starts_with("county_fips_"),
+           ~ str_pad(.x, 3, side = "left", pad = "0"))
+  )
+
+```
+
+Change the values for core city indicator from `Y`/`N` to `0`/`1`
+```{r fix-core-indicator}
+batch_header_file <- batch_header_file |>
+  mutate(
+    core_city = case_when(
+      core_city=="Y" ~ as.numeric(1),
+      core_city=="N" ~ as.numeric(0),
+      TRUE ~ NA_real_
+    )
+  )
+
+```
+
+
+Clean geography information on the batch header file.
+```{r check-bhf-states}
+# See what states/territories are included
+batch_header_file |>
+  group_by(state_name, state_abbreviation) |>
+  count()
+
+```
+
+
+```{r edit-bhf-geos}
+batch_header_file <- batch_header_file |>
+  # Remove US territories by name because no FIPS codes
+  filter(!state_name %in% c("Guam", "Puerto Rico", "Virgin Islands")) |>
+  mutate(
+    # The NIBRS data abbreviates Nebraska as "NB" instead of its correct abbreviation "NE"
+    state_abbreviation = if_else(state_abbreviation=="NB", "NE", state_abbreviation),
+    # Wyoming is also named "Wyoming V2" but it is unclear why
+    state_name = if_else(state_name=="Wyoming V2", "Wyoming", state_name)
+  )
+
+```
+
+The batch header file identifies state by name and abbreviation, but not state FIPS code. We manually add on state FIPS codes to the batch header file
+```{r add-statefips-bhf}
+# Create crosswalk of state FIPS codes to state names/abbreviations
+state_fips_xw <- tribble(
+  ~state_fips, ~state_abbreviation, ~state_name,
+  "01",	"AL", "Alabama",
+  "02",	"AK", "Alaska",
+  "04",	"AZ", "Arizona", 
+  "05",	"AR", "Arkansas",	
+  "06",	"CA", "California",	
+  "08",	"CO", "Colorado",
+  "09",	"CT", "Connecticut",
+  "10",	"DE", "Delaware",
+  "11",	"DC", "District of Columbia",
+  "12",	"FL", "Florida",
+  "13",	"GA", "Georgia",	
+  "15",	"HI", "Hawaii",
+  "16",	"ID", "Idaho",
+  "17",	"IL", "Illinois",
+  "18",	"IN", "Indiana",
+  "19",	"IA", "Iowa",	
+  "20",	"KS", "Kansas",	
+  "21",	"KY", "Kentucky",	
+  "22",	"LA", "Louisiana",
+  "23",	"ME", "Maine",
+  "24",	"MD", "Maryland",
+  "25",	"MA", "Massachusetts",
+  "26",	"MI", "Michigan",	
+  "27",	"MN", "Minnesota",	
+  "28",	"MS", "Mississippi",	
+  "29",	"MO", "Missouri",	
+  "30",	"MT", "Montana",	
+  "31",	"NE", "Nebraska",	
+  "32",	"NV", "Nevada",	
+  "33",	"NH", "New Hampshire",	
+  "34",	"NJ", "New Jersey",	
+  "35",	"NM", "New Mexico",	
+  "36",	"NY", "New York",	
+  "37",	"NC", "North Carolina",
+  "38",	"ND", "North Dakota",	
+  "39",	"OH", "Ohio",	
+  "40",	"OK", "Oklahoma",	
+  "41",	"OR", "Oregon",	
+  "42",	"PA", "Pennsylvania",	
+  "44",	"RI", "Rhode Island",	
+  "45",	"SC", "South Carolina",	
+  "46",	"SD", "South Dakota",
+  "47",	"TN", "Tennessee",
+  "48",	"TX", "Texas",	
+  "49",	"UT", "Utah",	
+  "50",	"VT", "Vermont",	
+  "51",	"VA", "Virginia",	
+  "53",	"WA", "Washington",	
+  "54",	"WV", "West Virginia",	
+  "55",	"WI", "Wisconsin",	
+  "56",	"WY", "Wyoming"
+)
+
+# Join state FIPS codes onto the batch header file
+batch_header_file <- batch_header_file |> 
+  tidylog::left_join(
+    y = state_fips_xw, by = c("state_name", "state_abbreviation")
+  )
+
+# Remove crosswalk
+rm(batch_header_file_full, state_fips_xw)
+
+```
+
+
+
+### 4.2a Exclude state police and other state agencies
+Check distribution of agency types. There are 7 types of agencies. Note that I'm not sure what an agency indicator of "5" represents, and I can't find any information about it in the [available documentation](https://ucrbook.com/). In data year 2022, a value of 5 represented "special agencies" (last year's values shown below), so it could be an error in the pre-processing of this data. 
+
+| Value | Label                     |
+|:-----:|:--------------------------|
+|   0   | Covered by another agency |
+|   1   | City                      |
+|   2   | County                    |
+|   3   | University or college     |
+|   4   | State Police              |
+|   5   | Special Agency            |
+|   6   | Other state agencies      |
+|   7   | Tribal agencies           |
+|   8   | Federal agencies          |
+
+```{r count-agency-types}
+batch_header_file |>
+  count(agency_indicator) |>
+  mutate(percent = n/nrow(batch_header_file))
+
+```
+
+State agencies cover multiple counties, so we remove these agencies for simplicity. In the last round of updates, Metric Round 2024, which used an older version of these data, "other state agencies" were removed. In this round, Metric Round 2025, which uses the most recent version of these data, the value "other state agencies" no longer exists for any of the years. They could be included in the new "other agencies" category, but I'm not sure how to be certain, so leaving this category for now.
+```{r remove-state-agencies}
+batch_header_file <- batch_header_file |>
+  filter(!agency_indicator %in% c("state police"))
+
+```
+
+Further limit batch header segment to variables we need
+**Note that I'm not sure why we don't make this file long and try to deal with places that are associated with more than one county more explicitly**
+```{r}
+batch_header_file <- batch_header_file |>
+  select(
+    year,
+    ori,
+    agency_indicator,
+    core_city,
+    place_name = city_name,
+    state_fips,
+    county_fips = county_fips_1
+  ) |>
+  mutate(
+    place_name = str_to_lower(place_name)
+  )
+
+```
+
+
+## 4.3 Use LEAIC
+
+### 4.3a Background on LEAIC and manual download
+To get place FIPS codes for each police agency, we first use the 2012 Law Enforcement Agency Identifiers Crosswalk (LEAIC)
+
+The LEAIC facilitates linking reported crime data with socio-economic data. The LEAIC file is available for download from the National Archive of Criminal Justice Data (NACJD) available through ICPSR at the following link:
+
+  * [LEAIC](https://www.icpsr.umich.edu/web/NACJD/studies/35158)
+  
+Note that 2012 is the most recent year for which this crosswalk is available. This may present issues in harmonizing data across years, because some counties have changed since 2012. Future updates should check if a more recent crosswalk is available yet.
+  
+Accessing these data requires an ICPSR account. Manually downloading these data is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+
+  1. Create an ICPSR account [here](https://www.icpsr.umich.edu/cgi-bin/newacct).
+  2. Navigate to the National Archive of Criminal Justice Data (NACJD) landing page for the LEAIC [here](https://www.icpsr.umich.edu/web/NACJD/studies/35158)).
+  3. Select `Download`
+      + Select `Delimited`
+      + Select `Agree` on the `Terms of Use`
+  4. Sign into your ICPSR account
+  5. This will download a zip file titled `ICPSR_35158-V2`. Unzip the file and navigate to `ICPSR_35158\DS0001\35158-0001-Data.tsv`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
+
+### 4.3b Load and clean LEAIC
+After downloading the LEAIC, read it in. This file has a place FIPS linked to every reporting agency.
+```{r load-leaic}
+# Read in crosswalk
+leaic <- read_tsv(here::here("07_safety", "data", "batch-header-segment-and-agencies", "35158-0001-Data.tsv"))
+
+``` 
+
+Limit file to necessary variables and rename. We use the codebook (`ICPSR_35158\DS0001\35158-0001-Codebook`) to determine what each variable represents.
+```{r clean-leaic}
+leaic <- leaic |>
+  mutate(
+    place = str_pad(FPLACE, 5, pad = "0")
+  ) |>
+  select(
+    ori = ORI9, 
+    place
+  ) |>
+  # Remove agencies with invalid ORI
+  filter(ori != "-1") # Not in UCR/NCIC
+
+```
+
+### 4.3c Join LEAIC onto NIBRS data by agency identifier
+Join the LEAIC to the 2021-2023 NIBRS Batch Header Files by agency.
+3,323 agencies are in the BHF but not the 2012 crosswalk. The crosswalk is from 2012, so these could be new agencies from 2013-2023.
+```{r join-bhf-leaic}
+joined_ba_leaic <- left_join(
+  x = batch_header_file,
+  y = leaic,
+  by = c("ori")
+)
+
+```
+
+### 4.3d Create subsets of matched and unmatched observations
+From the joined Batch Header File/LEAIC, filter to the 3,323 observations that did not match from BHF (i.e., observations that have a missing value for the `place` variable). In the next steps, we will continue to try and assign place FIPS codes to these observations. 
+```{r subset-matched-leaic}
+# These are observations from the Batch Header File that still do not have a place FIPS code
+ba_mis_leaic <- joined_ba_leaic |>
+  filter(is.na(place)) |>
+  select(-place)
+
+# Create a subset of matched observations
+ba_place_leaic <- joined_ba_leaic |>
+  filter(!is.na(place))
+  
+```
+
+## 4.4 Use Urban's universe of places
+We still have 3,323 Batch Header File observations that do not have a place FIPS code. 1,207 of these observations do have a city name. We can use Urban's universe of places, which includes both city name and place FIPS codes, to match place codes onto these observations.
+
+```{r check-city-names}
+# 1,207 of the unmatched observations have a city name
+ba_mis_leaic |>
+  filter(!is.na(place_name)) |>
+  count()
+
+```
+
+### 4.4a Background on Urban’s universe of Census Places and manual download
+The Urban Institute maintains a list of the 486 Census places that are of interest to this project for years 2016-2022. It is available for download on the project's GitHub repository [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/geographic-crosswalks/data/place-populations.csv). 
+
+### 4.4b Load and clean places universe
+This file contains our 486 places of interest with both their name and place FIPS code.
+
+```{r load-urban-places, message=FALSE}
+# Read in Urban places file
+urban_places <- read_csv(file = here::here("geographic-crosswalks", "data", "place-populations.csv")) |>
+  filter(year %in% c(2021, 2022, 2023))
+
+urban_places |>
+  group_by(year) |>
+  count()
+
+```
+
+```{r clean-urban-places}
+urban_places <- urban_places |>
+  rename(state_fips = state) |>
+  mutate(
+    place_name = str_to_lower(place_name)
+  ) |>
+  select(year, state_fips, place_name, place)
+
+```
+
+Observations in the Urban places file have `city`, `village`, `town`, etc. attached to the values in the `place_name` variable, while observations in the Batch Header File do not. We create a new variable without these endings in the Urban places file to increase the chances of joining by name.
+```{r clean-urban-places-names}
+# Create variable for joining
+urban_places$place_name <- sub(" city$| municipality$| village$| town$", "", urban_places$place_name)
+
+```
+
+Lastly, I am manually editing the names of a few observations from the Urban file that were flagged in the 2021 version of this metric.
+```{r manually-edit-places}
+urban_places <- urban_places |>
+  mutate(place_name = case_when(
+    state_fips == "06" & place_name == "san buenaventura (ventura)" ~ "ventura",
+    state_fips == "12" & place_name == "fort lauderdale" ~ "ft lauderdale",
+    state_fips == "13" & place_name == "augusta-richmond county consolidated government (balance)" ~ "augusta",
+    state_fips == "18" & place_name == "indianapolis city (balance)" ~ "indianapolis",
+    state_fips == "29" & place_name == "st. louis" ~ "saint louis",
+    state_fips == "37" & place_name == "winston-salem" ~ "winston salem",
+    TRUE ~ place_name
+  )
+  )
+
+```
+
+### 4.4c Join
+
+```{r join-urb-places, message=FALSE}
+joined_ba_urb <- left_join(
+  x = ba_mis_leaic,
+  y = urban_places,
+  by = c("year", "state_fips", "place_name")
+)
+
+```
+
+### 4.4d Create subsets of matched and unmatched observations
+```{r subset-missing-urb-places, message=FALSE}
+# Create a subset of observations that still do not have a place FIPS code
+ba_mis_urb <- joined_ba_urb |>
+  filter(is.na(place)) |>
+  select(-place) 
+
+# Create a subset of observations that now have a place FIPS code
+ba_place_urb <- joined_ba_urb |>
+  filter(!is.na(place))
+
+```
+
+
+## 4.5 Use county-place crosswalk
+
+### 4.5a Background on county-place crosswalk
+The Urban Institute maintains a county-place crosswalk for 2022 counties. It is available for download on the project's GitHub repository [here](https://github.com/UI-Research/mobility-from-poverty/blob/main/geographic-crosswalks/data/geocorr2022_county_place.csv). It was constructed using Geocorr 2022 from the Missouri Census Data Center, which can be accessed [here](https://mcdc.missouri.edu/applications/geocorr2022.html).  
+
+Census places and counties are both nested within states; that is, places and counties do not share boundaries, and they [do overlap](https://www2.census.gov/geo/pdfs/reference/geodiagram.pdf). This crosswalk file contains one observation for every unique county/place pair in 2022, along with place FIPS codes and county FIPS codes, and includes observations for county components that do not overlap with a place.
+
+We want to use this crosswalk to merge a single place code onto each remaining agency in the NIBRS data by county. This is complicated by the fact that some counties overlap with multiple places. Consider the following example: Suppose that Wayne County, MI (county FIPS 26163) has observations in the crosswalk for 4 places (Detroit, Dearborn, Livonia, and Westland). Suppose that Agency A in the NIBRS data also has a county FIPS of 26163. If we try to merge place codes from the crosswalk onto the NIBRS data by county FIPS, it won't be a 1 to 1 match, and we don't actually know which of those 4 places to associate with Agency A. However, if there is a county in the crosswalk with only one place associated with it, that is a 1 to 1 match and we can merge the place FIPS code from the crosswalk onto the NIBRS data by county FIPS code.
+
+### 4.5b Load and clean county-place crosswalk
+
+```{r load-geocorr-xw}
+county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_county_place.csv"))
+
+```
+
+Filter the crosswalk observations to only places in our Urban universe of places. 
+```{r filter-xw, message=FALSE}
+# First create a state/place GEOID
+county_place_xw <- county_place_xw |>
+  mutate(
+    state = as.character(state),
+    state = str_pad(state, 2, pad = "0"),
+    place = as.character(place),
+    place = str_pad(place, 5, pad = "0"),
+    GEOID = str_c(state, place)
+  ) |>
+  select(
+    state_fips = state,
+    county_fips = county,
+    place,
+    GEOID
+  )
+
+# Filter crosswalk
+urban_places <- urban_places |>
+  mutate(GEOID = str_c(state_fips, place))
+
+county_place_xw <- county_place_xw |>
+  filter(GEOID %in% urban_places$GEOID)
+
+```
+
+Filter the crosswalk observations only those counties that correspond with one place.
+```{r keep-1to1-matches}
+county_place_xw <- county_place_xw |>
+  group_by(state_fips, county_fips) |>
+  mutate(n = n()) |>
+  ungroup() |>
+  filter(n == 1)
+
+```
+
+### 4.5c Join county-place crosswalk onto NIBRS by county FIPS
+```{r join-missing-geocorr}
+joined_ba_cpxw <- left_join(
+  x = ba_mis_urb,
+  y = county_place_xw,
+  by = c("state_fips", "county_fips")
+) |>
+  select(-c(GEOID, n))
+```
+
+### 4.5d Create subsets of matched and unmatched observations
+```{r create-subset-geocorr}
+# Create a subset of observations that now have a place FIPS code
+ba_place_cpxw <- joined_ba_cpxw |>
+  filter(!is.na(place))
+
+# Create a subset of observations that still do not have a place FIPS code
+ba_mis_cpxw <- joined_ba_cpxw |>
+  filter(is.na(place))
+
+```
+
+## 4.6 Append all subsets of the NIBRS Batch Header File back together and limit to places of interest
+The data sets appended below are as follows:
++ The subset of batch header segment observations for which we were able to match a place to using the LEAIC
++ The subset of batch header segment observations for which we were able to match a place to using the Urban universe of places
++ The subset of batch header segment observations for which we were able to match a place to using the GeoCorr county-place crosswalk
++ The subset of batch header segment observations for which we were not able to match a place to
+```{r append-all-bhf}
+bhf_place <- bind_rows(
+  ba_place_leaic,
+  ba_place_urb,
+  ba_place_cpxw,
+  ba_mis_cpxw
+)
+
+```
+
+2,224 agencies from the Batch Header File still do not have a place FIPS code. These could be agencies that were not in the LEAIC crosswalk, originally had no city or county information, counties that were not associated with our universe of places or that were associated with more than one place in our universe, etc.
+```{r check-still-missing-place}
+bhf_place |>
+  filter(is.na(place)) |>
+  count()
+
+```
+
+Finally, now that we have assigned a place FIPS code to as many agencies in the batch header file as possible, we limit to the places in Urban's universe of places
+```{r limit-places}
+bhf_place_urb <- bhf_place |>
+  mutate(GEOID = str_c(state_fips, place)) |>
+  filter(GEOID %in% urban_places$GEOID)
+
+```
+
+
+## 4.7 Join agency-level arrests for all years onto the place-agency file
+Join arrests onto the full universe of place-agencies.
+```{r join-agency-place}
+arrests_agency_place <- left_join(
+  x = bhf_place_urb,
+  y = arrests_juv_agency,
+  by = c("ori", "year")
+)
+  
+```
+
+## 4.8 Aggregate from agency-level to place-level
+Now that we have joined our agency-level juvenile arrests data onto the full universe of place-agencies, we can aggregate the counts from the agency to the place level.
+```{r aggregate-to-place}
+# Count number of arrests from reporting agencies in each place
+arrests_place <- arrests_agency_place |>
+  group_by(year, GEOID) |>
+  summarize(across(starts_with("arr"), ~sum(.x, na.rm=TRUE))) |>
+  ungroup()
+
+```
+
+# 5. Calculate rates
+
+## 5.1 Get population denominators from ACS
+
+This section relies on the `tidycensus` package, which requires a Census API key. You can acquire a key [here](https://api.census.gov/data/key_signup.html) and learn more about installing your key [here](https://walker-data.com/tidycensus/reference/census_api_key.html). Replace `[YOUR-KEY-HERE]` in the code below with your Census API key (leave the quotation marks).
+```{r set-api-key}
+# set Census API once
+# tidycensus::census_api_key("[YOUR-KEY-HERE]", install=TRUE, overwrite = TRUE)
+
+```
+
+### 5.1a  Check ACS variable names and identify those we need
+Load ACS variables for our first and last years. Manually explore each file and spot check several observations. The naming conventions of ACS variables do not seem to change during our time period. Note that if they did we would need to split up the code that reads in the years below.
+```{r check-acs-variables, eval = FALSE}
+# Check ACS variables for the first and last years to see if they change over time
+variables_fy <- tidycensus::load_variables(2021, "acs5")
+variables_ly <- tidycensus::load_variables(2023, "acs5")
+
+test_fy <- variables_fy |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
+
+rm(test_fy)
+
+test_ly <- variables_ly |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
+
+```
+
+
+### 5.1b Pull 5-year ACS data for each year at the county level
+
+First create vectors for years and variables of interest
+```{r specify-acs-years-vars}
+# Create a list of all our years
+years <- lst(2021, 2022, 2023)
+
+# Create a vector for our ACS variables of interest
+my_vars <- c(
+  total_people = "B01003_001",
+  age_m_1014 = "B01001_005", 
+  age_m_1517 = "B01001_006",
+  age_f_1014 = "B01001_029", 
+  age_f_1517 = "B01001_030",
+  age_m_1014_white = "B01001A_005", 
+  age_m_1014_black = "B01001B_005",
+  age_m_1014_aian = "B01001C_005", 
+  age_m_1014_asin = "B01001D_005",
+  age_m_1014_nhpi = "B01001E_005", 
+  age_m_1014_othr = "B01001F_005",
+  age_m_1014_twom = "B01001G_005",
+  age_m_1014_white_nh = "B01001H_005",
+  age_m_1014_hispanic = "B01001I_005",
+  age_m_1517_white = "B01001A_006", 
+  age_m_1517_black = "B01001B_006",
+  age_m_1517_aian = "B01001C_006", 
+  age_m_1517_asin = "B01001D_006",
+  age_m_1517_nhpi = "B01001E_006", 
+  age_m_1517_othr = "B01001F_006",
+  age_m_1517_twom = "B01001G_006",
+  age_m_1517_white_nh = "B01001H_006", 
+  age_m_1517_hispanic = "B01001I_006",
+  age_f_1014_white = "B01001A_020", 
+  age_f_1014_black = "B01001B_020",
+  age_f_1014_aian = "B01001C_020", 
+  age_f_1014_asin = "B01001D_020",
+  age_f_1014_nhpi = "B01001E_020", 
+  age_f_1014_othr = "B01001F_020",
+  age_f_1014_twom = "B01001G_020",
+  age_f_1014_white_nh = "B01001H_020",
+  age_f_1014_hispanic = "B01001I_020",
+  age_f_1517_white = "B01001A_021", 
+  age_f_1517_black = "B01001B_021",
+  age_f_1517_aian = "B01001C_021", 
+  age_f_1517_asin = "B01001D_021",
+  age_f_1517_nhpi = "B01001E_021",
+  age_f_1517_othr = "B01001F_021",
+  age_f_1517_twom = "B01001G_021",
+  age_f_1517_white_nh = "B01001H_021", 
+  age_f_1517_hispanic = "B01001I_021"
+)
+
+```
+
+Then pull 5-year ACS data at the county level for each year
+```{r load-acs-data}
+# Pull data
+acs_pops_full <- map_dfr(
+  years,
+  ~ tidycensus::get_acs(
+    geography = "place",
+    variables = my_vars,
+    year = .x,
+    survey = "acs5",
+    output = "wide",
+    geometry = FALSE
+  ),
+  # Create a year variable for each year
+  .id = "year"
+)
+
+# Remove Puerto Rico from ACS data
+acs_pops <- acs_pops_full |>
+  mutate(state_fips = substr(GEOID, 1, 2)) |>
+  filter(state_fips != "72")
+
+# Remove obsolete files
+#rm(variables_fy, variables_ly, years, my_vars)
+
+rm(years, my_vars, acs_pops_full)
+
+```
+
+### 5.1c  4.4c Clean ACS data and create subgroups
+Clean variable names and drop margins of error
+```{r clean-acs-data}
+acs_pops <- acs_pops |>
+  rename_with(~ sub("E$", "", .x), everything()) |>
+  select(-c(ends_with("M")))
+
+```
+
+For the rate of juvenile arrests per 100,000 juveniles metric, we want subgroups by race, sex, and age subgroups. These are subgroups of all observations ages 10-17, so the sum of each subgroup should equal the total number of observations ages 10-17.
+
+  * Race: white, Black, Hispanic, Asian/other
+  * Sex: male, female
+  * Age: ages 10-14, ages 15-17
+
+Note that there is a Non-Hispanic white category, but not a Non-Hispanic category for other races (Black, Asian, etc.). This means that the categories will have a small but non-zero overlap. The race/ethnicity categories actually used in the `juvenile-arrests` metric are white, Black, Asian/other, and Hispanic. These are not mutually exclusive (e.g., someone could be counted as both Black and Hispanic), which matches the population denominators created here (this is because ACS doesn't have counts of non-Hispanic Black or other non-Hispanic races other than white).
+```{r create-subgroups}
+# Create the total for ages 10-17 and the race, sex, and age subgroups
+acs_pops <- acs_pops |>
+  mutate(
+    # Total age 10-17
+    pop_1017 = age_m_1014 + age_m_1517 + age_f_1014 + age_f_1517,
+    # Race subgroups
+    pop_1017_white = age_m_1014_white + age_m_1517_white + age_f_1014_white + age_f_1517_white,
+    pop_1017_black = age_m_1014_black + age_m_1517_black + age_f_1014_black + age_f_1517_black,
+    pop_1017_aian = age_m_1014_aian + age_m_1517_aian + age_f_1014_aian + age_f_1517_aian,
+    pop_1017_asin = age_m_1014_asin + age_m_1517_asin + age_f_1014_asin + age_f_1517_asin,
+    pop_1017_nhpi = age_m_1014_nhpi + age_m_1517_nhpi + age_f_1014_nhpi + age_f_1517_nhpi,
+    pop_1017_othr = age_m_1014_othr + age_m_1517_othr + age_f_1014_othr + age_f_1517_othr,
+    pop_1017_hispanic = age_m_1014_hispanic + age_m_1517_hispanic + age_f_1014_hispanic + age_f_1517_hispanic,
+    # Sex subgroups
+    pop_1017_male = age_m_1014 + age_m_1517,
+    pop_1017_female = age_f_1014 + age_f_1517,
+    # Age subgroups
+    pop_1017_1014 = age_m_1014 + age_f_1014,
+    pop_1017_1517 = age_m_1517 + age_f_1517
+  ) |>
+  # Edit race variables   
+  mutate(
+    # Manually create "two or more" race variable
+    pop_1017_twom = pop_1017 - pop_1017_white - pop_1017_black - 
+      pop_1017_aian - pop_1017_asin - pop_1017_nhpi - pop_1017_othr,
+    # Combine all asian races, other races, and two or more races
+    pop_1017_asian_other = pop_1017_aian + pop_1017_asin + pop_1017_nhpi +
+      pop_1017_othr + pop_1017_twom
+  ) |>
+  select(-c(starts_with("age"), pop_1017_aian, pop_1017_asin, pop_1017_nhpi, pop_1017_othr, pop_1017_twom))
+
+```
+
+```{r}
+# Limit places to those in the Urban file
+acs_pops <- acs_pops |>
+  filter(GEOID %in% urban_places$GEOID)
+         
+```
+
+### 5.1d Join denominators and arrest counts
+```{r}
+arrests_place_demo <- left_join(
+  x = acs_pops,
+  y = arrests_place |>
+    mutate(year = as.character(year)),
+  by = c("year", "GEOID")
+)
+```
+
+
+## 5.2 Calculate juvenile arrest rates
+Each instance of an arrest, citation, or summons for an offense is counted as an arrest. Note that an individual can be arrested more than once and therefore the rates constructed are of arrests, not of persons arrested. Arrest rates are calculated for all offense types available in NIBRS data, including offenses against property, persons, and society.
+
+Calculate arrest rates per 100,000 juveniles. If no agencies in a place reported (out of all agencies, including those with only non-juvenile arrests), the value is set to `NA`. We also calculate rates for the following subgroups:
+
+  * Race: white, Black, Hispanic, Asian/other
+  * Sex: male, female
+  * Age: ages 10-14, ages 15-17
+    
+```{r}
+# Calculate arrest rates (per 100,000 people) and subgroups for agencies that reported
+arrest_rates_place <- arrests_place_demo |>
+  mutate(
+    # Total ages 10-17
+    rate_juv_arrest = arr_total_juv / pop_1017 * 100000,
+    # Race/ethnicity subgroups
+    rate_juv_arrest_white = arr_white / pop_1017_white * 100000,
+    rate_juv_arrest_black = arr_black / pop_1017_black * 100000,
+    rate_juv_arrest_hispanic  = arr_hispanic / pop_1017_hispanic * 100000,
+    rate_juv_arrest_asian_other = arr_asian_other / pop_1017_asian_other * 100000,
+    # Sex subgroups
+    rate_juv_arrest_male = arr_male / pop_1017_male * 100000,
+    rate_juv_arrest_female = arr_female / pop_1017_female * 100000,
+    # Age subgroups
+    rate_juv_arrest_1014 = arr_1014 / pop_1017_1014 * 100000,
+    rate_juv_arrest_1517 = arr_1517 / pop_1017_1517 * 100000
+  )
+
+```
+
+Replace the rates of observations with a population less than 30 with `NA`.
+```{r}
+# Suppress data using populations < 30 people
+arrest_rates_place <- arrest_rates_place |>
+  mutate(
+    rate_juv_arrest = ifelse(pop_1017 < 30, NA, rate_juv_arrest),
+    rate_juv_arrest_white = ifelse(pop_1017_white < 30, NA, rate_juv_arrest_white),
+    rate_juv_arrest_black = ifelse(pop_1017_black < 30, NA, rate_juv_arrest_black),
+    rate_juv_arrest_hispanic = ifelse(pop_1017_hispanic < 30, NA, rate_juv_arrest_hispanic),
+    rate_juv_arrest_asian_other = ifelse(pop_1017_asian_other < 30, NA, rate_juv_arrest_asian_other),
+    rate_juv_arrest_male = ifelse(pop_1017_male < 30, NA, rate_juv_arrest_male),
+    rate_juv_arrest_female = ifelse(pop_1017_female < 30, NA, rate_juv_arrest_female),
+    rate_juv_arrest_1014 = ifelse(pop_1017_1014 < 30, NA, rate_juv_arrest_1014),
+    rate_juv_arrest_1517 = ifelse(pop_1017_1517 < 30, NA, rate_juv_arrest_1517)
+  )
+
+```
+
+## 6. Construct quality indicators
+This section constructs an indicator used to assess the quality of data for each place. Places with 100% of agencies reporting are coded as 1; places with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; places with less than 80% of agencies reporting are coded as 3; places with 0% of agencies reporting (or no agencies in the place) are coded as `NA`.
+
+### 6.1 Calculate reporting rate for all agencies
+The quality indicator for this metric is based on the number of agencies reporting. We can't use the agency-level juvenile arrests data for this, because agencies may have zero juvenile arrests and thus be excluded but still have reported arrests for other ages. Instead, we use the full arrests file (i.e., all arrests and not just juvenile arrests) to calculate agency reporting rates.
+```{r}
+arrests_all_agency <- arrests_all |>
+  group_by(year, ori) |>
+  summarize(arr_total_any = n()) |>
+  ungroup()
+
+```
+
+Join total number of arrests for each agency onto the place/agency file.
+```{r}
+arrests_all_agency_place <- left_join(
+   x = bhf_place_urb,
+   y = arrests_all_agency,
+   by = c("ori", "year")
+ ) |>
+  mutate(
+    # Create variables for reporting by place-agency. If the count of total arrests (any, not just juvenile) is missing, we indicate that the agency did not report in that year 
+    reporting = ifelse(is.na(arr_total_any), 0, 1)
+    )
+
+```
+
+Aggregate variables to the place level.
+```{r}
+# Summarize by place
+arrests_all_place <- arrests_all_agency_place |>
+  group_by(year, state_fips, place) |>
+  summarize(
+    n = n(), 
+    n_reporting = sum(reporting),
+    n_core_city = sum(core_city),
+    n_core_city_rpt = sum(core_city==1 & reporting==1),
+    across(arr_total_any, ~sum(.x, na.rm=TRUE))
+  ) |>
+  mutate(
+    agencies_reporting = n_reporting / n,
+    core_reporting = n_core_city_rpt / n_core_city,
+    core_reporting = ifelse(is.nan(core_reporting), NA, core_reporting),
+    GEOID = str_c(state_fips, place)
+  ) |>
+  ungroup()
+
+```
+
+Join total arrests back to juvenile arrest file
+```{r}
+# Join all arrests and juvenile arrests
+arrest_rates_place <- left_join(
+  x = arrest_rates_place,
+  y = arrests_all_place |>
+    mutate(year = as.character(year)),
+  by = c("year", "GEOID", "state_fips")
+)
+
+
+```
+
+### 6.2 Construct the quality indicator
+
+Construct the quality indicator.
+```{r}
+# Construct quality with core reporting
+arrest_rates_place <- arrest_rates_place |>
+  mutate(
+    rate_juv_arrest_quality = case_when(
+      agencies_reporting == 1 ~ 1,
+      agencies_reporting >= 0.8 | core_reporting==1 ~ 2,
+      agencies_reporting > 0 ~ 3,
+      agencies_reporting == 0 ~ NA_real_
+      ),
+    rate_juv_arrest_quality = ifelse(pop_1017 < 30, NA, rate_juv_arrest_quality)
+  )
+
+```
+
+```{r}
+arrest_rates_place <- arrest_rates_place |>
+  mutate(across(starts_with("rate"), 
+                ~ifelse(is.na(rate_juv_arrest_quality), NA, .x)),
+         )
+
+```
+
+Most places (in our universe) had 100 percent of agencies reporting.
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  ggplot(aes(x = rate_juv_arrest_quality)) +
+  geom_bar()
+
+```
+
+## 7. Validation
+This section performs several checks on the calculated rates of juvenile arrests.
+
+Check the distribution of rates of juvenile arrests for 2021-2023, both overall and by subgroup. All rates are plausible. Rates are of arrests, not persons arrested, so values greater than 100,000 are plausible and indicates some people in that population group were arrested more than once.
+
+Note that increasing rates over each year reflect more complete data from NIBRS and do not necessarily indicate a rise in juvenile arrests
+
+Checking arrest rates for all juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for white juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_white, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for Black juveniles. 
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_black, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for Hispanic juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_hispanic, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for Asian/other race juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_asian_other, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for male juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_male, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for female juveniles
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_female, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for juveniles aged 10-14
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_1014, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+Checking arrest rates for juveniles aged 15-17
+```{r}
+arrest_rates_place |>
+  group_by(year) |>
+  summarise(
+    quantiles = list(
+      quantile(rate_juv_arrest_1517, probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1), na.rm = TRUE)
+    )
+  ) %>%
+  unnest_wider(quantiles)
+
+```
+
+There is less missingness over time. This makes sense, because more agencies report to NIBRS over time.
+```{r}
+arrest_rates_place |>
+  filter(is.na(rate_juv_arrest)) |>
+  group_by(year) |>
+  count()
+  
+```
+
+The rate of missingness is the same for the quality variable.
+```{r}
+arrest_rates_place |>
+  filter(is.na(rate_juv_arrest_quality)) |>
+  group_by(year) |>
+  count()
+
+```
+
+
+## 8. Save and write out data
+```{r}
+arrest_rates_place_all <- arrest_rates_place |>
+  select(c(year, GEOID, starts_with("rate"), starts_with("pop"))) |>
+  mutate(
+    state = substr(GEOID, 1, 2),
+    place = substr(GEOID, 3, 7)
+  )
+
+```
+
+Create a subset without subgroup rates and write out this data set
+```{r}
+# File with only total juvenile arrest rates
+juv_arrest_place <- arrest_rates_place_all |>
+  select(
+    year,
+    state,
+    place,
+    rate_juv_arrest,
+    rate_juv_arrest_quality
+  )
+```
+
+```{r}
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_rate_arrests_overall_place.csv",
+  data = juv_arrest_place,  
+  geography = "place",
+  subgroups = FALSE, 
+  confidence_intervals = FALSE
+  )
+
+```
+
+```{r}
+# Write out this data set
+juv_arrest_place |>
+  write_csv(here::here("07_safety",
+                       "final",
+                       "rate_arrests_place_all.csv"))
+
+```
+
+Create a file that is long by subgroup and write it out
+```{r}
+# long form file with juvenile arrest rates by subgroup
+# pivot longer subgroup populations
+# create all row with overall juvenile population and arrest rate
+juv_pop_all_subgroup <- arrest_rates_place_all |>
+  rename(
+    pop_1017_all = pop_1017
+    ) |>
+  select(
+    year, 
+    state,
+    place, 
+    starts_with("pop_"),
+    rate_juv_arrest_quality
+  ) |>
+  pivot_longer(cols = contains("pop_1017"),
+               names_to = "subgroup",
+               values_to = "pop_1017",
+               values_drop_na = TRUE,
+               names_pattern = "pop_1017_(.*)")
+
+# pivot longer subgroup arrest rates
+juv_arrest_all_subgroup <- arrest_rates_place_all |>
+  mutate(rate_juv_arrest_all = rate_juv_arrest) |>
+  select(
+    year, 
+    state, 
+    place, 
+    rate_juv_arrest_all, 
+    rate_juv_arrest_white, 
+    rate_juv_arrest_black,
+    rate_juv_arrest_asian_other,
+    rate_juv_arrest_hispanic,
+    rate_juv_arrest_male,
+    rate_juv_arrest_female,
+    rate_juv_arrest_1014,
+    rate_juv_arrest_1517
+  ) |>
+  pivot_longer(cols = contains("rate_juv_arrest_"), 
+               names_to = "subgroup",
+               values_to = "rate_juv_arrest",
+               values_drop_na = TRUE,
+               names_pattern = "rate_juv_arrest_(.*)")
+
+# combine into one file
+# replace quality indicators with missing if subgroup population < 30
+juv_arrest_place_all_subgroup <- left_join(
+  x = juv_pop_all_subgroup,
+  y = juv_arrest_all_subgroup,
+  by = c("year", "state", "place", "subgroup")
+) |>
+  mutate(
+    subgroup_type = case_when(
+      subgroup %in% c("all") ~ "all",
+      subgroup %in% c("white", "black", "asian_other", "hispanic") ~ "race-ethnicity",
+      subgroup %in% c("male", "female") ~ "gender",
+      subgroup %in% c("1014", "1517") ~ "age",
+    ),
+    subgroup = case_when(
+      subgroup == "all" ~ "All",
+      subgroup == "white" ~ "White",
+      subgroup == "black" ~ "Black",
+      subgroup == "hispanic" ~ "Hispanic",
+      subgroup == "asian_other" ~ "Other Races and Ethnicities",
+      subgroup == "1014" ~ "Age 10 to 14",
+      subgroup == "1517" ~ "Age 15 to 17",
+      subgroup == "male" ~ "Male",
+      subgroup == "female" ~ "Female"
+    ),
+    rate_juv_arrest_quality = ifelse(pop_1017 < 30, NA, rate_juv_arrest_quality)) |>
+  select(-pop_1017)
+
+juv_arrest_place_all_subgroup <- juv_arrest_place_all_subgroup |>
+  select(
+    year,
+    state,
+    place,
+    subgroup_type,
+    subgroup,
+    rate_juv_arrest,
+    rate_juv_arrest_quality
+  ) |>
+  arrange(year, state, place, subgroup_type, subgroup)
+
+```
+
+```{r}
+juv_arrest_place_all_raceth <- juv_arrest_place_all_subgroup |>
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+  
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_rate_arrests_race-ethnicity_place.csv",
+  data = juv_arrest_place_all_raceth,  
+  geography = "place",
+  subgroups = TRUE, 
+  confidence_intervals = FALSE
+  )
+
+juv_arrest_place_all_gender <- juv_arrest_place_all_subgroup |>
+  filter(subgroup_type %in% c("all", "gender"))
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_rate_arrests_gender_place.csv",
+  data = juv_arrest_place_all_gender,  
+  geography = "place",
+  subgroups = TRUE, 
+  confidence_intervals = FALSE
+  )
+
+juv_arrest_place_all_age <- juv_arrest_place_all_subgroup |>
+  filter(subgroup_type %in% c("all", "age"))
+
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_rate_arrests_age_place.csv",
+  data = juv_arrest_place_all_age,  
+  geography = "place",
+  subgroups = TRUE, 
+  confidence_intervals = FALSE
+  )
+
+```
+
+```{r}
+# Write out this data set
+juv_arrest_place_all_subgroup |>
+  write_csv(here::here("07_safety",
+                       "final",
+                       "rate_arrests_place_all_subgroup.csv"))
+
+```
+
