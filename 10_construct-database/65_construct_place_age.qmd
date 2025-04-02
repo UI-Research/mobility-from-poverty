@@ -28,47 +28,18 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate.
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-
-  stopifnot(nrow(subset) == 0)
-
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-
-  quiet <- data
-
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
+
+### Data wrangling
+
+```{r}
+read_csv(here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_city.csv")) |>
+    mutate(subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
+    write_csv(here("data", "temp", "households_value_age_city.csv"))
+```
 
 ### Age files
 
@@ -97,13 +68,12 @@ filepaths <- c(
 here("data", "temp", "place-populations_age.csv"),
 
 # 01 financial well-being
-here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_city.csv"),
+here("data", "temp", "households_value_age_city.csv"),
 
 # 07 safety
 here("07_safety/final/rate_arrests_place_all_subgroup.csv")
 
 )
-
 ```
 
 This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year.
@@ -115,7 +85,6 @@ db_age <- filepaths |>
     .f = ~read_csv(.x)
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
-
 ```
 
 ### Clean file
@@ -308,4 +277,20 @@ db_age |>
 ```{r}
 
 write_csv(db_age, here("data", "65_mobility-metrics_place_age_longitudinal.csv"))
+```
+
+## Delete temp files
+
+Delete created temp files.
+
+```{r}
+
+tempfiles <- c(
+  
+# 01 financial well-being
+here("data", "temp", "households_value_age_city.csv")
+
+)
+
+file.remove(tempfiles)
 ```

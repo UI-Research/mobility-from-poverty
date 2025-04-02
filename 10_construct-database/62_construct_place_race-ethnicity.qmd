@@ -1,6 +1,6 @@
 ---
 title: "Combine Race-Ethnicity Place Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Manu Alcala"
 date: today
 format:
   html:
@@ -26,39 +26,8 @@ library(tidylog)
 library(here)
 library(assertr)
 library(gt)
-```
 
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate.
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate }} < {{ lb }}),
-  )
-
-  stopifnot(nrow(subset) == 0)
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  quiet <- data
-}
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -68,10 +37,17 @@ quiet <- function(data) {
 This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
 
 ```{r}
-
+#Filter subgroups
 read_csv(here("08_education", "data", "built", "SEDA_all_subgroups_city_2014-2018.csv")) %>%
   filter(subgroup_type %in% c("all", "race-ethnicity")) %>%
   write_csv(here("data", "temp", "SEDA_all_subgroups_city.csv"))
+
+#Fix typo in subgroup_type
+read_csv(here("08_education/data/final/digital_access_place_race_ethnicity_longitudinal.csv"))|>
+  mutate(subgroup_type = ifelse(subgroup_type == "race_ethnicity", "race-ethnicity", subgroup_type))|>
+  write_csv(here("data", "temp", "digital_access_race_city.csv"))
+
+
 ```
 
 ### Race-ethnicity files
@@ -115,7 +91,7 @@ filepaths <- c(
   here("08_education/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv"),
   here("data", "temp", "SEDA_all_subgroups_city.csv"),
   here("08_education/data/final/metrics_college_place_race-ethnicity_longitudinal.csv"),
-  here("08_education/data/final/digital_access_place_race_ethnicity_longitudinal.csv"),
+  here("data", "temp", "digital_access_race_city.csv"),
 
   # 09 employment
   here("09_employment/data/final/metrics_employment_place_race-ethnicity_longitudinal.csv")
@@ -352,4 +328,19 @@ test_bounds(
 
 ```{r}
 write_csv(db_race_eth, here("data", "62_mobility-metrics_place_race-ethnicity_longitudinal.csv"))
+```
+
+## Delete temp files
+
+Delete the created temp files
+
+```{r}
+tempfiles <- c(
+
+  here("data", "temp", "SEDA_all_subgroups_city.csv"),
+  
+  here("data", "temp", "digital_access_race_city.csv")
+)
+
+file.remove(tempfiles)
 ```
