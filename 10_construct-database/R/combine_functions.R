@@ -29,22 +29,28 @@ test_bounds <- function(data, estimate, lb, ub) {
 #' Test FIPS code length during CSV read
 #'
 #' @param file The final data file of interest
+#' @param geography The geographic level of the file being tested
 #'
-safe_read_csv <- function(file) {
+safe_read_csv <- function(file, geography) {
   
   data <- read_csv(file) 
   
+  if (geography == "county") {
   state_pass <- all(str_length(pull(data, state)) == 2)
-  county_pass <- all(str_length(pull(data, county)) == 3)
-  
+  geo_pass <- all(str_length(pull(data, county)) == 3)
+  }
+  else if (geography == "place") {
+    state_pass <- all(str_length(pull(data, state)) == 2)
+    geo_pass <- all(str_length(pull(data, place)) == 5)
+  }
   if (!state_pass) {
     
     stop("Error: all state FIPS codes aren't of length 2")
     
   }
-  if (!county_pass) {
+  if (!geo_pass) {
     
-    stop("Error: all county FIPS codes aren't of length 3")
+    stop("Error: all geo FIPS codes aren't of correct length")
     
   }
   
