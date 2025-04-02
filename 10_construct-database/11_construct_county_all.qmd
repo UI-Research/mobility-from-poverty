@@ -31,44 +31,7 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -190,31 +153,9 @@ filepaths <- c(
 This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
 
 ```{r}
-safe_read_csv <- function(file) {
-  
-  data <- read_csv(file) 
-  
-  state_pass <- all(str_length(pull(data, state)) == 2)
-  county_pass <- all(str_length(pull(data, county)) == 3)
-  
-  if (!state_pass) {
-    
-    stop("Error: all state FIPS codes aren't of length 2")
-    
-  }
-  if (!county_pass) {
-    
-    stop("Error: all county FIPS codes aren't of length 3")
-    
-  }
-  
-  return(data)
-
-}
-
 db <- filepaths |>
   map(
-    .f = ~ safe_read_csv(.x)
+    .f = ~ safe_read_csv(.x, geography = "county")
   ) |>
   reduce(left_join, by = c("year", "state", "county"))
 
@@ -654,3 +595,27 @@ test_bounds(
 write_csv(db, here("data", "11_mobility-metrics_county_longitudinal.csv"))
 
 ```
+
+## Delete temp files
+
+Delete the temp files created.
+
+```{r}
+tempfiles <- c(
+  
+  # 01 financial well-being
+  here("data", "temp", "county_debt_longitudinal.csv"),
+  here("data", "temp", "metrics_medical_debt_coll_all_county.csv"),
+  
+  # 02 housing
+  here("data", "temp", "homelessness_county_all.csv"),
+  here("data", "temp", "housing_county.csv"),
+
+  # 05 local-governance
+  here("data", "temp", "voter-turnout.csv")
+)
+
+file.remove(tempfiles)
+
+```
+
