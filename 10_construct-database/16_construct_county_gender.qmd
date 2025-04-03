@@ -1,6 +1,6 @@
 ---
 title: "Combine Gender County Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -28,44 +31,7 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -100,7 +66,7 @@ here("07_safety/final/rate_arrests_county_all_subgroup.csv"),
 
 # 08 education
 here("08_education/data/final/metrics_college_county_gender_longitudinal.csv"),
-here("08_education/SEDA_all_subgroups_county.csv"),
+here("08_education/data/built/SEDA_all_subgroups_county_2014-2018.csv"),
 
 # 09 employment
 here("09_employment/data/final/metrics_employment_county_gender_longitudinal.csv")
@@ -116,7 +82,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_gender <- filepaths |>
   map(
-    .f = ~read_csv(.x) 
+    .f = ~safe_read_csv(.x, geography = "county") 
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
@@ -143,10 +109,10 @@ At most there should be 9,432 in a year (3X3144) and at the least there should b
 
 ```{r}
 
-db_gender |> 
+db_gender |>
   count(year) |>
   assert(
-    within_bounds(9426, 9432), 
+    within_bounds(9426, 9432),
     n
   )
 ```
@@ -240,7 +206,7 @@ db_gender |>
     share_hs_degree_ub
   ) |>
   assert(
-    within_bounds(-10, 10), 
+    within_bounds(-10, 10),
     rate_learning,
     rate_learning_lb,
     rate_learning_ub
@@ -281,4 +247,18 @@ test_bounds(
 ```{r}
 
 write_csv(db_gender, here("data", "16_mobility-metrics_county_gender_longitudinal.csv"))
+```
+
+## Delete temp files
+
+Delete the temp files created.
+
+```{r}
+
+tempfiles <- c(
+# Race-ethnicity populations
+here("data", "temp", "county-populations_gender.csv")
+)
+
+file.remove(tempfiles)
 ```

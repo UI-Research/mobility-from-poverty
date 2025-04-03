@@ -1,6 +1,6 @@
 ---
 title: "Combine Industry County Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -28,44 +31,7 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -99,7 +65,7 @@ filepaths <- c(
 here("data", "temp", "county-populations_industry.csv"),
 
 # 09 employment
-here("09_employment/metrics_wage_ratio_2022_subgroup.csv")
+here("09_employment/data/final/living_wage_county_industry_longitudinal.csv")
 
 )
 
@@ -111,7 +77,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_industry <- filepaths |>
   map(
-    .f = ~read_csv(.x) 
+    .f = ~safe_read_csv(.x, geography = "county") 
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
@@ -157,10 +123,10 @@ At most there should be 25,152 in a year (8X3144) and at the least there should 
 
 ```{r}
 
-db_industry |> 
+db_industry |>
   count(year) |>
   assert(
-    within_bounds(25136, 25152), 
+    within_bounds(25136, 25152),
     n
   )
 ```
@@ -204,7 +170,7 @@ db_industry |>
 
 db_industry |>
   assert(
-    within_bounds(0, 5),
+    within_bounds(0, 6.5),
     ratio_living_wage
   ) |>
   quiet()
@@ -215,4 +181,18 @@ db_industry |>
 ```{r}
 
 write_csv(db_industry, here("data", "19_mobility-metrics_county_industry_longitudinal.csv"))
+```
+
+## Delete temp files
+
+Delete the temp files created.
+
+```{r}
+
+tempfiles <- c(
+# Industry populations
+here("data", "temp", "county-populations_industry.csv")
+)
+
+file.remove(tempfiles)
 ```

@@ -1,6 +1,6 @@
 ---
 title: "Combine Age County Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -28,47 +31,22 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
+
+### Temporary Fixes
+
+This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
+
+```{r}
+read_csv(here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_county.csv"))|>
+  mutate(subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
+  write_csv(
+    here("data", "temp", "households_house_value_age.csv")
+  )
+```
 
 ### Age files
 
@@ -97,25 +75,22 @@ filepaths <- c(
 here("data", "temp", "county-populations_age.csv"),
 
 # 01 financial well-being
-here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_county.csv"),
+here("data", "temp", "households_house_value_age.csv"),
 
 # 07 safety
 here("07_safety/final/rate_arrests_county_all_subgroup.csv")
 
 )
-
 ```
 
 This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 3,143 counties per year. 
 
 ```{r}
-
 db_age <- filepaths |>
   map(
-    .f = ~read_csv(.x)
+    .f = ~safe_read_csv(.x, geography = "county")
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
-
 ```
 
 ### Clean file
@@ -158,10 +133,10 @@ At most there should be 15,720 in a year (5X3144) and at the least there should 
 
 ```{r}
 
-db_age |> 
+db_age |>
   count(year) |>
   assert(
-    within_bounds(15710, 15720), 
+    within_bounds(15710, 15720),
     n
   )
 ```
@@ -307,4 +282,24 @@ db_age |>
 ```{r}
 
 write_csv(db_age, here("data", "15_mobility-metrics_county_age_longitudinal.csv"))
+```
+
+
+## Delete temp files
+
+Delete the temp files created.
+
+```{r}
+
+tempfiles <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "county-populations_age.csv"),
+
+# 01 financial well-being
+here("data", "temp", "households_house_value_age.csv")
+
+)
+
+file.remove(tempfiles)
 ```
