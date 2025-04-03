@@ -1,6 +1,6 @@
 ---
 title: "Combine Race Share Geography Place Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Manu Alcala"
 date: today
 format:
   html:
@@ -10,7 +10,7 @@ format:
 execute:
   message: false
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -28,44 +28,7 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -75,14 +38,17 @@ quiet <- function(data) {
 This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
 
 ```{r}
-
 # Correct subgroup category
 read_csv(here("01_financial-well-being/city-debt-coll-shares-2021.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority White" ~ "White neighborhoods",
-                              subgroup == "No Majority Race/Ethnicity" ~ "Mixed neighborhoods", 
-                              subgroup == "Majority Non-White" ~ "Neighborhoods of color",
-                              TRUE ~ subgroup),
-         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
+  mutate(
+    subgroup = case_when(
+      subgroup == "Majority White" ~ "White neighborhoods",
+      subgroup == "No Majority Race/Ethnicity" ~ "Mixed neighborhoods",
+      subgroup == "Majority Non-White" ~ "Neighborhoods of color",
+      TRUE ~ subgroup
+    ),
+    subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)
+  ) |>
   rename(place = place_fips) |>
   select(-city) |>
   write_csv(
@@ -90,49 +56,30 @@ read_csv(here("01_financial-well-being/city-debt-coll-shares-2021.csv")) |>
   )
 
 read_csv(here("06_neighborhoods/environment/data/final/environment_place_race-ethnicity_longitudinal.csv")) |>
-  mutate(subgroup = case_when(subgroup == "Majority White, Non-Hispanic" ~ "White neighborhoods",
-                              subgroup == "No Majority Race/Ethnicity" ~ "Mixed neighborhoods", 
-                              subgroup == "Majority Non-White" ~ "Neighborhoods of color",
-                              TRUE ~ subgroup)) |>
+  mutate(subgroup = case_when(
+    subgroup == "Majority White, Non-Hispanic" ~ "White neighborhoods",
+    subgroup == "No Majority Race/Ethnicity" ~ "Mixed neighborhoods",
+    subgroup == "Majority Non-White" ~ "Neighborhoods of color",
+    TRUE ~ subgroup
+  )) |>
   write_csv(
     here("data", "temp", "environment_place_subroup_race_share.csv")
-  )
-
-read_csv(here("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv")) |>
-   mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Neighborhoods of color", 
-                              subgroup == "Majority White-NH Tracts" ~ "White neighborhoods",
-                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed neighborhoods",
-                              TRUE ~ subgroup),
-         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
-  write_csv(
-    here("data", "temp", "transit_trips_all_place_subgroups_race_share.csv")
-  )
-
-
-read_csv(here("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv")) |>
-   mutate(subgroup = case_when(subgroup == "Majority Non-White Tracts" ~ "Neighborhoods of color", 
-                              subgroup == "Majority White-NH Tracts" ~ "White neighborhoods",
-                              subgroup == "Mixed Race and Ethnicity Tracts" ~ "Mixed neighborhoods",
-                              TRUE ~ subgroup),
-         subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
-  write_csv(
-    here("data", "temp", "transit_cost_all_place_subgroups_race_share.csv")
   )
 
 ```
 
 ### Racial share files
 
-Create population file for race share subgroup. 
+Create population file for race share subgroup.
 
 ```{r}
 expand_grid(
   read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
-           subgroup = c("All", "Neighborhoods of color", "White neighborhoods", 
+           subgroup = c("All", "Neighborhoods of color", "White neighborhoods",
                         "Mixed neighborhoods")
-) %>% 
-   mutate(subgroup_type = ifelse(subgroup != "All", "race-ethnicity", "all")) %>% 
-  select(-population) %>% 
+) %>%
+   mutate(subgroup_type = ifelse(subgroup != "All", "race-ethnicity", "all")) %>%
+  select(-population) %>%
   write_csv(here("data", "temp", "place-populations_race-share.csv"))
 
 ```
@@ -140,34 +87,30 @@ expand_grid(
 Read file paths to all metric data sets with geographic race share data.
 
 ```{r}
-
 filepaths <- c(
+  # Race-share populations
+  here("data", "temp", "place-populations_race-share.csv"),
 
-# Race-share populations
-here("data", "temp", "place-populations_race-share.csv"),
+  # 01 financial well-being
+  here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv"),
 
-# 01 financial well-being
-here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv"),
+  # 06 neighborhoods
+  here("data", "temp", "environment_place_subroup_race_share.csv"),
 
-# 06 neighborhoods
-here("data", "temp", "environment_place_subroup_race_share.csv"),
-here("data", "temp", "transit_trips_all_place_subgroups_race_share.csv"),
-here("data", "temp", "transit_cost_all_place_subgroups_race_share.csv")
-
+  here("06_neighborhoods/Transportation/final/transportation_subgroup_city.csv")
 )
 
 ```
 
-This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year.
 
 ```{r}
 
 db_race_share <- filepaths |>
   map(
-    .f = ~read_csv(.x) 
+    .f = ~ safe_read_csv(.x, geography = "place")
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
-
 ```
 
 ### Clean file
@@ -176,12 +119,12 @@ Some subgroup information is not available for entire years. To simplify the use
 
 ```{r}
 
-years_data <- db_race_share %>% 
-  group_by(year) %>% 
-  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
-  group_by(year) %>% 
-  count() %>% 
-  select(year) %>% 
+years_data <- db_race_share %>%
+  group_by(year) %>%
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>%
+  group_by(year) %>%
+  count() %>%
+  select(year) %>%
   pull()
 
 ```
@@ -210,10 +153,10 @@ At most there should 1,944 in a year (4X486) and at the least there should be 1,
 
 ```{r}
 dimension_test <- function(.data) {
-  .data |> 
+  .data |>
   count(year) |>
   assert(
-    within_bounds(1940, 1944), 
+    within_bounds(1940, 1944),
     n
   )
 }
@@ -245,7 +188,7 @@ db_race_share  |>
 
 ### Full Database
 
-Evaluate the quality variables. 
+Evaluate the quality variables.
 
 ```{r}
 db_race_share |>
@@ -260,8 +203,8 @@ db_race_share |>
 ```{r}
 db_race_share |>
   assert(
-    within_bounds(0, Inf), 
-    share_debt_coll, 
+    within_bounds(0, Inf),
+    share_debt_coll,
   ) |>
   quiet()
 ```
@@ -269,12 +212,13 @@ db_race_share |>
 ### 06 Neighborhoods
 
 ```{r}
+# COMMENT OUT UNTIL WE GET TRANSIT FILE WITH SUBROUPS
 db_race_share |>
   assert(
     within_bounds(0, 100),
     index_air_hazard,
-    index_transportation_cost,
-    index_transit_trips
+    share_transit_commuter,
+    share_transportation_cost
   ) |>
   quiet()
 
@@ -286,4 +230,23 @@ db_race_share |>
 
 write_csv(db_race_share, here("data", "63_mobility-metrics_place_race-share_longitudinal.csv"))
 
+```
+
+## Delete temp files
+
+Delete the created temp files
+
+```{r}
+tempfiles <- c(
+ # Race-share populations
+  here("data", "temp", "place-populations_race-share.csv"),
+
+  # 01 financial well-being
+  here("data", "temp", "city_debt_longitudinal_subgroup_race_share.csv"),
+
+  # 06 neighborhoods
+  here("data", "temp", "environment_place_subroup_race_share.csv")
+)
+
+file.remove(tempfiles)
 ```

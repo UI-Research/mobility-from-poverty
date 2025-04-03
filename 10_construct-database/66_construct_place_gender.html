@@ -6,8 +6,8 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="Aaron R. Williams &amp; JP Walsh">
-<meta name="dcterms.date" content="2024-08-23">
+<meta name="author" content="Aaron R. William, JP Walsh &amp; Manu Alcala">
+<meta name="dcterms.date" content="2025-04-02">
 
 <title>Combine Gender place Files</title>
 <style>
@@ -3080,6 +3080,7 @@ vertical-align: -.125em;
   <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
   <li><a href="#construct-database" id="toc-construct-database" class="nav-link" data-scroll-target="#construct-database">Construct Database</a>
   <ul class="collapse">
+  <li><a href="#data-wrangling" id="toc-data-wrangling" class="nav-link" data-scroll-target="#data-wrangling">Data wrangling</a></li>
   <li><a href="#gender-files" id="toc-gender-files" class="nav-link" data-scroll-target="#gender-files">gender files</a></li>
   <li><a href="#clean-file" id="toc-clean-file" class="nav-link" data-scroll-target="#clean-file">Clean file</a></li>
   </ul></li>
@@ -3093,6 +3094,7 @@ vertical-align: -.125em;
   <li><a href="#employment" id="toc-employment" class="nav-link" data-scroll-target="#employment">09 Employment</a></li>
   </ul></li>
   <li><a href="#write-the-file" id="toc-write-the-file" class="nav-link" data-scroll-target="#write-the-file">Write the File</a></li>
+  <li><a href="#delete-temp-files" id="toc-delete-temp-files" class="nav-link" data-scroll-target="#delete-temp-files">Delete temp files</a></li>
   </ul>
 </nav>
 </div>
@@ -3110,14 +3112,14 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Author</div>
     <div class="quarto-title-meta-contents">
-             <p>Aaron R. Williams &amp; JP Walsh </p>
+             <p>Aaron R. William, JP Walsh &amp; Manu Alcala </p>
           </div>
   </div>
     
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">August 23, 2024</p>
+      <p class="date">April 2, 2025</p>
     </div>
   </div>
   
@@ -3136,46 +3138,21 @@ vertical-align: -.125em;
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidylog)</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(here)</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(assertr)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p>This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Test the bounds of a confidence interval relative to the estimate</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param data The data frame of interest</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param estimate The unquoted name of the estimate variable</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param lb The unquoted name of the lower bound variable</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param ub The unquoted name of the upper bound variable</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>test_bounds <span class="ot">&lt;-</span> <span class="cf">function</span>(data, estimate, lb, ub) {</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  subset <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ ub }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate }} <span class="sc">&gt;</span> {{ ub }}),</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate  }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="fu">nrow</span>(subset) <span class="sc">==</span> <span class="dv">0</span>)</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Helper function to silence output from testing code</span></span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param data A data frame</span></span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>quiet <span class="ot">&lt;-</span> <span class="cf">function</span>(data) {</span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>  quiet <span class="ot">&lt;-</span> data</span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;10_construct-database&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;combine_functions.R&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="construct-database" class="level2">
 <h2 class="anchored" data-anchor-id="construct-database">Construct Database</h2>
+<section id="data-wrangling" class="level3">
+<h3 class="anchored" data-anchor-id="data-wrangling">Data wrangling</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;08_education/data/built/SEDA_all_subgroups_city_2014-2018.csv&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(subgroup_type <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;gender&quot;</span>, <span class="st">&quot;all&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">write_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_gender_city.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
 <section id="gender-files" class="level3">
 <h3 class="anchored" data-anchor-id="gender-files">gender files</h3>
 <p>Create population file with a variable for gender.</p>
@@ -3183,36 +3160,37 @@ vertical-align: -.125em;
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">expand_grid</span>(</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;geographic-crosswalks&quot;</span>, <span class="st">&quot;data&quot;</span>, <span class="st">&quot;place-populations.csv&quot;</span>)),</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>           <span class="at">subgroup =</span> <span class="fu">c</span>(<span class="st">&quot;All&quot;</span>, <span class="st">&quot;Male&quot;</span>, <span class="st">&quot;Female&quot;</span>)</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span> </span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>   <span class="fu">mutate</span>(<span class="at">subgroup_type =</span> <span class="fu">ifelse</span>(subgroup <span class="sc">!=</span> <span class="st">&quot;All&quot;</span>, <span class="st">&quot;gender&quot;</span>, <span class="st">&quot;all&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>population) <span class="sc">%&gt;%</span> </span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>   <span class="fu">mutate</span>(<span class="at">subgroup_type =</span> <span class="fu">ifelse</span>(subgroup <span class="sc">!=</span> <span class="st">&quot;All&quot;</span>, <span class="st">&quot;gender&quot;</span>, <span class="st">&quot;all&quot;</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>population) <span class="sc">%&gt;%</span></span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;place-populations_gender.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Read file paths to all place files with gender subgroup information.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>filepaths <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Race-ethnicity populations</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;place-populations_gender.csv&quot;</span>),</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co"># 07 safety</span></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;07_safety/final/rate_arrests_place_all_subgroup.csv&quot;</span>),</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_college_place_gender_longitudinal.csv&quot;</span>),</span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/built/SEDA_all_subgroups_city.csv&quot;</span>),</span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># 09 employment</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;09_employment/data/final/metrics_employment_place_gender_longitudinal.csv&quot;</span>)</span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># RP: Update commented code when data becomes available</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>filepaths <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Race-ethnicity populations</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;place-populations_gender.csv&quot;</span>),</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 07 safety</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;07_safety/final/rate_arrests_place_all_subgroup.csv&quot;</span>),</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_college_place_gender_longitudinal.csv&quot;</span>),</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_gender_city.csv&quot;</span>),</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="co"># 09 employment</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;09_employment/data/final/metrics_employment_place_gender_longitudinal.csv&quot;</span>)</span>
 <span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This code loads each file and then combines them using <code>left_join()</code>. The first file is a population file, so there should be 486 places per year.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>db_gender <span class="ot">&lt;-</span> filepaths <span class="sc">|&gt;</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">map</span>(</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">.f =</span> <span class="sc">~</span><span class="fu">read_csv</span>(.x)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">.f =</span> <span class="sc">~</span><span class="fu">safe_read_csv</span>(.x, <span class="at">geography =</span> <span class="st">&quot;place&quot;</span>)</span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">reduce</span>(left_join, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">&quot;year&quot;</span>, <span class="st">&quot;state&quot;</span>, <span class="st">&quot;place&quot;</span>, <span class="st">&quot;subgroup&quot;</span>, <span class="st">&quot;subgroup_type&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -3231,12 +3209,12 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="clean-file">Clean file</h3>
 <p>Some subgroup information is not available for entire years. To simplify the user experience, remove these years entirely instead of giving a bunch of NAs.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>years_data <span class="ot">&lt;-</span> db_gender <span class="sc">%&gt;%</span> </span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter_at</span>(<span class="fu">vars</span>(<span class="sc">-</span>year, <span class="sc">-</span>state, <span class="sc">-</span>state_name, <span class="sc">-</span>place, <span class="sc">-</span>place_name, <span class="sc">-</span>subgroup_type, <span class="sc">-</span>subgroup), <span class="fu">any_vars</span>(<span class="sc">!</span><span class="fu">is.na</span>(.))) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year) <span class="sc">%&gt;%</span> </span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(year) <span class="sc">%&gt;%</span> </span>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>years_data <span class="ot">&lt;-</span> db_gender <span class="sc">%&gt;%</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year) <span class="sc">%&gt;%</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter_at</span>(<span class="fu">vars</span>(<span class="sc">-</span>year, <span class="sc">-</span>state, <span class="sc">-</span>state_name, <span class="sc">-</span>place, <span class="sc">-</span>place_name, <span class="sc">-</span>subgroup_type, <span class="sc">-</span>subgroup), <span class="fu">any_vars</span>(<span class="sc">!</span><span class="fu">is.na</span>(.))) <span class="sc">%&gt;%</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year) <span class="sc">%&gt;%</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>() <span class="sc">%&gt;%</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(year) <span class="sc">%&gt;%</span></span>
 <span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pull</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Filter for only years that have data available.</p>
@@ -3259,21 +3237,24 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="dimensions">Dimensions</h3>
 <p>At most there should be 1,458 in a year (3X486) and at the least there should be 1,455 in a year (3X485).</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>db_gender <span class="sc">|&gt;</span> </span>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>db_gender <span class="sc">|&gt;</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(year) <span class="sc">|&gt;</span></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">1455</span>, <span class="dv">1458</span>), </span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">1455</span>, <span class="dv">1458</span>),</span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    n</span>
 <span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 5 x 2
+<pre><code># A tibble: 8 x 2
    year     n
   &lt;dbl&gt; &lt;int&gt;
-1  2016  1455
-2  2017  1455
-3  2018  1458
-4  2021  1458
-5  2022  1458</code></pre>
+1  2014  1455
+2  2015  1455
+3  2016  1455
+4  2017  1455
+5  2018  1458
+6  2021  1458
+7  2022  1458
+8  2023  1458</code></pre>
 </div>
 </div>
 </section>
@@ -3292,18 +3273,18 @@ vertical-align: -.125em;
 <pre><code># A tibble: 12 x 3
    variable                quality      n
    &lt;chr&gt;                   &lt;chr&gt;    &lt;int&gt;
- 1 rate_juv_arrest_quality Marginal   214
- 2 rate_juv_arrest_quality Strong     900
- 3 rate_juv_arrest_quality Weak       330
- 4 rate_learning_quality   Marginal   130
- 5 rate_learning_quality   Strong    1318
- 6 rate_learning_quality   Weak       149
- 7 share_employed_quality  Marginal  1036
- 8 share_employed_quality  Strong     404
- 9 share_employed_quality  Weak       500
-10 share_hs_degree_quality Marginal   911
-11 share_hs_degree_quality Strong     393
-12 share_hs_degree_quality Weak       462</code></pre>
+ 1 rate_juv_arrest_quality Marginal   726
+ 2 rate_juv_arrest_quality Strong    1488
+ 3 rate_juv_arrest_quality Weak       242
+ 4 rate_learning_quality   Marginal   804
+ 5 rate_learning_quality   Strong    2948
+ 6 rate_learning_quality   Weak       286
+ 7 share_employed_quality  Marginal  2550
+ 8 share_employed_quality  Strong    1288
+ 9 share_employed_quality  Weak      1014
+10 share_hs_degree_quality Marginal  2153
+11 share_hs_degree_quality Strong    1238
+12 share_hs_degree_quality Weak       907</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>db_gender  <span class="sc">|&gt;</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup <span class="sc">!=</span> <span class="st">&quot;All&quot;</span>) <span class="sc">|&gt;</span></span>
@@ -3312,29 +3293,41 @@ vertical-align: -.125em;
 <span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(year, quality) <span class="sc">|&gt;</span></span>
 <span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="at">n =</span> <span class="dv">100</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 20 x 3
+<pre><code># A tibble: 32 x 3
     year quality      n
    &lt;dbl&gt; &lt;chr&gt;    &lt;int&gt;
- 1  2016 Marginal    61
- 2  2016 Strong     663
- 3  2016 Weak        78
- 4  2016 &lt;NA&gt;      3078
- 5  2017 Marginal    69
- 6  2017 Strong     655
- 7  2017 Weak        71
- 8  2017 &lt;NA&gt;      3085
- 9  2018 Marginal   978
-10  2018 Strong     399
-11  2018 Weak       479
-12  2018 &lt;NA&gt;      2032
-13  2021 Marginal  1059
-14  2021 Strong     782
-15  2021 Weak       633
-16  2021 &lt;NA&gt;      1414
-17  2022 Marginal   124
-18  2022 Strong     516
-19  2022 Weak       180
-20  2022 &lt;NA&gt;      3068</code></pre>
+ 1  2014 Marginal  1043
+ 2  2014 Strong    1004
+ 3  2014 Weak       484
+ 4  2014 &lt;NA&gt;      1349
+ 5  2015 Marginal   167
+ 6  2015 Strong     583
+ 7  2015 Weak        60
+ 8  2015 &lt;NA&gt;      3070
+ 9  2016 Marginal  1121
+10  2016 Strong     992
+11  2016 Weak       559
+12  2016 &lt;NA&gt;      1208
+13  2017 Marginal   168
+14  2017 Strong     578
+15  2017 Weak        61
+16  2017 &lt;NA&gt;      3073
+17  2018 Marginal  1145
+18  2018 Strong     973
+19  2018 Weak       535
+20  2018 &lt;NA&gt;      1235
+21  2021 Marginal  1193
+22  2021 Strong     842
+23  2021 Weak       557
+24  2021 &lt;NA&gt;      1296
+25  2022 Marginal   248
+26  2022 Strong     512
+27  2022 Weak        88
+28  2022 &lt;NA&gt;      3040
+29  2023 Marginal  1148
+30  2023 Strong    1478
+31  2023 Weak       105
+32  2023 &lt;NA&gt;      1157</code></pre>
 </div>
 </div>
 </section>
@@ -3346,20 +3339,20 @@ vertical-align: -.125em;
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">ends_with</span>(<span class="st">&quot;_quality&quot;</span>)) <span class="sc">|&gt;</span></span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(<span class="fu">in_set</span>(<span class="st">&quot;Strong&quot;</span>, <span class="st">&quot;Marginal&quot;</span>, <span class="st">&quot;Weak&quot;</span>), <span class="fu">everything</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 7,284 x 4
+<pre><code># A tibble: 11,652 x 4
    rate_juv_arrest_quality share_hs_degree_quality rate_learning_quality
    &lt;chr&gt;                   &lt;chr&gt;                   &lt;chr&gt;                
- 1 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 2 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 3 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 4 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 5 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 6 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 7 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
+ 1 &lt;NA&gt;                    Marginal                Strong               
+ 2 &lt;NA&gt;                    Marginal                Strong               
+ 3 &lt;NA&gt;                    Marginal                Strong               
+ 4 &lt;NA&gt;                    Weak                    Strong               
+ 5 &lt;NA&gt;                    Weak                    Strong               
+ 6 &lt;NA&gt;                    Weak                    Strong               
+ 7 &lt;NA&gt;                    Weak                    Strong               
  8 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
- 9 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
-10 &lt;NA&gt;                    &lt;NA&gt;                    Strong               
-# i 7,274 more rows
+ 9 &lt;NA&gt;                    Weak                    Strong               
+10 &lt;NA&gt;                    Weak                    Strong               
+# i 11,642 more rows
 # i 1 more variable: share_employed_quality &lt;chr&gt;</code></pre>
 </div>
 </div>
@@ -3386,7 +3379,7 @@ vertical-align: -.125em;
 <span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    share_hs_degree_ub</span>
 <span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
 <span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="sc">-</span><span class="dv">10</span>, <span class="dv">10</span>), </span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="sc">-</span><span class="dv">10</span>, <span class="dv">10</span>),</span>
 <span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    rate_learning,</span>
 <span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    rate_learning_lb,</span>
 <span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    rate_learning_ub</span>
@@ -3394,9 +3387,9 @@ vertical-align: -.125em;
 <span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
 <span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_gender, </span>
-<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_hs_degree, </span>
-<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_hs_degree_lb, </span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_gender,</span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_hs_degree,</span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_hs_degree_lb,</span>
 <span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_hs_degree_ub</span>
 <span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -3414,9 +3407,9 @@ vertical-align: -.125em;
 <span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
 <span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_gender, </span>
-<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_employed, </span>
-<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_employed_lb, </span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_gender,</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_employed,</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_employed_lb,</span>
 <span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_employed_ub</span>
 <span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -3426,6 +3419,23 @@ vertical-align: -.125em;
 <h2 class="anchored" data-anchor-id="write-the-file">Write the File</h2>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(db_gender, <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;66_mobility-metrics_place_gender_longitudinal.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="delete-temp-files" class="level2">
+<h2 class="anchored" data-anchor-id="delete-temp-files">Delete temp files</h2>
+<p>Delete the created temp files</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>tempfiles <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_gender_city.csv&quot;</span>)</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="fu">file.remove</span>(tempfiles)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] TRUE</code></pre>
+</div>
 </div>
 </section>
 

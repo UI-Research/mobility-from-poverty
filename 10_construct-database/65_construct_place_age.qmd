@@ -10,7 +10,7 @@ format:
 execute:
   message: false
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -28,94 +28,63 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
 
+### Data wrangling
+
+```{r}
+read_csv(here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_city.csv")) |>
+    mutate(subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
+    write_csv(here("data", "temp", "households_value_age_city.csv"))
+```
+
 ### Age files
 
-Create population file with a variable for age. 
+Create population file with a variable for age.
 
 ```{r}
 
 expand_grid(
   read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
-           subgroup = c("All", "Under Age 45", "Age 45 and Over", 
+           subgroup = c("All", "Under Age 45", "Age 45 and Over",
                         "Age 10 to 14", "Age 15 to 17")
-) %>% 
-   mutate(subgroup_type = ifelse(subgroup != "All", "age", "all")) %>% 
-  select(-population) %>% 
+) %>%
+   mutate(subgroup_type = ifelse(subgroup != "All", "age", "all")) %>%
+  select(-population) %>%
   write_csv(here("data", "temp", "place-populations_age.csv"))
 
 ```
 
-Read file paths to all place files with age subgroup information. 
+Read file paths to all place files with age subgroup information.
 
 ```{r}
 
 filepaths <- c(
-  
+
 # Race-ethnicity populations
 here("data", "temp", "place-populations_age.csv"),
 
 # 01 financial well-being
-here("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_city.csv"),
+here("data", "temp", "households_value_age_city.csv"),
 
 # 07 safety
 here("07_safety/final/rate_arrests_place_all_subgroup.csv")
 
 )
-
 ```
 
-This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year.
 
 ```{r}
 
 db_age <- filepaths |>
   map(
-    .f = ~read_csv(.x)
+    .f = ~safe_read_csv(.x, geography = "place")
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
-
 ```
 
 ### Clean file
@@ -124,12 +93,12 @@ Some subgroup information is not available for entire years. To simplify the use
 
 ```{r}
 
-years_data <- db_age %>% 
-  group_by(year) %>% 
-  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
-  group_by(year) %>% 
-  count() %>% 
-  select(year) %>% 
+years_data <- db_age %>%
+  group_by(year) %>%
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>%
+  group_by(year) %>%
+  count() %>%
+  select(year) %>%
   pull()
 
 ```
@@ -158,10 +127,10 @@ At most there should be 2,430 in a year (5X486) and at the least there should be
 
 ```{r}
 
-db_age |> 
+db_age |>
   count(year) |>
   assert(
-    within_bounds(2425, 2430), 
+    within_bounds(2425, 2430),
     n
   )
 ```
@@ -190,7 +159,7 @@ db_age  |>
 
 ### Full Database
 
-Evaluate the quality variables. 
+Evaluate the quality variables.
 
 ```{r}
 db_age |>
@@ -205,7 +174,7 @@ db_age |>
 
 db_age |>
   separate_wider_delim(
-    ratio_black_nh_house_value_households, 
+    ratio_black_nh_house_value_households,
     delim = ":",
     names = c("numerator", "denominator")
   ) |>
@@ -222,7 +191,7 @@ db_age |>
 
 db_age |>
   separate_wider_delim(
-    ratio_black_nh_house_value_households, 
+    ratio_black_nh_house_value_households,
     delim = ":",
     names = c("numerator", "denominator")
   ) |>
@@ -239,7 +208,7 @@ db_age |>
 
 db_age |>
   separate_wider_delim(
-    ratio_hispanic_house_value_households, 
+    ratio_hispanic_house_value_households,
     delim = ":",
     names = c("numerator", "denominator")
   ) |>
@@ -256,7 +225,7 @@ db_age |>
 
 db_age |>
   separate_wider_delim(
-    ratio_other_nh_house_value_households, 
+    ratio_other_nh_house_value_households,
     delim = ":",
     names = c("numerator", "denominator")
   ) |>
@@ -273,7 +242,7 @@ db_age |>
 
 db_age |>
   separate_wider_delim(
-    ratio_white_nh_house_value_households, 
+    ratio_white_nh_house_value_households,
     delim = ":",
     names = c("numerator", "denominator")
   ) |>
@@ -293,6 +262,7 @@ db_age |>
 ### 07 Safety
 
 ```{r}
+
 db_age |>
   assert(
     within_bounds(0, Inf),
@@ -307,4 +277,20 @@ db_age |>
 ```{r}
 
 write_csv(db_age, here("data", "65_mobility-metrics_place_age_longitudinal.csv"))
+```
+
+## Delete temp files
+
+Delete created temp files.
+
+```{r}
+
+tempfiles <- c(
+  
+# 01 financial well-being
+here("data", "temp", "households_value_age_city.csv")
+
+)
+
+file.remove(tempfiles)
 ```
