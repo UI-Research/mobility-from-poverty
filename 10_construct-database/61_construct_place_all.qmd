@@ -68,6 +68,49 @@ bind_rows(
   )
 ```
 
+
+### Temporary Suppression
+
+There are several variables where the results are unreasonable and we have high doubts about quality. These will be temporarily suppressed for this round.
+
+```{r}
+#Suppress places crime & arrests:
+#New York City: St fip. 36, Place fip. 5100
+#San Jose City: St fip. 06, Place fip. 6800
+
+suppress_values <- c("3651000", "0668000")
+
+read_csv(here("07_safety/final/rates_crime_place_all.csv")) %>% 
+  mutate(combine_fip = paste0(state, place),
+         across(rate_crime_violent:rate_crime_property_quality, ~if_else(combine_fip %in% suppress_values & year != 2023, NA_integer_, .))) %>% 
+  select(-combine_fip) %>% 
+  write_csv(
+    here("data", "temp", "rates_crime_place_all.csv")
+  )
+
+
+read_csv(here("07_safety/final/rate_arrests_place_all.csv")) %>% 
+  mutate(combine_fip = paste0(state, place),
+         across(rate_juv_arrest:rate_juv_arrest_quality, ~if_else(combine_fip %in% suppress_values & year != 2023, NA_integer_, .))) %>% 
+  select(-combine_fip) %>% 
+  write_csv(
+    here("data", "temp", "rates_arrest_place_all.csv")
+  )
+
+#Suppress places affordable & available:
+#Pearland, Texas: St fip. 48, Place fip. 56348 just for 2014
+suppress_values <- c("4856348")
+
+read_csv(here("02_housing/data/final/housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv")) %>% 
+  mutate(combine_fip = paste0(state, place),
+         across(share_affordable_available_30_ami:share_affordable_available_80_ami_quality, ~if_else(combine_fip %in% suppress_values & year == 2014, NA_integer_, .))) %>% 
+  select(-combine_fip) %>% 
+  write_csv(
+    here("data", "temp", "housing_place_all.csv")
+  )
+
+```
+
 ### Combine Files
 
 This vector of filepaths points to all file to include in the output data. The vector points to the temp data for files that have temporary fixes.
@@ -83,7 +126,7 @@ filepaths <- c(
   #
   # 02 housing
   here("data", "temp", "homelessness_city_all.csv"),
-  here("02_housing/data/final/housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"),
+  here("data", "temp", "housing_place_all.csv"),
   # 04 health
   # no ratio of pcp to population
   # no neonatal health
@@ -102,8 +145,8 @@ filepaths <- c(
   here("06_neighborhoods/Transportation/final/transportation_all_city.csv"),
   #
   # 07 safety
-  here("07_safety/final/rates_crime_place_all.csv"),
-  here("07_safety/final/rate_arrests_place_all.csv"),
+  here("data", "temp", "rates_crime_place_all.csv"),
+  here("data", "temp", "rates_arrest_place_all.csv"),
   #
   # 08 education
   here("08_education/data/final/metrics_preschool_place_all_longitudinal_all.csv"),
@@ -506,12 +549,15 @@ tempfiles <- c(
 
   # 02 housing
   here("data", "temp", "homelessness_city_all.csv"),
+  here("data", "temp", "housing_place_all.csv"),
 
   # 05 local-governance
   here("data", "temp", "voter-turnout-city.csv"),
   
   # 06 neighborhoods
-  here("data", "temp", "race-ethnicity-exposure-city.csv")
+  here("data", "temp", "race-ethnicity-exposure-city.csv"),
+  here("data", "temp", "rates_crime_place_all.csv"),
+  here("data", "temp", "rates_arrest_place_all.csv")
 )
 
 file.remove(tempfiles)
