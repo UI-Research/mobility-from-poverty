@@ -1,6 +1,6 @@
 ---
 title: "Combine Race-Ethnicity County Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Ridhi Purohit"
 date: today
 format:
   html:
@@ -13,6 +13,9 @@ execute:
 editor_options: 
   chunk_output_type: console
 ---
+## Update 
+
+This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.
 
 ## Setup
 
@@ -28,63 +31,7 @@ library(here)
 library(assertr)
 library(gt)
 
-```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
-#' Test for extreme outliers in the metrics
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#'
-detect_outliers <- function(data, estimate) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
 
 ## Construct Database
@@ -95,56 +42,64 @@ This section implements temporary fixes and saves the resulting data in a temp f
 
 ```{r}
 
-# Quality NA and variable mismatch
-read_csv(here("02_housing/data/final/homelessness_all_subgroups_county.csv")) |>
-  mutate(share_homeless_quality = ifelse(is.na(share_homeless), NA_character_, share_homeless_quality),
-         count_homeless_quality = ifelse(is.na(count_homeless), NA_character_, count_homeless_quality))|>
-  write_csv(
-    here("data", "temp", "homelessness_county_race-ethnicity.csv")
-  )
-
-# combine multiple years
-bind_rows(
-  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2018.csv")),
-  read_csv(here("06_neighborhoods", "poverty-exposure", "poverty-exposure_race-ethnicity_county_2021.csv"))
-) |>
-  write_csv(
-    here("data", "temp", "poverty-exposure_county_race-ethnicity.csv")
-  )
-
-# combine multiple years
-bind_rows(
-  read_csv(here("04_health/final_data/neonatal_health_subgroup_2022.csv"))|>
+# update variable names and filter subgroup
+read_csv(here("04_health/neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_county.csv"))|>
   rename(
     share_low_birth_weight = rate_low_birth_weight,
     share_low_birth_weight_lb = rate_low_birth_weight_lb,
     share_low_birth_weight_ub = rate_low_birth_weight_ub,
     share_low_birth_weight_quality = rate_low_birth_weight_quality,
-  ),
-  read_csv(here("04_health/final_data/neonatal_health_subgroup_2020.csv"))|>
-  rename(
-    share_low_birth_weight = lbw,
-    share_low_birth_weight_lb = lbw_lb,
-    share_low_birth_weight_ub = lbw_ub,
-    share_low_birth_weight_quality = lbw_quality,
-  ),
-  read_csv(here("04_health/final_data/neonatal_health_subgroup_2018.csv"))|>
-  rename(
-    share_low_birth_weight = lbw,
-    share_low_birth_weight_lb = lbw_lb,
-    share_low_birth_weight_ub = lbw_ub,
-    share_low_birth_weight_quality = lbw_quality,
-  )
-)  |>
+  ) |>
   filter(subgroup_type %in% c("all", "race-ethnicity")) |>
   write_csv(
     here("data", "temp", "neonatal_health_race-ethncity.csv")
   )
 
-# Correct subgroup title
-read_csv(here("07_safety/final/rate_arrests_county_all_subgroup.csv")) %>%
-  mutate(subgroup =  ifelse(subgroup == "White, Non-Hispanic", "White", subgroup)) %>%
-  write_csv(here("data", "temp", "rate_arrests_county.csv"))
+# correct typo in subgroup_type variable
+
+read_csv(here("04_health/exposure-to-trauma/data/final/rate_injury_deaths_metric_subgroup_county.csv"))|>
+  mutate(subgroup_type = ifelse(subgroup_type == "race-ethncity", "race-ethnicity", subgroup_type))|>
+  write_csv(
+    here("data", "temp", "rate_injury_deaths_race-ethnicity.csv")
+  )
+
+read_csv(here("08_education/data/final/digital_access_county_race_ethnicity_longitudinal.csv"))|>
+  mutate(subgroup_type = ifelse(subgroup_type == "race_ethnicity", "race-ethnicity", subgroup_type))|>
+  write_csv(
+    here("data", "temp", "digital_access_race-ethncity.csv")
+  )
+
+# filter required subgroup
+read_csv(here("08_education/data/built/SEDA_all_subgroups_county_2014-2018.csv")) |>
+  filter(subgroup_type %in% c("all", "race-ethnicity")) |>
+  write_csv(here("data", "temp", "SEDA_race-ethnicity_subgroup_county_2014-2018.csv"))
+
+read_csv(here("07_safety/final/rate_arrests_county_all_subgroup.csv")) |>
+  filter(subgroup_type %in% c("all", "race-ethnicity")) |>
+  write_csv(here("data", "temp", "rate_arrests_county_race-ethnicity_subgroup.csv"))  
+
+```
+
+### Temporary Suppression
+
+There are several variables where the results are unreasonable and we have high doubts about quality. These will be temporarily suppressed for this round.
+
+```{r}
+
+#Suppress counties arrests:
+#New York County: St fip. 36, County fip. 061
+#Sacramento County: St fip. 06, County fip. 067
+#Santa Clara County: St fip. 06, County fip. 085
+
+suppress_values <- c("36061", "06067", "06085")
+
+read_csv(here("data", "temp", "rate_arrests_county_race-ethnicity_subgroup.csv")) %>% 
+  mutate(combine_fip = paste0(state, county),
+         across(rate_juv_arrest:rate_juv_arrest_quality, ~if_else(combine_fip %in% suppress_values & year != 2023, NA_integer_, .))) %>% 
+  select(-combine_fip) %>% 
+  write_csv(
+    here("data", "temp", "rate_arrests_county_race-ethnicity_subgroup.csv")
+  )
 
 ```
 
@@ -178,22 +133,23 @@ here("data", "temp", "county-populations_race-ethnicity.csv"),
 here("01_financial-well-being/final/metrics_income_county_race-ethnicity_longitudinal.csv"),
 
 # 02 housing
-here("data", "temp", "homelessness_county_race-ethnicity.csv"),
+here("02_housing/data/final/homelessness_2019-2022_subgroups_county.csv"),
 
 # 04 health
 here("data", "temp", "neonatal_health_race-ethncity.csv"),
+here("data", "temp", "rate_injury_deaths_race-ethnicity.csv"),
 
 # 06 neighborhoods
-here("data", "temp", "poverty-exposure_county_race-ethnicity.csv"),
+here("06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_county.csv"),
 
 # 07 safety
-here("data", "temp", "rate_arrests_county.csv"),
+here("data", "temp", "rate_arrests_county_race-ethnicity_subgroup.csv"),
 
 # 08 education
 here("08_education/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv"),
-here("08_education/SEDA_all_subgroups_county.csv"),
+here("data", "temp", "SEDA_race-ethnicity_subgroup_county_2014-2018.csv"),
 here("08_education/data/final/metrics_college_county_race-ethnicity_longitudinal.csv"),
-here("08_education/final/digital_access_county_subgroup_all.csv"),
+here("data", "temp", "digital_access_race-ethncity.csv"),
 
 # 09 employment
 here("09_employment/data/final/metrics_employment_county_race-ethnicity_longitudinal.csv")
@@ -207,7 +163,7 @@ This code loads each file and then combines them using `left_join()`. The first 
 
 db_race_eth <- filepaths |>
   map(
-    .f = ~read_csv(.x)
+    .f = ~safe_read_csv(.x, geography = "county")
   ) |>
   reduce(left_join, by = c("year", "state", "county", "subgroup", "subgroup_type"))
 
@@ -221,9 +177,7 @@ db_race_eth  <- db_race_eth  |>
     rate_learning = learning_rate,
     rate_learning_lb = learning_rate_lb,
     rate_learning_ub = learning_rate_ub,
-    rate_learning_quality = learning_rate_quality,
-    share_poverty_exposure = poverty_exposure,
-    share_poverty_exposure_quality = poverty_exposure_quality
+    rate_learning_quality = learning_rate_quality
   )
 
 ```
@@ -269,10 +223,10 @@ At most there should be 22,008 in a year (7X3144) and at the least there should 
 
 ```{r}
 dimension_test <- function(.data) {
-  .data |> 
+  .data |>
   count(year) |>
   assert(
-    within_bounds(21994, 22008), 
+    within_bounds(21994, 22008),
     n
   )
 }
@@ -344,9 +298,9 @@ db_race_eth |>
   quiet()
 
 test_bounds(
-  data = db_race_eth, 
-  estimate = count_homeless, 
-  lb = count_homeless_lb, 
+  data = db_race_eth,
+  estimate = count_homeless,
+  lb = count_homeless_lb,
   ub = count_homeless_ub
 )
 
@@ -369,6 +323,22 @@ test_bounds(
   estimate = share_low_birth_weight, 
   lb = share_low_birth_weight_lb, 
   ub = share_low_birth_weight_ub
+)
+
+db_race_eth |>
+  assert(
+    within_bounds(0, Inf),
+    rate_injury_death,
+    rate_injury_death_lb,
+    rate_injury_death_ub
+  ) |>
+  quiet()
+
+test_bounds(
+  data = db_race_eth, 
+  estimate = rate_injury_death, 
+  lb = rate_injury_death_lb, 
+  ub = rate_injury_death_ub
 )
 ```
 
@@ -410,7 +380,7 @@ db_race_eth |>
     share_hs_degree_ub
   ) |>
   assert(
-    within_bounds(-10, 10), 
+    within_bounds(-10, 10),
     rate_learning,
     rate_learning_lb,
     rate_learning_ub
@@ -420,9 +390,7 @@ db_race_eth |>
 db_race_eth |>
   assert(
     within_bounds(0, 1),
-    share_digital_access,
-    share_digital_access_lb,
-    share_digital_access_ub,
+    share_digital_access
   ) |>
   quiet()
 
@@ -441,16 +409,9 @@ test_bounds(
 )
 
 test_bounds(
-  data = db_race_eth, 
-  estimate = share_digital_access, 
-  lb = share_digital_access_lb, 
-  ub = share_digital_access_ub
-)
-
-test_bounds(
-  data = db_race_eth, 
-  estimate = rate_learning, 
-  lb = rate_learning_lb, 
+  data = db_race_eth,
+  estimate = rate_learning,
+  lb = rate_learning_lb,
   ub = rate_learning_ub
 )
 
@@ -484,3 +445,31 @@ test_bounds(
 write_csv(db_race_eth, here("data", "12_mobility-metrics_county_race-ethnicity_longitudinal.csv"))
 
 ```
+
+## Delete temp files
+
+Delete the temp files created.
+
+```{r}
+tempfiles <- c(
+  
+# Race-ethnicity populations
+here("data", "temp", "county-populations_race-ethnicity.csv"),
+
+# 04 health
+here("data", "temp", "neonatal_health_race-ethncity.csv"),
+here("data", "temp", "rate_injury_deaths_race-ethnicity.csv"),
+
+# 08 education
+here("data", "temp", "SEDA_race-ethnicity_subgroup_county_2014-2018.csv"),
+here("data", "temp", "digital_access_race-ethncity.csv"),
+
+# Safety
+here("data", "temp", "rate_arrests_county_race-ethnicity_subgroup.csv")
+
+)
+
+file.remove(tempfiles)
+
+```
+

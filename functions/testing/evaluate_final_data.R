@@ -43,6 +43,9 @@ exp_form_variables <- exp_form %>%
 if(exp_form_variables %>% nrow() > 1) {
   exp_form_variables <- exp_form_variables %>% 
     pivot_wider(names_from = user_input, values_from = c("metric_name_as_written_in_final_data_file", "quality_title", "ci_low_title", "ci_high_title"))
+} else{
+  exp_form_variables <- exp_form_variables %>% 
+    select(-user_input)
 }
 
 
@@ -57,12 +60,12 @@ expected_subgroups <- exp_form %>%
   
 }
 
-#Pull year list from expectation form
-expected_years <- exp_form %>% 
-  pull(all_years_use_no_space) %>% 
-  strsplit(split = ";") %>% 
-  as.numeric() %>% 
-  .[[1]]
+  # Pull year list from expectation form
+  expected_years <- exp_form %>%
+    pull(all_years_use_no_space) %>%
+    strsplit(split = ";") %>%
+    .[[1]] %>%
+    as.numeric()
 
 # check that the file has the necessary columns
 # check that the first few columns are year, state
@@ -92,7 +95,9 @@ if (isTRUE(confidence_intervals)) {
 if (geography == "county") {
   
   data_geoid <- data |>
-    dplyr::mutate(geoid = paste0(state, county),
+    dplyr::mutate(state = str_pad(state, width = 2, side = "left", pad = "0"),
+                  county = str_pad(county, width = 3, side = "left", pad = "0"),
+                  geoid = paste0(state, county),
                   geoid_length = stringr::str_length(geoid)) 
   
 }
@@ -100,7 +105,9 @@ if (geography == "county") {
 if (geography == "place") {
   
   data_geoid <- data |>
-    dplyr::mutate(geoid = paste0(state, place),
+    dplyr::mutate(state = str_pad(state, width = 2, side = "left", pad = "0"),
+                  place = str_pad(place, width = 5, side = "left", pad = "0"),
+                  geoid = paste0(state, place),
                   geoid_length = stringr::str_length(geoid))
   
 }

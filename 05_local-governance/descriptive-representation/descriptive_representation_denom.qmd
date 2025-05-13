@@ -16,23 +16,15 @@ editor_options:
 
 *Program for the creation of the Descriptive Representation Upward Mobility Predictor denominator at the County and place-level*
 
-ACS Code: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
+ACS Code: Initially written by Tina Chelidze and updated by JP Walsh in 2024-2025.
 
-Primary data derived from the IPUMS API.
+Primary data are pulled from the IPUMS API and come from the 5-year American Community Survey.
 
 Based on processes developed by Aaron Williams.
 
 This denominator is the population count at the county and city (e.g. Census Place) level overall and by race/ethnicity groups  
- Data:  [gitfolder]/05_local-governance/descriptive-representation/data
+ Final Data:  [gitfolder]/05_local-governance/descriptive-representation/data/final
 
- Steps:
- (1) Housekeeping
- (2) Pull demographics for Census Places and Census Counties from ACS 5-year 2021
- (3) Clean and reshape to move data into the vars we want
- (4) Test for errors
- (5) Create a data quality flag
- (6) Prepare the data for saving & export final Metrics files
- 
 ## Housekeeping 
 
 Load in the necessary libraries.
@@ -48,10 +40,12 @@ library(tidyverse)
 #library(censusapi)
 library(tidycensus)
 census_api_key(Sys.getenv("CENSUS_API_KEY"), overwrite = TRUE)
-
+options(scipen = 999)
 
 #Set year of update 
-update_year = 2021
+update_years = c(2014, 2016, 2018, 2021, 2023)
+
+source(here::here("functions", "testing", "evaluate_final_data.r"))
 ```
 
 ## Pull demographics
@@ -69,32 +63,52 @@ First, list & save variables of interest as a vector.The variable definitions ar
  - B03002_008E # Not Hispanic or Latino, some other race alone
  - B03002_009E # Not Hispanic or Latino, two or more races
 
-```{r}
-myvars <- c(
-  "B01003_001E",
-  "B03003_003E", 
-  "B03002_002E",
-  "B03002_003E",
-  "B03002_004E",
-  "B03002_005E",
-  "B03002_006E",
-  "B03002_007E",
-  "B03002_008E",
-  "B03002_009E"
-  )
-```
-
-
-Pull ACS demographic data at the Census Place and Census County levels.
+Pull ACS demographic data at the Census Place and Census County levels. Specify that we want the 5-year data.
 
 ```{r}
-places_demo <- get_acs(geography = "place",
-                       variables = myvars,
-                       year = update_year)
 
-county_demo <- get_acs(geography = "county",
-                       variables = myvars,
-                       year = update_year)
+read_places <- function(update_years){
+get_acs(geography = "place",
+                       year = update_years,
+                       survey = "acs5",
+                       variables = c(total_people = "B01003_001E",
+                                     total_hispanic = "B03003_003E",
+                                     total_nonhisp = "B03002_002E",
+                                     white_nonhispanic = "B03002_003E",
+                                     black_nonhispanic = "B03002_004E",
+                                     aian_nh = "B03002_005E",
+                                     asian_nonhispanic = "B03002_006E",
+                                     nhpi_nh = "B03002_007E",
+                                     other_nh = "B03002_008E",
+                                     two_or_more_nh = "B03002_009E"),
+                       output = "wide") %>% 
+    mutate(year = update_years)
+
+}
+
+places_demo <- map_df(.x = update_years, .f = ~read_places(update_years = .x))
+
+
+read_counties <- function(update_years){
+get_acs(geography = "county",
+                       year = update_years,
+                       survey = "acs5",
+                       variables = c(total_people = "B01003_001E",
+                                     total_hispanic = "B03003_003E",
+                                     total_nonhisp = "B03002_002E",
+                                     white_nonhispanic = "B03002_003E",
+                                     black_nonhispanic = "B03002_004E",
+                                     aian_nh = "B03002_005E",
+                                     asian_nonhispanic = "B03002_006E",
+                                     nhpi_nh = "B03002_007E",
+                                     other_nh = "B03002_008E",
+                                     two_or_more_nh = "B03002_009E"),
+                       output = "wide") %>% 
+    mutate(year = update_years)
+
+}
+
+county_demo <- map_df(.x = update_years, .f = ~read_counties(update_years = .x))
 ```
 
 
@@ -104,65 +118,26 @@ Drop the margin of error variable to prepare for reshaping the data.
 ```{r}
 
 places_demo <- places_demo %>% 
-  select(GEOID, NAME, variable, estimate)
+  select(-ends_with("M"))
+
 county_demo <- county_demo %>% 
-  select(GEOID, NAME, variable, estimate)
+  select(-ends_with("M"))
 
-```
-
-Reshape the datasets so we can see all the population values per row.
-```{r}
-wide_county_demo <- county_demo %>%
-  pivot_wider(names_from = variable, values_from = estimate)
-
-wide_places_demo <- places_demo %>%
-  pivot_wider(names_from = variable, values_from = estimate)
-```
-
-Rename vars for clarity.
-```{r}
-wide_county_demo <- wide_county_demo %>% 
-  rename(
-    "total_people" = "B01003_001",
-    "total_hispanic" = "B03003_003", 
-    "total_nonhisp" = "B03002_002",
-    "white_nonhispanic" = "B03002_003",
-    "black_nonhispanic" = "B03002_004",
-    "aian_nh" = "B03002_005",
-    "asian_nonhispanic" = "B03002_006",
-    "nhpi_nh" = "B03002_007",
-    "other_nh" = "B03002_008",
-    "two_or_more_nh" = "B03002_009"
-  )
-
-wide_places_demo <- wide_places_demo %>% 
-  rename(
-    "total_people" = "B01003_001",
-    "total_hispanic" = "B03003_003", 
-    "total_nonhisp" = "B03002_002",
-    "white_nonhispanic" = "B03002_003",
-    "black_nonhispanic" = "B03002_004",
-    "aian_nh" = "B03002_005",
-    "asian_nonhispanic" = "B03002_006",
-    "nhpi_nh" = "B03002_007",
-    "other_nh" = "B03002_008",
-    "two_or_more_nh" = "B03002_009"
-  )
 ```
 
 The Census reports race and ethnicity as many different groups. 
 Table 2 in [this publication](https://www.census.gov/prod/cen2010/briefs/c2010br-02.pdf) is helpful. 
 Here, we collapse the detailed groups into the same four groups of interest from the above section. 
 
-Construct asian_other (combined value).
+Construct asian_other (combined value). This is Asian non-Hispanic, American Indian (AIAN), Native Hawaiian, Other and Two plus races.
 
 ```{r}
-wide_county_demo <- wide_county_demo %>%
+county_demo_combined <- county_demo %>%
   mutate(
     asian_other = aian_nh + asian_nonhispanic + nhpi_nh + other_nh + two_or_more_nh,
   )
 
-wide_places_demo <- wide_places_demo %>%
+place_demo_combined <- places_demo %>%
   mutate(
     asian_other = aian_nh + asian_nonhispanic + nhpi_nh + other_nh + two_or_more_nh,
   )
@@ -171,8 +146,9 @@ wide_places_demo <- wide_places_demo %>%
 
 Keep only the vars we need.
 ```{r}
-wide_county_demo <- wide_county_demo %>% select(GEOID, 
+wide_county_demo <- county_demo_combined %>% select(GEOID, 
                                                 NAME, 
+                                                year,
                                                 total_people, 
                                                 total_nonhisp,
                                                 asian_other, 
@@ -180,8 +156,9 @@ wide_county_demo <- wide_county_demo %>% select(GEOID,
                                                 total_hispanic, 
                                                 white_nonhispanic)
 
-wide_places_demo <- wide_places_demo %>% select(GEOID, 
+wide_places_demo <- place_demo_combined %>% select(GEOID, 
                                                 NAME, 
+                                                year,
                                                 total_people, 
                                                 total_nonhisp,
                                                 asian_other, 
@@ -202,6 +179,62 @@ stopifnot(
 
 If this is still running, we are good to proceed!
 
+## Crosswalk to target geographies 
+
+Read in the target County & Places files to isolate the data we need for each.
+
+```{r}
+county_pop <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+
+places_pop <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv"))
+```
+
+Add in the lost leading zeroes for the state/county FIPs & state/place FIPs.
+
+
+```{r}
+county_pop <- county_pop %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+county_pop <- county_pop %>%
+  mutate(county = sprintf("%0.3d", as.numeric(county)))
+
+
+places_pop <- places_pop %>%
+  mutate(state = sprintf("%0.2d", as.numeric(state)))
+places_pop <- places_pop %>%
+  mutate(place = sprintf("%0.5d", as.numeric(place)))
+```
+
+
+Create a concatenated GEOID based on state + county & state + place.
+
+```{r}
+county_pop$GEOID <- paste(county_pop$state, county_pop$county, sep = "")
+
+places_pop$GEOID <- paste(places_pop$state, places_pop$place, sep = "")
+```
+
+Keep the relevant years of population data. Note that for places the population file does not have data for year 2014, so we use 2015 if the update-year is 2014.
+
+```{r}
+county_pop <- filter(county_pop, year %in% update_years)
+
+places_pop <- filter(places_pop, year %in% update_years)
+
+
+```
+
+Merge the data files into the population files (left join, since data files have more observations).
+
+```{r}
+wide_county_demo <- left_join(county_pop, wide_county_demo, by=c("GEOID", "year"))
+
+wide_places_demo<- left_join(places_pop, wide_places_demo, by=c("GEOID", "year"))
+
+```
+
+## Calculate race share
+
 Now calculate the share of municipalities by race.
 
 ```{r}
@@ -220,6 +253,48 @@ wide_places_demo <- wide_places_demo %>%
     total_hispanic = total_hispanic / total_people,
     white_nonhispanic = white_nonhispanic / total_people
   )
+
+```
+
+Visualize a distribution of county and place population shares for each race/ethnicity group to look for any surprising patterns in the most recent years.
+
+```{r}
+year_viz <- wide_county_demo %>% 
+  filter(year == max(update_years)) %>% 
+  select(year) %>% 
+  unique() %>% 
+  pull()
+
+wide_county_demo %>% 
+  filter(year == max(update_years)) %>% 
+  select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
+  pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
+  filter(pop_shr > 0.01) %>% 
+  ggplot(aes(x = pop_shr)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = paste0("Distribution of population share,\n by county (", year_viz, " 5-year ACS data)"),
+    y = "Density",
+    x = "Population (1,000's)"
+  ) +
+  theme_minimal()
+
+
+wide_places_demo %>% 
+  filter(year == max(update_years)) %>% 
+  select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
+  pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
+  filter(pop_shr > 0.01) %>% 
+  ggplot(aes(x = pop_shr)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  facet_wrap(~subgroup) +
+  labs(
+    title = paste0("Distribution of population share,\n by place (", year_viz, " 5-year ACS data)"),
+    y = "Density",
+    x = "Population (1,000's)"
+  ) +
+  theme_minimal()
 
 ```
 
@@ -270,9 +345,21 @@ stopifnot(
 
 If this is still running, we are good to proceed!
 
+Show number of places available 
+
+```{r}
+wide_places_demo %>% 
+  group_by(year) %>% 
+  count()
+
+wide_county_demo %>% 
+  group_by(year) %>% 
+  count()
+```
+
 ## Create quality flag
 
-All quality is good because of the data source.
+Because we use the census summary tables we can assume all data quality is good.
 ```{r}
 wide_county_demo <- wide_county_demo %>%
   mutate(total_people_quality = 1, total_nonhisp_quality = 1, asian_other_quality = 1, 
@@ -284,67 +371,13 @@ wide_places_demo <- wide_places_demo %>%
 ```
 
 
-## Prepare for Export
-
-Merge in the final County & Places files to isolate the data we need for each.
-
-```{r}
-county_pop <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
-
-places_pop <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv"))
-```
-
-Add in the lost leading zeroes for the state/county FIPs & state/place FIPs.
-
-
-```{r}
-county_pop <- county_pop %>%
-  mutate(state = sprintf("%0.2d", as.numeric(state)))
-county_pop <- county_pop %>%
-  mutate(county = sprintf("%0.3d", as.numeric(county)))
-
-
-places_pop <- places_pop %>%
-  mutate(state = sprintf("%0.2d", as.numeric(state)))
-places_pop <- places_pop %>%
-  mutate(place = sprintf("%0.5d", as.numeric(place)))
-```
-
-
-Create a concatenated GEOID based on state + county & state + place.
-
-```{r}
-county_pop$GEOID <- paste(county_pop$state, county_pop$county, sep = "")
-
-places_pop$GEOID <- paste(places_pop$state, places_pop$place, sep = "")
-```
-
-Keep the most recent year of population data (not 2022, but 2021 - next update will include 2023 5-year data).
-
-```{r}
-county_pop <- filter(county_pop, year == update_year)
-
-places_pop <- filter(places_pop, year == update_year)
-
-```
-
-Merge the data files into the population files (left join, since data files have more observations).
-
-```{r}
-county_pop_by_race <- left_join(county_pop, wide_county_demo, by=c("GEOID"))
-
-place_pop_by_race <- left_join(places_pop, wide_places_demo, by=c("GEOID"))
-
-```
+## Prepare for Export and Test
 
 Keep only relevant variables before export.
 
 ```{r}
-county_pop_by_race <- county_pop_by_race %>% 
-  select(year, state, county, other = asian_other, black_nonhispanic, hispanic = total_hispanic, white_nonhispanic,
-         other_quality = asian_other_quality, 
-         black_nonhispanic_quality, hispanic_quality = total_hispanic_quality, white_nonhispanic_quality) %>%
-  mutate(year = update_year)
+county_pop_by_race <- wide_county_demo %>% 
+  select(year, state, county, other = asian_other, other_quality = asian_other_quality, black_nonhispanic,  black_nonhispanic_quality, hispanic = total_hispanic, hispanic_quality = total_hispanic_quality, white_nonhispanic, white_nonhispanic_quality) 
 ```
 
 Rename values.
@@ -357,11 +390,8 @@ county_pop_by_race <- county_pop_by_race %>%
 Same process for place.
 
 ```{r}
-place_pop_by_race <- place_pop_by_race %>% 
-  select(year, state, place, other = asian_other, black_nonhispanic, hispanic = total_hispanic, white_nonhispanic,
-         other_quality = asian_other_quality, black_nonhispanic_quality, 
-         hispanic_quality = total_hispanic_quality, white_nonhispanic_quality) %>%
-  mutate(year = update_year)
+place_pop_by_race <- wide_places_demo %>% 
+  select(year, state, place, other = asian_other, other_quality = asian_other_quality, black_nonhispanic,  black_nonhispanic_quality, hispanic = total_hispanic, hispanic_quality = total_hispanic_quality, white_nonhispanic, white_nonhispanic_quality) 
 ```
 
 ```{r}
@@ -370,12 +400,29 @@ place_pop_by_race <- place_pop_by_race %>%
               ~str_c("share_desc_rep_", .x)) 
 ```
 
-## Export
+### Final evaluation 
+
+Place data.
+
+```{r}
+evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluation_form_desc_rep_overall_place.csv"), data = place_pop_by_race, geography = "place", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+County data.
+
+```{r}
+evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluation_form_desc_rep_overall_county.csv"), data = county_pop_by_race, geography = "county", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+
+
+
+### Export as CSV
 ```{r}
 write_csv(county_pop_by_race, here::here("05_local-governance", "descriptive-representation", "data", "final",
-                                         paste0("descriptive_rep_denominator_county_", update_year, ".csv")))
+                                         paste0("descriptive_rep_denominator_county_all.csv")))
 
 write_csv(place_pop_by_race, here::here("05_local-governance", "descriptive-representation", "data", "final",
-                                        paste0("descriptive_rep_denominator_city_", update_year, ".csv")))
+                                        paste0("descriptive_rep_denominator_city_all.csv")))
 ```
 

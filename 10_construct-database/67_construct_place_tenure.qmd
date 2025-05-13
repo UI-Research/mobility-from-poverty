@@ -1,6 +1,6 @@
 ---
 title: "Combine Tenure Place Files"
-author: "Aaron R. Williams & JP Walsh"
+author: "Aaron R. Williams, JP Walsh & Manu Alcala"
 date: today
 format:
   html:
@@ -10,7 +10,7 @@ format:
 execute:
   message: false
   warning: false
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -28,47 +28,8 @@ library(here)
 library(assertr)
 library(gt)
 
+source(here::here("10_construct-database", "R", "combine_functions.R"))
 ```
-
-This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate. 
-
-```{r}
-#' Test the bounds of a confidence interval relative to the estimate
-#'
-#' @param data The data frame of interest
-#' @param estimate The unquoted name of the estimate variable
-#' @param lb The unquoted name of the lower bound variable
-#' @param ub The unquoted name of the upper bound variable
-#'
-test_bounds <- function(data, estimate, lb, ub) {
-  
-  subset <- bind_rows(
-    data |>
-      filter({{ ub }} < {{ lb }}),
-    data |>
-      filter({{ estimate }} > {{ ub }}),
-    data |>
-      filter({{ estimate  }} < {{ lb }}),
-  )
-  
-  stopifnot(nrow(subset) == 0)
-  
-}
-
-
-#' Helper function to silence output from testing code
-#'
-#' @param data A data frame
-#'
-quiet <- function(data) {
-  
-  quiet <- data
-  
-}
-
-```
-
-
 
 ## Construct Database
 
@@ -77,14 +38,10 @@ quiet <- function(data) {
 This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.
 
 ```{r}
-
 # combine multiple years
-bind_rows(
-  read_csv(here("02_housing/data/available_2021_subgroups_city.csv")),
-  read_csv(here("02_housing/data/available_2022_subgroups_city.csv"))
-) |>
+read_csv(here("02_housing/data/final/housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023_subgroups.csv")) |>
   mutate(subgroup_type = ifelse(subgroup == "All", "all", subgroup_type)) |>
-  write_csv(here("data", "temp", "city_available_housing_tenure.csv"))
+  write_csv(here("data", "temp", "city_available_housing_tenure.csv")) 
 
 
 ```
@@ -92,45 +49,44 @@ bind_rows(
 
 ### Tenure files
 
-Create population file with a variable for tenure. 
+Create population file with a variable for tenure.
 
 ```{r}
 
 expand_grid(
   read_csv(here("geographic-crosswalks", "data", "place-populations.csv")),
            subgroup = c("All", "Renter", "Owner")
-) %>% 
-   mutate(subgroup_type = ifelse(subgroup != "All", "tenure", "all")) %>% 
-  select(-population) %>% 
+) %>%
+   mutate(subgroup_type = ifelse(subgroup != "All", "tenure", "all")) %>%
+  select(-population) %>%
   write_csv(here("data", "temp", "place-populations_tenure.csv"))
 
 ```
 
-Read file paths to all place files with tenure subgroup information. 
+Read file paths to all place files with tenure subgroup information.
 
 ```{r}
 
 filepaths <- c(
-  
+
 #Tenure populations
 here("data", "temp", "place-populations_Tenure.csv"),
 
 #02 Housing
-here("data", "temp", "city_available_housing_tenure.csv"),
-here("02_housing/data/housing_subgroups_city.csv")
+here("data", "temp", "city_available_housing_tenure.csv")
 
 )
 
 
 ```
 
-This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year. 
+This code loads each file and then combines them using `left_join()`. The first file is a population file, so there should be 486 places per year.
 
 ```{r}
 
 db_tenure <- filepaths |>
   map(
-    .f = ~read_csv(.x)
+    .f = ~safe_read_csv(.x, geography = "place")
   ) |>
   reduce(left_join, by = c("year", "state", "place", "subgroup", "subgroup_type"))
 
@@ -142,12 +98,12 @@ Some subgroup information is not available for entire years. To simplify the use
 
 ```{r}
 
-years_data <- db_tenure %>% 
-  group_by(year) %>% 
-  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>% 
-  group_by(year) %>% 
-  count() %>% 
-  select(year) %>% 
+years_data <- db_tenure %>%
+  group_by(year) %>%
+  filter_at(vars(-year, -state, -state_name, -place, -place_name, -subgroup_type, -subgroup), any_vars(!is.na(.))) %>%
+  group_by(year) %>%
+  count() %>%
+  select(year) %>%
   pull()
 
 ```
@@ -177,10 +133,10 @@ At most there should be 1,458 in a year (3X486) and at the least there should be
 
 ```{r}
 
-db_tenure |> 
+db_tenure |>
   count(year) |>
   assert(
-    within_bounds(1455, 1458), 
+    within_bounds(1455, 1458),
     n
   )
 ```
@@ -209,7 +165,7 @@ db_tenure  |>
 
 ### Full Database
 
-Evaluate the quality variables. 
+Evaluate the quality variables.
 
 ```{r}
 db_tenure |>
@@ -244,3 +200,17 @@ db_tenure |>
 
 write_csv(db_tenure, here("data", "67_mobility-metrics_place_tenure_longitudinal.csv"))
 ```
+
+## Delete temp files
+
+Delete the created temp files
+
+```{r}
+tempfiles <- c(
+#02 Housing
+here("data", "temp", "city_available_housing_tenure.csv")
+)
+
+file.remove(tempfiles)
+```
+

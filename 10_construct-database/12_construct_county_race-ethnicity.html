@@ -6,8 +6,8 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="Aaron R. Williams &amp; JP Walsh">
-<meta name="dcterms.date" content="2024-10-04">
+<meta name="author" content="Aaron R. Williams, JP Walsh &amp; Ridhi Purohit">
+<meta name="dcterms.date" content="2025-05-01">
 
 <title>Combine Race-Ethnicity County Files</title>
 <style>
@@ -3077,10 +3077,12 @@ vertical-align: -.125em;
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#update" id="toc-update" class="nav-link active" data-scroll-target="#update">Update</a></li>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
   <li><a href="#construct-database" id="toc-construct-database" class="nav-link" data-scroll-target="#construct-database">Construct Database</a>
   <ul class="collapse">
   <li><a href="#temporary-fixes" id="toc-temporary-fixes" class="nav-link" data-scroll-target="#temporary-fixes">Temporary Fixes</a></li>
+  <li><a href="#temporary-suppression" id="toc-temporary-suppression" class="nav-link" data-scroll-target="#temporary-suppression">Temporary Suppression</a></li>
   <li><a href="#race-ethnicity-files" id="toc-race-ethnicity-files" class="nav-link" data-scroll-target="#race-ethnicity-files">Race-ethnicity files</a></li>
   <li><a href="#clean-file" id="toc-clean-file" class="nav-link" data-scroll-target="#clean-file">Clean file</a></li>
   </ul></li>
@@ -3098,6 +3100,7 @@ vertical-align: -.125em;
   <li><a href="#employment" id="toc-employment" class="nav-link" data-scroll-target="#employment">09 Employment</a></li>
   </ul></li>
   <li><a href="#write-the-file" id="toc-write-the-file" class="nav-link" data-scroll-target="#write-the-file">Write the File</a></li>
+  <li><a href="#delete-temp-files" id="toc-delete-temp-files" class="nav-link" data-scroll-target="#delete-temp-files">Delete temp files</a></li>
   </ul>
 </nav>
 </div>
@@ -3115,14 +3118,14 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Author</div>
     <div class="quarto-title-meta-contents">
-             <p>Aaron R. Williams &amp; JP Walsh </p>
+             <p>Aaron R. Williams, JP Walsh &amp; Ridhi Purohit </p>
           </div>
   </div>
     
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">October 4, 2024</p>
+      <p class="date">May 1, 2025</p>
     </div>
   </div>
   
@@ -3134,6 +3137,10 @@ vertical-align: -.125em;
 </header>
 
 
+<section id="update" class="level2">
+<h2 class="anchored" data-anchor-id="update">Update</h2>
+<p>This file was updated by Ridhi Purohit in March 2025 for metric release version 2025.</p>
+</section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <div class="cell">
@@ -3141,62 +3148,9 @@ vertical-align: -.125em;
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidylog)</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(here)</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(assertr)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p>This function is used to ensure that the lower bound of a 95% confidence interval is always below the estimate and the upper bound of the a 95% confidence interval is always above the estimate.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Test the bounds of a confidence interval relative to the estimate</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param data The data frame of interest</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param estimate The unquoted name of the estimate variable</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param lb The unquoted name of the lower bound variable</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param ub The unquoted name of the upper bound variable</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>test_bounds <span class="ot">&lt;-</span> <span class="cf">function</span>(data, estimate, lb, ub) {</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  subset <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ ub }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate }} <span class="sc">&gt;</span> {{ ub }}),</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate  }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="fu">nrow</span>(subset) <span class="sc">==</span> <span class="dv">0</span>)</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Helper function to silence output from testing code</span></span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param data A data frame</span></span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>quiet <span class="ot">&lt;-</span> <span class="cf">function</span>(data) {</span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>  quiet <span class="ot">&lt;-</span> data</span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; Test for extreme outliers in the metrics</span></span>
-<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param data The data frame of interest</span></span>
-<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39; @param estimate The unquoted name of the estimate variable</span></span>
-<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a><span class="co">#&#39;</span></span>
-<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>detect_outliers <span class="ot">&lt;-</span> <span class="cf">function</span>(data, estimate) {</span>
-<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>  subset <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ ub }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate }} <span class="sc">&gt;</span> {{ ub }}),</span>
-<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>    data <span class="sc">|&gt;</span></span>
-<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>({{ estimate  }} <span class="sc">&lt;</span> {{ lb }}),</span>
-<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stopifnot</span>(<span class="fu">nrow</span>(subset) <span class="sc">==</span> <span class="dv">0</span>)</span>
-<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;10_construct-database&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;combine_functions.R&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="construct-database" class="level2">
@@ -3205,56 +3159,61 @@ vertical-align: -.125em;
 <h3 class="anchored" data-anchor-id="temporary-fixes">Temporary Fixes</h3>
 <p>This section implements temporary fixes and saves the resulting data in a temp folder. The saved data are then included in the output data.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Quality NA and variable mismatch</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;02_housing/data/final/homelessness_all_subgroups_county.csv&quot;</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">share_homeless_quality =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(share_homeless), <span class="cn">NA_character_</span>, share_homeless_quality),</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">count_homeless_quality =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(count_homeless), <span class="cn">NA_character_</span>, count_homeless_quality))<span class="sc">|&gt;</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;homelessness_county_race-ethnicity.csv&quot;</span>)</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># combine multiple years</span></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="fu">bind_rows</span>(</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;06_neighborhoods&quot;</span>, <span class="st">&quot;poverty-exposure&quot;</span>, <span class="st">&quot;poverty-exposure_race-ethnicity_county_2018.csv&quot;</span>)),</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;06_neighborhoods&quot;</span>, <span class="st">&quot;poverty-exposure&quot;</span>, <span class="st">&quot;poverty-exposure_race-ethnicity_county_2021.csv&quot;</span>))</span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;poverty-exposure_county_race-ethnicity.csv&quot;</span>)</span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co"># combine multiple years</span></span>
-<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="fu">bind_rows</span>(</span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;04_health/final_data/neonatal_health_subgroup_2022.csv&quot;</span>))<span class="sc">|&gt;</span></span>
-<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(</span>
-<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight =</span> rate_low_birth_weight,</span>
-<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_lb =</span> rate_low_birth_weight_lb,</span>
-<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_ub =</span> rate_low_birth_weight_ub,</span>
-<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_quality =</span> rate_low_birth_weight_quality,</span>
-<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;04_health/final_data/neonatal_health_subgroup_2020.csv&quot;</span>))<span class="sc">|&gt;</span></span>
-<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(</span>
-<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight =</span> lbw,</span>
-<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_lb =</span> lbw_lb,</span>
-<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_ub =</span> lbw_ub,</span>
-<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_quality =</span> lbw_quality,</span>
-<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;04_health/final_data/neonatal_health_subgroup_2018.csv&quot;</span>))<span class="sc">|&gt;</span></span>
-<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(</span>
-<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight =</span> lbw,</span>
-<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_lb =</span> lbw_lb,</span>
-<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_ub =</span> lbw_ub,</span>
-<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_quality =</span> lbw_quality,</span>
-<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a>)  <span class="sc">|&gt;</span></span>
-<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup_type <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;all&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
-<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;neonatal_health_race-ethncity.csv&quot;</span>)</span>
-<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-47"><a href="#cb3-47" aria-hidden="true" tabindex="-1"></a><span class="co"># Correct subgroup title</span></span>
-<span id="cb3-48"><a href="#cb3-48" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;07_safety/final/rate_arrests_county_all_subgroup.csv&quot;</span>)) <span class="sc">%&gt;%</span></span>
-<span id="cb3-49"><a href="#cb3-49" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">subgroup =</span>  <span class="fu">ifelse</span>(subgroup <span class="sc">==</span> <span class="st">&quot;White, Non-Hispanic&quot;</span>, <span class="st">&quot;White&quot;</span>, subgroup)) <span class="sc">%&gt;%</span></span>
-<span id="cb3-50"><a href="#cb3-50" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># update variable names and filter subgroup</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;04_health/neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_county.csv&quot;</span>))<span class="sc">|&gt;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight =</span> rate_low_birth_weight,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_lb =</span> rate_low_birth_weight_lb,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_ub =</span> rate_low_birth_weight_ub,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_low_birth_weight_quality =</span> rate_low_birth_weight_quality,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup_type <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;all&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;neonatal_health_race-ethncity.csv&quot;</span>)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co"># correct typo in subgroup_type variable</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;04_health/exposure-to-trauma/data/final/rate_injury_deaths_metric_subgroup_county.csv&quot;</span>))<span class="sc">|&gt;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">subgroup_type =</span> <span class="fu">ifelse</span>(subgroup_type <span class="sc">==</span> <span class="st">&quot;race-ethncity&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>, subgroup_type))<span class="sc">|&gt;</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_injury_deaths_race-ethnicity.csv&quot;</span>)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;08_education/data/final/digital_access_county_race_ethnicity_longitudinal.csv&quot;</span>))<span class="sc">|&gt;</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">subgroup_type =</span> <span class="fu">ifelse</span>(subgroup_type <span class="sc">==</span> <span class="st">&quot;race_ethnicity&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>, subgroup_type))<span class="sc">|&gt;</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;digital_access_race-ethncity.csv&quot;</span>)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="co"># filter required subgroup</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;08_education/data/built/SEDA_all_subgroups_county_2014-2018.csv&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup_type <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;all&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_race-ethnicity_subgroup_county_2014-2018.csv&quot;</span>))</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;07_safety/final/rate_arrests_county_all_subgroup.csv&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup_type <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;all&quot;</span>, <span class="st">&quot;race-ethnicity&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county_race-ethnicity_subgroup.csv&quot;</span>))  </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="temporary-suppression" class="level3">
+<h3 class="anchored" data-anchor-id="temporary-suppression">Temporary Suppression</h3>
+<p>There are several variables where the results are unreasonable and we have high doubts about quality. These will be temporarily suppressed for this round.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Suppress counties arrests:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">#New York County: St fip. 36, County fip. 061</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#Sacramento County: St fip. 06, County fip. 067</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#Santa Clara County: St fip. 06, County fip. 085</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>suppress_values <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;36061&quot;</span>, <span class="st">&quot;06067&quot;</span>, <span class="st">&quot;06085&quot;</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="fu">read_csv</span>(<span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county_race-ethnicity_subgroup.csv&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">combine_fip =</span> <span class="fu">paste0</span>(state, county),</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>         <span class="fu">across</span>(rate_juv_arrest<span class="sc">:</span>rate_juv_arrest_quality, <span class="sc">~</span><span class="fu">if_else</span>(combine_fip <span class="sc">%in%</span> suppress_values <span class="sc">&amp;</span> year <span class="sc">!=</span> <span class="dv">2023</span>, <span class="cn">NA_integer_</span>, .))) <span class="sc">%&gt;%</span> </span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>combine_fip) <span class="sc">%&gt;%</span> </span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_csv</span>(</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county_race-ethnicity_subgroup.csv&quot;</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="race-ethnicity-files" class="level3">
@@ -3281,32 +3240,33 @@ vertical-align: -.125em;
 <span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;01_financial-well-being/final/metrics_income_county_race-ethnicity_longitudinal.csv&quot;</span>),</span>
 <span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 02 housing</span></span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;homelessness_county_race-ethnicity.csv&quot;</span>),</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;02_housing/data/final/homelessness_2019-2022_subgroups_county.csv&quot;</span>),</span>
 <span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co"># 04 health</span></span>
 <span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;neonatal_health_race-ethncity.csv&quot;</span>),</span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 06 neighborhoods</span></span>
-<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;poverty-exposure_county_race-ethnicity.csv&quot;</span>),</span>
-<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="co"># 07 safety</span></span>
-<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county.csv&quot;</span>),</span>
-<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
-<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv&quot;</span>),</span>
-<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/SEDA_all_subgroups_county.csv&quot;</span>),</span>
-<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_college_county_race-ethnicity_longitudinal.csv&quot;</span>),</span>
-<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/final/digital_access_county_subgroup_all.csv&quot;</span>),</span>
-<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a><span class="co"># 09 employment</span></span>
-<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;09_employment/data/final/metrics_employment_county_race-ethnicity_longitudinal.csv&quot;</span>)</span>
-<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_injury_deaths_race-ethnicity.csv&quot;</span>),</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="co"># 06 neighborhoods</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;06_neighborhoods/poverty-exposure/final/poverty-exposure_race-ethnicity_county.csv&quot;</span>),</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="co"># 07 safety</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county_race-ethnicity_subgroup.csv&quot;</span>),</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv&quot;</span>),</span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_race-ethnicity_subgroup_county_2014-2018.csv&quot;</span>),</span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;08_education/data/final/metrics_college_county_race-ethnicity_longitudinal.csv&quot;</span>),</span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;digital_access_race-ethncity.csv&quot;</span>),</span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a><span class="co"># 09 employment</span></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;09_employment/data/final/metrics_employment_county_race-ethnicity_longitudinal.csv&quot;</span>)</span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This code loads each file and then combines them using <code>left_join()</code>. The first file is a population file, so there should be 3,143 counties per year.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>db_race_eth <span class="ot">&lt;-</span> filepaths <span class="sc">|&gt;</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">map</span>(</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">.f =</span> <span class="sc">~</span><span class="fu">read_csv</span>(.x)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">.f =</span> <span class="sc">~</span><span class="fu">safe_read_csv</span>(.x, <span class="at">geography =</span> <span class="st">&quot;county&quot;</span>)</span>
 <span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
 <span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">reduce</span>(left_join, <span class="at">by =</span> <span class="fu">c</span>(<span class="st">&quot;year&quot;</span>, <span class="st">&quot;state&quot;</span>, <span class="st">&quot;county&quot;</span>, <span class="st">&quot;subgroup&quot;</span>, <span class="st">&quot;subgroup_type&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -3317,10 +3277,8 @@ vertical-align: -.125em;
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">rate_learning =</span> learning_rate,</span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">rate_learning_lb =</span> learning_rate_lb,</span>
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">rate_learning_ub =</span> learning_rate_ub,</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">rate_learning_quality =</span> learning_rate_quality,</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_poverty_exposure =</span> poverty_exposure,</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">share_poverty_exposure_quality =</span> poverty_exposure_quality</span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">rate_learning_quality =</span> learning_rate_quality</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="clean-file" class="level3">
@@ -3356,28 +3314,29 @@ vertical-align: -.125em;
 <p>At most there should be 22,008 in a year (7X3144) and at the least there should be 21,994 in a year (7X3142).</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>dimension_test <span class="ot">&lt;-</span> <span class="cf">function</span>(.data) {</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  .data <span class="sc">|&gt;</span> </span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  .data <span class="sc">|&gt;</span></span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(year) <span class="sc">|&gt;</span></span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">21994</span>, <span class="dv">22008</span>), </span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">21994</span>, <span class="dv">22008</span>),</span>
 <span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    n</span>
 <span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  )</span>
 <span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="fu">dimension_test</span>(db_race_eth)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 9 x 2
-   year     n
-  &lt;dbl&gt; &lt;int&gt;
-1  2014 21994
-2  2015 21994
-3  2016 21994
-4  2017 21994
-5  2018 21994
-6  2019 21994
-7  2020 22001
-8  2021 22001
-9  2022 22008</code></pre>
+<pre><code># A tibble: 10 x 2
+    year     n
+   &lt;dbl&gt; &lt;int&gt;
+ 1  2014 21994
+ 2  2015 21994
+ 3  2016 21994
+ 4  2017 21994
+ 5  2018 21994
+ 6  2019 21994
+ 7  2020 22001
+ 8  2021 22001
+ 9  2022 22008
+10  2023 22008</code></pre>
 </div>
 </div>
 </section>
@@ -3393,48 +3352,51 @@ vertical-align: -.125em;
 <span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(quality)) <span class="sc">|&gt;</span></span>
 <span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="at">n =</span> <span class="dv">100</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 39 x 3
+<pre><code># A tibble: 42 x 3
    variable                       quality      n
    &lt;chr&gt;                          &lt;chr&gt;    &lt;int&gt;
- 1 count_homeless_quality         Marginal  1432
- 2 count_homeless_quality         Strong   12378
- 3 count_homeless_quality         Weak      6101
- 4 pctl_income_20_quality         Marginal  2448
- 5 pctl_income_20_quality         Strong    4253
- 6 pctl_income_20_quality         Weak      6211
- 7 pctl_income_50_quality         Marginal  2448
- 8 pctl_income_50_quality         Strong    4253
- 9 pctl_income_50_quality         Weak      6211
-10 pctl_income_80_quality         Marginal  2448
-11 pctl_income_80_quality         Strong    4253
-12 pctl_income_80_quality         Weak      6211
-13 rate_juv_arrest_quality        Marginal  4075
-14 rate_juv_arrest_quality        Strong    5487
-15 rate_juv_arrest_quality        Weak      9090
-16 rate_learning_quality          Marginal  1781
-17 rate_learning_quality          Strong   16749
-18 rate_learning_quality          Weak      4230
-19 share_digital_access_quality   Marginal  4707
-20 share_digital_access_quality   Strong   11130
-21 share_digital_access_quality   Weak      8810
-22 share_employed_quality         Marginal  2582
-23 share_employed_quality         Strong    4301
-24 share_employed_quality         Weak      6285
-25 share_homeless_quality         Marginal  1432
-26 share_homeless_quality         Strong   12378
-27 share_homeless_quality         Weak      6101
-28 share_hs_degree_quality        Marginal   992
-29 share_hs_degree_quality        Strong    2742
-30 share_hs_degree_quality        Weak       941
-31 share_in_preschool_quality     Marginal   902
-32 share_in_preschool_quality     Strong    2466
-33 share_in_preschool_quality     Weak       753
-34 share_low_birth_weight_quality Marginal  1429
-35 share_low_birth_weight_quality Strong    4065
-36 share_low_birth_weight_quality Weak     31379
-37 share_poverty_exposure_quality Marginal  6552
-38 share_poverty_exposure_quality Strong    9703
-39 share_poverty_exposure_quality Weak      4905</code></pre>
+ 1 count_homeless_quality         Marginal  1924
+ 2 count_homeless_quality         Strong   16371
+ 3 count_homeless_quality         Weak      9372
+ 4 pctl_income_20_quality         Marginal  6006
+ 5 pctl_income_20_quality         Strong   10655
+ 6 pctl_income_20_quality         Weak     15604
+ 7 pctl_income_50_quality         Marginal  6006
+ 8 pctl_income_50_quality         Strong   10655
+ 9 pctl_income_50_quality         Weak     15604
+10 pctl_income_80_quality         Marginal  6006
+11 pctl_income_80_quality         Strong   10655
+12 pctl_income_80_quality         Weak     15604
+13 rate_injury_death_quality      Marginal  1091
+14 rate_injury_death_quality      Strong   12965
+15 rate_injury_death_quality      Weak         8
+16 rate_juv_arrest_quality        Marginal  6674
+17 rate_juv_arrest_quality        Strong    8242
+18 rate_juv_arrest_quality        Weak     14211
+19 rate_learning_quality          Marginal  4312
+20 rate_learning_quality          Strong   19135
+21 rate_learning_quality          Weak      4845
+22 share_digital_access_quality   Marginal  4708
+23 share_digital_access_quality   Strong    6522
+24 share_digital_access_quality   Weak     21173
+25 share_employed_quality         Marginal  6334
+26 share_employed_quality         Strong   10793
+27 share_employed_quality         Weak     15783
+28 share_homeless_quality         Marginal  1924
+29 share_homeless_quality         Strong   16371
+30 share_homeless_quality         Weak      9372
+31 share_hs_degree_quality        Marginal  2426
+32 share_hs_degree_quality        Strong    6796
+33 share_hs_degree_quality        Weak      2376
+34 share_in_preschool_quality     Marginal  2227
+35 share_in_preschool_quality     Strong    6175
+36 share_in_preschool_quality     Weak      1887
+37 share_low_birth_weight_quality Marginal  3236
+38 share_low_birth_weight_quality Strong   11102
+39 share_low_birth_weight_quality Weak     79507
+40 share_poverty_exposure_quality Marginal 16253
+41 share_poverty_exposure_quality Strong   24848
+42 share_poverty_exposure_quality Weak     11859</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>db_race_eth  <span class="sc">|&gt;</span></span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(subgroup <span class="sc">!=</span> <span class="st">&quot;All&quot;</span>) <span class="sc">|&gt;</span></span>
@@ -3443,45 +3405,49 @@ vertical-align: -.125em;
 <span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(year, quality) <span class="sc">|&gt;</span></span>
 <span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="at">n =</span> <span class="dv">100</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 36 x 3
+<pre><code># A tibble: 40 x 3
     year quality       n
    &lt;dbl&gt; &lt;chr&gt;     &lt;int&gt;
- 1  2014 Marginal    561
- 2  2014 Strong     4227
- 3  2014 Weak        902
- 4  2014 &lt;NA&gt;     239386
- 5  2015 Marginal    426
- 6  2015 Strong     4257
- 7  2015 Weak       1012
- 8  2015 &lt;NA&gt;     239381
- 9  2016 Marginal    393
-10  2016 Strong     4134
-11  2016 Weak       1188
-12  2016 &lt;NA&gt;     239361
-13  2017 Marginal    401
-14  2017 Strong     4131
-15  2017 Weak       1128
-16  2017 &lt;NA&gt;     239416
-17  2018 Marginal  11723
-18  2018 Strong    22818
-19  2018 Weak      30765
-20  2018 &lt;NA&gt;     179770
-21  2019 Marginal    880
-22  2019 Strong     7986
-23  2019 Weak       4382
-24  2019 &lt;NA&gt;     231828
-25  2020 Marginal   1490
-26  2020 Strong     9487
-27  2020 Weak      14695
-28  2020 &lt;NA&gt;     219482
-29  2021 Marginal  14745
-30  2021 Strong    32885
-31  2021 Weak      28634
-32  2021 &lt;NA&gt;     168890
-33  2022 Marginal   2609
-34  2022 Strong     4233
-35  2022 Weak      14522
-36  2022 &lt;NA&gt;     223868</code></pre>
+ 1  2014 Marginal   9318
+ 2  2014 Strong    19720
+ 3  2014 Weak      16255
+ 4  2014 &lt;NA&gt;     218635
+ 5  2015 Marginal    886
+ 6  2015 Strong     3895
+ 7  2015 Weak        906
+ 8  2015 &lt;NA&gt;     258241
+ 9  2016 Marginal   9807
+10  2016 Strong    21331
+11  2016 Weak      26600
+12  2016 &lt;NA&gt;     206190
+13  2017 Marginal   1212
+14  2017 Strong     5172
+15  2017 Weak      10902
+16  2017 &lt;NA&gt;     246642
+17  2018 Marginal  11608
+18  2018 Strong    23349
+19  2018 Weak      33222
+20  2018 &lt;NA&gt;     195749
+21  2019 Marginal   1284
+22  2019 Strong     9373
+23  2019 Weak      14309
+24  2019 &lt;NA&gt;     238962
+25  2020 Marginal   1364
+26  2020 Strong     9103
+27  2020 Weak      14730
+28  2020 &lt;NA&gt;     238815
+29  2021 Marginal  15101
+30  2021 Strong    34409
+31  2021 Weak      42513
+32  2021 &lt;NA&gt;     171989
+33  2022 Marginal   4002
+34  2022 Strong    17415
+35  2022 Weak      19521
+36  2022 &lt;NA&gt;     223158
+37  2023 Marginal  14545
+38  2023 Strong    27518
+39  2023 Weak      38247
+40  2023 &lt;NA&gt;     183786</code></pre>
 </div>
 </div>
 </section>
@@ -3493,26 +3459,26 @@ vertical-align: -.125em;
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">ends_with</span>(<span class="st">&quot;_quality&quot;</span>)) <span class="sc">|&gt;</span></span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(<span class="fu">in_set</span>(<span class="st">&quot;Strong&quot;</span>, <span class="st">&quot;Marginal&quot;</span>, <span class="st">&quot;Weak&quot;</span>), <span class="fu">everything</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 197,974 x 13
+<pre><code># A tibble: 219,982 x 14
    pctl_income_20_quality pctl_income_50_quality pctl_income_80_quality
    &lt;chr&gt;                  &lt;chr&gt;                  &lt;chr&gt;                 
- 1 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
+ 1 Weak                   Weak                   Weak                  
  2 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
- 3 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
+ 3 Weak                   Weak                   Weak                  
  4 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
- 5 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
+ 5 Weak                   Weak                   Weak                  
  6 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
  7 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
- 8 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
+ 8 Strong                 Strong                 Strong                
  9 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
-10 &lt;NA&gt;                   &lt;NA&gt;                   &lt;NA&gt;                  
-# i 197,964 more rows
-# i 10 more variables: count_homeless_quality &lt;chr&gt;,
+10 Strong                 Strong                 Strong                
+# i 219,972 more rows
+# i 11 more variables: count_homeless_quality &lt;chr&gt;,
 #   share_homeless_quality &lt;chr&gt;, share_low_birth_weight_quality &lt;chr&gt;,
-#   share_poverty_exposure_quality &lt;chr&gt;, rate_juv_arrest_quality &lt;chr&gt;,
-#   share_in_preschool_quality &lt;chr&gt;, rate_learning_quality &lt;chr&gt;,
-#   share_hs_degree_quality &lt;chr&gt;, share_digital_access_quality &lt;chr&gt;,
-#   share_employed_quality &lt;chr&gt;</code></pre>
+#   rate_injury_death_quality &lt;chr&gt;, share_poverty_exposure_quality &lt;chr&gt;,
+#   rate_juv_arrest_quality &lt;chr&gt;, share_in_preschool_quality &lt;chr&gt;,
+#   rate_learning_quality &lt;chr&gt;, share_hs_degree_quality &lt;chr&gt;,
+#   share_digital_access_quality &lt;chr&gt;, share_employed_quality &lt;chr&gt;</code></pre>
 </div>
 </div>
 </section>
@@ -3546,9 +3512,9 @@ vertical-align: -.125em;
 <span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
 <span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
-<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> count_homeless, </span>
-<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> count_homeless_lb, </span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth,</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> count_homeless,</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> count_homeless_lb,</span>
 <span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> count_homeless_ub</span>
 <span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -3570,7 +3536,23 @@ vertical-align: -.125em;
 <span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_low_birth_weight, </span>
 <span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_low_birth_weight_lb, </span>
 <span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_low_birth_weight_ub</span>
-<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>db_race_eth <span class="sc">|&gt;</span></span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">0</span>, <span class="cn">Inf</span>),</span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>    rate_injury_death,</span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    rate_injury_death_lb,</span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>    rate_injury_death_ub</span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> rate_injury_death, </span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> rate_injury_death_lb, </span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> rate_injury_death_ub</span>
+<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="neighborhoods" class="level3">
@@ -3609,7 +3591,7 @@ vertical-align: -.125em;
 <span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    share_hs_degree_ub</span>
 <span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
 <span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="sc">-</span><span class="dv">10</span>, <span class="dv">10</span>), </span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="sc">-</span><span class="dv">10</span>, <span class="dv">10</span>),</span>
 <span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>    rate_learning,</span>
 <span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>    rate_learning_lb,</span>
 <span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>    rate_learning_ub</span>
@@ -3619,39 +3601,30 @@ vertical-align: -.125em;
 <span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>db_race_eth <span class="sc">|&gt;</span></span>
 <span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">assert</span>(</span>
 <span id="cb24-21"><a href="#cb24-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">within_bounds</span>(<span class="dv">0</span>, <span class="dv">1</span>),</span>
-<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>    share_digital_access,</span>
-<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>    share_digital_access_lb,</span>
-<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>    share_digital_access_ub,</span>
-<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
-<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
-<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_in_preschool, </span>
-<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_in_preschool_lb, </span>
-<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_in_preschool_ub</span>
-<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
-<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_hs_degree, </span>
-<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_hs_degree_lb, </span>
-<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_hs_degree_ub</span>
-<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb24-41"><a href="#cb24-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-42"><a href="#cb24-42" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb24-43"><a href="#cb24-43" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
-<span id="cb24-44"><a href="#cb24-44" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_digital_access, </span>
-<span id="cb24-45"><a href="#cb24-45" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_digital_access_lb, </span>
-<span id="cb24-46"><a href="#cb24-46" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_digital_access_ub</span>
-<span id="cb24-47"><a href="#cb24-47" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb24-48"><a href="#cb24-48" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-49"><a href="#cb24-49" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
-<span id="cb24-50"><a href="#cb24-50" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
-<span id="cb24-51"><a href="#cb24-51" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> rate_learning, </span>
-<span id="cb24-52"><a href="#cb24-52" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> rate_learning_lb, </span>
-<span id="cb24-53"><a href="#cb24-53" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> rate_learning_ub</span>
-<span id="cb24-54"><a href="#cb24-54" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true" tabindex="-1"></a>    share_digital_access</span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">quiet</span>()</span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_in_preschool, </span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_in_preschool_lb, </span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_in_preschool_ub</span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb24-32"><a href="#cb24-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-33"><a href="#cb24-33" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
+<span id="cb24-34"><a href="#cb24-34" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth, </span>
+<span id="cb24-35"><a href="#cb24-35" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> share_hs_degree, </span>
+<span id="cb24-36"><a href="#cb24-36" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> share_hs_degree_lb, </span>
+<span id="cb24-37"><a href="#cb24-37" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> share_hs_degree_ub</span>
+<span id="cb24-38"><a href="#cb24-38" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb24-39"><a href="#cb24-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-40"><a href="#cb24-40" aria-hidden="true" tabindex="-1"></a><span class="fu">test_bounds</span>(</span>
+<span id="cb24-41"><a href="#cb24-41" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> db_race_eth,</span>
+<span id="cb24-42"><a href="#cb24-42" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> rate_learning,</span>
+<span id="cb24-43"><a href="#cb24-43" aria-hidden="true" tabindex="-1"></a>  <span class="at">lb =</span> rate_learning_lb,</span>
+<span id="cb24-44"><a href="#cb24-44" aria-hidden="true" tabindex="-1"></a>  <span class="at">ub =</span> rate_learning_ub</span>
+<span id="cb24-45"><a href="#cb24-45" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="employment" class="level3">
@@ -3679,6 +3652,34 @@ vertical-align: -.125em;
 <h2 class="anchored" data-anchor-id="write-the-file">Write the File</h2>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(db_race_eth, <span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;12_mobility-metrics_county_race-ethnicity_longitudinal.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="delete-temp-files" class="level2">
+<h2 class="anchored" data-anchor-id="delete-temp-files">Delete temp files</h2>
+<p>Delete the temp files created.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>tempfiles <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Race-ethnicity populations</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;county-populations_race-ethnicity.csv&quot;</span>),</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="co"># 04 health</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;neonatal_health_race-ethncity.csv&quot;</span>),</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_injury_deaths_race-ethnicity.csv&quot;</span>),</span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 08 education</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;SEDA_race-ethnicity_subgroup_county_2014-2018.csv&quot;</span>),</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;digital_access_race-ethncity.csv&quot;</span>),</span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Safety</span></span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a><span class="fu">here</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;temp&quot;</span>, <span class="st">&quot;rate_arrests_county_race-ethnicity_subgroup.csv&quot;</span>)</span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-19"><a href="#cb27-19" aria-hidden="true" tabindex="-1"></a><span class="fu">file.remove</span>(tempfiles)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] TRUE TRUE TRUE TRUE TRUE TRUE</code></pre>
+</div>
 </div>
 </section>
 

@@ -1,44 +1,5 @@
----
-title: "Reported Violent Crime and Property Crime - County"
-author: "Vincent Pancini"
-date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
-output:
-  html_document:
-    number_sections: false
-    self_contained: TRUE
-    code_folding: show
-    toc: TRUE
-    toc_float: TRUE
-    editor_options:
-      chunk_output_type: console
----
-
-<style>
-@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
-</style>
-
-<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
 
 
-
-```{r rmarkdown-setup, echo = FALSE}
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
-```
-
-```{r setup}
-options(scipen = 999)
-
-library(tidyverse)
-library(tidylog)
-library(urbnthemes)
-
-set_urbn_defaults(style = "print")
-
-```
-
-This metric represents the county-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2021-2022.
-
-This file relies on data created in `01_agency_geo_county.Rmd`. You must run `01_agency_geo_county.Rmd` before running this file.
 
 The rest of this file is organized as follows:
 
@@ -52,9 +13,7 @@ The rest of this file is organized as follows:
 8. Validation
 9. Save and write out data
 
-All data used in this file are available on Box [here](https://urbanorg.box.com/s/poqnegsa6i74phcdr1eap7tacpe4x1gf). Data stored on Box are only available to Urban Institute researchers.
 
-This file assumes that you have cloned the GitHub repository for this project to your local computer. You can find the project repository [here](https://github.com/UI-Research/mobility-from-poverty) and learn how to clone a repository [here](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
 ## 1. Background
 This section provides background information for the data used to create this metric.
@@ -90,6 +49,21 @@ Accessing these data requires an ICPSR account. Therefore, we do not directly do
 ## 3. Read in and clean NIBRS offense data
 This section extracts the necessary files from the zip file downloaded in the previous step and reads the files into the R environment. The zip file contains data files for 1991-2022. However, we only want 2021-2022. Note that future updates of this metric may want to include historical NIBRS data back to 2014 and should update this section to include all years.
 
+```{r}
+nibrs <- readRDS(here::here("07_safety", "data", "nibrs_offense_segment_2020_2023.rds"))
+
+nibrs_2023 <- nibrs |>
+  filter(year==2023)
+
+arrow::write_parquet(
+  x = nibrs_2023,
+  sink = here::here("07_safety", "data", "nibrs_2023.parquet")
+)
+
+nibrs_2023 <- arrow::read_parquet(here::here("07_safety", "data", "nibrs_2023.parquet"))
+```
+
+
 ### 3.1 Extract files for 2021-2022 from the zip file
 Extract each file for the years 2021-2022 from the `offense` segment.
 ```{r, eval=FALSE}
@@ -118,114 +92,25 @@ rm(start_year, end_year, my_years)
 Note that the offense segment files are very large. They were too large to read in and append in one step (at least with the code that I was using) for years 2014-2022. Because future updates may want to include historical data back to 2014, I create a function that reads in the offense segment for each year and cleans it. This makes each file smaller and more manageable, and we are then able to append those smaller files for each year.
 
 #### 3.2a Identify violent crimes and property crimes
-Each observation in the offense segment is a single offense/crime, and includes a variable for the offense code. Offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. We are interested in property crimes and violent crimes. Using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf), we create a data frame of all offense and crime type combinations. We then use this data to identify property crimes and violent crimes in our data. 
+Each observation in the offense segment is a single offense/crime, and includes a variable for the offense code. Offense codes are categorized into crimes against property, crimes against persons (violent crimes), or crimes against society. We are interested in property crimes and violent crimes. Using , we create a data frame of all offense and crime type combinations. We then use this data to identify property crimes and violent crimes in our data. 
 
 Create a data frame that lists all offense, crime type, and group combinations using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf). Note that the full frame includes crimes against society, but these are not used in our analysis.
-```{r, eval=FALSE}
-# Create data frame for all offense, type, and group combinations.
-codes <- tribble(
-  ~offense,	~crime_against,
-  "animal cruelty",	                                                    "society",	
-  "arson",	                                                            "property",		
-  "assault offenses - aggravated assault",	                            "person",		
-  "assault offenses - simple assault",	                                "person",		
-  "assault offenses - intimidation",	                                  "person",		
-  "bribery",	                                                          "property",		
-  "burglary/breaking and entering",	                                    "property",		
-  "commerce violations - import violations",	                          "society",		
-  "commerce violations - export violations",	                          "society",		
-  "commerce violations - federal liquor offenses",	                    "society",		
-  "commerce violations - federal tobacco offenses",	                    "society",		
-  "commerce violations - wildlife trafficking",	                        "society",		
-  "counterfeiting/forgery",	                                            "property",		
-  "destruction/damage/vandalism of property",	                          "property",		
-  "drug/narcotic offenses - drug/narcotic violations",	                "society",		
-  "drug/narcotic offenses - drug equipment violations",	                "society",		
-  "embezzlement",	                                                      "property",		
-  "espionage",	                                                        "society",		
-  "extortion/blackmail",	                                              "property",		
-  "fraud offenses - false pretenses/swindle/confidence game",	          "property",		
-  "fraud offenses - credit card/atm fraud",	                            "property",		
-  "fraud offenses - impersonation",	                                    "property",		
-  "fraud offenses - welfare fraud",	                                    "property",		
-  "fraud offenses - wire fraud",	                                      "property",		
-  "fraud offenses - identity theft",	                                  "property",		
-  "fraud offenses - hacking/computer invasion",	                        "property",		
-  "fraud offenses - money laundering",	                                "society",		
-  "fugitive offenses - harboring escapee/concealing from arrest",	      "society",		
-  "fugitive offenses - flight to avoid prosecution",	                  "society",		
-  "fugitive offenses - flight to avoid deportation",	                  "society",		
-  "gambling offenses - betting/wagering",	                              "society",		
-  "gambling offenses - operating/promoting/assisting gambling",	        "society",		
-  "gambling offenses - gambling equipment violations",	                "society",		
-  "gambling offenses - sports tampering",	                              "society",		
-  "murder/nonnegligent manslaughter",	                                  "person",		
-  "negligent manslaughter",	                                            "person",		
-  "homicide offenses - justifiable homicide",	                          "not a crime",		
-  "human trafficking - commercial sex acts",	                          "person",		
-  "human trafficking - involuntary servitude",	                        "person",		
-  "immigration violations - illegal entry into the united states",	    "society",		
-  "immigration violations - false citizenship",	                        "society",		
-  "immigration violations - smuggling aliens",	                        "society",		
-  "immigration violations - reentry after deportation",               	"society",		
-  "kidnapping/abduction",	                                              "person",		
-  "larceny/theft offenses - pocket-picking",	                          "property",		
-  "larceny/theft offenses - purse-snatching",	                          "property",		
-  "larceny/theft offenses - shoplifting",	                              "property",		
-  "larceny/theft offenses - theft from building",	                      "property",		
-  "larceny/theft offenses - theft from coin-operated machine or device", "property",		
-  "larceny/theft offenses - theft from motor vehicle",	                "property",		
-  "larceny/theft offenses - theft of motor vehicle parts/accessories",	"property",		
-  "larceny/theft offenses - all other larceny",	                        "property",		
-  "motor vehicle theft",	                                              "property",		
-  "pornography/obscene material",	                                      "society",		
-  "prostitution offenses - prostitution",	                              "society",		
-  "prostitution offenses - assisting or promoting prostitution",	      "society",		
-  "prostitution offenses - purchasing prostitution",	                  "society",		
-  "robbery",	                                                          "property",		
-  "sex offenses - rape",	                                              "person",		
-  "sex offenses - sodomy",	                                            "person",		
-  "sex offenses - sexual assault with an object",	                      "person",		
-  "sex offenses - fondling (incident liberties/child molest)",	        "person",		
-  "sex offenses - incest",	                                            "person",		
-  "sex offenses - statutory rape",	                                    "person",		
-  "sex offenses - failure to register as a sex offender",	              "society",		
-  "stolen property offenses (receiving, selling, etc.)",	              "property",		
-  "treason",	                                                          "society",		
-  "weapon law violations - weapon law violations",	                    "society",		
-  "weapon law violations - violation of national firearm act of 1934",	"society",		
-  "weapon law violations - weapons of mass destruction",	              "society",		
-  "weapon law violations - explosives",	                                "society",		
-  "failure to appear",	                                                 "",		
-  "curfew/loitering/vagrancy violations",	                               "",		
-  "disorderly conduct",	                                                 "",		
-  "driving under the influence",	                                       "",		
-  "family offenses, nonviolent",	                                       "",		
-  "federal resource violations",	                                       "",		
-  "liquor law violations",	                                             "",		
-  "perjury",	                                                           "",		
-  "trespass of real property",	                                         "",		
-  "all other offenses",	                                                 "",		
-  # The following three codes were removed in 2021
-  "bad checks",	                                                         "",	
-  "drunkenness",                                                      	 "",	
-  "peeping tom",	                                                       "",	
-  # The following code was removed in 2008
-  "runaway",                                                             "",	
-)
 
+```{r}
+nibrs_2023 |>
+  select(ucr_offense_code) |>
+  group_by(ucr_offense_code) |>
+  count()
+  
 ```
 
-Using the data frame above, group offenses into violent crimes and property crimes.
-```{r, eval=FALSE}
-# Extract offenses into vectors for property crimes and violent crimes
-property <- subset(codes, crime_against=="property")$offense
-violent <- subset(codes, crime_against=="person")$offense
 
-```
+
 
 ### 3.2 Write function to read in NIBRS offense data for each year
 ```{r, eval=FALSE}
+
+
 clean_offense_data <- function(year) {
   # Construct the file name based on year
   file_name <- here::here("07_safety", "reported-crime", "data", "nibrs_1991_2022_offense_segment_rds", paste0("nibrs_offense_segment_", year, ".rds"))
@@ -302,7 +187,9 @@ write_csv(offenses_agency, file = here::here("07_safety", "reported-crime", "dat
 
 ```{r}
 # Read agency-level offense data back in for ease of future use
-offenses_agency <- read.csv(here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
+#offenses_agency <- read.csv(here::here("07_safety", "reported-crime", "data", "offenses_21_22.csv"))
+
+offenses_agency <- nibrs_2023_clean
 
 ```
 
@@ -312,7 +199,8 @@ Our data are currently long by year/agency. However, we want to know the arrest 
 
 First load the universe of agencies linked to counties with weights for each county. This file was created in `01_agency_geo_county.Rmd`.
 ```{r}
-agency_weights <- read_csv(here::here("07_safety", "modified data", "all_agency_county.csv"))
+agency_weights <- read_csv(here::here("07_safety", "data", "all_agency_county.csv")) |>
+  mutate(year = as.character(year))
 
 ```
 
@@ -353,49 +241,16 @@ offenses_agency_county |>
 
 
 ## 5. Aggregate agency-level offenses to the county-level
-This section aggregates the agency-level offense counts (all, violent, and property) from the agency-level to the county-level. Counts for agencies that serve more than one county are weighted by population.
-
-Note that this section calculates the percent of agencies reporting violent crimes and property crimes separately from all crimes because the 2022 update requires separate quality measures for each rate. However, all agencies either report both types of crime or no crime, so the numbers are identical.
-```{r}
-offenses_county <- offenses_agency_county |>
-  group_by(year, state, county) |>
-  summarize(
-    n = n(),
-    n_wt = sum(weight),
-    n_reporting_all = sum(reporting_all),
-    n_reporting_all_wt = sum(reporting_all * weight),
-    n_reporting_violent = sum(reporting_violent),
-    n_reporting_violent_wt = sum(reporting_violent * weight),
-    n_reporting_property = sum(reporting_property),
-    n_reporting_property_wt = sum(reporting_property * weight),
-    n_core_city = sum(core_city),
-    n_core_city_rpt = sum(core_city==1 & reporting_all==1),
-    across(all:property, ~sum(.x, na.rm=TRUE))
-  ) |>
-  mutate(
-    agencies_reporting_all = n_reporting_all / n,
-    agencies_reporting_all_wt = n_reporting_all_wt / n_wt,
-    agencies_reporting_violent = n_reporting_violent / n,
-    agencies_reporting_violent_wt = n_reporting_violent_wt / n_wt,
-    agencies_reporting_property = n_reporting_property / n,
-    agencies_reporting_property_wt = n_reporting_property_wt / n_wt,
-    core_reporting = n_core_city_rpt / n_core_city,
-    GEOID = str_c(state, county)
-  ) |>
-  ungroup()
-  
-```
 
 
-## 6. Calculate county-level rates of reported property crimes per 100,000 people and reported violent crimes per 100,000 people
-This section calculates the violent crime rate and property crime rate. Rates are calculated as the number of crimes per 100,000 people using ACS county populations.
 
-Crime Rate = (Crime Count / Population) * 100,000
+
 
 ### 6.1 Load demographic information
 First load the demographic information for each county and for each year 2014-2022. This file was created using 5 year ACS data in `01_agency_geo_county.Rmd`.
 ```{r}
-county_demo <- read_csv(here::here("07_safety", "modified data", "all_county_demo.csv"))
+county_demo <- read_csv(here::here("07_safety", "data", "all_county_demo.csv")) |>
+  mutate(year = as.character(year))
 
 ```
 
@@ -411,329 +266,19 @@ offense_county_demo <- left_join(
 ```
 
 
-### 6.3 Calculate crime rates
-Calculate rates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people.
-```{r}
-rates_county <- offense_county_demo |>
-  mutate(
-    rate_crime_violent = if_else(
-      agencies_reporting_violent !=0, violent / total_people * 100000, NA
-    ),
-    rate_crime_property = if_else(
-      agencies_reporting_property !=0, property / total_people * 100000, NA
-    )
-  )
-
-```
-
-Check numbers of zeros and missings for both crime types in each year. More counties had rates of missing in 2021 than 2022 for both crime types. This makes sense, because more agencies reported data to NIBRS in 2022 than in 2021.
-```{r}
-rates_county |>
-  filter(rate_crime_violent==0 | is.na(rate_crime_violent)) |>
-  group_by(year) |>
-  count(rate_crime_violent)
-
-```
-
-```{r}
-rates_county |>
-  filter(rate_crime_property==0 | is.na(rate_crime_property)) |>
-  group_by(year) |>
-  count(rate_crime_property)
-
-```
-
-Suppress rates for counties that have population less than 30 people.
-  Note that no counties have a population of less than 30, but some counties have small populations with high crime rates (e.g., 21,000 crimes per 100,000 people with only 83 people in the county). Future updates should consider changing the population threshold for suppression, but we address the outlier described in this example next.
-```{r}
-rates_county <- rates_county |>
-  mutate(
-    rate_crime_violent = ifelse(total_people < 30, NA, rate_crime_violent),
-    rate_crime_property = ifelse(total_people < 30, NA, rate_crime_property)
-  )
-```
-
-Loving County, TX has a population less than 100 100 in both years with really high property crime rates and relatively high violent crime rates in both years. We change the rates for this county to missing in both years.
-```{r}
-rates_county |>
-  filter(total_people < 100) |>
-  count(year, GEOID, total_people, rate_crime_property)
-
-```
-
-```{r}
-rates_county |>
-  filter(total_people < 100) |>
-  count(year, GEOID, total_people, rate_crime_violent)
-
-```
-
-```{r}
-rates_county <- rates_county |>
-  mutate(
-    rate_crime_violent = if_else(
-      GEOID == "48301", NA, rate_crime_violent
-    ),
-    rate_crime_property = if_else(
-      GEOID == "48301", NA, rate_crime_property
-    )
-  )
-
-```
-
-
-## 7. Construct quality indicators
-This section constructs an indicator used to assess the quality of data for each county. Counties with 100% of agencies reporting are coded as 1; counties with 80% or more of agencies reporting OR 100% of core agencies reporting are coded as 2; counties with less than 80% of agencies reporting are coded as 3; counties with 0% of agencies reporting (or no agencies in the county) are coded as `NA`.
-
-The quality indicator is constructed separately for agencies reporting violent crimes and agencies reporting property crimes, though the values are identical.
-
-Construct the quality indicator.
-```{r}
-rates_county <- rates_county |>
-  mutate(
-    rate_crime_violent_quality = case_when(
-      agencies_reporting_violent == 1 ~ 1,
-      agencies_reporting_violent >= 0.8 | core_reporting==1 ~ 2,
-      agencies_reporting_violent > 0 ~ 3,
-      agencies_reporting_violent == 0 ~ NA_real_),
-    rate_crime_property_quality = case_when(
-      agencies_reporting_property == 1 ~ 1,
-      agencies_reporting_property >= 0.8 | core_reporting==1 ~ 2,
-      agencies_reporting_property > 0 ~ 3,
-      agencies_reporting_property == 0 ~ NA_real_),
-  )
-
-```
-We change the quality indicators for Loving County, TX to missing as well due to data quality concerns from the large rates.
-```{r}
-rates_county |>
-  filter(GEOID == "48103") |>
-  count(rate_crime_violent_quality, rate_crime_property_quality)
-```
-
-```{r}
-rates_county <- rates_county |>
-  mutate(
-    rate_crime_violent_quality = if_else(
-      GEOID == "48301", NA, rate_crime_violent_quality
-    ),
-    rate_crime_property_quality = if_else(
-      GEOID == "48301", NA, rate_crime_property_quality
-    )
-  )
-
-```
-
-The number of missing values in the quality variables is the same as for the rate variables.
-```{r}
-rates_county |>
-  filter(is.na(rate_crime_violent_quality) | is.na(rate_crime_property_quality)) |>
-  group_by(year) |>
-  count(rate_crime_violent_quality, rate_crime_property_quality)
-
-```
-
-
-The plurality of counties had less than 80 percent of agencies reporting. The reporting rates are the same for both property and violent crimes.
-```{r}
-rates_county |>
-  group_by(year) |>
-  ggplot(aes(x = rate_crime_property_quality)) +
-  geom_bar()
-
-```
-
-```{r}
-rates_county |>
-  group_by(year) |>
-  ggplot(aes(x = rate_crime_violent_quality)) +
-  geom_bar()
-
-```
-
-
-## 8. Validation
-This section performs several checks on the calculated rates of violent and property crimes.
-
-Check the distribution of rates of property crimes for 2021-2022.
-```{r}
-quantile(
-  rates_county$rate_crime_property,
-  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
-  na.rm = TRUE
-)
-```
-
-Check the distribution of rates of violent crimes for 2021-2022.
-```{r}
-quantile(
-  rates_county$rate_crime_violent,
-  probs = c(0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.99, 1),
-  na.rm = TRUE
-)
-```
-
-There are two large outliers in Buffalo County, SD, and Todd County, SD. Their population sizes are decent so we do not change them to missing, but they have quality indicators of `3` to indicate poor quality.
-```{r}
-rates_county |>
-  filter(rate_crime_violent > 10000)
-
-```
-
-
-Rates of reported violent crime and reported property crime are roughly correlated, though there are some outliers.
-```{r}
-rates_county |>
-  ggplot(aes(rate_crime_property, rate_crime_violent)) +
-  geom_point(alpha = 0.2) +
-  labs(title = "Rates of reported violent crime and reported property crime are roughly correlated",
-       subtitle = "") +
-  scatter_grid()
-
-```
-
-There are no major discrepancies in the rates of violent crime across years.
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_violent)) |>
-  ggplot(aes(rate_crime_violent)) +
-  geom_histogram(binwidth = 20) +
-  facet_wrap(~ year, scales = "free_x") +
-  labs(title = "")
-
-```
-
-There are no major discrepancies in the rates of property crime across years.
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_property)) |>
-  ggplot(aes(rate_crime_property)) +
-  geom_histogram(binwidth = 20) +
-  facet_wrap(~ year, scales = "free_x") +
-  labs(title = "")
-
-```
-
-Check where violent crime rates are concentrated
-```{r}
-rates_county |>
-  filter(
-    !is.na(total_people),
-    !is.na(rate_crime_violent)
-  ) |>
-  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
-  # Standardize population by denominating in 1000s so the axis labels are more legible
-  mutate(total_people = total_people/1000) |>
-  ggplot(aes(total_people, rate_crime_violent)) +
-  geom_point(alpha = 0.1) +
-  facet_wrap(~ size + year, scales = "free_x") +
-  labs(title = "The Highest Violent Crime Rates are Concentrated in Smaller Counties",
-       x = "Population (thousands)",
-       y = "Violent crime rate") +
-  scatter_grid()
-  
-```
-
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_violent),
-         !is.na(violent)) |>
-  ggplot(aes(violent, rate_crime_violent)) +
-  geom_point(alpha = 0.2) +
-  labs(title = "High Violent Crime Rates are Concentrated in Counties with Few Violent Crimes",
-       x = "Number of Violent Crimes",
-       y = "Violent Crime Rate") +  
-  scatter_grid()
-
-```
-
-
-Check where property crime rates are concentrated
-```{r}
-rates_county |>
-  filter(!is.na(total_people),
-         !is.na(rate_crime_property)) |>
-  mutate(size = if_else(total_people < 200000, "1. small population", "2. big population")) |>
-  # Standardize population by denominating in 1000s so the axis labels are more legible
-  mutate(total_people = total_people / 1000) |>
-  ggplot(aes(total_people, rate_crime_property)) +
-  geom_point(alpha = 0.1) +
-  facet_wrap(~ size + year, scales = "free_x") +
-  labs(title = "No Real Relationship Between Property Crime Rates and County Population",
-       x = "Population (thousands)",
-       y = "Property crime rate") +
-  scatter_grid()
-
-```
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_property),
-         !is.na(property)) |>
-  ggplot(aes(property, rate_crime_property)) +
-  geom_point(alpha = 0.2) +
-  labs(title = "High Property Crime Rates are Concentrated in Counties with Few Property Crimes",
-       x = "Number of Property Crimes",
-       y = "Property Crime Rate") +  
-  scatter_grid()
-
-```
 
 
 
-The quality indicators have similar distributions of property crime rates, with poor quality observations corresponding to more counties with small rates 
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_property)) |>
-  ggplot(aes(rate_crime_property)) +
-  geom_histogram(binwidth = 20) +
-  facet_wrap(~ rate_crime_property_quality, scales = "free_x") +
-  labs(title = "")
-
-```
 
 
-The quality indicators have similar distributions of violent crime rates, with poor quality observations corresponding to more counties with small rates 
-```{r}
-rates_county |>
-  filter(!is.na(rate_crime_violent)) |>
-  ggplot(aes(rate_crime_violent)) +
-  geom_histogram(binwidth = 20) +
-  facet_wrap(~ rate_crime_violent_quality, scales = "free_x") +
-  labs(title = "")
-
-```
 
 
-## 9. Save and write out data
-This section saves and write out the final data file. This file is long by county and year (2021-2022). It contains our county-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
 
-Construct the final file.
-```{r}
-rates_crime_county_all <- rates_county |>
-  mutate(
-    rate_crime_property = ifelse(is.na(rate_crime_property_quality), NA, rate_crime_property),
-    rate_crime_violent = ifelse(is.na(rate_crime_violent_quality), NA, rate_crime_violent),
-    state = ifelse(is.na(state), str_sub(GEOID, 1, 2), state),
-    county = ifelse(is.na(county), str_sub(GEOID, 3, 5), county)
-  ) |>
-  select(
-    year,
-    state,
-    county,
-    starts_with("rate")
-  ) |>
-  arrange(year, state, county)
-  
-```
 
-Write out the final file in `.csv` format.
-```{r}
-write_csv(
-  rates_crime_county_all,
-  file = here::here("07_safety", "final", "rates_crime_county_all.csv")
-)
 
-```
+
+
+
 
 
 
