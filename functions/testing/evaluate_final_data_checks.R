@@ -1,4 +1,5 @@
 # Author: Ridhi Purohit
+# Reference: Upgraded `evaluate_final_data.R` initially developed by John Walsh.
 # Date Modified: 18-June-2025
 
 library(here)
@@ -20,23 +21,33 @@ library(tidyverse)
 #' 
 #' @return: A series of test outcomes with a summary of errors encountered.
 #' 
-#' @example evaluate_final_data("share_digital_access", df_final_data, "county", 
-#'                                TRUE, c("all", "race-ethnicity", "income"), FALSE)
+#' @example evaluate_final_data(
+#'                              metric_var = "share_digital_access", 
+#'                              data = df_final_data, 
+#'                              geo = "county", 
+#'                              subgroups = TRUE, 
+#'                              subgrp_type = c("all", "race-ethnicity", "income"),
+#'                              confidence_intervals = FALSE
+#'                              )
 #'  
 #'                                
 evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE, 
-                                subgrp_type = NULL, confidence_intervals = FALSE) {
+                                subgrp_type = NULL,
+                                confidence_intervals = FALSE) {
   
   # Read in the technical specification for the metric
   tech_spec_all <- get_tech_spec() 
   
-  # Check if metric exists in technical specification
-  check_metric_subgroup_exists(metric_var, tech_spec_all, subgrp_type)
-    
+  # Check if metric (and subgroup types) exists in technical specification
+  check_metric_subgroup_exists(metric_var, tech_spec_all, geo, subgrp_type)
+  
   # Tech spec for relevant metric
-  tech_spec <- get_subset_tech_spec(tech_spec_all, c("count_homeless", "share_homeless"), "county", FALSE)
+  tech_spec <- get_subset_tech_spec(tech_spec_all, metric_var, geo, subgroups)
   
   if ( (isTRUE(subgroups)) & (!is.null(subgrp_type)) ) {
+    
+    # Check user provided subgroup types against subgroup types in data
+    check_user_data_subgroup_types(data, subgrp_type)
     
     #Pull subgroup list from technical specification
     expected_subgroups <- get_expected_subgroups(tech_spec, subgrp_type)
@@ -44,7 +55,7 @@ evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE,
   } 
   
   # Pull year list for overall or each subgroup type from technical specification
-  expected_years <- get_expected_years(tech_spec, NULL)
+  expected_years <- get_expected_years(tech_spec, subgrp_type)
   
 
   # Pull expected variable names
@@ -104,7 +115,7 @@ evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE,
     checks,
     function(check) {
      
-      # Run check if condition to run check is met otherwise return TRUE to handle subgroup tests
+      # Run check if condition is met otherwise return TRUE to handle subgroup tests
       if (check$cond) run_data_check(check$expr, check$msg, check$chk) else TRUE
     }
   )
@@ -289,43 +300,78 @@ get_expected_metric_vars <- function(df_tech_spec) {
 #' @param tech_spec A data frame containing metrics technical specification.
 #' @param subgrp_type The applicable subgroup type(s) to check in technical specification for the metric.
 #' 
-#' @returns NULL (prints check results and messages)
+#' @returns NULL (prints check results and stops execution of further checks)
 #' 
-check_metric_subgroup_exists <- function(metric_var, tech_spec, subgrp_type) {
+check_metric_subgroup_exists <- function(metric_var, tech_spec, geo, subgrp_type) {
   
   tryCatch(
     {
-      stopifnot( metric_var %in% tech_spec$metric )
-      print("Check passed: Metric Variable Name")
+      geo_tech_spec <- tech_spec %>% filter(geography == geo)
+      
+      stopifnot( metric_var %in% geo_tech_spec$metric )
+      
+      print("Check passed: Metric Variable Name in Tech Spec")
     },
     error = function(e) {
       
-      print("Check failed: Metric Variable Name")
-      
-      message("Metric variable name is not present in the technical specification.", 
-              "\n Details: ", e$message)
-    }
-  )
+      stop(
+        paste0("\n Check failed: Metric Variable Name in Tech Spec",
+                "\n Metric variable, '", metric_var, 
+                "', is not present in the technical specification ",
+                "for geography, '", geo, "'.", 
+                "\n Details: ", e$message)
+      )
+    })
   
- 
+  
   tryCatch(
     
     if (!is.null(subgrp_type)) {
       
-      stopifnot( subgrp_type %in% tech_spec$subgroup_type  )
+      metric_spec <- tech_spec %>% filter(geography==geo, metric==metric_var)
       
-      print("Check passed: Subgroup Type Names")
+      stopifnot( subgrp_type %in% metric_spec$subgroup_type  )
+      
+      print("Check passed: Subgroup Type Names in Tech Spec")
     },
     error = function(e) {
       
-      print("Check failed: Subgroup Type Names")
-      
-      message("Subgroup type(s) is not present in the technical specification.", 
-              "\n Details: ", e$message)
+      stop(
+        paste0("\n Check failed: Subgroup Type Names in Tech Spec",
+              "\n Subgroup type(s) is not present in the technical specification for metric '", 
+              metric_var, "'.", 
+              "\n Details: ", e$message))
     }
   )
 }
 
+#' Checks if user provided subgroup type values match subgroup types in data
+#' 
+#' @param data The data that is staged to be read out as the final file.
+#' @param user_subgrp_type The user provided subgroup type(s) to check for the metric.
+#' 
+#' @returns NULL (prints check results and messages)
+#' 
+check_user_data_subgroup_types <- function(data, user_subgrp_type) {
+  
+  tryCatch(
+    {
+      data_subgrp_type <- data %>% pull(subgroup_type) %>% unique()
+      
+      stopifnot(all(sort(user_subgrp_type) == sort(data_subgrp_type)))
+      
+      print("Check passed: User Provided and Data Subgroup Type Values")
+      
+    }, 
+    error = function(e) {
+      
+      print("Check failed: User Provided and Data Subgroup Type Values")
+      
+      message("User provided subgroup type are not present in the data.", 
+              "\n Details: ", e$message)
+    }
+  )
+}
 
 #' Checks order of columns in data
 #' 
