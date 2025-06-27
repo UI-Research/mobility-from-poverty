@@ -40,12 +40,12 @@
 #' result$missing_geoids[[1]]
 
 library(tidyverse)
-
 validate_geographies <- function(crosswalk_path,
                                  metric_path,
                                  crosswalk_col_names = NULL,
                                  metric_col_names = NULL,
-                                 years = NULL) {
+                                 years = NULL,
+                                 crosswalk_years = NULL) {
   crosswalk_file <- fs::path_file(crosswalk_path)
   metric_file <- fs::path_file(metric_path)
   
@@ -59,14 +59,44 @@ validate_geographies <- function(crosswalk_path,
   metric <- metric %>%
     rename(state = any_of(c("state", "statefip")))
   
-  # Optional filtering by year
+  # Optional: filter metric by years
   if (!is.null(years)) {
     if (!"year" %in% names(metric)) {
       stop("You specified 'years', but the metric file has no 'year' column.")
     }
-    metric <- metric %>% filter(year %in% years)
+    
+    available_years <- unique(metric$year)
+    missing_years <- setdiff(years, available_years)
+    
+    if (length(missing_years) == length(years)) {
+      stop(
+        glue::glue("None of the specified years ({paste(years, collapse = ', ')}) exist in the metric file.\nAvailable years: {paste(available_years, collapse = ', ')}")
+      )
+    }
+    
+    if (length(missing_years) > 0) {
+      cli::cli_alert_warning(
+        "Some specified years are not in the metric file: {paste(missing_years, collapse = ', ')}"
+      )
+    }
+    
+    effective_years <- years
+    
+    if (!is.null(crosswalk_years)) {
+      out_of_scope_years <- setdiff(years, crosswalk_years)
+      effective_years <- intersect(years, crosswalk_years)
+      
+      if (length(out_of_scope_years) > 0) {
+        cli::cli_alert_warning(
+          "The following years specified for the metric are not covered by the crosswalk ({paste(crosswalk_years, collapse = ', ')}): {paste(out_of_scope_years, collapse = ', ')}"
+        )
+      }
+    }
+    
+    metric <- metric %>% filter(year %in% effective_years)
   }
   
+  # Infer geography columns
   infer_geo_cols <- function(df) {
     if ("county" %in% names(df)) return(c("state", "county"))
     if ("place" %in% names(df)) return(c("state", "place"))
@@ -76,6 +106,7 @@ validate_geographies <- function(crosswalk_path,
   crosswalk_geo_cols <- crosswalk_col_names %||% infer_geo_cols(crosswalk)
   metric_geo_cols    <- metric_col_names    %||% infer_geo_cols(metric)
   
+  # Build GEOIDs
   crosswalk_geoids <- crosswalk %>%
     mutate(geoid = str_c(!!!syms(crosswalk_geo_cols))) %>%
     distinct(geoid)
@@ -84,9 +115,11 @@ validate_geographies <- function(crosswalk_path,
     mutate(geoid = str_c(!!!syms(metric_geo_cols))) %>%
     distinct(geoid)
   
+  # Compare GEOIDs
   missing_geoids <- setdiff(crosswalk_geoids$geoid, metric_geoids$geoid)
   all_present <- length(missing_geoids) == 0
   
+  # Output
   if (all_present) {
     cli::cli_alert_success(
       "All geoids in {.file {crosswalk_file}} are present in {.file {metric_file}}."
