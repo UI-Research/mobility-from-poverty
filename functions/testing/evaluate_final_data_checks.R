@@ -13,10 +13,18 @@ library(tidyverse)
 #' based on the Metric Technical Specification 2026.
 #'
 #' @param metric_var (character): The name of metric variable referenced in data. 
+#' 
 #' @param data (character): The data that is staged to be read out as the final file.
+#' 
 #' @param geo (character): Either "place" or "county" depending on the level of data being tested.
+#' 
+#' @param all_expected_years (logical): A TRUE or FALSE value indicating if data contains all expected metric years. 
+#' If FALSE then the years being tested must be a set of all expected metric years.
+#' 
 #' @param subgroups (logical): A TRUE or FALSE value indicating if the final data has subgroups.
+#' 
 #' @param subgrp_type (character) : A vector providing the subgroup types to expect in data.
+#' 
 #' @param confidence_intervals  (logical): A TRUE or FALSE value indicating if the final data has confidence intervals.
 #' 
 #' @return: A series of test outcomes with a summary of errors encountered.
@@ -25,21 +33,27 @@ library(tidyverse)
 #'                              metric_var = "share_digital_access", 
 #'                              data = df_final_data, 
 #'                              geo = "county", 
+#'                              all_expected_years = TRUE,
 #'                              subgroups = TRUE, 
 #'                              subgrp_type = c("all", "race-ethnicity", "income"),
-#'                              confidence_intervals = FALSE
+#'                              confidence_intervals = FALSE,
 #'                              )
 #'  
 #'                                
-evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE, 
-                                subgrp_type = NULL,
-                                confidence_intervals = FALSE) {
+evaluate_final_data <- function(metric_var, 
+                                data, 
+                                geo, 
+                                all_expected_years = TRUE,
+                                subgroups = FALSE, 
+                                subgrp_type = "all",
+                                confidence_intervals = FALSE
+) {
   
   # Read in the technical specification for the metric
   tech_spec_all <- get_tech_spec() 
   
   # Check if metric (and subgroup types) exists in technical specification
-  check_metric_subgroup_exists(metric_var, tech_spec_all, geo, subgrp_type)
+  check_metric_subgroup_exists(metric_var, tech_spec_all, geo, subgroups, subgrp_type)
   
   # Tech spec for relevant metric
   tech_spec <- get_subset_tech_spec(tech_spec_all, metric_var, geo, subgroups)
@@ -55,9 +69,9 @@ evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE,
   } 
   
   # Pull year list for overall or each subgroup type from technical specification
-  expected_years <- get_expected_years(tech_spec, subgrp_type)
+  expected_years <- get_expected_years(tech_spec, subgroups, subgrp_type)
   
-
+  
   # Pull expected variable names
   expected_variables <- get_expected_metric_vars(tech_spec)
   
@@ -95,8 +109,9 @@ evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE,
       msg = "Expected subgroups are missing in data."
     ),
     list(
-      # Check if expected years are present in final data
-      chk = "Metric Years",
+      # Check if all expected years are present in final data or user provided years are present 
+      # (must be a subset of all expected metric years)
+      chk = ifelse(isTRUE(all_expected_years), "All Expected Metric Years", "User Provided Expected Metric Years"),
       expr = function() check_expected_years(data, expected_years, subgroups),
       cond = TRUE,
       msg = "Expected years are missing in data."
@@ -114,7 +129,7 @@ evaluate_final_data <- function(metric_var, data, geo, subgroups = FALSE,
   check_results <- lapply(
     checks,
     function(check) {
-     
+      
       # Run check if condition is met otherwise return TRUE to handle subgroup tests
       if (check$cond) run_data_check(check$expr, check$msg, check$chk) else TRUE
     }
@@ -237,9 +252,9 @@ get_expected_subgroups <- function(df_tech_spec, subgrp_type) {
 #' @returns A data frame of subgroup types and their years, or a unique vector 
 #' of years if no subgroup type is provided.
 #' 
-get_expected_years <- function(df_tech_spec, subgrp_type) {
+get_expected_years <- function(df_tech_spec, subgroups, subgrp_type) {
   
-  if (!is.null(subgrp_type)) {
+  if (isTRUE(subgroups) & (!is.null(subgrp_type))) {
     
     expected_years <- df_tech_spec %>%
       filter(subgroup_type %in% subgrp_type) %>%
@@ -302,7 +317,7 @@ get_expected_metric_vars <- function(df_tech_spec) {
 #' 
 #' @returns NULL (prints check results and stops execution of further checks)
 #' 
-check_metric_subgroup_exists <- function(metric_var, tech_spec, geo, subgrp_type) {
+check_metric_subgroup_exists <- function(metric_var, tech_spec, geo, subgroups, subgrp_type) {
   
   tryCatch(
     {
@@ -316,17 +331,17 @@ check_metric_subgroup_exists <- function(metric_var, tech_spec, geo, subgrp_type
       
       stop(
         paste0("\n Check failed: Metric Variable Name in Tech Spec",
-                "\n Metric variable, '", metric_var, 
-                "', is not present in the technical specification ",
-                "for geography, '", geo, "'.", 
-                "\n Details: ", e$message)
+               "\n Metric variable, '", metric_var, 
+               "', is not present in the technical specification ",
+               "for geography, '", geo, "'.", 
+               "\n Details: ", e$message)
       )
     })
   
   
   tryCatch(
     
-    if (!is.null(subgrp_type)) {
+    if (isTRUE(subgroups) & (!is.null(subgrp_type))) {
       
       metric_spec <- tech_spec %>% filter(geography==geo, metric==metric_var)
       
@@ -338,9 +353,9 @@ check_metric_subgroup_exists <- function(metric_var, tech_spec, geo, subgrp_type
       
       stop(
         paste0("\n Check failed: Subgroup Type Names in Tech Spec",
-              "\n Subgroup type(s) is not present in the technical specification for metric '", 
-              metric_var, "'.", 
-              "\n Details: ", e$message))
+               "\n Subgroup type(s) is not present in the technical specification for metric '", 
+               metric_var, "'.", 
+               "\n Details: ", e$message))
     }
   )
 }
@@ -476,7 +491,7 @@ check_column_names <- function(data, expected_vars, geo, subgroups) {
   }
   
   stopifnot(all(expected_vars_all == sort(colnames(data))))
-
+  
 }
 
 
@@ -494,9 +509,9 @@ check_subgroup_values <- function(data, expected_subgroups) {
   }
   
   created_subgroups <- sort(unique(dplyr::pull(data, subgroup)))
-    
+  
   stopifnot(all(created_subgroups == sort(expected_subgroups)))
-    
+  
 }
 
 
@@ -507,7 +522,8 @@ check_subgroup_values <- function(data, expected_subgroups) {
 #' of years if no subgroup type is provided.
 #' @param subgroups A TRUE or FALSE value indicating if the final data has subgroups.
 #' 
-#' @returns NULL (throws error if incorrect years are present for metric and/or subgroups)
+#' @returns NULL (throws error if incorrect years are present for metric and/or subgroups,
+#' throws warning if fewer than all expected metric years are present)
 #'  
 check_expected_years <- function(data, exp_years, subgroups) {
   
@@ -517,13 +533,30 @@ check_expected_years <- function(data, exp_years, subgroups) {
       subgrp_type <- exp_years$subgroup_type[[i]]
       years <- exp_years$subgroup_years[[i]]
       
-      stopifnot(all(sort(years) == sort(unique(dplyr::pull(data %>% filter(subgroup_type == subgrp_type), year)))))
+      data_years <- unique(dplyr::pull(data %>% filter(subgroup_type == subgrp_type), year))
       
+      missing_years <- setdiff(years, data_years)
+      
+      if (length(missing_years) > 0) {
+        warning(paste0("Subgroup type '", subgrp_type, "' is missing expected years: ", 
+                       paste(missing_years, collapse = ", "), "."))
+      }
+      
+      stopifnot(all(data_years %in% years))
     }
     
   } else {
-  
-  stopifnot(all(sort(exp_years) == sort(unique(dplyr::pull(data, year)))))
+    
+    data_years <- unique(dplyr::pull(data, year))
+    
+    missing_years <- setdiff(exp_years, data_years)
+    
+    if (length(missing_years) > 0) {
+      warning(paste0("Metric is missing expected years: ", 
+                     paste(missing_years, collapse = ", "), "."))
+    }
+    
+    stopifnot(all(data_years %in% exp_years))
     
   }
 }
