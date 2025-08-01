@@ -17,7 +17,8 @@
 #' @param crosswalk_col_names Optional character vector of column names in the crosswalk to build the GEOID. Defaults to inferred `c("state", "county")` or `c("state", "place")`.
 #' @param metric_col_names Optional character vector of column names in the metric file to build the GEOID. Same logic as `crosswalk_col_names`.
 #' @param years Optional numeric vector of years to restrict the check. The metric file must contain a `year` column if this is specified.
-#'
+#' @param crosswalk_years Optional numeric vector of years that the crosswalk is valid for. If specified, only metric years that intersect with this set will be used for validation.
+#' 
 #' @return Invisibly returns a tibble with:
 #' \itemize{
 #'   \item \code{crosswalk_file}: file name of the crosswalk
@@ -181,4 +182,30 @@ validate_columns <- function(specified_cols, available_cols, context) {
   }
 }
 
+result <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks",
+    "data",
+    "crosswalk_puma_to_county.csv"
+  ),
+  metric_path = here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_all_county.csv"),
+ metric_col_names = "stte"
+ )
 
+
+# result <- validate_geographies(
+#  crosswalk_path = here::here(
+#    "geographic-crosswalks",
+#    "data",
+#    "crosswalk_puma_to_county.csv"
+#  ),
+#  metric_path = here::here("01_financial-well-being", "final", "households_house_value_race_ethnicity_all_county.csv")
+# )
+#
+# result$missing_geoids[[1]]
+validate_geographies(
+  here::here("geographic-crosswalks","data","crosswalk_puma_to_county.csv"),
+  here::here("08_education", "data", "final","digital_access_county_all_longitudinal.csv"),
+  years = c("2018"),
+  crosswalk_years = c("2020")
+)
