@@ -40,6 +40,9 @@
 #' result$missing_geoids[[1]]
 
 library(tidyverse)
+if (!requireNamespace("stringdist", quietly = TRUE)) {
+  install.packages("stringdist")
+}
 validate_geographies <- function(crosswalk_path,
                                  metric_path,
                                  crosswalk_col_names = NULL,
@@ -48,77 +51,75 @@ validate_geographies <- function(crosswalk_path,
                                  crosswalk_years = NULL) {
   crosswalk_file <- fs::path_file(crosswalk_path)
   metric_file <- fs::path_file(metric_path)
-  
+
   crosswalk <- readr::read_csv(crosswalk_path, show_col_types = FALSE)
   metric <- readr::read_csv(metric_path, show_col_types = FALSE)
-  
+
   crosswalk <- crosswalk %>%
     rename(state = any_of(c("state", "statefip"))) %>%
     filter(state != "72")
-  
+
   metric <- metric %>%
     rename(state = any_of(c("state", "statefip")))
-  
+
+
   # Optional: filter metric by years
   if (!is.null(years)) {
     if (!"year" %in% names(metric)) {
       stop("You specified 'years', but the metric file has no 'year' column.")
     }
-    
+
     available_years <- unique(metric$year)
     missing_years <- setdiff(years, available_years)
-    
+
     if (length(missing_years) == length(years)) {
       stop(
         glue::glue("None of the specified years ({paste(years, collapse = ', ')}) exist in the metric file.\nAvailable years: {paste(available_years, collapse = ', ')}")
       )
     }
-    
+
     if (length(missing_years) > 0) {
       cli::cli_alert_warning(
         "Some specified years are not in the metric file: {paste(missing_years, collapse = ', ')}"
       )
     }
-    
+
     effective_years <- years
-    
+
     if (!is.null(crosswalk_years)) {
       out_of_scope_years <- setdiff(years, crosswalk_years)
       effective_years <- intersect(years, crosswalk_years)
-      
+
       if (length(out_of_scope_years) > 0) {
         cli::cli_alert_warning(
           "The following years specified for the metric are not covered by the crosswalk ({paste(crosswalk_years, collapse = ', ')}): {paste(out_of_scope_years, collapse = ', ')}"
         )
       }
     }
-    
+
     metric <- metric %>% filter(year %in% effective_years)
   }
-  
-  # Infer geography columns
-  infer_geo_cols <- function(df) {
-    if ("county" %in% names(df)) return(c("state", "county"))
-    if ("place" %in% names(df)) return(c("state", "place"))
-    stop("Could not infer geography columns. Expecting one of: county or place.")
-  }
-  
+
+
   crosswalk_geo_cols <- crosswalk_col_names %||% infer_geo_cols(crosswalk)
   metric_geo_cols    <- metric_col_names    %||% infer_geo_cols(metric)
-  
+
+  validate_columns(crosswalk_geo_cols, names(crosswalk), "crosswalk")
+  validate_columns(metric_geo_cols, names(metric), "metric")
+
   # Build GEOIDs
   crosswalk_geoids <- crosswalk %>%
     mutate(geoid = str_c(!!!syms(crosswalk_geo_cols))) %>%
     distinct(geoid)
-  
+
   metric_geoids <- metric %>%
     mutate(geoid = str_c(!!!syms(metric_geo_cols))) %>%
     distinct(geoid)
-  
+
   # Compare GEOIDs
   missing_geoids <- setdiff(crosswalk_geoids$geoid, metric_geoids$geoid)
   all_present <- length(missing_geoids) == 0
-  
+
   # Output
   if (all_present) {
     cli::cli_alert_success(
@@ -132,7 +133,7 @@ validate_geographies <- function(crosswalk_path,
     cli::cli_ul(missing_geoids)
     cli::cli_text("Check your crosswalk logic and determine if this is expected.")
   }
-  
+
   tibble::tibble(
     crosswalk_file = crosswalk_file,
     metric_file = metric_file,
@@ -141,3 +142,43 @@ validate_geographies <- function(crosswalk_path,
     missing_geoids = list(missing_geoids)
   ) %>% invisible()
 }
+
+# Infer geography columns
+  infer_geo_cols <- function(df) {
+    if ("county" %in% names(df)) return(c("state", "county"))
+    if ("place" %in% names(df)) return(c("state", "place"))
+    stop("Could not infer geography columns. Expecting one of: county or place.")
+  }
+
+
+suggest_closest <- function(x, choices) {
+  distances <- stringdist::stringdist(x, choices)
+  closest <- choices[which.min(distances)]
+  return(closest)
+}
+
+validate_columns <- function(specified_cols, available_cols, context) {
+  missing_cols <- setdiff(specified_cols, available_cols)
+
+  if (length(missing_cols) > 0) {
+    suggestions <- purrr::map_chr(
+      missing_cols,
+      ~ {
+        if (length(available_cols) == 0) {
+          return("no columns available")
+        }
+        suggest_closest(.x, available_cols)
+      }
+    )
+
+    msg <- glue::glue(
+      "The following {context} columns do not exist:\n",
+      "{paste(missing_cols, collapse = ', ')}\n\n",
+      "Did you mean:\n",
+      "{paste(glue::glue('{missing_cols} → {suggestions}'), collapse = '\n')}"
+    )
+    stop(msg)
+  }
+}
+
+
