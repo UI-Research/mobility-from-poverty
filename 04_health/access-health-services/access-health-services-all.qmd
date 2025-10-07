@@ -157,7 +157,7 @@ if (
 
 # Read in the SAS file containing the latest AHRF data
 ahrf23 <- haven::read_sas(here::here("04_health", "access-health-services", "data",
-                                "AHRF_SAS_2022-2023", "ahrf2023.sas7bdat"))
+                                "AHRF_SAS_2022-2023", "ahrf2023.sas7bdat"), catalog_encoding =  "UTF-8")
 
 # Clean up environment
 rm(zip_url_23, zip_dest_23)
@@ -375,6 +375,11 @@ The remaining nine counties all appear to be counties that no longer exist, and 
 * Wrangell-Petersburg Census Area, AK (02280) split to create part of Wrangell City and Borough (02275) and all of Petersburg Census Area (02195) effective 2008-06-01, so values are missing from 2014-2021.
 * Bedford city, VA (51515) changed to town status and added to Bedford County (51019) effective 2013-07-01, so values are missing from 2014-2021
 * Clifton Forge city, VA (51560) changed to town status and added to Alleghany County (51005) effective 2001-07-01, so values are missing from 2014-2021
+* Shannon County, SD (46113), [is renamed to Oglala
+Lakota County, SD (FIPS 46102) in 2015](https://www.cdc.gov/nchs/data/data_acces_files/County-Geography.pdf). In the AHRF data the FIPS code used for Shannon County, SD is  46102 in 2014 but in the population file the original code (46113) is used. We will replace  FIPS code 46102 with the old code 46113.
+* Wade-Hampton Census Area, AK
+(02270) was renamed Kusilvak, AK and assigned a new FIPS code (02158) effective in 2014. We will replace this FIPS code in 2014 with the old code since this is what is present in the county file.
+
 ```{r check-missing-non-CT}
 missing_urban |>
   filter(state != "09") |>
@@ -383,15 +388,19 @@ missing_urban |>
 
 ```
 
-We drop these observations from the AHRF data
+We drop these observations from the AHRF data and replace the appropriate FIPS codes.
 ```{r fix-missing-urban}
 ahrf_clean <- ahrf_long |>
   mutate(GEOID = str_c(state, county)) |>
-  filter(!(state == "09" & year == "2021"),
+  mutate(county = case_when(year == "2014" & state == "46" & county == "102" ~ "113",
+                            year == "2014" & state == "02" & county == "158" ~ "270",
+                            TRUE ~ county)) |>
+  
+  filter(!(state == "09" & (year %in% c("2021", "2022"))),
          !GEOID %in% c("02001", "02201", "02232", "02280", "51515", "51560"),
          !(GEOID %in% c("02063", "02066") & 
              year %in% c("2014", "2015", "2016", "2017", "2018", "2019")),
-         !(GEOID %in% c("02261") & year %in% c("2020", "2021"))) |>
+         !(GEOID %in% c("02261") & year %in% c("2020", "2021", "2022"))) |>
   select(-GEOID)
   
 ```
@@ -421,21 +430,14 @@ anti_join(
 ### 4.5 Create final population variable
 The AHRF data already includes population counts, but we want to use the population from Urban's universe of counties to construct the ratio for this metric.
 
-However, the Urban file is missing population counts for 2014. We use the 2014 population counts from AHRF for this year instead.
-```{r fix-pop}
-joined_data <- joined_data |>
-  mutate(population = if_else(year==2014, pop, population))
 
-```
-
-Urban Institute and AHRF population sources match for every year except 2021.
+Urban Institute and AHRF population sources match for every year.
 ```{r check-pop}
 # Check whether Urban population source matched AHRF population source
 stopifnot(joined_data |>
             mutate(pop_diff = population - pop) |>
             filter(pop_diff != 0) |>
-            distinct(year) |>
-            pull(year) == 2021
+            nrow() == 0
           )
 
 ```
