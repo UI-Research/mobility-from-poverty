@@ -52,18 +52,232 @@ Read in the City crosswalk file
 place <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv"))
 ```
 
-Read in the CCD district data
+Now read in the necessary CCD district data
+
+### School level enrollment
 
 Download the CCD school level enrollment by race/ethnicity from Urban's Education Data Portal
+Filter grade for 99 - 99 is the total enrollment in the school, regardless of grade.
+
+Note this download is computationally large, will take time to finish.
 
 ```{r}
-df <- get_education_data(level = 'schools', 
+if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds"))))
+{
+  education_data <- get_education_data(level = 'schools', 
                          source = 'ccd', 
                          topic = 'enrollment', 
                          subtopic = 'race',
                          filters = list(year = 2014:year_ed,
-                                        grade = 99,
-                                        sex = 99),
+                                        grade = 99),
                          add_labels = TRUE)
+  write_rds(education_data, 
+            here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds")))
+}  else {
+    education_data <- read_rds(here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds")))
+}
+
+```
+
+Add the number of enrolled male and female students within race
+
+```{r}
+education_data <- education_data %>% 
+  select(-grade) %>% 
+  filter(sex != 99) %>% 
+  mutate(enrollment = ifelse(enrollment < 0, NA_integer_, enrollment)) %>% 
+  group_by(year, ncessch, ncessch_num, leaid, fips, race) %>% 
+  summarise(enrollment = sum(enrollment, na.rm = TRUE))
+```
+
+Reshape the the data wide by race
+1-white, 2-black, 3-hispanic
+
+```{r}
+
+ed_data_wide <- education_data %>% 
+  pivot_wider(id_cols = c(year, ncessch), names_from = race, values_from = enrollment) 
+
+```
+
+### CCD district data
+
+Download district data from CCD, includes total enrollment, city location and county codes
+
+```{r}
+
+if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds"))))
+{
+  ccd_directory <- get_education_data(level = 'schools', 
+                         source = 'ccd', 
+                         topic = 'directory',
+                         filters = list(year = 2014:year_ed),
+                         add_labels = FALSE)
+  write_rds(ccd_directory, 
+            here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds")))
+}  else {
+    ccd_directory <- read_rds(here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds")))
+}
+
+```
+
+### Meps data
+
+MEPS data
+
+```{r}
+year_meps <- 2020
+if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds"))))
+{
+  meps <- get_education_data(level = 'schools', 
+                         source = 'meps', 
+                         filters = list(year = 2014:year_meps))
+  write_rds(meps, 
+            here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds")))
+}  else {
+    meps <- read_rds(here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds")))
+}
+
+```
+
+## Data merge
+
+```{r}
+
+ccd_directory <- ccd_directory %>% 
+  mutate(enrollment = if_else(enrollment < 0, 0, enrollment))
+
+
+ccd_merged <- ccd_directory %>% 
+  left_join(ed_data_wide, by = c("year", "ncessch")) %>% 
+  left_join(meps, by = c("year", "ncessch"))
+
+
+```
+
+Check merge value 
+
+Directory and ed data merge is high: between 93 and 97 percent 
+```{r}
+ccd_merged %>% 
+  mutate(merge_indicator = ifelse(is.na(Total), 0, 1)) %>% 
+  group_by(year) %>% 
+  summarise(merge_rate = mean(merge_indicator))
+```
+
+Directory and meps data merge is good outside of years 2021 and 2022 (waiting on updated data)
+
+```{r}
+ccd_merged %>% 
+  mutate(merge_indicator = ifelse(is.na(meps_mod_poverty_pct), 0, 1)) %>% 
+  group_by(year) %>% 
+  summarise(merge_rate = mean(merge_indicator))
+```
+
+Check extent of missing and negative enrollment values
+```{r}
+ccd_merged %>% 
+  mutate(enrollment_value = case_when(is.na(enrollment) ~ "Missing",
+                                      enrollment == 0 ~ "Zero",
+                                      TRUE ~ "Populated")) %>% 
+  group_by(year, enrollment_value) %>% 
+  count() %>% 
+  pivot_wider(names_from = enrollment_value, values_from = n) %>% 
+  mutate(share_missing_zero = (Missing + Zero) / (Missing + Zero + Populated)) %>% 
+  select(year, share_missing_zero)
+```
+
+Drop values where enrollment is missing or equal to zero
+
+```{r}
+ccd_merged <- ccd_merged %>% 
+  filter(!is.na(enrollment), enrollment != 0)
+```
+
+## Clean merged data
+
+
+*Using MEPS - edit MEPS share and binary if the share is greater than or equal to 20%
+
+```{r}
+
+
+ccd_merged_clean <- ccd_merged %>% 
+  mutate(meps_share = meps_mod_poverty_pct / 100,
+         meps_20 = ifelse(meps_share >= 0.2, 1, 0),
+         numerator = ifelse(meps_20 == 0 | is.na(meps_20), meps_20, enrollment),
+         across(White:Hispanic, ~ifelse(meps_20 == 0 | is.na(meps_20), meps_20, .), .names = "numerator_{.col}"))
+```
+
+Look at distribution of MEPS share
+
+```{r}
+ccd_merged_clean %>% 
+  select(meps_share) %>% 
+  ggplot(aes(x = meps_share)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.01) +
+  theme_minimal() +
+  ggtitle("MEPS mod poverty pct share") +
+  ylab("Count")
+```
+ 
+ Count at the 20 percentage threshold 
+ 
+```{r}
+ccd_merged_clean %>% 
+  group_by(meps_20) %>% 
+  count()
+```
+ 
+
+## Clean geo
+
+```{r}
+
+ccd_merged_clean <- ccd_merged_clean %>% 
+  mutate(county_code = ifelse(county_code == -2, NA_character_, county_code),
+         county_code = str_pad(county_code, width = 5, side = "left", pad = "0"),
+         state = str_sub(county_code, 1, 2))
+```
+
+Drop rows with missing county information 
+
+```{r}
+ccd_merged_clean <- ccd_merged_clean %>% 
+  filter(!is.na(county_code))
+```
+
+Create lower_case version of city name 
+
+```{r}
+ccd_merged_clean <- ccd_merged_clean %>% 
+  mutate(city_name = tolower(city_location))
+```
+
+## Create city level data
+
+```{r}
+ccd_city <- ccd_merged_clean %>% 
+  group_by(year, state, city_name) %>% 
+  summarise(enrollment = sum(enrollment),
+            enrollment_black = sum(Black),
+            enrollment_white = sum(White),
+            enrollment_hisp = sum(Hispanic),
+           numerator = sum(numerator, na.rm = TRUE),
+           numerator_black = sum(numerator_Black, na.rm = TRUE),
+           numerator_white = sum(numerator_White, na.rm = TRUE),
+           numerator_hisp = sum(numerator_Hispanic, na.rm = TRUE)) 
+```
+
+
+Create shares by enrollment 
+
+```{r}
+meps_city <- ccd_city %>% 
+  mutate(meps20_total = numerator / enrollment,
+         meps20_white = numerator_white/enrollment_white,
+         meps20_black = numerator_black/enrollment_black,
+         meps20_hisp = numerator_hisp/enrollment_hisp) %>% 
+  filter(str_detect(city_name, "atlanta"))
 ```
 
