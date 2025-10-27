@@ -1,7 +1,7 @@
 ---
 title: "Jobs Paying a Living Wage"
 author: "Kevin Werner, Kassandra Martincheck, and Aaron R. Williams"
-abstract: "This document combines Bureau of Labor Statistics Quarterly Census of Employment and Wages (QCEW) data and Living Wage Institute data to calculate how much of the cost of living the average pay of jobs covers."
+abstract: "This document combines Bureau of Labor Statistics Quarterly Census of Employment and Wages (QCEW) data and Living Wage Institute data to calculate how much of the cost of living the average pay of jobs covers for different industries."
 format: 
   html:
     toc: true
@@ -115,34 +115,72 @@ load_qcew <- function(file) {
   
   read_excel(here("02_jobs-paying-living-wages", "data", "qcew", file)) |>
     clean_names() |>
-    filter(area_type == "County", ownership == "Total Covered") |>
-    select(
-      state = st,
-      county = cnty,
-      annual_average_weekly_wage,
-      annual_average_establishment_count
-    ) |>
+    filter(area_type == "County") |>
     mutate(
-      state = str_pad(state, width = 2, side = "left", pad = "0"), 
-      county = str_pad(county, width = 3, side = "left", pad = "0"),
-      geo_id = paste0(state, county),
-      year = year
-    ) |>
-    mutate(
+      year = as.numeric(year),
+      geo_id = paste0(st, cnty),
       annual_average_weekly_wage = na_if(annual_average_weekly_wage, 0),
       annual_average_establishment_count = na_if(annual_average_establishment_count, 0)
     )
   
 }
 
-qcew <- map_dfr(.x = qcew_files, .f = load_qcew)
+qcew_industry <- map_dfr(.x = qcew_files, .f = load_qcew)
+
+```
+
+
+```{r}
+qcew_industry <- qcew_industry |>
+  mutate(
+    subgroup = case_when(
+      naics == 10 & own == 0 ~ "All",
+      naics == 101 ~ "Goods Producing",
+      naics == 10 & own %in% c(1, 2, 3) ~ "Public Administration",
+      naics == 1021 ~ "Trade, Transit, Utilities",
+      naics == 1022 ~ "Information Services",
+      naics == 1023 | naics == 1024 ~ "Professional Services",
+      naics == 1025 ~ "Education and Health",
+      naics == 1026 | naics == 1027 ~ "Leisure and Other"
+    )
+  ) 
+
+qcew_industry <- qcew_industry |>
+  filter(!is.na(subgroup))
+
+```
+
+Some NAICS codes are combined into industries. We need to collapse these codes into industries. We average the weekly wages and sum establishment counts. 
+
+```{r}
+qcew_industry <- qcew_industry |>
+  group_by(year, st, cnty, geo_id, subgroup) |>
+  summarize(
+    annual_average_weekly_wage = mean(annual_average_weekly_wage),
+    annual_average_establishment_count = sum(annual_average_establishment_count)
+  ) |>
+  ungroup()
+
+```
+
+We only keep some of the variables.
+
+```{r}
+qcew_industry <- qcew_industry |>
+  select(
+    year,
+    state = st, 
+    county = cnty,
+    geo_id,
+    annual_average_weekly_wage, annual_average_establishment_count, subgroup
+  )
 
 ```
 
 The QCEW includes county 999, which is for "Unknown Or Undefined" area. We drop these.
 
 ```{r}
-qcew <- qcew |>
+qcew_industry <- qcew_industry |>
   filter(county != "999")
 
 ```
@@ -152,7 +190,7 @@ qcew <- qcew |>
 We explore the QCEW data to evaluate the quality of the data. 
 
 ```{r}
-summary(qcew$annual_average_weekly_wage)
+summary(qcew_industry$annual_average_weekly_wage)
 
 ```
 
@@ -160,10 +198,10 @@ We look at counties with large changes in the rank of `annual_average_weekly_wag
 
 ```{r}
 # high variance
-big_wage_changes <- qcew |>
-  group_by(year) |>
+big_wage_changes <- qcew_industry |>
+  group_by(year, subgroup) |>
   mutate(rank = rank(annual_average_weekly_wage, ties.method = "average")) |>
-  group_by(state, county) |>
+  group_by(state, county, subgroup) |>
   mutate(rank_change = rank - lag(rank)) |>
   arrange(desc(abs(rank_change))) |>
   ungroup()
@@ -172,11 +210,12 @@ big_wage_changes_id <- big_wage_changes |>
   slice_max(rank_change, n = 100) |>
   pull(geo_id)
 
-qcew |>
+qcew_industry |>
   filter(geo_id %in% big_wage_changes_id) |>
   mutate(geo_id = paste0(state, county)) |>
   ggplot(aes(year, annual_average_weekly_wage, group = geo_id)) +
   geom_line(alpha = 0.3) +
+  facet_wrap(~ subgroup) +
   labs(
     title = "Some Counties Have Very Noisy Average Wages",
     subtitle = "100 Counties with Large Changes in Rank"
@@ -186,7 +225,7 @@ qcew |>
 
 ```{r}
 # annual_average_establishment_count
-summary(qcew$annual_average_establishment_count)
+summary(qcew_industry$annual_average_establishment_count)
 
 ```
 
@@ -194,8 +233,8 @@ We look at counties with large changes in the rank of `annual_average_establishm
 
 ```{r}
 # high variance
-big_establishment_changes <- qcew |>
-  group_by(year) |>
+big_establishment_changes <- qcew_industry |>
+  group_by(year, subgroup) |>
   mutate(rank = rank(annual_average_establishment_count, ties.method = "average")) |>
   group_by(state, county) |>
   mutate(rank_change = rank - lag(rank)) |>
@@ -206,11 +245,12 @@ big_establishment_changes_id <- big_wage_changes |>
   slice_max(rank_change, n = 100) |>
   pull(geo_id)
 
-qcew |>
+qcew_industry |>
   filter(geo_id %in% big_establishment_changes_id) |>
   mutate(geo_id = paste0(state, county)) |>
   ggplot(aes(year, annual_average_establishment_count, group = geo_id)) +
   geom_line(alpha = 0.3) +
+  facet_wrap(~ subgroup, scales = "free_y") +
   labs(
     title = "The Number of Establishments is Not very Noisy",
     subtitle = "100 Counties with Large Changes in Rank"
@@ -218,12 +258,18 @@ qcew |>
 
 ```
 
-We expect every county to be included 11 times. Some counties are included fewer times and these are the usual suspects in Alaska, Connecticut, and South Dakota.
+We expect every county to be included 8 times (11 years x 8 industry types). Some counties are included fewer times and these are the usual suspects in Alaska, Connecticut, and South Dakota.
 
 ```{r}
-count(qcew, state, county) |>
-  filter(n != 11) |>
+count(qcew_industry, state, county) |>
+  filter(n != 88) |>
   print(n  = Inf)
+
+```
+
+```{r}
+qcew_industry <- qcew_industry |>
+  select(-geo_id)
 
 ```
 
@@ -420,7 +466,7 @@ living_wage |>
 Both data sets approximately have the correct number of observations per year. 
 
 ```{r}
-count(qcew, year)
+count(qcew_industry, year, subgroup)
 count(living_wage, year)
 
 ```
@@ -428,17 +474,20 @@ count(living_wage, year)
 There are a few mismatches between counties in the expected places like Alaska and Connecticut.
 
 ```{r}
-qcew |>
-  anti_join(living_wage, by = c("year", "state", "county")) 
+qcew_industry |>
+  anti_join(living_wage, by = c("year", "state", "county")) |>
+  count(state, county)
 
-anti_join(living_wage, qcew, by = c("year", "state", "county"))
+living_wage |>
+  anti_join(qcew_industry, by = c("year", "state", "county")) |>
+  count(state, county)
 
 ```
 
 Finally, we combine the QCEW and Living Wage Institute data. We use an `inner_join()` because we only want to keep observations common to both data sets. Later, we will fill in missing values using the target geographies file.
 
 ```{r}
-combined_data <- inner_join(qcew, living_wage, by = c("year", "state", "county"))
+combined_data <- inner_join(qcew_industry, living_wage, by = c("year", "state", "county"))
 
 count(combined_data, year)
 
@@ -459,8 +508,8 @@ combined_data <- combined_data |>
 
 Greg and Kevin established the original data quality flag based on the number of establishments in the geography.
 
-- >= 30 is 1
-- <30 is 3
+- Greater than or equal to 30 is 1
+- Less than 30 is 3
 
 ```{r}
 combined_data <- combined_data |>
@@ -484,19 +533,36 @@ We join our calculated data to the target geographies file for counties.
 target_counties <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) |>
   select(year, state, county)
 
+target_counties <- expand_grid(
+  target_counties,
+  subgroup = c("All", "Education and Health", "Goods Producing", "Information Services", "Leisure and Other", "Professional Services", "Public Administration", "Trade, Transit, Utilities")
+)
+
+```
+
+```{r}
 final_data <- left_join(
   target_counties,
   combined_data,
-  by = c("year", "state", "county")
+  by = c("year", "state", "county", "subgroup")
 )
 
 anti_join(
   combined_data,
   target_counties,
-  by = c("year", "state", "county")
-)
+  by = c("year", "state", "county", "subgroup")
+) |>
+  count(state, county)
 
 map_dbl(final_data, ~sum(is.na(.x)))
+
+```
+
+Finally, we add the `subgroup_type` variables.
+
+```{r}
+final_data <- final_data |>
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "industry"))
 
 ```
 
@@ -504,11 +570,11 @@ map_dbl(final_data, ~sum(is.na(.x)))
 
 ```{r}
 final_data <- final_data |>
-  select(year, state, county, ratio_living_wage, ratio_living_wage_quality)
+  select(year, state, county, subgroup_type, subgroup, ratio_living_wage, ratio_living_wage_quality)
 
 write_csv(
   final_data, 
-  file = here("02_jobs-paying-living-wages", "data", "final", "living_wage_county_all_longitudinal.csv")
+  file = here("02_jobs-paying-living-wages", "data", "final", "living_wage_county_industry_longitudinal.csv")
 )
 
 ```
