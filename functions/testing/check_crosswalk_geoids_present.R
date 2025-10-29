@@ -19,8 +19,7 @@ validate_geographies <- function(crosswalk_path,
                                  metric_path,
                                  crosswalk_geo_cols = NULL,
                                  metric_geo_cols = NULL,
-                                 years = NULL,
-                                 crosswalk_years = NULL) {
+                                 years = NULL) {
   crosswalk_file <- fs::path_file(crosswalk_path)
   metric_file <- fs::path_file(metric_path)
 
@@ -35,7 +34,7 @@ validate_geographies <- function(crosswalk_path,
     rename(state = any_of(c("state", "statefip", "statefp", "STATEFP")))
 
   tmp <- filter_by_crosswalk_year_logic(
-    crosswalk, metric, years, crosswalk_years
+    crosswalk, metric, years
   )
 
   crosswalk <- tmp[[1]]
