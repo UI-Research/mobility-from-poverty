@@ -1,0 +1,629 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    number_sections: TRUE
+    self_contained: TRUE
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    css: !expr here::here("05_local-governance", "www", "web_report.css")
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+# Descriptive Representation
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+This script calculates four measures of descriptive representation for the Urban Institute Mobility Metrics project. The metrics are constructed using the [ICMA Municipal Form of Government 2018 Survey](https://icma.org/2018-municipal-fog-survey) and 5-year ACS data. 
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(readxl)
+library(censusapi)
+
+source(here::here("05_local-governance", "R", "census_api_key.R"))
+source(here::here("05_local-governance", "R", "get_vars.R"))
+
+theme_set(theme_minimal())
+
+```
+
+The Urban Institute purchased the [ICMA Municipal Form of Government 2018 Survey](https://icma.org/2018-municipal-fog-survey). It is available on Box and needs to be added to this directory in a way that matches the filepath below. 
+
+```{r read-icma}
+if (!dir.exists("data")) {
+  
+  dir.create("data")  
+  
+}
+
+# read in the ICMA survey
+icma2018 <- read_excel(here::here("05_local-governance", 
+                                  "descriptive-representation", 
+                                  "data", 
+                                  "Municipal Form of Government 2018 Survey", 
+                                  "Municipal Form of Government 2018 Data.xlsx"))
+
+# only keep the relevant ICMA variables
+analysis <- icma2018 %>%
+  select(ID, 
+         LocalGovernment, 
+         state_name = State, 
+         county_name = County, 
+         U18POPest, 
+         FIPS_StateCounty, 
+         FIPS_Place, 
+         starts_with("Q35"))
+
+```
+
+### Recreate Table 35.
+
+We begin by recreating Table 35 from the 2018 Municipal Form of Government Survey Summary of Survey Results. The results match exactly. 
+
+```{r recreate-table35}
+# move from wide to long and recode the variable names to race/eth groups
+table35 <- analysis %>%
+  pivot_longer(cols = starts_with("Q35"),
+               names_to = "race_ethnicity",
+               values_to = "count") %>%
+  mutate(race_ethnicity = case_when(
+    race_ethnicity == "Q35_a" ~ "American Indian or Alaska Native",
+    race_ethnicity == "Q35_b" ~ "Hispanic or Latino",
+    race_ethnicity == "Q35_c" ~ "Asian or Pacific Islander",
+    race_ethnicity == "Q35_d" ~ "White, not of Hispanic Origin",
+    race_ethnicity == "Q35_e" ~ "Black or African American",
+    race_ethnicity == "Q35_f" ~ "Native Hawaiin or Other Pacific Islander",
+    race_ethnicity == "Q35_g" ~ "Middle Eastern or North African",
+    race_ethnicity == "Q35_h" ~ "Some other race, ethnicity, or origin",
+    )
+  )
+
+# confirm a = 21,466
+table35 %>%
+  summarize(sum(count, na.rm = TRUE))
+
+# confirm frequencies from table 35
+table35 %>%
+  group_by(race_ethnicity) %>%
+  summarize(count = sum(count, na.rm = TRUE)) %>%
+  mutate(prop = count / sum(count))
+
+```
+
+## Descriptive Representation Metrics
+
+The metric is the ratio of the share of local elected officials of a racial/ethnic group to the share of residents of the same racial/ethnic group. The four racial/ethnic groups of interest are Asian/other, Black non-Hispanic, Latinx, and white non-Hispanic. 
+
+We will use eight steps to create the four metrics:
+
+1. Get shares of 4 race/ethnicity groups at the council level from the ICMA survey
+2. Pull demographics for Census places and Census County Subdivisions 
+3. Join the Census data to the ICMA data
+4. Calculate the metrics
+5. Aggregate to the county level
+6. Identify issues
+7. Create quality flags
+8. Save the data
+
+### 1. Get shares of 4 race/ethnicity groups at the council level from the ICMA survey
+
+The counts of councilmembers of different racial and ethnic groups are expressed as a series of variables beginning with `Q35_`. We rename the variables. The total number of councilmembers is not expressed as an integer in the survey, so we sum the groups. 
+
+```{r}
+# replace missing values with zeros
+analysis <- analysis %>%
+  mutate(across(starts_with("Q35"), .fns = ~replace_na(data = .x, replace = 0))) %>%
+  rename(
+    american_indian_alaskan_native = Q35_a,
+    hispanic_or_latino = Q35_b,
+    asian_or_pacific_islander = Q35_c,
+    white_nonhispanic = Q35_d,
+    black =  Q35_e,
+    native_hawaiin_or_pacific_islander = Q35_f,
+    middle_eastern_or_north_african = Q35_g,
+    other = Q35_h
+  )
+
+# sum up the councilmembers
+analysis <- analysis %>%
+  mutate(council_members = 
+           american_indian_alaskan_native +
+           hispanic_or_latino +
+           asian_or_pacific_islander +
+           white_nonhispanic +
+           black +
+           native_hawaiin_or_pacific_islander +
+           middle_eastern_or_north_african +
+           other) 
+
+```
+
+We collapse the eight racial/ethnic groups from ICMA into the four groups of interest. 
+
+```{r}
+# collapse into 4 groups
+analysis <- analysis %>%
+  mutate(
+    council_asian_other = american_indian_alaskan_native +
+      asian_or_pacific_islander +
+      native_hawaiin_or_pacific_islander +
+      middle_eastern_or_north_african +
+      other,
+    council_black_nonhispanic = black,
+    council_hispanic = hispanic_or_latino, 
+    council_white_nonhispanic = white_nonhispanic
+  ) 
+
+# drop old variables
+analysis <- analysis %>%
+  select(-american_indian_alaskan_native,
+         -hispanic_or_latino,
+         -asian_or_pacific_islander,
+         -black,
+         -native_hawaiin_or_pacific_islander,
+         -middle_eastern_or_north_african,
+         -other,
+         -white_nonhispanic)
+
+```
+
+The ICMA survey does not distinguish between `0` and `NA`. We calculate the share of councilmembers by race and turn council shares into `NA` for municipalities that have zero councilmembers. 
+
+```{r}
+calc_council_proportion <- function(council_race, council_members) {
+  
+  if_else(condition = council_members == 0, 
+              true = as.numeric(NA), 
+              false = {{council_race}} / council_members)
+  
+}
+
+analysis <- analysis %>%
+  mutate(
+    council_asian_other = calc_council_proportion(council_asian_other, 
+                                                  council_members),
+    council_black_nonhispanic = calc_council_proportion(council_black_nonhispanic, 
+                                                  council_members),
+    council_hispanic = calc_council_proportion(council_hispanic, 
+                                                  council_members),
+    council_white_nonhispanic = calc_council_proportion(council_white_nonhispanic, 
+                                                  council_members)
+  )
+
+```
+
+We test to ensure that the ratios are bounded by 0 and 1 inclusive. 
+
+```{r}
+# bounded by 0 and 1
+stopifnot(
+  analysis %>%
+    filter(
+      council_asian_other < 0 | council_asian_other > 1 |
+        council_black_nonhispanic < 0 | council_black_nonhispanic > 1|
+        council_hispanic < 0 | council_hispanic > 1 |
+        council_white_nonhispanic < 0 | council_white_nonhispanic > 1
+    ) %>% 
+    nrow() == 0
+)
+
+```
+
+* todo(aaron): Test number of councilmembers
+* todo(aaron): Compare with other questions 
+
+### 2. Pull demographics for Census places and Census County Subdivisions
+
+We pull the share of the population that belongs to different racial/ethnic in Census places and Census county subdivisions. 
+
+We pull all of the race/ethnicity counts for 2018 using `library(censusapi)`. **Note:** This will require a [Census API key](https://api.census.gov/data/key_signup.html). Add the key to `census_api_key-template.R` and then delete then delete "template". It is sourced above. 
+
+```{r}
+# list variable of interest
+vars <- c(
+  # Hispanic or Latino
+  "DP05_0071E", # Estimate!!HISPANIC OR LATINO AND RACE!!Total population!!Hispanic or Latino (of any race)
+  "DP05_0071M", 
+  # Not Hispanic or Latino
+  "DP05_0077E", # White alone
+  "DP05_0077M",
+  "DP05_0078E", # Black or African American alone
+  "DP05_0078M",
+  "DP05_0079E", # American Indian and Alaska Native alone
+  "DP05_0079M",
+  "DP05_0080E", # Asian alone
+  "DP05_0080M",
+  "DP05_0081E", # Native Hawaiian and Other Pacific Islander alone
+  "DP05_0081M",
+  "DP05_0082E", # Some other race alone
+  "DP05_0082M",
+  "DP05_0083E", # Two or more races
+  "DP05_0083M"
+)
+
+# pull ACS data at the Census Place and Census County Subdivision levels
+places <- get_vars(year = 2018, vars = vars, geography = "place")
+county_subdivisions <- get_vars(year = 2018, vars = vars, geography = "county subdivision")
+
+# combine the two geographies
+geographies <- bind_rows(places, county_subdivisions)
+
+rm(places, county_subdivisions)
+
+# give meaningful names
+geographies <- geographies %>%
+  rename(
+    people = B01003_001E,
+    hispanic = DP05_0071E, 
+    hispanic_moe = DP05_0071M,
+    white_nonhispanic = DP05_0077E, 
+    white_nonhispanic_moe = DP05_0077M,
+    black_nonhispanic = DP05_0078E, 
+    black_nonhispanic_moe = DP05_0078M, 
+    aian_nh = DP05_0079E, 
+    aian_nh_moe = DP05_0079M,
+    asian_nh = DP05_0080E, 
+    asian_nh_moe = DP05_0080M,
+    nhpi_nh = DP05_0081E, 
+    nhpi_nh_moe = DP05_0081M,
+    other_nh = DP05_0082E, 
+    other_nh_moe = DP05_0082M, 
+    two_or_more_nh = DP05_0083E,
+    two_or_more_nh_moe = DP05_0083M
+  )
+
+```
+
+The Census reports race and ethnicity as many different groups. Table 2 in [this publication](https://www.census.gov/prod/cen2010/briefs/c2010br-02.pdf) is helpful. Here, we collapse the detailed groups into the same four groups of interest from the above section. 
+
+```{r}
+# construct asian_other 
+geographies <- geographies %>%
+  mutate(asian_other = aian_nh + asian_nh + nhpi_nh + other_nh + two_or_more_nh) %>%
+  select(state, 
+         county, 
+         place, 
+         county_subdivision, 
+         people, asian_other, 
+         black_nonhispanic, 
+         hispanic, 
+         white_nonhispanic, 
+         geography)
+
+# test that the new groups sum to the original people total
+stopifnot(
+  geographies %>%
+    mutate(people2 = asian_other + black_nonhispanic + hispanic + white_nonhispanic) %>%
+    filter(people != people2) %>%
+    nrow() == 0
+)
+
+```
+
+We calculate the share of municipalities by race. 
+
+```{r}
+geographies <- geographies %>%
+  mutate(
+    asian_other = asian_other / people, 
+    black_nonhispanic = black_nonhispanic / people, 
+    hispanic = hispanic / people,
+    white_nonhispanic = white_nonhispanic / people
+  )
+
+# test to see if bounded by 0 and 1
+stopifnot(
+  geographies %>%
+    filter(
+      asian_other < 0 | asian_other > 1 |
+        black_nonhispanic < 0 | black_nonhispanic > 1|
+        hispanic < 0 | hispanic > 1 |
+        white_nonhispanic < 0 | white_nonhispanic > 1
+    ) %>% 
+    nrow() == 0
+)
+
+# test to see if the 4 categories sum to 1
+stopifnot(
+  geographies %>%
+    mutate(total = round(asian_other + black_nonhispanic + hispanic + white_nonhispanic, 10)) %>%
+    filter(total != 1) %>%
+    nrow() == 0
+)
+
+```
+
+### 3. Join the Census data to the ICMA data
+
+`FIPS_Place` in the ICMA data is actually combination of Census Places and Census County Subdivisions. Here's a note from Will Fricke at ICMA:
+
+> I meant to add this in the READ ME txt file: The FIPS_place column includes both place and county subdivision codes (I suppose the column should have a different name) – if you go back through ICMA datasets you’ll find it’s consistently done that way regardless of the wisdom of it.
+ 
+> The method I use to merge census data into our datasets is to use a vlookup in excel from the FIPS_place column to the Census data place codes column, and then the same thing from the N/A rows to the COUSUB codes column. (Check to make sure you have enough RAM first…)
+
+We pull a list of all Census geographies from [here](https://www.census.gov/geographies/reference-files.html). 
+
+```{r}
+# load a list of all FIPS
+fips <- read_excel(here::here("05_local-governance", 
+                              "descriptive-representation", 
+                              "fips", "all-geocodes-v2018.xlsx"), 
+                   skip = 4) %>%
+  mutate(FIPS_Place = paste0(`State Code (FIPS)`, `Place Code (FIPS)`))
+
+# create 7- and 10- digit codes in fips
+fips <- fips %>%
+  mutate(place_code = paste0(`State Code (FIPS)`, `Place Code (FIPS)`),
+         county_subdivision_code = paste0(`State Code (FIPS)`, 
+                                          `County Code (FIPS)`, 
+                                          `County Subdivision Code (FIPS)`))
+
+# create 7- and 10- digit codes in geographies
+geographies <- geographies %>%
+  mutate(place_code = paste0(state, place),
+         county_subdivision_code = str_c(state, county, county_subdivision))
+```
+
+If a locality from the ICMA data is a Census place then assign Census place. If a locality isn't a Census place then assign Census County Subdivision. 
+
+```{r}
+# if a place, use place
+analysis <- analysis %>%
+  # create a potential code
+  mutate(potential_place = str_c(str_sub(FIPS_StateCounty, start = 1, end = 2), FIPS_Place)) %>%
+  mutate(place_code = if_else(potential_place %in% pull(fips, place_code),
+                              true = potential_place,
+                              false = as.character(NA)))
+
+# if not a place, then a county subdivision
+analysis <- analysis %>%
+  # create a potential code
+  mutate(potential_county_subdivision_code = str_c(FIPS_StateCounty, FIPS_Place)) %>%
+  mutate(county_subdivision_code = if_else(potential_county_subdivision_code %in% pull(fips, county_subdivision_code),
+                                          true = potential_county_subdivision_code,
+                                          false = as.character(NA)))
+
+# create geography variable
+analysis <- analysis %>%
+  select(-potential_place, -potential_county_subdivision_code) %>%
+  mutate(geography = case_when(
+    !is.na(place_code) ~ "place",
+    !is.na(county_subdivision_code) ~ "county subdivision"
+    ))
+
+# cases without a place or a county subdivision
+trouble <- tidylog::filter(analysis, is.na(geography)) %>%
+  mutate(geography = "trouble")
+
+# join the Census places
+places <- geographies %>%
+  tidylog::filter(geography == "place") %>%
+  select(-county, -county_subdivision, -county_subdivision_code)
+
+places <- analysis %>%
+  select(-county_subdivision_code) %>%
+  tidylog::filter(geography == "place") %>%
+  left_join(places, by = c("place_code", "geography"))
+```
+
+Combine the three data (places, county subdivisions, trouble) into one file. 
+
+```{r}
+# join the Census county subdivisions
+county_subdivisions <- geographies %>% 
+  tidylog::filter(geography == "county subdivision") %>%
+  select(-place, -place_code)
+
+county_subdivisions <- analysis %>%
+  tidylog::filter(geography == "county subdivision") %>%
+  select(-place_code) %>%
+  left_join(county_subdivisions, by = c("county_subdivision_code", "geography"))
+
+# combine three joined data sets into one data set
+joined_data <- bind_rows(
+  places,
+  county_subdivisions,
+  trouble
+) %>%
+  mutate(state = str_sub(FIPS_StateCounty, start = 1, end = 2),
+         county = str_sub(FIPS_StateCounty, start = 3, end = 5))
+
+```
+
+Quality checks:
+
+```{r}
+ggplot(joined_data, aes(U18POPest, people)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "The ICMA and Census data have similar estimated populations")
+
+```
+
+### 4. Calculate the metrics
+
+Find the ratio of the proportions. Conditional logic is needed to avoid division by `0`.
+
+```{r}
+joined_data <- joined_data %>%
+  mutate(
+    asian_other = 
+      if_else(condition = asian_other == 0, 
+              true = 0, 
+              false = council_asian_other / asian_other), 
+    black_nonhispanic = 
+      if_else(condition = black_nonhispanic == 0, 
+              true = 0, 
+              false = council_black_nonhispanic / black_nonhispanic), 
+    hispanic = 
+      if_else(condition = hispanic == 0, 
+              true = 0, 
+              false = council_hispanic / hispanic),
+    white_nonhispanic = 
+      if_else(condition = white_nonhispanic == 0, 
+              true = 0, 
+              false = council_white_nonhispanic / white_nonhispanic)
+  ) %>%
+  select(-council_asian_other, 
+         -council_black_nonhispanic, 
+         -council_hispanic, 
+         -council_white_nonhispanic)
+
+```
+
+Ensure that there are no undefined numbers.
+
+```{r}
+stopifnot(
+  filter(joined_data, is.nan(black_nonhispanic)) %>%
+    nrow() == 0
+)
+
+```
+
+### 5. Aggregate to the county level
+
+We now have the four metrics of interest for municipalities. We need to roll these up to counties. 
+
+```{r}
+# drop municipalities that don't report ICMA data and drop municipalities without matches
+joined_data <- joined_data %>%
+  tidylog::filter(council_members > 0) %>%
+  tidylog::filter(geography != "trouble")
+
+# find the person-weighted average of the four metrics at the county level
+county_data <- joined_data %>%
+  group_by(state, county) %>%
+  summarize(municipalities = n(),
+            asian_other = sum(asian_other * people) / sum(people), 
+            black_nonhispanic = sum(black_nonhispanic * people) / sum(people),
+            hispanic = sum(hispanic * people) / sum(people),
+            white_nonhispanic = sum(white_nonhispanic * people) / sum(people),
+            people = sum(people)) %>%
+  ungroup()
+```
+
+We only have a fraction of the county population for many counties. We calculate the proportion represented.
+
+```{r}
+# pull the county population using tidycensus
+county_pop <- tidycensus::get_acs(geography = "county",
+                                  variable = c(people = "B01003_001E"),
+                                  year = 2018) %>%
+  mutate(state = str_sub(GEOID, start = 1, end = 2),
+         county = str_sub(GEOID, start = 3, end = 5)) %>%
+  select(county_state = NAME,
+         state,
+         county,
+         people_county = estimate)
+
+# calculate the share of the county population represented
+county_data <- left_join(county_data, county_pop, by = c("state", "county"))
+
+county_data <- county_data %>%
+  mutate(population_prop = people / people_county)
+
+```
+
+Quality checks:
+
+```{r}
+ggplot(county_data, aes(people_county, people)) +
+  geom_point(alpha = 0.2) +
+  geom_abline(slope = 1) +
+  coord_equal() +
+  labs(title = "The Propotion of Population Represented in Counties is Underwhelming",
+       subtitle = "Comparison of County Population to Represented Population")
+
+county_data %>%
+  ggplot(aes(population_prop)) +
+  geom_histogram() +
+  labs(title = "The Propotion of Population Represented in Counties is Underwhelming",
+       subtitle = "Distribution of Population Representation")
+```
+
+### 6. Identify issues
+
+### 7. Create quality flags
+
+The municipality-level data are accurate and useful. The representativeness of the county-level data is questionable because many municipalities are missing from the summarized data. 
+
+* `1` if > 80% of population is captured. 
+* `2` if > 50% of the population is captured. 
+* `3` otherwise.
+
+```{r}
+# create a helper function for data quality
+set_quality <- function(proportion) {
+  
+  quality <- case_when(
+    proportion >= 0.8 ~ 1,
+    proportion >= 0.5 ~ 2,
+    proportion >= 0 ~ 3
+  )
+  
+  return(quality)
+  
+}
+
+# quality flags
+county_data <- county_data %>%
+  mutate(
+    asian_other_quality = set_quality(proportion = population_prop),
+    black_nonhispanic_quality = set_quality(proportion = population_prop),
+    hispanic_quality = set_quality(proportion = population_prop),
+    white_nonhispanic_quality = set_quality(proportion = population_prop)
+  )
+
+count(county_data, asian_other_quality)
+count(county_data, black_nonhispanic_quality)
+count(county_data, hispanic_quality)
+count(county_data, white_nonhispanic_quality)
+
+```
+
+### 8. Save the data
+
+We need to include all counties in the published data even if we don't have a metric for the county. We load the county file and join our metrics to the county file. 
+
+```{r}
+# load the 2018 county file
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-file.csv")) %>%
+  tidylog::filter(year == 2018)
+
+# join the calculated metrics to the full file
+all_counties <- left_join(all_counties, county_data, by = c("state", "county"))
+
+# final data set
+all_counties <- all_counties %>%
+  mutate(year = 2018) %>%
+  select(year, 
+         state, 
+         county, 
+         asian_other, 
+         asian_other_quality, 
+         black_nonhispanic, 
+         black_nonhispanic_quality, 
+         hispanic, 
+         hispanic_quality, 
+         white_nonhispanic, 
+         white_nonhispanic_quality)
+
+write_csv(all_counties, here::here("05_local-governance", 
+                                   "descriptive-representation", 
+                                   "descriptive-representation.csv"))
+
+```
