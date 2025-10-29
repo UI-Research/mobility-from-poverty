@@ -93,7 +93,20 @@ validate_geographies <- function(crosswalk_path,
     missing_geoids = list(missing_geoids)
   ) %>% invisible()
 }
-filter_by_crosswalk_year_logic <- function(crosswalk, metric, years = NULL, crosswalk_years = NULL) {
+
+#' Filter crosswalk and metric data by year or crosswalk period logic
+#'
+#' This helper function aligns the temporal scope of crosswalk and metric data.
+#' It filters both datasets based on available year information or `crosswalk_period`
+#' when applicable.
+#'
+#' @param crosswalk A crosswalk data frame.
+#' @param metric A metric data frame.
+#' @param years Optional numeric vector of years to restrict the analysis.
+#'
+#' @return A list of two data frames: the filtered crosswalk and metric datasets.
+#' @keywords internal
+filter_by_crosswalk_year_logic <- function(crosswalk, metric, years = NULL) {
   if (!is.null(years)) {
     if (!"year" %in% names(metric)) {
       cli::cli_abort(
@@ -166,20 +179,42 @@ filter_by_crosswalk_year_logic <- function(crosswalk, metric, years = NULL, cros
   return(list(crosswalk, metric))
 }
 
-
-
+#' Infer geography columns in a dataset
+#'
+#' Attempts to infer which columns correspond to state and geography
+#' (e.g., county or place). Used when the user does not specify explicit columns.
+#'
+#' @param df A data frame from which to infer geography columns.
+#' @return A character vector with inferred column names.
 infer_geo_cols <- function(df) {
   if ("county" %in% names(df)) return(c("state", "county"))
   if ("place" %in% names(df)) return(c("state", "place"))
   stop("Could not infer geography columns. Expecting one of: county or place.")
 }
 
+#' Suggest the closest valid column name using fuzzy matching
+#'
+#' Uses string distance matching to suggest corrections for misspecified column names.
+#'
+#' @param x A character scalar; the column name to check.
+#' @param choices Character vector of available column names.
+#' @return The closest match among available columns.
 suggest_closest <- function(x, choices) {
   distances <- stringdist::stringdist(x, choices)
   closest <- choices[which.min(distances)]
   return(closest)
 }
 
+#' Validate that specified columns exist in a data frame
+#'
+#' Checks whether the user-specified columns exist in the available columns.
+#' If any are missing, suggests likely alternatives based on string distance.
+#'
+#' @param specified_cols Character vector of expected column names.
+#' @param available_cols Character vector of actual column names.
+#' @param context A string indicating the origin of the check (e.g., "metric", "crosswalk").
+#'
+#' @return Stops execution with an informative error message if any column is missing.
 validate_columns <- function(specified_cols, available_cols, context) {
   missing_cols <- setdiff(specified_cols, available_cols)
 
