@@ -34,6 +34,7 @@ library(haven)
 
 set_urbn_defaults(style = "print")
 
+source(here::here("functions", "testing", "evaluate_final_data.R"))
 ```
 
 This metric represents the number of individuals served by one primary care physician in a county, if the population was equally distributed across physicians. 
@@ -71,82 +72,91 @@ To create the ratio of population to primary care physicians, we also need a cou
 
 
 ## 2. Download and read in data from AHRF
-This section downloads two AHRF zip files from the AHRF website. It then extracts one SAS file from each zip file and reads each file into the R environment. It deletes the zip files which contain documentation for each file. 
+This section uses a helper function, `ahrf_fetch()`, to download and unzip AHRF zip files from the AHRF website. After it runs, you should inspect the unzipped contents and pass the explicit `.sas7bdat` path to `haven::read_sas()` to read the files.  
+This section downloads two AHRF zip files from the AHRF website. Also, check for
+any irrelevant files such as those containing documentation for each file (e.g., 
+`"2021-2022_AHRFDUA.doc"` in the 2021-2022 release.
 
 The primary data for this metric come from the [Area Health Resource File (AHRF)](https://data.hrsa.gov/data/download). 
 
-To get all years 2014-2021, we must download and read in two files:
+To get all years 2014-2022, we must download and read in three files:
 
+* 2023-2024 County Level Data - This is the most recent release and includes primary care physicians data for 2022
 * 2022-2023 County Level Data - Previous releases included historical data for all variables. This was the first release that only includes the two most recent years of data for each variable (which are 2020 and 2021 for primary care physicians).
 * 2021-2022 County Level Data - This file still includes historical data back to 2014.
 
-Note that each code chunk below downloads the `.zip` file for each year, extracts the data we need, and deletes the `.zip` file. The `.zip` files contain the technical documentation for each file, and future analysts may want to explore this documentation before deleting the files.
-
-```{r load-2022-2023-file}
-# URL of the 2022-2023 AHRF zip file
-## Note that the 2021-2022 file doesn't have a csv option, so I download the SAS version for consistency. For more information, download the `Technical documentation`.
-zip_url_23 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_SAS_2022-2023.zip"
-
-# Destination file path where we want to save the zip file
-zip_dest_23 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2022-2023.zip")
-
-# If the file has not already been downloaded, download/unzip/read it in
-if (
-  !file.exists(here::here("04_health", "access-health-services", "data",
-                          "AHRF_SAS_2022-2023"))
-  ){
-    
-    # Download the zip file to the above path
-    download.file(zip_url_23, zip_dest_23, mode = "wb")
-    
-    # Unzip the file
-    unzip(zip_dest_23, exdir = here::here("04_health", "access-health-services", "data"))
-    
-    # Remove zip file
-    unlink(zip_dest_23)
-    
+**Note:** each code chunk below downloads the `.zip` file for each year, extracts the data we need, and deletes the `.zip` file. The `.zip` files contain the technical documentation for each file, and future analysts may want to explore this documentation before deleting the files.
+```{r load-ahrf-sas-files}
+#' Fetch (download + unzip) an AHRF SAS release
+#'
+#' @description
+#' Given a direct URL to an AHRF SAS .zip, this function downloads the archive
+#' to a temporary file, unzips it into `data_dir`, and deletes the temporary zip.
+#' After it runs, inspect `data_dir` to identify the exact `.sas7bdat` path
+#' produced by that release, then call `haven::read_sas()` yourself using that
+#' explicit path. This keeps all year-specific quirks outside the function.
+#'
+#' @param url Character. Direct link to the AHRF SAS zip.
+#' @param data_dir Character. Directory to unzip into.
+#'   Default: `here::here("17_access-to-health-services","data")`.
+#'
+#' @return Invisibly returns `data_dir` (character). Files are written to disk.
+#'
+#' @examples
+#' \dontrun{
+#' ahrf_fetch("https://data.hrsa.gov/DataDownload/AHRF/AHRF%202023-2024%20SAS.zip")
+#' # Then manually point read_sas() to the file path you expect, e.g.:
+#' # haven::read_sas(here::here("17_access-to-health-services","data",
+#' #                             "AHRF 2023-2024 SAS","ahrf2024_feb2025.sas7bdat"),
+#' #                 catalog_encoding = "Latin1")
+#' }
+ahrf_fetch <- function(
+  url,
+  data_dir = here::here("17_access-to-health-services", "data")
+) {
+  if (!dir.exists(data_dir)) {
+    dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
   }
 
-# Read in the SAS file containing the latest AHRF data
-ahrf23 <- haven::read_sas(here::here("04_health", "access-health-services", "data",
-                                "AHRF_SAS_2022-2023", "ahrf2023.sas7bdat"))
+  zip_tmp <- tempfile(fileext = ".zip")
+  utils::download.file(url, destfile = zip_tmp, mode = "wb")
+  utils::unzip(zipfile = zip_tmp, exdir = data_dir, overwrite = TRUE)
+  unlink(zip_tmp)
 
-# Clean up environment
-rm(zip_url_23, zip_dest_23)
-
-```
-
-```{r load-2021-2022-file}
-# URL of the 2021-2022 AHRF zip file
-## Note that the 2021-2022 file doesn't have a csv option. For more information, download the `Technical documentation`.
-zip_url_22 <- "https://data.hrsa.gov//DataDownload/AHRF/AHRF_2021-2022_SAS.zip"
-
-# Destination file path where we want to save the zip file
-zip_dest_22 <- here::here("04_health", "access-health-services", "data", "AHRF_SAS_2021-2022.zip")
-
-# If the file has not already been downloaded, download/unzip/read it in
-if (
-  !file.exists(here::here("04_health", "access-health-services", "data",
-                          "ahrf2022.sas7bdat"))
-){
-  
-  # Download the zip file to the above path
-  download.file(zip_url_22, zip_dest_22, mode = "wb")
-  
-  # Unzip the file
-  unzip(zip_dest_22, exdir = here::here("04_health", "access-health-services", "data"))
-  
-  # Remove zip file and irrelevant contents
-  unlink(zip_dest_22)
-  unlink(here::here("04_health", "access-health-services", "data", "2021-2022_AHRFDUA.doc"))
-  
+  invisible(normalizePath(data_dir))
 }
 
-# Read in the SAS file containing the 2021-2022 AHRF data
-ahrf22 <- haven::read_sas(here::here("04_health", "access-health-services", "data", "ahrf2022.sas7bdat"))
+# 2021–2022
+ahrf_fetch("https://data.hrsa.gov//DataDownload/AHRF/AHRF_2021-2022_SAS.zip")
+ahrf22 <- haven::read_sas(
+  here::here("17_access-to-health-services","data","ahrf2022.sas7bdat"),
+  catalog_encoding = "Latin1"
+)
 
-# Clean up environment
-rm(zip_url_22, zip_dest_22)
+# Remove zip file and irrelevant contents 
+unlink(here::here("17_access-to-health-services", "data", "2021-2022_AHRFDUA.doc"))
+
+# 2022–2023
+ahrf_fetch("https://data.hrsa.gov//DataDownload/AHRF/AHRF_SAS_2022-2023.zip")
+ahrf23 <- haven::read_sas(
+  here::here(
+    "17_access-to-health-services","data",
+    "AHRF_SAS_2022-2023","ahrf2023.sas7bdat"
+  ),
+  catalog_encoding = "Latin1"
+)
+
+
+# 2023–2024
+ahrf_fetch("https://data.hrsa.gov/DataDownload/AHRF/AHRF%202023-2024%20SAS.zip")
+ahrf24 <- haven::read_sas(
+  here::here(
+    "17_access-to-health-services","data",
+    "AHRF 2023-2024 SAS","ahrf2024_feb2025.sas7bdat"
+  ),
+  catalog_encoding = "Latin1"
+)
+
 
 ```
 
@@ -155,10 +165,19 @@ rm(zip_url_22, zip_dest_22)
 ## 3. Clean, join, and reshape data
 This section limits the two AHRF files from above to our variables of interest and renames them. It then joins the two files and removes observations for US territories. There are variables for the number of primary care physicians and population for each year, so it then reshapes the data to be long by year after joining the two files.
 
-Select only the relevant variables from each AHRF file. Note that naming conventions in the 2022-2023 file differ from those in the 2021-2022 file. You can search the contents of the 2022-2023 file via `AHRF_CSV_2022-2023.zip\AHRF_CSV_2022-2023\DOC\AHRF 2022-2023 Technical Documentation.xlsx` and you can search the contents of the 2021-2022 file via `AHRF 2021-2022_User_Tech.zip\AHRF_USER_TECH_2021-2022\AHRF 2021-2022 Technical Documentation.xlsx`. You will need to re-download the zip files from above to access these documents.
+Select only the relevant variables from each AHRF file. Note that naming conventions in the 2023-2024 and 2022-2023 file differ from those in the 2021-2022 file. You can search the contents of the 2022-2023 file via `AHRF_CSV_2022-2023.zip\AHRF_CSV_2022-2023\DOC\AHRF 2022-2023 Technical Documentation.xlsx` and you can search the contents of the 2021-2022 file via `AHRF 2021-2022_User_Tech.zip\AHRF_USER_TECH_2021-2022\AHRF 2021-2022 Technical Documentation.xlsx`. You will need to re-download the zip files from above to access these documents.
 ```{r clean-ahrf}
 # Select and rename relevant variables from the 2022-2023 file
 ## Note that both files have (identical) information for 2020. We keep the 2020 information from the historic file for ease of future updates.
+
+ahrf24 <- ahrf24 |>
+  select(
+    state = fips_st,
+    county = fips_cnty,
+    pc_physicians_22 = phys_nf_prim_care_pc_exc_rsdt_22,
+    pop_22 = popn_est_22
+  )
+
 ahrf23 <- ahrf23 |>
   select(
     state = fips_st,
@@ -170,36 +189,57 @@ ahrf23 <- ahrf23 |>
 # Select and rename relevant variables from the 2021-2022 file
 ## Note that both files have (identical) information for 2020. We keep the 2020 information from the historic file for ease of future updates.
 ahrf22 <- ahrf22 |>
-  select(state = f00011, 
-         county = f00012,
-         pc_physicians_20 = f1467520,
-         pc_physicians_19 = f1467519,
-         pc_physicians_18 = f1467518,
-         pc_physicians_17 = f1467517,
-         pc_physicians_16 = f1467516,
-         pc_physicians_15 = f1467515,
-         pc_physicians_14 = f1467514,
-         pop_20 = f0453020,
-         pop_19 = f1198419,
-         pop_18 = f1198418,
-         pop_17 = f1198417,
-         pop_16 = f1198416,
-         pop_15 = f1198415,
-         pop_14 = f1198414,
+  select(
+    state = f00011,
+    county = f00012,
+    pc_physicians_20 = f1467520,
+    pc_physicians_19 = f1467519,
+    pc_physicians_18 = f1467518,
+    pc_physicians_17 = f1467517,
+    pc_physicians_16 = f1467516,
+    pc_physicians_15 = f1467515,
+    pc_physicians_14 = f1467514,
+    pop_20 = f0453020,
+    pop_19 = f1198419,
+    pop_18 = f1198418,
+    pop_17 = f1198417,
+    pop_16 = f1198416,
+    pop_15 = f1198415,
+    pop_14 = f1198414,
   )
 
 # Join both AHRF files by state and county
 ahrf_joined <- full_join(
-  x = ahrf23, 
-  y = ahrf22, 
+  x = ahrf24,
+  y = ahrf23,
   by = c("state", "county")
-  ) |>
+) |>
+  full_join(ahrf22, by = c("state", "county")) |> 
   # Remove US territories
   filter(
     !state %in% c('66', '72', '78')
   )
 
 ```
+
+The 2023-2024 file (which has 2022 information for primary care physicians) has nine extra observations corresponding to the Connecticut planning regions.
+
+```{r}
+anti_join(
+  ahrf24, 
+  ahrf23, 
+  by = c("state", "county")
+  ) |>
+  select(state, county)
+
+anti_join(
+  ahrf24, 
+  ahrf22, 
+  by = c("state", "county")
+  ) |>
+  select(state, county)
+```
+
 
 The 2022-2023 file (which has 2021 information for primary care physicians) has one extra observation (County FIPS 02001). This isn't a valid FIPS code, and all values are `NA` for this observation. It is unclear why this observation is included in the AHRF data. This observation gets dropped later when merging to the Urban universe of counties.
 ```{r check-ahrf-join}
@@ -210,7 +250,6 @@ anti_join(
   by = c("state", "county")
 ) |>
   select(state, county)
-
 ```
 
 Reshape the data to be long by state/county/year
@@ -242,8 +281,8 @@ County-level population data compiled by Urban Institute researchers for 2014-20
     
 ```{r load-counties}
 # Read in Urban Institute population data.
-all_counties <- read.csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) |>
-  filter(!year %in% c(2022)) |>
+all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"), locale = locale(encoding = "Latin1")) |>
+  filter(!year %in% c(2023)) |>
   mutate(state = str_pad(state, 2, pad = "0"),
          county = str_pad(county, 3, pad = "0"))
 
@@ -298,6 +337,11 @@ The remaining nine counties all appear to be counties that no longer exist, and 
 * Wrangell-Petersburg Census Area, AK (02280) split to create part of Wrangell City and Borough (02275) and all of Petersburg Census Area (02195) effective 2008-06-01, so values are missing from 2014-2021.
 * Bedford city, VA (51515) changed to town status and added to Bedford County (51019) effective 2013-07-01, so values are missing from 2014-2021
 * Clifton Forge city, VA (51560) changed to town status and added to Alleghany County (51005) effective 2001-07-01, so values are missing from 2014-2021
+* Shannon County, SD (46113), [is renamed to Oglala
+Lakota County, SD (FIPS 46102) in 2015](https://www.cdc.gov/nchs/data/data_acces_files/County-Geography.pdf). In the AHRF data the FIPS code used for Shannon County, SD is  46102 in 2014 but in the population file the original code (46113) is used. We will replace  FIPS code 46102 with the old code 46113.
+* Wade-Hampton Census Area, AK
+(02270) was renamed Kusilvak, AK and assigned a new FIPS code (02158) effective in 2014. We will replace this FIPS code in 2014 with the old code since this is what is present in the county file.
+
 ```{r check-missing-non-CT}
 missing_urban |>
   filter(state != "09") |>
@@ -306,15 +350,19 @@ missing_urban |>
 
 ```
 
-We drop these observations from the AHRF data
+We drop these observations from the AHRF data and replace the appropriate FIPS codes.
 ```{r fix-missing-urban}
 ahrf_clean <- ahrf_long |>
   mutate(GEOID = str_c(state, county)) |>
-  filter(!(state == "09" & year == "2021"),
+  mutate(county = case_when(year == "2014" & state == "46" & county == "102" ~ "113",
+                            year == "2014" & state == "02" & county == "158" ~ "270",
+                            TRUE ~ county)) |>
+  
+  filter(!(state == "09" & (year %in% c("2021", "2022"))),
          !GEOID %in% c("02001", "02201", "02232", "02280", "51515", "51560"),
          !(GEOID %in% c("02063", "02066") & 
              year %in% c("2014", "2015", "2016", "2017", "2018", "2019")),
-         !(GEOID %in% c("02261") & year %in% c("2020", "2021"))) |>
+         !(GEOID %in% c("02261") & year %in% c("2020", "2021", "2022"))) |>
   select(-GEOID)
   
 ```
@@ -344,21 +392,14 @@ anti_join(
 ### 4.5 Create final population variable
 The AHRF data already includes population counts, but we want to use the population from Urban's universe of counties to construct the ratio for this metric.
 
-However, the Urban file is missing population counts for 2014. We use the 2014 population counts from AHRF for this year instead.
-```{r fix-pop}
-joined_data <- joined_data |>
-  mutate(population = if_else(year==2014, pop, population))
 
-```
-
-Urban Institute and AHRF population sources match for every year except 2021.
+Urban Institute and AHRF population sources match for every year.
 ```{r check-pop}
 # Check whether Urban population source matched AHRF population source
 stopifnot(joined_data |>
             mutate(pop_diff = population - pop) |>
             filter(pop_diff != 0) |>
-            distinct(year) |>
-            pull(year) == 2021
+            nrow() == 0
           )
 
 ```
@@ -402,6 +443,7 @@ joined_data <- joined_data |>
 We first explore the data with this table that shows the ratio of population to primary care physicians in each county. Click on the variable columns to sort the table.
 
 ```{r table, echo = FALSE}
+
 joined_data |>
   select(
     county_name, state, county, year,
@@ -492,18 +534,18 @@ The landing page to download these data is [here](https://www.countyhealthrankin
 ```{r load-chr}
 # Download file directly from internet if haven't already
 if (
-  !file.exists(here::here("04_health", "access-health-services", "data", "chr2023.xlsx"))
+  !file.exists(here::here("17_access-to-health-services", "data", "chr2023.xlsx"))
 ){
   download.file(
   url = "https://www.countyhealthrankings.org/sites/default/files/media/document/2023%20County%20Health%20Rankings%20Data%20-%20v2.xlsx",
-  destfile = here::here("04_health", "access-health-services", "data", "chr2023.xlsx"),
+  destfile = here::here("17_access-to-health-services", "data", "chr2023.xlsx"),
   mode = "wb"
 )
 }
 
 # Read in CHR data
 ## I set `guess_max = Inf` to forestall a warning when reading columns. Without this parameter specified, `readxl::read_excel()` guesses that column 17 is a logical column (because it's mostly missing) when in fact it's a character column. We don't use this column, but still want to provide clarity about the warning.
-chr2023 <- readxl::read_excel(here::here("04_health", "access-health-services", "data", "chr2023.xlsx"),
+chr2023 <- readxl::read_excel(here::here("17_access-to-health-services", "data", "chr2023.xlsx"),
                               sheet = "Ranked Measure Data",
                               skip = 1,
                               col_names = TRUE,
@@ -655,19 +697,20 @@ We download the Vintage 2020 population estimates and are able to recreate their
 ```{r load-vintage-2020-pop}
 # Download the Vintage 2020 population estimates directly from internet if haven't already
 if (
-  !file.exists(here::here("04_health", "access-health-services", "data", "chr_pop.csv"))
+  !file.exists(here::here("17_access-to-health-services", "data", "chr_pop.csv"))
 ){
   
   download.file(
     url = "https://www2.census.gov/programs-surveys/popest/datasets/2010-2020/counties/totals/co-est2020.csv",
-    destfile = here::here("04_health", "access-health-services", "data", "chr_pop.csv"),
+    destfile = here::here("17_access-to-health-services", "data", "chr_pop.csv"),
     mode = "wb"
   )
   
 }
 
 # Read in and clean the Vintage 2020 population estimates
-chr_pop <- read_csv(here::here("04_health", "access-health-services", "data", "chr_pop.csv")) |>
+chr_pop <- read_csv(here::here("17_access-to-health-services", "data", "chr_pop.csv"),
+                    locale = locale(encoding = "UTF-8")) |>
   select(
     state = STATE,
     county = COUNTY,
@@ -853,9 +896,9 @@ stopifnot(!all(is.na(joined_data$ratio_population_pc_physician) &
 ```
 
 
+## 8. Final evaluation 
 
-## 8. Save and write out data
-```{r write-data}
+```{r}
 # Remove unnecessary variables and sort by year, state, and county
 final_data <- joined_data |>
   select(
@@ -866,13 +909,21 @@ final_data <- joined_data |>
     ratio_population_pc_physician_quality
   ) |>
   arrange(year, state, county)
+```
 
+
+```{r}
+evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluation_form_ratio_population_pc_physician_overall_county.csv"), data = final_data, geography = "county", subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+
+## 9. Save and write out data
+```{r write-data}
 
 # Write out final data
 write_csv(x = final_data,
           file = here::here(
-            "04_health",
-            "access-health-services",
+            "17_access-to-health-services",
             "final",
             "ratio_pop_pcp_metric_all_county.csv"
           )
