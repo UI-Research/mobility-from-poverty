@@ -43,7 +43,7 @@ census_api_key(Sys.getenv("CENSUS_API_KEY"), overwrite = TRUE)
 options(scipen = 999)
 
 #Set year of update 
-update_years = c(2014, 2016, 2018, 2021, 2023)
+update_years = c(2014, 2016, 2018, 2021, 2023, 2024)
 
 source(here::here("functions", "testing", "evaluate_final_data.r"))
 ```
@@ -68,21 +68,34 @@ Pull ACS demographic data at the Census Place and Census County levels. Specify 
 ```{r}
 
 read_places <- function(update_years){
-get_acs(geography = "place",
-                       year = update_years,
-                       survey = "acs5",
-                       variables = c(total_people = "B01003_001E",
-                                     total_hispanic = "B03003_003E",
-                                     total_nonhisp = "B03002_002E",
-                                     white_nonhispanic = "B03002_003E",
-                                     black_nonhispanic = "B03002_004E",
-                                     aian_nh = "B03002_005E",
-                                     asian_nonhispanic = "B03002_006E",
-                                     nhpi_nh = "B03002_007E",
-                                     other_nh = "B03002_008E",
-                                     two_or_more_nh = "B03002_009E"),
-                       output = "wide") %>% 
-    mutate(year = update_years)
+  
+avail <- tryCatch(
+  load_variables(update_years, "acs5", cache = TRUE), 
+  error = function(e) e)
+
+survey <- if (inherits(avail, "error")) "acs1" else "acs5"
+
+ vars <- c(
+    total_people       = "B01003_001E",
+    total_hispanic     = "B03003_003E",
+    total_nonhisp      = "B03002_002E",
+    white_nonhispanic  = "B03002_003E",
+    black_nonhispanic  = "B03002_004E",
+    aian_nh            = "B03002_005E",
+    asian_nonhispanic  = "B03002_006E",
+    nhpi_nh            = "B03002_007E",
+    other_nh           = "B03002_008E",
+    two_or_more_nh     = "B03002_009E"
+  )
+
+  get_acs(
+    geography = "place",
+    year = update_years,
+    survey = survey,
+    variables = vars,
+    output = "wide"
+  ) %>% 
+    dplyr::mutate(year = update_years)
 
 }
 
@@ -90,22 +103,34 @@ places_demo <- map_df(.x = update_years, .f = ~read_places(update_years = .x))
 
 
 read_counties <- function(update_years){
-get_acs(geography = "county",
-                       year = update_years,
-                       survey = "acs5",
-                       variables = c(total_people = "B01003_001E",
-                                     total_hispanic = "B03003_003E",
-                                     total_nonhisp = "B03002_002E",
-                                     white_nonhispanic = "B03002_003E",
-                                     black_nonhispanic = "B03002_004E",
-                                     aian_nh = "B03002_005E",
-                                     asian_nonhispanic = "B03002_006E",
-                                     nhpi_nh = "B03002_007E",
-                                     other_nh = "B03002_008E",
-                                     two_or_more_nh = "B03002_009E"),
-                       output = "wide") %>% 
-    mutate(year = update_years)
+  
+avail <- tryCatch(
+  load_variables(update_years, "acs5", cache = TRUE), 
+  error = function(e) e)
 
+survey <- if (inherits(avail, "error")) "acs1" else "acs5"
+
+ vars <- c(
+    total_people       = "B01003_001E",
+    total_hispanic     = "B03003_003E",
+    total_nonhisp      = "B03002_002E",
+    white_nonhispanic  = "B03002_003E",
+    black_nonhispanic  = "B03002_004E",
+    aian_nh            = "B03002_005E",
+    asian_nonhispanic  = "B03002_006E",
+    nhpi_nh            = "B03002_007E",
+    other_nh           = "B03002_008E",
+    two_or_more_nh     = "B03002_009E"
+  )
+
+  get_acs(
+    geography = "county",
+    year = update_years,
+    survey = survey,
+    variables = vars,
+    output = "wide"
+  ) %>% 
+    dplyr::mutate(year = update_years)
 }
 
 county_demo <- map_df(.x = update_years, .f = ~read_counties(update_years = .x))
@@ -260,13 +285,13 @@ Visualize a distribution of county and place population shares for each race/eth
 
 ```{r}
 year_viz <- wide_county_demo %>% 
-  filter(year == max(update_years)) %>% 
+  filter(year == max(update_years - 1)) %>% 
   select(year) %>% 
   unique() %>% 
   pull()
 
 wide_county_demo %>% 
-  filter(year == max(update_years)) %>% 
+  filter(year == max(update_years - 1)) %>% 
   select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
   pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
   filter(pop_shr > 0.01) %>% 
@@ -282,7 +307,7 @@ wide_county_demo %>%
 
 
 wide_places_demo %>% 
-  filter(year == max(update_years)) %>% 
+  filter(year == max(update_years - 1)) %>% 
   select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
   pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
   filter(pop_shr > 0.01) %>% 
@@ -419,10 +444,10 @@ evaluate_final_data(exp_form_path = here::here("10a_final-evaluation", "evaluati
 
 ### Export as CSV
 ```{r}
-write_csv(county_pop_by_race, here::here("05_local-governance", "descriptive-representation", "data", "final",
+write_csv(county_pop_by_race, here::here("22_descriptive-representation", "data", "final",
                                          paste0("descriptive_rep_denominator_county_all.csv")))
 
-write_csv(place_pop_by_race, here::here("05_local-governance", "descriptive-representation", "data", "final",
+write_csv(place_pop_by_race, here::here("22_descriptive-representation", "data", "final",
                                         paste0("descriptive_rep_denominator_city_all.csv")))
 ```
 
