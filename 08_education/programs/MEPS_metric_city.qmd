@@ -90,32 +90,36 @@ Filter grade for 99 - 99 is the total enrollment in the school, regardless of gr
 Note this download is computationally large, will take time to finish.
 
 ```{r}
-if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds"))))
-{
-  education_data <- get_education_data(level = 'schools', 
-                         source = 'ccd', 
-                         topic = 'enrollment', 
-                         subtopic = 'race',
-                         filters = list(year = 2014:year_ed,
-                                        grade = 99),
-                         add_labels = TRUE)
-  write_rds(education_data, 
-            here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds")))
-}  else {
-    education_data <- read_rds(here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds")))
-}
+input_files <- here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds"))
 
+if (!file.exists(input_files)) {
+  education_data <- get_education_data(level = 'schools', 
+                                       source = 'ccd', 
+                                       topic = 'enrollment', 
+                                       subtopic = 'race',
+                                       filters = list(year = 2014:year_ed,
+                                                      grade = 99),
+                                       add_labels = TRUE) %>% 
+    select(sex, enrollment, year, ncessch, ncessch_num, leaid, fips, race) 
+  
+  write_rds(education_data, input_files)
+}  else {
+  
+  education_data <- read_rds(input_files) %>% 
+    select(sex, enrollment, year, ncessch, ncessch_num, leaid, fips, race) 
+
+}
 ```
 
 Add the number of enrolled male and female students within race
 
 ```{r}
 education_data <- education_data %>% 
-  select(-grade) %>% 
   filter(sex != 99) %>% 
   mutate(enrollment = ifelse(enrollment < 0, NA_integer_, enrollment)) %>% 
   group_by(year, ncessch, ncessch_num, leaid, fips, race) %>% 
-  summarise(enrollment = sum(enrollment, na.rm = TRUE))
+  summarise(enrollment = sum(enrollment, na.rm = TRUE))  %>% 
+  ungroup()
 ```
 
 Reshape the the data wide by race
@@ -132,20 +136,21 @@ ed_data_wide <- education_data %>%
 Download district data from CCD, includes total enrollment, city location and county codes
 
 ```{r}
+input_files <- here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds"))
 
-if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds"))))
-{
+
+if (!file.exists(input_files)) {
   ccd_directory <- get_education_data(level = 'schools', 
                          source = 'ccd', 
                          topic = 'directory',
                          filters = list(year = 2014:year_ed),
-                         add_labels = FALSE)
-  write_rds(ccd_directory, 
-            here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds")))
+                         add_labels = FALSE)  %>% 
+    select(enrollment, year, ncessch, city_location, county_code)
+  write_rds(ccd_directory, input_files)
 }  else {
-    ccd_directory <- read_rds(here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds")))
+    ccd_directory <- read_rds(input_files) %>% 
+    select(enrollment, year, ncessch, city_location, county_code)
 }
-
 ```
 
 ### Meps data
@@ -153,36 +158,56 @@ if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_dir_2014-", yea
 Read in the latest MEPS data (using temporary internal Urban data while the Ed Portal is being updated)
 
 ```{r}
-meps <- read_dta(here::here("08_education/data/raw/", "Abrv Set of Portal Variables.dta"))
+meps <- read_dta(here::here("08_education/data/raw/", "Abrv Set of Portal Variables.dta")) %>% 
+  select(year, ncessch, meps_poverty_pct)
 ```
 
-For future users - download when latest MEPs is available on the ed portal (uncomment the line of code below)
+For future users - download when latest MEPs is available on the ed portal (remove comments from the line of code below)
 
 ```{r}
-# if(!file.exists(here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds"))))
-# {
+#input_files <- here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds"))
+
+# if(!file.exists(input_files)) {
 #   meps <- get_education_data(level = 'schools', 
 #                          source = 'meps', 
-#                          filters = list(year = 2014:year_meps))
-#   write_rds(meps, 
-#             here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds")))
+#                          filters = list(year = 2014:year_meps)) %>% 
+#  select(year, ncessch, meps_poverty_pct)
+#   write_rds(meps, input_files)
 # }  else {
-#     meps <- read_rds(here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds")))
+#     meps <- read_rds(input_files) 
 # }
+
 ```
 
 ## Data merge
 
-```{r}
+Join the MEPs and wide education data to get the full ccd directory data to get a dataframe race enrollment and poverty share for every school.
 
+First check if any schools from the ed data wide do not have a match in MEPs. There are missing cases in every year.
+
+```{r}
+anti_join(ed_data_wide, meps, by = c("year", "ncessch")) %>% 
+  group_by(year) %>% 
+  count()
+```
+
+Now check missing with ccd directory dat. There are also mismatches for year and school codes between these data sets.
+
+```{r}
+anti_join(ccd_directory, ed_data_wide, by = c("year", "ncessch")) %>% 
+  group_by(year) %>% 
+  count()
+```
+
+Eliminate negative enrollment and join the ed race data set and MEPS data on to the directory. 
+
+```{r}
 ccd_directory <- ccd_directory %>% 
   mutate(enrollment = if_else(enrollment < 0, 0, enrollment))
 
-
 ccd_merged <- ccd_directory %>% 
   left_join(ed_data_wide, by = c("year", "ncessch")) %>% 
-  left_join(meps, by = c("year", "ncessch"))
-
+  left_join(meps, by = c("year", "ncessch")) 
 
 ```
 
@@ -352,7 +377,7 @@ Sort by year, state and place
 
 ```{r}
 meps_city_clean <- meps_city_clean %>% 
-  arrange(desc(year), state, place)
+  arrange(year, state, place)
 ```
 
 
