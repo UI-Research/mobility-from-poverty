@@ -43,7 +43,7 @@ census_api_key(Sys.getenv("CENSUS_API_KEY"), overwrite = TRUE)
 options(scipen = 999)
 
 #Set year of update 
-update_years = c(2014, 2016, 2018, 2021, 2023, 2024)
+update_years = c(2014, 2016, 2018, 2021, 2023)
 
 source(here::here("functions", "testing", "evaluate_final_data.r"))
 ```
@@ -65,6 +65,8 @@ First, list & save variables of interest as a vector.The variable definitions ar
 
 Pull ACS demographic data at the Census Place and Census County levels. Specify that we want the 5-year data.
 
+Note that if the 5-year data is not available this program will pull in the 1-year data and provide a notice that the 5-year is not out.
+
 ```{r}
 
 read_places <- function(update_years){
@@ -74,6 +76,8 @@ avail <- tryCatch(
   error = function(e) e)
 
 survey <- if (inherits(avail, "error")) "acs1" else "acs5"
+
+if(survey == "acs1") print("Notice! Your latest selected year of ACS data is only availale at the 1-year level")
 
  vars <- c(
     total_people       = "B01003_001E",
@@ -110,6 +114,9 @@ avail <- tryCatch(
 
 survey <- if (inherits(avail, "error")) "acs1" else "acs5"
 
+if(survey == "acs1") print("Notice! Your latest selected year of ACS data is only availale at the 1-year level")
+
+
  vars <- c(
     total_people       = "B01003_001E",
     total_hispanic     = "B03003_003E",
@@ -134,6 +141,7 @@ survey <- if (inherits(avail, "error")) "acs1" else "acs5"
 }
 
 county_demo <- map_df(.x = update_years, .f = ~read_counties(update_years = .x))
+
 ```
 
 
@@ -285,13 +293,13 @@ Visualize a distribution of county and place population shares for each race/eth
 
 ```{r}
 year_viz <- wide_county_demo %>% 
-  filter(year == max(update_years - 1)) %>% 
+  filter(year == max(update_years)) %>% 
   select(year) %>% 
   unique() %>% 
   pull()
 
 wide_county_demo %>% 
-  filter(year == max(update_years - 1)) %>% 
+  filter(year == max(update_years)) %>% 
   select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
   pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
   filter(pop_shr > 0.01) %>% 
@@ -307,7 +315,7 @@ wide_county_demo %>%
 
 
 wide_places_demo %>% 
-  filter(year == max(update_years - 1)) %>% 
+  filter(year == max(update_years)) %>% 
   select(GEOID, asian_other, black_nonhispanic, total_hispanic, white_nonhispanic) %>% 
   pivot_longer(-GEOID, names_to = "subgroup", values_to = "pop_shr") %>% 
   filter(pop_shr > 0.01) %>% 
