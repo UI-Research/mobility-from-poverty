@@ -1,5 +1,5 @@
 ---
-title: "SHARE OF STUDENTS IN HIGH POVERTY SCHOOLS BY RACE/ETHNICITY (County Level)"
+title: "SHARE OF STUDENTS IN HIGH POVERTY SCHOOLS BY RACE/ETHNICITY "
 author: "Written originally by E Gutierrez and translated to R by JP Walsh"
 date: today
 format:
@@ -54,10 +54,30 @@ source(here::here("functions", "testing", "evaluate_final_data.R"))
 
 ## Import and save raw data
 
-Read in the county crosswalk file 
+Read in the City crosswalk file 
 
 ```{r}
-county <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+place <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv"))
+```
+
+Clean city names 
+
+```{r}
+place_clean <- place %>% 
+  mutate(place_name = str_replace_all(place_name, " city| town| municipality| village| urban county", ""),
+         city_name = case_when(place_name == "San Buenaventura (Ventura)" ~ "Ventura",
+                                      place_name == "Athens-Clarke County unified government (balance)" ~ "Athens",
+                                      place_name == "Augusta-Richmond County consolidated government (balance)" ~ "Augusta",
+                                      place_name == "Macon-Bibb County" ~ "Macon",
+                                      place_name == "Boise City" ~ "Boise",
+                                      place_name == "Lexington-Fayette" ~ "Lexington",
+                                      place_name == "Louisville/Jefferson County metro government (balance)" ~ "Louisville",
+                                      place_name == "Nashville-Davidson metropolitan government (balance)" ~ "Nashville",
+                                      place_name == "McAllen" ~ "Mcallen",
+                                      place_name == "McKinney" ~ "Mckinney",
+         TRUE ~ place_name),
+         city_name = str_to_lower(city_name)) %>% 
+  select(-place_name, -population)
 ```
 
 Now read in the necessary CCD district data
@@ -70,8 +90,7 @@ Filter grade for 99 - 99 is the total enrollment in the school, regardless of gr
 Note this download is computationally large, will take time to finish.
 
 ```{r}
-
-input_files <- here::here("08_education/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds"))
+input_files <- here::here("08_school-economic-diversity/data/raw/", paste0("ccd_enr_2014-", year_ed, ".rds"))
 
 if (!file.exists(input_files)) {
   education_data <- get_education_data(level = 'schools', 
@@ -90,7 +109,6 @@ if (!file.exists(input_files)) {
     select(sex, enrollment, year, ncessch, ncessch_num, leaid, fips, race) 
 
 }
-
 ```
 
 Add the number of enrolled male and female students within race
@@ -100,7 +118,7 @@ education_data <- education_data %>%
   filter(sex != 99) %>% 
   mutate(enrollment = ifelse(enrollment < 0, NA_integer_, enrollment)) %>% 
   group_by(year, ncessch, ncessch_num, leaid, fips, race) %>% 
-  summarise(enrollment = sum(enrollment, na.rm = TRUE)) %>% 
+  summarise(enrollment = sum(enrollment, na.rm = TRUE))  %>% 
   ungroup()
 ```
 
@@ -118,7 +136,7 @@ ed_data_wide <- education_data %>%
 Download district data from CCD, includes total enrollment, city location and county codes
 
 ```{r}
-input_files <- here::here("08_education/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds"))
+input_files <- here::here("08_school-economic-diversity/data/raw/", paste0("ccd_dir_2014-", year_ed, ".rds"))
 
 
 if (!file.exists(input_files)) {
@@ -126,12 +144,12 @@ if (!file.exists(input_files)) {
                          source = 'ccd', 
                          topic = 'directory',
                          filters = list(year = 2014:year_ed),
-                         add_labels = FALSE) %>% 
-    select(enrollment, year, ncessch, county_code)
+                         add_labels = FALSE)  %>% 
+    select(enrollment, year, ncessch, city_location, county_code)
   write_rds(ccd_directory, input_files)
 }  else {
     ccd_directory <- read_rds(input_files) %>% 
-    select(enrollment, year, ncessch, county_code)
+    select(enrollment, year, ncessch, city_location, county_code)
 }
 ```
 
@@ -140,15 +158,14 @@ if (!file.exists(input_files)) {
 Read in the latest MEPS data (using temporary internal Urban data while the Ed Portal is being updated)
 
 ```{r}
-meps <- read_dta(here::here("08_education/data/raw/", "Abrv Set of Portal Variables.dta")) %>% 
+meps <- read_dta(here::here("08_school-economic-diversity/data/raw/", "Abrv Set of Portal Variables.dta")) %>% 
   select(year, ncessch, meps_poverty_pct)
 ```
-
 
 For future users - download when latest MEPs is available on the ed portal (remove comments from the line of code below)
 
 ```{r}
-#input_files <- here::here("08_education/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds"))
+#input_files <- here::here("08_school-economic-diversity/data/raw/", paste0("ccd_meps_2014-", year_meps, ".rds"))
 
 # if(!file.exists(input_files)) {
 #   meps <- get_education_data(level = 'schools', 
@@ -157,7 +174,7 @@ For future users - download when latest MEPs is available on the ed portal (remo
 #  select(year, ncessch, meps_poverty_pct)
 #   write_rds(meps, input_files)
 # }  else {
-#     meps <- read_rds(input_files)
+#     meps <- read_rds(input_files) 
 # }
 
 ```
@@ -197,6 +214,7 @@ ccd_merged <- ccd_directory %>%
 Check merge value 
 
 Directory and ed data merge is high: between 93 and 97 percent 
+
 ```{r}
 ccd_merged %>% 
   mutate(merge_indicator = ifelse(is.na(Total), 0, 1)) %>% 
@@ -226,23 +244,21 @@ ccd_merged %>%
   select(year, share_missing_zero)
 ```
 
-Remove cases when enrollment is missing or zero
+Drop values where enrollment is missing or equal to zero
 
 ```{r}
 ccd_merged <- ccd_merged %>% 
   filter(!is.na(enrollment), enrollment != 0)
-
 ```
 
 ## Clean merged data
-
 
 *Using MEPS - edit MEPS share and binary if the share is greater than or equal to 20%
 
 ```{r}
 ccd_merged_clean <- ccd_merged %>% 
   mutate(meps_share = meps_poverty_pct / 100,
-         meps_20 = ifelse(meps_share >= 0.20, 1, 0),
+         meps_20 = ifelse(meps_share >= 0.2, 1, 0),
          numerator = ifelse(meps_20 == 0 | is.na(meps_20), meps_20, enrollment),
          across(White:Hispanic, ~ifelse(meps_20 == 0 | is.na(meps_20), meps_20, .), .names = "numerator_{.col}"))
 ```
@@ -272,7 +288,9 @@ ccd_merged_clean %>%
 
 Pad MEPS data couty fips to match the overall county file
 
+
 ```{r}
+
 ccd_merged_clean <- ccd_merged_clean %>% 
   mutate(county_code = ifelse(county_code == -2, NA_character_, county_code),
          county_code = str_pad(county_code, width = 5, side = "left", pad = "0"),
@@ -283,19 +301,23 @@ Drop rows with missing county information
 
 ```{r}
 ccd_merged_clean <- ccd_merged_clean %>% 
-  filter(!is.na(county_code)) %>% 
-  mutate(county_code = str_pad(county_code, width = 5, side = "left", pad = "0"),
-         state = str_sub(county_code, 1, 2),
-         county = str_sub(county_code, 3, 5))
+  filter(!is.na(county_code))
 ```
 
-## Create county level data
-
-Create enrollment summaries for each year by unique state and county combinations
+Create lower_case version of city name 
 
 ```{r}
-ccd_county <- ccd_merged_clean %>% 
-  group_by(year, state, county) %>% 
+ccd_merged_clean <- ccd_merged_clean %>% 
+  mutate(city_name = tolower(city_location))
+```
+
+## Create city level data
+
+Create enrollment summaries for each year by unique state and city combinations
+
+```{r}
+ccd_city <- ccd_merged_clean %>% 
+  group_by(year, state, city_name) %>% 
   summarise(enrollment = sum(enrollment),
             enrollment_black = sum(Black),
             enrollment_white = sum(White),
@@ -304,30 +326,28 @@ ccd_county <- ccd_merged_clean %>%
            numerator_black = sum(numerator_Black, na.rm = TRUE),
            numerator_white = sum(numerator_White, na.rm = TRUE),
            numerator_hisp = sum(numerator_Hispanic, na.rm = TRUE)) 
-
 ```
 
-Create MEPS shares by enrollment.
+Create MEPS20 shares by enrollment 
 When the denominator is zero replace with NA integer
 
 ```{r}
-meps_county <- ccd_county %>% 
-  mutate(meps20_total = numerator / enrollment,
+meps_city <- ccd_city %>% 
+   mutate(meps20_total = numerator / enrollment,
          share_meps20_white = numerator_white/enrollment_white,
         share_meps20_black = numerator_black/enrollment_black,
          share_meps20_hispanic = numerator_hisp/enrollment_hisp,
         share_meps20_white = ifelse(enrollment_white == 0, NA_integer_, share_meps20_white),
          share_meps20_black = ifelse(enrollment_black == 0, NA_integer_, share_meps20_black),
          share_meps20_hispanic = ifelse(enrollment_hisp == 0, NA_integer_, share_meps20_hispanic))
-
 ```
 
 ## Merge onto place file
 
-Join the meps file onto the overall county file
+Join MEPs data onto the overall palce file
 ```{r}
-meps_county_geo <- county %>% 
-  left_join(meps_county, by = c("year", "state", "county"))
+meps_city_geo <- place_clean %>% 
+  left_join(meps_city, by = c("year", "state", "city_name"))
 
 ```
 
@@ -335,7 +355,7 @@ meps_county_geo <- county %>%
 
 Add quality flag
 ```{r}
-meps_county_clean <- meps_county_geo %>% 
+meps_city_clean <- meps_city_geo %>% 
   mutate(share_meps20_white_quality = case_when(enrollment_white >= 30 & !is.na(share_meps20_white) ~ 1,
                                           enrollment_white >= 15 & !is.na(share_meps20_white) ~ 2,
                                           !is.na(share_meps20_white) ~ 3,
@@ -348,18 +368,18 @@ meps_county_clean <- meps_county_geo %>%
                                           enrollment_hisp >= 15 & !is.na(share_meps20_hispanic) ~ 2,
                                           !is.na(share_meps20_hispanic) ~ 3,
                                           TRUE ~ NA_integer_)) %>% 
-  select(year, state, county, share_meps20_black, share_meps20_black_quality, share_meps20_hispanic, share_meps20_hispanic_quality,
+  select(year, state, place, share_meps20_black, share_meps20_black_quality, share_meps20_hispanic, share_meps20_hispanic_quality,
          share_meps20_white, share_meps20_white_quality) %>% 
   filter(!year %in% c(2023))
 ```
 
-Sort by year, state and county
+Sort by year, state and place
 
 ```{r}
-meps_county_clean <- meps_county_clean %>% 
-  arrange(year, state, county)
-
+meps_city_clean <- meps_city_clean %>% 
+  arrange(year, state, place)
 ```
+
 
 ## Run quality checks and write out 
 
@@ -367,21 +387,21 @@ Check missingness for each variable
 Missingness is generally reflective of counties missing data from the merge to the crosswalk rather that MEPS missing data (see line 164)
 
 ```{r}
-colSums(is.na(meps_county_clean))
+colSums(is.na(meps_city_clean))
 ```
 
-Run county-level quality check
+Run city-level quality check
 
 ```{r}
-evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_meps_overall_county.csv",
-                data = meps_county_clean,  geography = "county",
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_meps_overall_place.csv",
+                data = meps_city_clean,  geography = "place",
                 subgroups = FALSE, confidence_intervals = FALSE)
 ```
 
 write out final csv
 
 ```{r}
-write_csv(meps_county_clean, paste0(here::here(), "/08_education/data/final/meps_county_2014-", year_meps, ".csv"))
+write_csv(meps_city_clean, paste0(here::here(), "/08_school-economic-diversity/data/final/meps_place_2014-", year_meps, ".csv"))
 ```
 
 
