@@ -1,0 +1,353 @@
+---
+title: "Debt in Collections County-Level Shares"
+author: "Manuel Alcalá Kovalski"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview
+
+This document processes county-level debt in collections data from the 
+Urban Institute's **Debt in America** project for years 2022, 2023, and 2024. 
+The processed data is used for the Upward Mobility Metrics Dashboard.
+
+**Data Source**: [Debt in America Data Catalog](https://datacatalog.urban.org/dataset/debt-america-2025)
+
+**Key Methodology Changes Across Years:**
+
+- **2022**: 60% threshold for racial communities, 2% sample, overall debt only
+- **2023**: 50% threshold (not comparable to 2022 for racial subgroups), 4% sample,
+overall + medical debt
+- **2024**: Same as 2023 methodology
+
+
+**Important Notes:**
+
+- **Connecticut**: Debt in America does not have data for CT planning regions
+in 2023/2024 data, only original counties
+- **Medical Debt Reporting**: Starting in 2022, the three nationwide 
+credit-reporting companies made significant changes to medical debt reporting.
+These changes reduced the share of people with medical debt in collections
+*reported on their credit records* but not necessarily the share of people 
+with *actual* medical debt in collections.
+
+For more details, see the [Technical Appendix](https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2025/11/19/Debt%20in%20America%20Technical%20Appendix%202025.pdf)
+
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(glue)
+library(here)
+
+# Set output path
+output_path <- here("04_financial-security/final")
+```
+
+## Helper Function
+
+This function handles the shared transformation logic used across all years.
+
+```{r helper-function}
+#' Process debt collections data
+#' 
+#' Transforms raw debt data into standardized long format with subgroups
+#' 
+#' @param df Raw dataframe from Excel import
+#' @param year Numeric year for the data
+#' @param category Debt category ("overall" or "medical")
+process_debt_data <- function(df, year, category) {
+  df |>
+    # Extract state and county FIPS codes
+    mutate(
+      county_fips = as.character(
+        if ("County FIPS" %in% names(df)) `County FIPS`
+        else if ("CountyFIPS" %in% names(df)) CountyFIPS
+        else if ("GEOID" %in% names(df)) GEOID
+        else stop("No FIPS column found")
+      ),
+      state = str_sub(county_fips, 1, 2),
+      county = str_sub(county_fips, 3, 5),
+      # Preserve leading zeros
+      state = str_pad(state, 2, pad = "0"),
+      county = str_pad(county, 3, pad = "0")
+    ) |>
+    # Rename debt collection share columns (using positions since names vary)
+    rename(
+      share_debt_coll_all = 4,           
+      share_debt_coll_majnonwhite = 5,
+      share_debt_coll_majwhite = 6
+    ) |>
+    select(state, county, starts_with("share_debt_coll")) |>
+    filter(county != "OID") |>
+    # Reshape to long format by subgroup
+    pivot_longer(
+      cols = starts_with("share_debt_coll"),
+      names_to = "subgroup",
+      names_prefix = "share_debt_coll",
+      values_to = "share_debt_coll"
+    ) |>
+    # Standardize subgroup labels
+    mutate(
+      subgroup = case_match(
+        subgroup,
+        "_all" ~ "All",
+        "_majnonwhite" ~ "Majority Non-White",
+        "_majwhite" ~ "Majority White"
+      ),
+      subgroup_type = "race-ethnicity",
+      # Handle missing/suppressed values
+      share_debt_coll = if_else(
+        share_debt_coll %in% c("n/a*", "n/a**", "NA"),
+        NA_character_,
+        share_debt_coll
+      ),
+      share_debt_coll = as.numeric(share_debt_coll),
+      # Create data quality field
+      share_debt_coll_quality = if_else(
+        is.na(share_debt_coll), 
+        NA_character_,
+        "1"
+      ),
+      year = year,
+      category = category
+    ) |>
+    # Reorder columns and sort
+    select(year, state, county, subgroup_type, subgroup, 
+           share_debt_coll, share_debt_coll_quality, category) |>
+    arrange(year, state, county, subgroup)
+}
+```
+
+## 2022 Data (Overall Only)
+
+
+```{r data-2022}
+# Download and read 2022 data
+temp_file_2022 <- tempfile(fileext = ".xlsx")
+download.file(
+  url = "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2022/06/16/county_dia_delinquency_%207%20Jun%202022.xlsx",
+  destfile = temp_file_2022,
+  mode = "wb"
+)
+
+data_2022 <- read_excel(temp_file_2022) |>
+  process_debt_data(year = 2022, category = "overall") |>
+  select(-category)  # Remove category column for 2022 output
+
+unlink(temp_file_2022)
+
+# Export
+write_csv(
+  data_2022,
+  file.path(output_path, "county-debt-coll-shares-2022.csv")
+)
+
+message("✓ Successfully processed 2022 debt collections data (overall only)")
+```
+
+## 2023 Data (Overall + Medical)
+
+**Source**: Direct download from Debt in America using 2023 data updated in July 2024
+
+**Output Files**: 4 files (race-ethnicity breakdown + "All" only for both 
+overall and medical)
+
+```{r data-2023}
+# Process both overall and medical debt categories
+debt_categories_2023 <- c("overall", "medical")
+
+data_2023 <- map(debt_categories_2023, \(category) {
+  temp_file <- tempfile(fileext = ".xlsx")
+  download.file(
+    url = glue("https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2024/09/dia_lbls_all_{category}_county_2023_1Jul2024.xlsx"),
+    destfile = temp_file,
+    mode = "wb"
+  )
+  
+  df <- read_excel(temp_file) |>
+    process_debt_data(year = 2023, category = category)
+  
+  unlink(temp_file)
+  return(df)
+})
+
+# Export race-ethnicity files
+data_2023[[1]] |>
+  select(-category) |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_race_ethnicity_county_2023.csv"))
+
+data_2023[[2]] |>
+  select(-category) |>
+  rename(
+    share_medical_debt_coll = share_debt_coll,
+    share_medical_debt_coll_quality = share_debt_coll_quality
+  ) |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_race_ethnicity_county_2023.csv"))
+
+# Export "All" only files
+data_2023[[1]] |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_all_county_2023.csv"))
+
+data_2023[[2]] |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
+  rename(
+    share_medical_debt_coll = share_debt_coll,
+    share_medical_debt_coll_quality = share_debt_coll_quality
+  ) |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_all_county_2023.csv"))
+
+message("✓ Successfully processed 2023 debt collections data (overall + medical)")
+```
+
+
+## 2024 Data (Overall + Medical)
+
+**Source**: Direct download from Debt in America (data from August 2025, 
+released November 2024)
+
+**Output Files**: 4 files (race-ethnicity breakdown + "All" only for both overall and medical)
+
+```{r data-2024}
+# Process both overall and medical debt categories
+debt_categories_2024 <- c("Overall", "Medical")  # Note: Titlecase for 2024
+
+data_2024 <- map(debt_categories_2024, \(category) {
+  temp_file <- tempfile(fileext = ".xlsx")
+  download.file(
+    url = glue("https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2025/11/19/Debt%20in%20America%20County-Level%20{category}%20Debt.xlsx"),
+    destfile = temp_file,
+    mode = "wb"
+  )
+  
+  df <- read_excel(temp_file) |>
+    process_debt_data(year = 2024, category = tolower(category))
+  
+  unlink(temp_file)
+  return(df)
+})
+
+# Export race-ethnicity files
+data_2024[[1]] |>
+  select(-category) |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_race_ethnicity_county_2024.csv"))
+
+data_2024[[2]] |>
+  select(-category) |>
+  rename(
+    share_medical_debt_coll = share_debt_coll,
+    share_medical_debt_coll_quality = share_debt_coll_quality
+  ) |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_race_ethnicity_county_2024.csv"))
+
+# Export "All" only files
+data_2024[[1]] |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_all_county_2024.csv"))
+
+data_2024[[2]] |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
+  rename(
+    share_medical_debt_coll = share_debt_coll,
+    share_medical_debt_coll_quality = share_debt_coll_quality
+  ) |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_all_county_2024.csv"))
+
+message("✓ Successfully processed 2024 debt collections data (overall + medical)")
+```
+
+# Final Data Test Function
+
+The data team for the Mobility Metrics project has created a function that tests baseline requirements for the structure and content of data produced for each metric. This function relies in part on information provided in a metric-specific final data expectations form, which have been filled out prior to final approval by their technical reviewer. 
+
+These evaluation forms are saved in `10a_final-evaluation`
+
+For programs written in STATA the evaluation process is run externally in this QMD file. 
+
+Detail:
+
+ - *Metric: Debt in Collections* 
+ - *Tester: Manuel Alcalá Kovalski*
+ - *Test date: November 2025*
+
+# Run Test
+
+Put the data through the final evaluation test.
+
+## Read Function
+
+The first step is to source the function `evaluate_final_data.R`. 
+
+```{r}
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+```
+
+
+## Read Final Data
+
+This file tests the final data for the debt in collections metric. There are four final files to be tested:
+
+ - `04_financial-security/final/metrics_medical_debt_coll_all_county_2024.csv`
+ - `04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county_2024.csv`
+ - `04_financial-security/final/metrics_overall_debt_coll_all_county_2024.csv`
+ - `04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county_2024.csv`
+
+Read these final files in.
+
+```{r}
+final_data_med_county <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_all_county_2024.csv"), show_col_types = FALSE)
+
+final_data_med_county_race <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county_2024.csv"), 
+                                   show_col_types = FALSE)
+
+final_data_overall_county <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_all_county_2024.csv"), 
+                                   show_col_types = FALSE)
+
+final_data_county_overall_race <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county_2024.csv"), 
+                                   show_col_types = FALSE)
+```
+
+## Run Evaluation Test
+
+Enter the information into the `evaluate_final_data` function. 
+
+In order to run the function, we fill out the relevant arguments. The debt in collections data does not have subgroups or confidence intervals.
+
+County overall data.
+```{r,error=TRUE}
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_overall_debt_coll_all_county_MZ.csv",
+                data = final_data_overall_county,  geography = "county",
+                subgroups = FALSE, confidence_intervals = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_medical_debt_coll_all_county_MZ.csv",
+                data = final_data_med_county,  geography = "county",
+                subgroups = FALSE, confidence_intervals = FALSE)
+```
+
+County race data.
+```{r, error=TRUE}
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_overall_debt_coll_race_ethnicity_county_MZ.csv",
+                data = final_data_county_overall_race,  geography = "county",
+                subgroups = TRUE, confidence_intervals = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_medical_debt_coll_race_ethnicity_county_MZ.csv",
+                data = final_data_med_county_race,  geography = "county",
+                subgroups = TRUE, confidence_intervals = FALSE)
+
+```
+
+Confirmation of passage.
