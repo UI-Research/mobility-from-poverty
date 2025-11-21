@@ -17,7 +17,7 @@ editor_options:
 ## Overview
 
 This document processes city-level debt in collections data from the 
-Urban Institute's **Debt in America** project for 2021. Subsequent years of data are only available at the county level.
+Urban Institute's [Financial Health & Wealth dashboard](https://apps.urban.org/features/financial-health-wealth-dashboard/?location=4803000&year=2021&metric=delinquent_debt&subgroup=Residents+of+color)  for 2019, 2021, 2022, and 2023. 
 
 The processed data is used for the Upward Mobility Metrics Dashboard.
 
@@ -72,41 +72,21 @@ place_fips <- read_excel(temp_file_ipums) |>
 Download and read Excel file from Financial Health & Wealth Dashboard
 
 ```{r}
-
-temp_file <- tempfile(fileext = ".xlsx")
-download.file(
-    url = "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2022/12/05/3_city_financial_health_metrics_b.xlsx",
-    destfile = temp_file,
-    mode = "wb"
-)
-
-df <- read_excel(temp_file) |>
-    # Keep only city-level debt in collections metrics
-    filter(!is.na(`state code (fips)`)) |>
-    select(
-        city = `city name`,
-        stusab = `state name`,
-        share_debt_colloverall = `Residents with debt in collections*; Overall`,
-        share_debt_collresidentsofcolor = `Residents with debt in collections*; Residents of color`,
-        share_debt_collwhite = `Residents with debt in collections*;  White`
-    ) |>
-    # Remove header row
-    filter(city != "city name") |>
-    mutate(across(starts_with("share_debt_coll"), ~as.numeric(.x))) |> 
-    # Reshape to long by subgroup
-    pivot_longer(
-        cols = starts_with("share_debt_coll"),
-        names_to = "subgroup",
-        names_prefix = "share_debt_coll",
-        values_to = "share_debt_coll"
-    ) |>
-    # Standardize subgroup labels
-    mutate(
+overall_debt_city <-
+  read_csv("https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/related-documents/city_2019_23.csv") |> 
+  filter(!is.na(state)) |> 
+  select(year,
+         city = city_name,
+         stusab = state,
+         subgroup,
+         share_debt_coll = delinquent_debt) |> 
+  filter(subgroup %in% c("Overall", "Residents of color", "White")) |> 
+     mutate(
         subgroup = case_match(
             subgroup,
-            "overall" ~ "All",
-            "residentsofcolor" ~ "Majority Non-White",
-            "white" ~ "Majority White"
+            "Overall" ~ "All",
+            "Residents of color" ~ "Majority Non-White",
+            "White" ~ "Majority White"
         ),
         subgroup_type = "race-ethnicity",
         # Handle missing/suppressed values
@@ -122,23 +102,22 @@ df <- read_excel(temp_file) |>
             3L,
             1L
         )
-    ) |>
-    # Merge state FIPS codes
+    ) |> 
+     # Merge state FIPS codes
     left_join(state_fips, by = "stusab") |>
     select(-stusab) |>
     # Merge place FIPS codes
     left_join(place_fips, by = "city") |>
-    # Add year and reorder
-    mutate(year = 2021) |>
     select(
-        year, place_fips, state, city, share_debt_coll,
-        share_debt_coll_quality, subgroup_type, subgroup
+        year, state, place = place_fips, subgroup_type, subgroup,
+        share_debt_coll,
+        share_debt_coll_quality, 
     ) |>
-    arrange(year, place_fips, state, city, subgroup)
-
-# Clean up temporary file
-unlink(temp_file)
-
+    arrange(year, state, place, subgroup) |> 
+    # There are 63 cities in the dashboard data that are not present
+    # in the IPUMS place FIP codes files
+    filter(!is.na(place))
+  
 ```
 
 
@@ -146,9 +125,73 @@ unlink(temp_file)
 
 ```{r}
 write_csv(
-    df,
-    here(output_path, "city-debt-coll-shares-2021.csv")
+    overall_debt_city,
+    here(output_path, "metrics_overall_debt_coll_race_ethnicity_city.csv")
 )
+
+write_csv(overall_debt_city |> filter(subgroup == "All") |> 
+            select(-c(subgroup_type, subgroup)),
+          here(output_path, "metrics_overall_debt_coll_all_city.csv"))
 
 ```
 
+
+# Final Data Test Function
+
+The data team for the Mobility Metrics project has created a function that tests baseline requirements for the structure and content of data produced for each metric. This function relies in part on information provided in a metric-specific final data expectations form, which have been filled out prior to final approval by their technical reviewer. 
+
+These evaluation forms are saved in `10a_final-evaluation`
+
+
+Detail:
+
+ - *Metric: Debt in Collections* 
+ - *Tester: Manuel Alcalá Kovalski*
+ - *Test date: November 2025*
+
+# Run Test
+
+Put the data through the final evaluation test.
+
+## Read Function
+
+The first step is to source the function `evaluate_final_data.R`. 
+
+```{r}
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+```
+
+
+## Read Final Data
+
+This file tests the final data for the debt in collections metric. There are four final files to be tested:
+
+ - `04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_city.csv`
+ - `04_financial-security/final/metrics_overall_debt_coll_all_city.csv`
+
+Read these final files in.
+
+```{r}
+final_data_overall_city <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_all_city.csv"), show_col_types = FALSE)
+
+final_data_overall_city_race <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_city.csv"), 
+                                   show_col_types = FALSE)
+
+```
+
+## Run Evaluation Test
+
+Enter the information into the `evaluate_final_data` function. 
+
+In order to run the function, we fill out the relevant arguments. The debt in collections data does not have subgroups or confidence intervals.
+
+County overall data.
+```{r}
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_overall_debt_coll_all_city.csv",
+                data = final_data_overall_city,  geography = "place",
+                subgroups = FALSE, confidence_intervals = FALSE)
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_overall_debt_coll_race_ethnicity_city.csv",
+                data = final_data_overall_city_race,  geography = "place",
+                subgroups = TRUE, confidence_intervals = FALSE)
+```
