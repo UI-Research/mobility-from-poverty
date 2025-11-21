@@ -141,16 +141,9 @@ download.file(
 )
 
 data_2022 <- read_excel(temp_file_2022) |>
-  process_debt_data(year = 2022, category = "overall") |>
-  select(-category)  # Remove category column for 2022 output
+  process_debt_data(year = 2022, category = "overall")
 
 unlink(temp_file_2022)
-
-# Export
-write_csv(
-  data_2022,
-  file.path(output_path, "county-debt-coll-shares-2022.csv")
-)
 
 message("✓ Successfully processed 2022 debt collections data (overall only)")
 ```
@@ -179,35 +172,8 @@ data_2023 <- map(debt_categories_2023, \(category) {
   
   unlink(temp_file)
   return(df)
-})
-
-# Export race-ethnicity files
-data_2023[[1]] |>
-  select(-category) |>
-  write_csv(file.path(output_path, "metrics_overall_debt_coll_race_ethnicity_county_2023.csv"))
-
-data_2023[[2]] |>
-  select(-category) |>
-  rename(
-    share_medical_debt_coll = share_debt_coll,
-    share_medical_debt_coll_quality = share_debt_coll_quality
-  ) |>
-  write_csv(file.path(output_path, "metrics_medical_debt_coll_race_ethnicity_county_2023.csv"))
-
-# Export "All" only files
-data_2023[[1]] |>
-  filter(subgroup == "All") |>
-  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
-  write_csv(file.path(output_path, "metrics_overall_debt_coll_all_county_2023.csv"))
-
-data_2023[[2]] |>
-  filter(subgroup == "All") |>
-  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
-  rename(
-    share_medical_debt_coll = share_debt_coll,
-    share_medical_debt_coll_quality = share_debt_coll_quality
-  ) |>
-  write_csv(file.path(output_path, "metrics_medical_debt_coll_all_county_2023.csv"))
+}) |>
+  bind_rows()
 
 message("✓ Successfully processed 2023 debt collections data (overall + medical)")
 ```
@@ -237,37 +203,53 @@ data_2025 <- map(debt_categories_2025, \(category) {
   
   unlink(temp_file)
   return(df)
-})
-
-# Export race-ethnicity files
-data_2025[[1]] |>
-  select(-category) |>
-  write_csv(file.path(output_path, "metrics_overall_debt_coll_race_ethnicity_county_2025.csv"))
-
-data_2025[[2]] |>
-  select(-category) |>
-  rename(
-    share_medical_debt_coll = share_debt_coll,
-    share_medical_debt_coll_quality = share_debt_coll_quality
-  ) |>
-  write_csv(file.path(output_path, "metrics_medical_debt_coll_race_ethnicity_county_2025.csv"))
-
-# Export "All" only files
-data_2025[[1]] |>
-  filter(subgroup == "All") |>
-  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
-  write_csv(file.path(output_path, "metrics_overall_debt_coll_all_county_2025.csv"))
-
-data_2025[[2]] |>
-  filter(subgroup == "All") |>
-  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
-  rename(
-    share_medical_debt_coll = share_debt_coll,
-    share_medical_debt_coll_quality = share_debt_coll_quality
-  ) |>
-  write_csv(file.path(output_path, "metrics_medical_debt_coll_all_county_2025.csv"))
+}) |>
+  bind_rows()
 
 message("✓ Successfully processed 2025 debt collections data (overall + medical)")
+```
+
+## Create Multi-Year Files
+
+```{r combine-years}
+# Combine all overall debt data across years
+debt_overall <- bind_rows(
+  data_2022,
+  data_2023 |> filter(category == "overall"),
+  data_2025 |> filter(category == "overall")
+) |>
+  select(-category)
+
+# Combine all medical debt data (2023 and 2025 only)
+debt_medical <- bind_rows(
+  data_2023 |> filter(category == "medical"),
+  data_2025 |> filter(category == "medical")
+) |>
+  select(-category) |>
+  rename(
+    share_medical_debt_coll = share_debt_coll,
+    share_medical_debt_coll_quality = share_debt_coll_quality
+  )
+
+# Export combined race-ethnicity files
+debt_overall |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_race_ethnicity_county.csv"))
+
+debt_medical |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_race_ethnicity_county.csv"))
+
+# Export combined "Overall" files
+debt_overall |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_debt_coll, share_debt_coll_quality) |>
+  write_csv(file.path(output_path, "metrics_overall_debt_coll_all_county.csv"))
+
+debt_medical |>
+  filter(subgroup == "All") |>
+  select(year, state, county, share_medical_debt_coll, share_medical_debt_coll_quality) |>
+  write_csv(file.path(output_path, "metrics_medical_debt_coll_all_county.csv"))
+
+message("✓ Successfully created combined multi-year datasets")
 ```
 
 # Final Data Test Function
@@ -276,7 +258,6 @@ The data team for the Mobility Metrics project has created a function that tests
 
 These evaluation forms are saved in `10a_final-evaluation`
 
-For programs written in STATA the evaluation process is run externally in this QMD file. 
 
 Detail:
 
@@ -301,23 +282,23 @@ source(here::here("functions", "testing", "evaluate_final_data.R"))
 
 This file tests the final data for the debt in collections metric. There are four final files to be tested:
 
- - `04_financial-security/final/metrics_medical_debt_coll_all_county_2025.csv`
- - `04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county_2025.csv`
- - `04_financial-security/final/metrics_overall_debt_coll_all_county_2025.csv`
- - `04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county_2025.csv`
+ - `04_financial-security/final/metrics_medical_debt_coll_all_county.csv`
+ - `04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county.csv`
+ - `04_financial-security/final/metrics_overall_debt_coll_all_county.csv`
+ - `04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county.csv`
 
 Read these final files in.
 
 ```{r}
-final_data_med_county <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_all_county_2025.csv"), show_col_types = FALSE)
+final_data_med_county <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_all_county.csv"), show_col_types = FALSE)
 
-final_data_med_county_race <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county_2025.csv"), 
+final_data_med_county_race <- read_csv(here("04_financial-security/final/metrics_medical_debt_coll_race_ethnicity_county.csv"), 
                                    show_col_types = FALSE)
 
-final_data_overall_county <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_all_county_2025.csv"), 
+final_data_overall_county <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_all_county.csv"), 
                                    show_col_types = FALSE)
 
-final_data_county_overall_race <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county_2025.csv"), 
+final_data_county_overall_race <- read_csv(here("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county.csv"), 
                                    show_col_types = FALSE)
 ```
 
