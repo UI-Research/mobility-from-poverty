@@ -1,0 +1,154 @@
+---
+title: "Debt in Collections City-Level Shares"
+author: "Manuel Alcalá Kovalski"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview
+
+This document processes city-level debt in collections data from the 
+Urban Institute's **Debt in America** project for 2021. Subsequent years of data are only available at the county level.
+
+The processed data is used for the Upward Mobility Metrics Dashboard.
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(here)
+library(tigris)
+# Set output path
+output_path <- here("04_financial-security/final")
+```
+
+Get state abbreviations & FIPS codes using `tigris` and place FIPS codes from IPUMS
+```{r}
+state_fips <- fips_codes |>
+    distinct(state, state_code, state_name) |>
+    rename(stusab = state, state = state_code)
+
+
+temp_file_ipums <- tempfile(fileext = ".xlsx")
+download.file(
+    url = "https://usa.ipums.org/usa/resources/volii/large_place_PUMA2010_match_summary.xlsx",
+    destfile = temp_file_ipums,
+    mode = "wb"
+)
+
+
+place_fips <- read_excel(temp_file_ipums) |>
+    rename(
+        place_fips = `Place FIPS Code`,
+        city = `IPUMS CITY Label`
+    ) |>
+    # Fix specific city labels to match dashboard data
+    mutate(
+        city = case_when(
+            `State Name` == "Arizona" & `Census Place Name` == "Gilbert town" ~ "Gilbert, AZ",
+            `State Name` == "Hawaii" & `Census Place Name` == "Urban Honolulu CDP" ~ "Honolulu, HI",
+            `State Name` == "Kansas" & `Census Place Name` == "Overland Park city" ~ "Overland Park, KS",
+            `State Name` == "Nevada" & `Census Place Name` == "Paradise CDP" ~ "Paradise, NV",
+            `State Name` == "Arizona" & `Census Place Name` == "Scottsdale city" ~ "Scottsdale, AZ",
+            `State Name` == "Nevada" & `Census Place Name` == "Sunrise Manor CDP" ~ "Sunrise Manor, NV",
+            TRUE ~ city
+        )
+    ) |>
+    filter(city != "[Not identified in any sample]") |>
+    select(place_fips, city)
+
+```
+
+## Import and process Urban Data Catalog file 
+
+Download and read Excel file from Financial Health & Wealth Dashboard
+
+```{r}
+
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(
+    url = "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2022/12/05/3_city_financial_health_metrics_b.xlsx",
+    destfile = temp_file,
+    mode = "wb"
+)
+
+df <- read_excel(temp_file) |>
+    # Keep only city-level debt in collections metrics
+    filter(!is.na(`state code (fips)`)) |>
+    select(
+        city = `city name`,
+        stusab = `state name`,
+        share_debt_colloverall = `Residents with debt in collections*; Overall`,
+        share_debt_collresidentsofcolor = `Residents with debt in collections*; Residents of color`,
+        share_debt_collwhite = `Residents with debt in collections*;  White`
+    ) |>
+    # Remove header row
+    filter(city != "city name") |>
+    mutate(across(starts_with("share_debt_coll"), ~as.numeric(.x))) |> 
+    # Reshape to long format by subgroup
+    pivot_longer(
+        cols = starts_with("share_debt_coll"),
+        names_to = "subgroup",
+        names_prefix = "share_debt_coll",
+        values_to = "share_debt_coll"
+    ) |>
+    # Standardize subgroup labels
+    mutate(
+        subgroup = case_match(
+            subgroup,
+            "overall" ~ "All",
+            "residentsofcolor" ~ "Majority Non-White",
+            "white" ~ "Majority White"
+        ),
+        subgroup_type = "race-ethnicity",
+        # Handle missing/suppressed values
+        share_debt_coll = if_else(
+            share_debt_coll == "NA",
+            NA_real_,
+            share_debt_coll
+        ),
+        share_debt_coll = as.numeric(share_debt_coll),
+        # Create data quality field: 1 = valid, 3 = suppressed/missing
+        share_debt_coll_quality = if_else(
+            is.na(share_debt_coll),
+            3L,
+            1L
+        )
+    ) |>
+    # Merge state FIPS codes
+    left_join(state_fips, by = "stusab") |>
+    select(-stusab) |>
+    # Merge place FIPS codes
+    left_join(place_fips, by = "city") |>
+    # Add year and reorder
+    mutate(year = 2021) |>
+    select(
+        year, place_fips, state, city, share_debt_coll,
+        share_debt_coll_quality, subgroup_type, subgroup
+    ) |>
+    arrange(year, place_fips, state, city, subgroup)
+
+# Clean up temporary file
+unlink(temp_file)
+
+```
+
+
+## Export data
+
+```{r}
+write_csv(
+    df,
+    file.path(output_path, "city-debt-coll-shares-2021.csv")
+)
+
+```
+
