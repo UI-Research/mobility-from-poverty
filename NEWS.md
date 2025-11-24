@@ -6,5 +6,5 @@
 - Migrate school economic diversity from Stata to R. Add data for 2022. (#535) 
 - Migrate jobs paying a living wage from Stata to R. Add data for 2015, 2016, 2017, 2019, 2020, and 2024. (#536) 
 - Make minor programmatic improvements to descriptive representation (#538).
-
+- Migrate debt in collections from Stata to R. Add county-level 2025 data and consolidate multi-year datasets. Add city-level data for 2019 and 2023. (#543)
 
