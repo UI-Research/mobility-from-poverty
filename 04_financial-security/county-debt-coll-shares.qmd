@@ -17,7 +17,7 @@ editor_options:
 ## Overview
 
 This document processes county-level debt in collections data from the 
-Urban Institute's **Debt in America** project for years 2022, 2023, and 2025. 
+Urban Institute's **Debt in America** project for years 2018, 2022, 2023, and 2025. 
 The processed data is used for the Upward Mobility Metrics Dashboard.
 
 **Data Source**: [Debt in America Data Catalog](https://datacatalog.urban.org/dataset/debt-america-2025)
@@ -228,11 +228,32 @@ data_2025 <- map(debt_categories_2025, \(category) {
 message("✓ Successfully processed 2025 debt collections data (overall + medical)")
 ```
 
+### 2018 files
+
+**Important**: We use a legacy file for 2018 data originally saved on Github. Since this was pulled manually, we don't have a programmatic way to pull this file and reproduce the quality flags. 
+```{r}
+data_2018 <-
+  read_csv(here("04_financial-security/final/share_debt_2018_long.csv")) |> 
+  select(year, state, county, subgroup_type, subgroup, share_debt_coll, share_debt_coll_quality) |> 
+  mutate(category = "overall",
+         share_debt_coll_quality = as.character(share_debt_coll_quality),
+         subgroup = case_match(
+         subgroup,
+          "All" ~ "All",
+          "Majority Non-White" ~ "Neighborhoods of color",
+          "Majority White" ~ "White neighborhoods",
+        ),
+         subgroup_type = "race-ethnicity",
+         subgroup_type = if_else(subgroup == "All", "all", subgroup_type)) 
+  
+```
+
 ## Create Multi-Year Files
 
 ```{r combine-years}
 # Combine all overall debt data across years
 debt_overall <- bind_rows(
+  data_2018,
   data_2022,
   data_2023 |> filter(category == "overall"),
   data_2025 |> filter(category == "overall")
