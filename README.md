@@ -1,7 +1,7 @@
 # Boosting Upward Mobility from Poverty
 
-This repository contains code to construct 26 metrics for 25 predictors of mobility across 5 pillars that broadly measure mobility from poverty.
-The data are available for 3,143 counties (example: [Los Angeles County](https://upward-mobility.urban.org/sites/default/files/mobility-metrics-data-pages/999_county-pages/06037/index.html)) and 486 selected cities (example: [Philadelphia](https://upward-mobility.urban.org/sites/default/files/mobility-metrics-data-pages/998_place-pages/4260000/index.html)).
+This repository contains code to construct 26 metrics for 24 predictors of mobility across 5 pillars that broadly measure mobility from poverty.
+The data are available for more than 3,000 counties and 486 selected cities.
 
 To learn more about the upward mobility framework, please read:
 
@@ -28,7 +28,6 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 -   [Repository Contents](#repository-contents)
 -   [File Descriptions](#file-descriptions)
-    -   [Recent File](#recent-file)
     -   [Multi-Year File](#multi-year-file)
     -   [Variables](#variables)
 -   [Project Organization](#project-organization)
@@ -63,20 +62,36 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 # Repository Contents
 
-**Note:** The code is organized by nine domains for legacy reasons even though the [updated framework](https://upward-mobility.urban.org/mobility-metrics-framework) is organized into five pillars.
-Below is a table showing each predictor by pillar, and the domain it was previously assigned to.
+This repository was previously organized by nine domains. Due to updates in the framework, we are in the process of moving code and data to folders for the 24 predictors. The migration is ongoing, so you may see a mix of domain-based folders (e.g., `01_financial-well-being/`, `02_housing/`) and predictor-based organization.
 
-|            Legacy Domain            |                      Pillar                      |          Predictors                  |
-|:----------------:|:-----------------------------:|:---------------------:|
-|        01_financial-well-being      |                    Rewarding Work                |     Opportunities for income <br/> Financial security <br/> Wealth-building opportunities    |  
-|             02_housing              |   Opportunity-Rich & Inclusive Neighborhoods     |  Housing affordability <br/>   Housing stability       |
-|              03_health              | Healthy Environment & Access to Good Health Care |   Access to health services <br/> Neonatal health <br/> Safety from trauma       |
-|        05_local-governments         |           Responsive & Just Governance           |    Political participation <br/> Descriptive representation          |
-|          06_neighborhoods           |    Opportunity-Rich & Inclusive Neighborhoods    |      Economic inclusion <br/> Racial diversity <br/> Transportation access <br/> Environmental quality <br/> Social capital   |
-|              07_safety              |           Responsive & Just Governance           |       Safety from crime <br/> Just policing              |
-|            08_education             |              High-Quality Education              |      Access to preschool <br/> Effective public education <br/> School economic diversity <br/>  Preparation for college <br/> Digital access            |
-|            09_employment            |                  Rewarding Work                  |   Employment opportunities <br/> Access to jobs paying a living wage         |
-                                                                                             
+| Predictor folder |
+|:----------------|
+| 01_employment-opportunities/ |
+| 02_jobs-paying-living-wages/ |
+| 03_opportunities-for-income/ |
+| 04_financial-security/ |
+| 05_wealth-building-opportunities/ |
+| 06_access-to-preschool/ |
+| 07_effective-public-education/ |
+| 08_school-economic-diversity/ |
+| 09_preparation-for-college/ |
+| 10_digital-access/ |
+| 11_housing-affordability/ |
+| 12_housing-stability/ |
+| 13_economic-inclusion/ |
+| 14_racial-diversity/ |
+| 15_social-capital/ |
+| 16_transportation-access/ |
+| 17_access-to-health-services/ |
+| 18_neonatal-health/ |
+| 19_environmental-quality/ |
+| 20_safety-from-trauma/ |
+| 21_political-participation/ |
+| 22_descriptive-representation/ |
+| 23_safety-from-crime/ |
+| 24_just-policing/ |
+
+*Note: As the repository structure transitions from domain-based to predictor-based organization, folder names and locations may not yet align with the predictor names listed above. Consult the actual repository structure for current folder locations.*
 
 # File Descriptions
 
@@ -85,26 +100,12 @@ The main difference is the geographic level of the data (city vs county), the nu
 The all metrics combined files are in the ["long" format](https://www.theanalysisfactor.com/wide-and-long-data/) as opposed to a "wide" format, meaning that in the files covering multiple years or subgroup each unique geography will account for more than one row.
 The data are hosted publicly on the [Urban Institute data catalog](https://datacatalog.urban.org/).
 
-## Recent Files
-
--   The recent county file has exactly one row per county and contains the most recent year for each of the mobility metrics.
-    This file should have exactly 3,143 observations and contain missing values where metrics were unavailable, suppressed, or not computed.
-
-    | state | county | state_name |   county_name    | Var1... |
-    |:-----:|:------:|:----------:|:----------------:|:-------:|
-    |  01   |  001   | "Alabama"  | "Autauga County" |         |
-    |  01   |  003   | "Alabama"  | "Baldwin County" |         |
-    |  01   |  005   | "Alabama"  | "Barbour County" |         |
-
--   The recent city file has one row per census place and contains the most recent year for each of the mobility metrics.
-    This file should have exactly 486 observations and contain missing values where metrics were unavailable, suppressed, or not computed.
-    Cities are defined as census places that have a population of 75,000 or greater.
-
 ## Multi-Year Files
 
 -   The multi-year county file contains one observation per county per year.
     It contains missing values where metrics are unavailable, suppressed, or have not been computed.
-    Prior to 2020 this file has 3,142 observations per year and 3,143 for the years 2020 to the most recent.
+    Prior to 2020 this file has 3,142 observations per year. For 2021 and 2022, this file has 3,143 
+    observations per year. From 2023 to the present, the file has 3,144 observations per year.
 
     | year | state | county | state_name |   county_name    | Var1... |
     |:----:|:-----:|:------:|:----------:|:----------------:|:-------:|
@@ -132,7 +133,7 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 # Project Organization
 
--   Each domain should have its own directory (e.g. 01_financial-well-being, 02_housing, etc.). The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
+-   Each predictor should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
 -   The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 -   Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable.
 -   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric data should be added to GitHub.
@@ -144,9 +145,9 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 ## GitHub Standards 
 
--   Do not work on the `main` branch. This project uses a staging branch called `version2024` that all updates should work through as if it were the main branch. All updates should be pushed to this branch.
+-   Do not work on the `main` branch. This project uses a staging branch called `tranche#` that all updates should work through as if it were the main branch. All updates should be pushed to this branch.
 -   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric files should be added to GitHub.
--   Regularly pull from the remote `version2024` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
+-   Regularly pull from the remote `tranche#` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
 -   [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) exist for each metric and work branches should always be tied to an issue.
 
 ## GitHub Basics
@@ -158,9 +159,9 @@ After installing Git and setting up a GitHub account, follow these steps to get 
 1.  Right click and select "Git Bash Here" where you want to copy the repository (main folder) on your computer.
 2.  Submit `git clone https://github.com/UI-Research/mobility-from-poverty.git`. You will need to enter your user email and password. Everything will then copy to your computer.
 3.  Close Git Bash.
-4.  Enter the `gates-mobility-metrics` folder, right click, and select "Git Bash Here".
-5.  Submit `git checkout -b version2024` to get to the staging branch. 
-6.  This project uses an issue based branching system. When you start working on an issue you will create a branch for it using `git checkout -b <"issue name">` but replace `"issue name"` with the issue you are working on. 
+4.  Enter the `mobility-from-poverty` folder, right click, and select "Git Bash Here".
+5.  Submit `git checkout -b tranche#` where `#` is the tranche number to get to the staging branch. (Note: `tranche#` is used throughout this README as a placeholder - replace it with the actual staging branch name you're working on.)
+6.  This project uses an issue based branching system. When you start working on an issue you will create a branch for it using `git checkout -b <"issue name">` but replace `"issue name"` with the issue you are working on.
 7. For issues that already have branches created you can switch to them using the command `git checkout <"issue name">`
 
 After this, you should be able to edit files and then add them to Git with the process outlined in the guide above.
@@ -171,12 +172,14 @@ GitHub will be used as the primary form of communication for programs and data.
 The workflow will rely on GitHub Issues that will be linked to metrics work goals.
 These issues will be organized and tracked using [GitHub projects](https://github.com/orgs/UI-Research/projects/4) which can be viewed on the GitHub repository.
 
+*Note: Throughout this README, `tranche#` is used as a placeholder for the current staging branch name. Replace `#` with the actual tranche number you're working on.*
+
 *Note:* The GitHub repository is public and all files that are not included in the gitignore will be publicly available when pushed to the repository.
 
 1.  Set up Git
 2.  Clone the repository
-3.  From the mobility-from-poverty folder you have cloned to your local computer, make sure you are on the `version2024` branch - `mobility-from-poverty` - and ensure it is up to date with GitHub:
-    -   `git checkout version2024` o `git pull origin version2024`
+3.  From the mobility-from-poverty folder you have cloned to your local computer, make sure you are on the `tranche#` branch - `mobility-from-poverty` - and ensure it is up to date with GitHub:
+    -   `git checkout tranche#` or `git pull origin tranche#`
 4.  Check out a branch with the same name as the issue connected to that metric
     -   `git checkout -b <"issue name">`
 5.  Additional branching is allowed but merge all changes into the branch tied to the issue.
@@ -193,8 +196,8 @@ These issues will be organized and tracked using [GitHub projects](https://githu
         Commit messages should be clear and meaningful.
 
     -   `git push origin <"issue branch name">` will push committed changes up to the GitHub for review.
-7.  To contribute to the `main` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does.
-8. All code will go through a code review process with an assigned reviewer. After a successful review, the changes will be pulled into the `version2024` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
+7.  To contribute to the `tranche#` branch, put in a Pull Request. Tag your assigned reviewer (@reviewer). Briefly describe what the PR does.
+8. All code will go through a code review process with an assigned reviewer. After a successful review, the changes will be pulled into the `tranche#` branch. Reviewers may ask you to make changes. **For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.**
 
 ## Working with issues
 
@@ -211,9 +214,8 @@ This section will walk through the standards around data starting with the raw d
 ### Starting or raw data practices
 
 -   Starting or raw data should be pulled using code or should be added to Box. Only final data files should be added GitHub repository.
--   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on American Community Survey (ACS) data should write code that utilizes the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS micro data from the Census API using code.
+-   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on aggregated American Community Survey (ACS) data should write code that uses the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS microdata from IPUMS using code.
 -   When it is not possible to pull data in code, please download the data raw data files into this [Box folder](https://urbanorg.app.box.com/folder/277418607770?s=gpqd26sk5kqlymnfngyvjfs4qf9o2zvc) so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
-
 -   Programs should have detailed commentary on where the data is being pulled from and any specifics around accessing it (where to go, what to select, etc.) regardless of whether it is downloaded in the code or on to Box.
 
 ## Joining variables
@@ -238,16 +240,14 @@ The only variables in the subgroup datasets that will not be in the aggregate da
 
 `subgroup_type` will be the broader category that the descriptive variable the data is being broken out by falls into, for example `race-ethnicity`
 
-`subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The table below shows the current list of subgroup types and subgroup values, if your metric has subgroup data the values should match the names in the table below.
+`subgroup` will be the name of the specific subgroup. These may differ some across metrics so we will need to converge on the appropriate names. The table below shows the current list of subgroup types and subgroup values. If your metric has subgroup data, the values should match the names in the table below.
 
 | subgroup category | subgroup_type (variable name) | subgroup | 
 |:--------:|:--------:|:--------:|
-| Race and ethnicity | race-ethnicity | All Black, Non-Hispanic <br/> Hispanic <br/> Other Races and Ethnicities <br/> White, Non-Hispanic | 
-| Race | race-ethnicity |  All <br/> Black <br/> Hispanic <br/> Other Races and Ethnicities <br/> White | 
+| Race and ethnicity (with Non-Hispanic qualifier) | race-ethnicity | All <br/> Black, Non-Hispanic <br/> Hispanic <br/> Other Races and Ethnicities <br/> White, Non-Hispanic | 
+| Race (without Non-Hispanic qualifier) | race-ethnicity | All <br/> Black <br/> Hispanic <br/> Other Races and Ethnicities <br/> White | 
 | Race share | race-share | All <br/> Majority Non-White <br/> Majority White, Non-Hispanic <br/> Mixed Race and Ethnicity| 
 | Income | income | All <br/> Low Income <br/> Not Low-Income | 
-
-**If you are an Urban employee and believe that the values of the subgroup do not align with the table above please reach out to the umf-mobilitymetrics3 slack channel for guidance.**
 
 ### Variable Names
 
@@ -352,10 +352,6 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 
     /*************************/
     Programmer: [your name]
-    Date created: [date]
-    Date of last revision: [date]
-    Ancestor Program: [Path to the program including the name of the program]
-    original data: [Path of where the data live]
     Description: [Overall description]
     (1)[insert task description here, and then copy & paste this to indicate where that task is later in your program]
     (2)
@@ -429,7 +425,7 @@ The scope of the review will involve the following three levels:
     -   The code should exactly recreate the final result.
 2.  A line-by-line review of code logic.
     -   Code script should include top-level description of process and what the code accomplishes.
-    -   Does the author's process and analytical choices make sense given the metric they are trying to calculate? Is the process implemented correctly?
+    -   Does the author's process and analytic choices make sense given the metric they are trying to calculate? Is the process implemented correctly?
     -   Variable construction: What is the unit of analysis? Is it consistent throughout the dataset?
     -   Are new variables what they say they are (check codebooks)?
     -   Check whether simple operations like addition/subtraction/division exclude observations with missing data.
@@ -438,11 +434,12 @@ The scope of the review will involve the following three levels:
     -   Look at merges/joins and appends - do the data appear to be matched appropriately? Are there identical non-ID variables in both datasets? How are non-matching data handled or dropped?
     -   Is the correct geographic crosswalk used?
     -   Are weights used consistently and correctly?
+    -   Are there inconsistencies in the input data across years?
 3.  Code Architecture/Readability.
     -   Is the code DRY (don't repeat yourself)? If code is repeated more than once, recommend that the writer turn the repeated code into a function or macro.
     -   Is there a place where a variable is rebuilt or changed later on?
     -   Are values transcribed by hand?
-    -   "Messy but error-free" is not an acceptable status for finalized code. Code should be easy to follow, efficient, reproduceable, and should reflect well on the organization and project team.
+    -   "Messy but error-free" is not an acceptable status for finalized code. Code should be easy to follow, efficient, reproducible, and should reflect well on the organization and project team.
 4.  Public Release *Is the code clearly commented for public release (e.g., no use of abbreviations or acronyms that are Urban Institute specific)* Is the code free from any licenses, PII, or proprietary information?
 
 ## How to Prepare for a Code Review
@@ -463,9 +460,9 @@ Our code review process will be handled through GitHub, which has powerful tools
 ### 1. Request
 
 In our workflow, every analyst will push their code to the repository on its own branch named after the issue created for that task.
-The process of reconciling these different branches into one branch called `version2024` is handled through pull requests.
+The process of reconciling these different branches into one branch called `tranche#` is handled through pull requests.
 
-For example, I will put in a pull request from `"issexample"` to `version2024`.
+For example, I will put in a pull request from `"issexample"` to `tranche3`.
 At this point, a reviewer will be requested in the pull request.
 Aaron and Claudia will flag the reviewers.
 
@@ -473,9 +470,9 @@ Aaron and Claudia will flag the reviewers.
 
 ### 2. Review
 
-The code will not be merged to `version2024` until the reviewer(s) approve the pull request.
+The code will not be merged to `tranche#` until the reviewer(s) approve the pull request.
 
-GitHub will generate a line-by-line comparison of every line that is added or removed from `"issexample"` to `version2024`.
+GitHub will generate a line-by-line comparison of every line that is added or removed from `"issexample"` to `tranche#`.
 
 <img src="images/line-by-line.png" width="800" height="300"/>
 
@@ -502,9 +499,9 @@ You need to "fetch" the `"issexample2"` branch on to your local computer to run 
 Steps:
 
 1.  Open up Git Bash in the directory by right clicking in the `mobility-from-poverty` directory and and selecting Git Bash Here (on Windows).
-3.  Make sure you are on the `version2024` branch `git checkout version2024`
+3.  Make sure you are on the `tranche#` branch `git checkout tranche#`
 2.  Submit `git status` and ensure that you don't have any tracked changes that have not been committed.
-3.  Use `git branch` to see your current branch and other available branches. You should at least see `version2024` and `main`.
+3.  Use `git branch` to see your current branch and other available branches. You should at least see `tranche#` and `main`.
 4.  Submit `git fetch` to get remote branches.
 5.  Submit `git checkout --track origin/issexample2` to switch to the `issexample2` branch. Submit `git branch` to confirm the change.
 
@@ -519,7 +516,7 @@ When you are done, you can switch back to your branch with `git checkout branch-
 If you have un-committed changes, you will need to get rid of them with `git stash`.
 You shouldn't make substantive changes on some else's branch.
 
-*After all metrics have updated on `version2024`, reviewed and approved will the changes be merged with the `main` repository.*
+*After all metrics have updated on `tranche#`, reviewed and approved will the changes be merged with the `main` repository.*
 
 # Creating the All Metrics Combined Files
 
@@ -533,13 +530,14 @@ Both files will be [tidy data](https://vita.had.co.nz/papers/tidy-data.pdf) with
 # Data Dictionary
 
 The [data dictionary](https://ui-research.github.io/mobility-from-poverty-dictionary/) is a website created with Quarto and hosted on GitHub pages.
-The Quarto documents are stored in `mobility-from-poverty-documentation/`.
-The folder contains its own `.Rproj` for Quarto reasons.
+The Quarto documents are stored in a separate repository: [mobility-from-poverty-documentation](https://github.com/UI-Research/mobility-from-poverty-documentation).
+The documentation folder contains its own `.Rproj` for Quarto reasons.
 The website is contained in `docs/`.
 Use the following steps to update the website.
 
-1.  Open `mobility-from-poverty-documentation/mobility-from-poverty-documentation.Rproj`
-2.  Update files but **do not click render**. Common types of changes include
+1.  Clone and open the `mobility-from-poverty-documentation` repository
+2.  Open `mobility-from-poverty-documentation.Rproj`
+3.  Update files but **do not click render**. Common types of changes include
     -   Updating .qmd files with additional information
     -   Re-rendering the documentation after updating the mobility metrics
     -   Updating R functions to change the information included in the data dictionary
@@ -551,28 +549,10 @@ Use the following steps to update the website.
 
 For users outside of the Urban Institute that would like to utilize this repository this section offers guidance and tips.
 
-*General repository structure*
-
-The folders in this repository are broken into three main sections: Domains, Data and Documentation/Auxiliary.
-
-1. Domains
-  - Each domain in the UMF project has a folder (for example, 08_education). This folder holds the programs for the creation of the predictors that fall under that domain, for example, metrics for access to preschool, effective public education, school diversity, preparation for college, and digital access.
-  
-2. Data
-  - The final data produced for each domain folder is within that domain in the "data/final" folder. The collective final data in raw form is also hosted in this repository under the folder titled "data". 
-
-3. Documentation/Auxiliary
-  - The other folders either document or provide auxiliary information/data for creating the predictors. The folder titled "documentation" holds a description of each predictor code in the repository as well as an introductory training to using Git and GitHub. 
-  - Other auxiliary folder include the geographic-crosswalks folder which hosts all of the crosswalks the programs in this repository utilize. There is also a folder for constructing the database from the individual predictor files. 
-  
-For more specific use cases see below.
-
 ## Finding code 
 
 One benefit of hosting this work on a public repository is that external users can view and download the code used to create these indicators. If you would like to download the code used to create a certain UMF data point you can find it in one of the folder held in this repository. 
 To track down the right folder, first utilize the table under repository contents to match your predictor of interest (right-hand column) with that predictor's domain. The folder containing the code for that predictor will have a title similar to the domain. Enter that folder on GitHub and locate the program file with the predictor in the title. 
-
-*Example: Environmental quality* The environmental quality predictor falls under the Opportunity-Rich & Inclusive Neighborhoods pillar. In the GitHub repository there is a folder titled 06_neighborhoods - this is the corresponding folder. Inside that folder is another folder titled environment. It is in that folder you will find the program that creates the predictor. GitHub will give you the option to download the raw version of the file. 
 
 ## Locating raw data
 
@@ -585,4 +565,4 @@ The origins of the raw data used to create each of these indicators should be re
 
 # Contact
 
-**For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.** For external users please contact Aaron R. Williams with questions.
+**For Urban employees only, please reach out to the "umf-mobilitymetrics3" slack channel if you have questions.** For external users please contact Aaron R. Williams (awilliams@urban.org) with questions.
