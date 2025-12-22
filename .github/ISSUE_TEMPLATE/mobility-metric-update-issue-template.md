@@ -1,4 +1,4 @@
----
+﻿---
 name: Mobility Metric Update Issue Template
 about: This template was designed as the default issue for updating and/or changing
   mobility metrics.
@@ -35,7 +35,7 @@ The checklist below outlines key steps that should be taken during the process o
 
 *Setup*
 
--   [ ] Metric lead has checked out a new branch from the `version2026` branch that is named after the number associated with this issue, i.e. `iss###`
+-   [ ] Metric lead has checked out a new branch from the `versionYYYY` branch, where YYYY is the relevant update period, that is named after the number associated with this issue, i.e. `iss###`
 -   [ ] Metric lead has reviewed the specifications file and the values specific to their metric
 
 *Program Documentation*
@@ -73,6 +73,6 @@ The checklist below outlines key steps that should be taken during the process o
 
 *Review*
 
--   [ ] When ready for review the metric lead has submitted a PR to `version2026` using the PR template
+-   [ ] When ready for review the metric lead has submitted a PR to `versionYYYY`, where YYYY is the relevant update period, using the PR template
 -   [ ] This code received a review from an approved reviewer
 -   [ ] All comments and concerns raised by the reviewer have been addressed
