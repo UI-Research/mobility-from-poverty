@@ -1,0 +1,811 @@
+---
+title: "Number and share of public-school children who are ever homeless during the school year — County"
+author: "Manuel Alcalá Kovalski"
+date: now
+format:
+  html:
+    self-contained: true
+    toc: true
+    css: ../12_housing-stability/www/web_report.css
+editor_options:
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+
+This program creates the number and share of homeless students by county for 2019-2022 (school years 2019-20 through 2022-23), including breakdowns by race/ethnicity.
+
+**Data notes:**
+
+- Data suppression: data are suppressed when values are between 0-2, but if only one value is suppressed the next smallest number is also suppressed
+- Original code replaced all suppressed data with the midpoint (1) but this does not yield numbers that align perfectly with [federal reports](https://nche.ed.gov/wp-content/uploads/2020/01/Federal-Data-Summary-SY-15.16-to-17.18-Published-1.30.2020.pdf)
+- Data are unduplicated by LEA but may not be unduplicated by county if students switch between LEAs
+- Raw data is now posted on EdDataExpress instead of EdFacts
+- Starting in 2019-20, subgrant_status is no longer used to determine suppression information
+
+## Housekeeping
+
+```{r}
+#| label: setup
+#| message: false
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(educationdata)
+library(glue)
+
+options(scipen = 999)
+
+
+# Define years for analysis
+years <- 2019:2023
+
+# Define paths
+county_file <- here("geographic-crosswalks", "data", "county-populations.csv")
+data_dir <- here("12_housing-stability", "data")
+raw_dir <- here(data_dir, "raw")
+intermediate_dir <- here(data_dir, "intermediate")
+built_dir <- here(data_dir, "built")
+final_dir <- here("12_housing-stability", "data", "final")
+
+# Create directories if they don't exist
+dir.create(data_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(raw_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(intermediate_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(built_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(final_dir, showWarnings = FALSE, recursive = TRUE)
+
+```
+
+## Import and Prepare County Crosswalk
+
+```{r}
+#| label: county-crosswalk
+
+# Import county crosswalk file
+county_crosswalk <- read_csv(
+  here("geographic-crosswalks", "data", "county-populations.csv"),
+  show_col_types = FALSE
+) |>
+  select(-population, -state_name, -county_name) |>
+  mutate(
+    # Convert county to string with leading zeros (3 characters)
+    county = str_pad(county, width = 3, pad = "0"),
+    # Convert state to string with leading zeros (2 characters)
+    state = str_pad(state, width = 2, pad = "0")
+  )
+
+
+
+```
+
+## Download CCD District Data
+
+The Common Core of Data (CCD) provides district-level enrollment data.
+
+```{r}
+#| label: download-ccd-data
+
+# Download CCD district directory data with county codes and enrollment
+ccd_data <- map_dfr(years, function(year) {
+  message(glue("Downloading CCD data for {year}..."))
+  
+  get_education_data(
+    level = "school-districts",
+    source = "ccd",
+    topic = "directory",
+    filters = list(year = year),
+    add_labels = FALSE
+  ) |>
+    select(year, leaid, county_code, enrollment) |>
+    filter(!is.na(county_code))
+})
+
+# Process county codes
+ccd_data_processed <- ccd_data |>
+  mutate(
+    county_code = str_pad(county_code, width = 5, pad = "0"),
+    state = str_sub(county_code, 1, 2),
+    county = str_sub(county_code, 3, 5)
+  ) |>
+  filter(str_length(county) == 3) |>
+  select(-county_code)
+
+
+
+```
+
+## Download CCD Enrollment by Race
+
+```{r}
+#| label: download-ccd-race
+
+# Download CCD district enrollment data by race
+ccd_race_data <- map_dfr(years, function(year) {
+  message(glue("Downloading CCD enrollment by race for {year}..."))
+  
+  get_education_data(
+    level = "school-districts",
+    source = "ccd",
+    topic = "enrollment",
+    subtopic = "race",
+    filters = list(
+      year = year,
+      grade = 99,  # All grades
+      sex = 99     # All sexes
+    ),
+    add_labels = FALSE
+  ) |>
+    select(year, leaid, race, enrollment) |>
+    filter(race != 99)  # Remove "All races"
+})
+
+# Reshape to wide format
+ccd_race_wide <- ccd_race_data |>
+  mutate(
+    race_cat = case_when(
+      race == 1 ~ "enroll_white",
+      race == 2 ~ "enroll_black",
+      race == 3 ~ "enroll_hispanic",
+      race == 4 ~ "enroll_asian",
+      race == 5 ~ "enroll_amin_an",
+      race == 6 ~ "enroll_nh_pi",
+      race == 7 ~ "enroll_twomore",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  select(-race) |>
+  pivot_wider(
+    names_from = race_cat,
+    values_from = enrollment,
+    values_fill = 0
+  ) |>
+  mutate(
+    # Combine Asian, American Indian/Alaska Native, Native Hawaiian/Pacific Islander, 
+    # and Two or More into "Other"
+    enroll_other = enroll_asian + enroll_amin_an + enroll_nh_pi + enroll_twomore
+  ) |>
+  select(year, leaid, enroll_white, enroll_black, enroll_hispanic, enroll_other)
+
+# Save intermediate file
+write_rds(ccd_race_wide, here(intermediate_dir, "ccd_lea_recent_county_race.rds"))
+
+```
+
+## Merge CCD Datasets
+
+```{r}
+#| label: merge-ccd
+
+ccd_merged <- ccd_data_processed |>
+  left_join(ccd_race_wide, by = c("year", "leaid"))
+
+# Save merged file
+write_rds(ccd_merged, here(intermediate_dir, "ccd_lea_recent_county_merged.rds"))
+
+```
+
+## Download EdDataExpress Homelessness Data
+
+EdDataExpress publishes homeless student enrollment data. We download data for 2019-20 through 2022-23.
+
+**Note:** 2022-23 data must be manually downloaded due to changes in EdDataExpress website. 
+
+Instructions for manual download:
+1. Go to: https://eddataexpress.ed.gov/download/data-builder/data-download-tool
+2. Set filters: Homeless Students, 2022-2023, Local Education Agency
+3. Ensure data group = 655 ("Homeless students enrolled")
+4. Download and save to raw folder as "2022-23 LEA homeless student data.csv"
+
+```{r}
+#| label: download-eddataexpress
+
+# Download URLs for 2019-2021
+download_urls <- tribble(
+  ~year, ~url,
+  2019, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_6526/SY1920_FS118_DG655_LEA_data_files.zip",
+  2020, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_8321/SY2021_FS118_DG655_LEA_data_files.zip",
+  2021, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/SY2122_FS118_DG655_LEA_data_files.zip"
+)
+
+# Download and extract files
+walk2(download_urls$year, download_urls$url, function(year, url) {
+  zip_file <- here(raw_dir, glue("EdDataEx Homelessness {year}.zip"))
+  
+  if (!file.exists(zip_file)) {
+    message(glue("Downloading EdDataExpress data for {year}..."))
+    download.file(url, zip_file)
+    unzip(zip_file, exdir = raw_dir)
+  }
+})
+
+```
+
+## Import and Clean EdDataExpress Data
+
+```{r}
+#| label: import-eddataexpress
+
+# Function to read and process EdDataExpress files
+read_eddataexpress <- function(year) {
+  message(glue("Processing EdDataExpress data for {year}..."))
+  
+  # File names vary by year
+  file_name <- case_when(
+    year == 2019 ~ "SY1920_FS118_DG655_LEA.csv",
+    year == 2020 ~ "SY2021_FS118_DG655_LEA.csv",
+    year == 2021 ~ "SY2122_FS118_DG655_LEA.csv",
+    year == 2022 ~ "2022-23 LEA homeless student data.csv"
+  )
+  
+  read_csv(here(raw_dir, file_name), show_col_types = FALSE) |>
+    clean_names() |>
+    mutate(year = year)
+}
+
+# Read all years
+eddataexpress_raw <- map_dfr(years, read_eddataexpress)
+
+# Filter and reshape
+eddataexpress_clean <- eddataexpress_raw |>
+  filter(
+    datagroup == 655,  # Homeless students enrolled
+    !subgroup %in% c(
+      "", "Children with disabilities", "English Learner", 
+      "Migratory students", "Unaccompanied Youth",
+      "Children with one or more disabilities (IDEA)"
+    )
+  ) |>
+  mutate(
+    subgroup = case_when(
+      subgroup == "American Indian or Alaska Native" ~ "amin_an",
+      subgroup == "Black or African American" ~ "black",
+      subgroup == "Hispanic/Latino" ~ "hispanic",
+      subgroup == "White" ~ "white",
+      subgroup == "Two or more races" ~ "twomore",
+      subgroup == "Native Hawaiian or Other Pacific Islander" ~ "nh_pi",
+      subgroup == "Asian" ~ "asian",
+      subgroup == "All Students in LEA" ~ "homeless",
+      TRUE ~ subgroup
+    )
+  ) |>
+  select(state, ncesleaid, lea, year, subgroup, value) |>
+  pivot_wider(
+    names_from = subgroup,
+    values_from = value
+  ) |>
+  rename(leaid = ncesleaid)
+
+# Save intermediate file
+write_rds(eddataexpress_clean, here(intermediate_dir, "eddataexpress_all_years.rds"))
+
+```
+
+## Process Suppression and Create Bounds
+
+Data suppression follows specific rules. Suppressed values (marked as "S") represent 1-2 students and are replaced with 1 for aggregation purposes.
+
+```{r}
+#| label: process-suppression
+
+# Process suppressions and create confidence bounds
+homeless_data <- eddataexpress_clean |>
+  mutate(
+    # Create FIPS state code
+    fipst = str_pad(str_sub(as.character(leaid), 1, 2), width = 2, pad = "0")
+  )
+
+# Function to process suppression for each variable
+process_suppression <- function(data, var_name) {
+  var_sym <- sym(var_name)
+  
+  data |>
+    mutate(
+      supp_{var_name} := if_else(!!var_sym == "S", 1, NA_real_),
+      !!var_sym := if_else(!!var_sym == "S", "1", !!var_sym),
+      !!var_sym := as.numeric(!!var_sym)
+    ) |>
+    group_by(year, fipst) |>
+    mutate(
+      min_{var_name} := min(!!var_sym, na.rm = TRUE),
+      count_supp_{var_name} := sum(supp_{var_name}, na.rm = TRUE),
+      {var_name}_lower_ci := if_else(!is.na(supp_{var_name}), 0, !!var_sym),
+      {var_name}_upper_ci := case_when(
+        !is.na(supp_{var_name}) & count_supp_{var_name} <= 2 ~ min_{var_name},
+        !is.na(supp_{var_name}) ~ 2,
+        TRUE ~ !!var_sym
+      )
+    ) |>
+    ungroup()
+}
+
+# Apply suppression processing to all race/ethnicity variables
+race_vars <- c("homeless", "black", "hispanic", "white", "amin_an", 
+               "twomore", "nh_pi", "asian")
+
+homeless_processed <- reduce(race_vars, process_suppression, .init = homeless_data)
+
+# Create "other" category combining multiple races
+homeless_processed <- homeless_processed |>
+  mutate(
+    other = rowSums(select(., twomore, nh_pi, asian, amin_an), na.rm = TRUE),
+    other = if_else(is.na(other), 1, other)
+  ) |>
+  process_suppression("other")
+
+# Keep only needed variables
+homeless_final <- homeless_processed |>
+  select(
+    year, leaid, 
+    matches("homeless|black|hispanic|white|other"),
+    -matches("amin_an|twomore|nh_pi|asian")
+  ) |>
+  mutate(
+    leaid = str_pad(as.character(leaid), width = 7, pad = "0")
+  )
+
+```
+
+## Merge with CCD and Aggregate to County Level
+
+```{r}
+#| label: merge-and-aggregate
+
+# Read CCD merged data
+ccd_merged <- read_rds(here(intermediate_dir, "ccd_lea_recent_county_merged.rds"))
+
+# Merge homeless data with CCD
+homeless_merged <- homeless_final |>
+  left_join(
+    ccd_merged,
+    by = c("year", "leaid")
+  ) |>
+  filter(!is.na(county))
+
+# Replace missing enrollments with zeros
+homeless_merged <- homeless_merged |>
+  mutate(
+    enrollment = if_else(enrollment < 0 | is.na(enrollment), 0, enrollment),
+    across(
+      c(homeless, black, white, hispanic, other,
+        matches("_upper_ci$|_lower_ci$")),
+      ~if_else(enrollment == 0, 0, .x)
+    ),
+    across(
+      matches("^supp_"),
+      ~if_else(enrollment == 0, 0, .x)
+    )
+  )
+
+# Create enrollment variables based on suppression
+homeless_merged <- homeless_merged |>
+  mutate(
+    across(
+      c(homeless, black, white, hispanic, other),
+      list(
+        enroll_nonsupp = ~if_else(get(paste0("supp_", cur_column())) != 1, enrollment, NA_real_),
+        enroll_supp = ~if_else(get(paste0("supp_", cur_column())) == 1, enrollment, NA_real_)
+      ),
+      .names = "{.fn}_{.col}"
+    )
+  )
+
+# Aggregate to county level
+county_homeless <- homeless_merged |>
+  group_by(year, state, county) |>
+  summarize(
+    across(
+      c(homeless, black, hispanic, white, other,
+        matches("_lower_ci$|_upper_ci$|^supp_|^enroll_")),
+      ~sum(.x, na.rm = TRUE)
+    ),
+    enrollment = sum(enrollment, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  rename_with(
+    ~str_replace(.x, "^(homeless|black|hispanic|white|other)$", "\\1_count"),
+    matches("^(homeless|black|hispanic|white|other)$")
+  ) |>
+  rename_with(
+    ~str_replace(.x, "_lower_ci$", "_count_lb"),
+    matches("_lower_ci$")
+  ) |>
+  rename_with(
+    ~str_replace(.x, "_upper_ci$", "_count_ub"),
+    matches("_upper_ci$")
+  ) |>
+  rename_with(
+    ~str_replace(.x, "^supp_", "\\1_districts_suppress"),
+    matches("^supp_")
+  )
+
+```
+
+## Calculate Shares and Quality Metrics
+
+```{r}
+#| label: calculate-metrics
+
+# Read CCD enrollment by race for denominators
+ccd_race <- read_rds(here(intermediate_dir, "ccd_lea_recent_county_race.rds"))
+
+# Aggregate CCD race enrollment to county
+county_enroll_race <- homeless_merged |>
+  group_by(year, state, county) |>
+  summarize(
+    across(
+      c(enroll_white, enroll_black, enroll_hispanic, enroll_other),
+      ~sum(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  )
+
+# Join race enrollment data
+county_homeless <- county_homeless |>
+  left_join(county_enroll_race, by = c("year", "state", "county"))
+
+# Calculate shares and coverage
+county_homeless <- county_homeless |>
+  mutate(
+    # Share of all students who are homeless
+    homeless_share = homeless_count / enrollment,
+    coverage_homeless = enroll_nonsupp_homeless / enrollment,
+    
+    # Share of each race/ethnicity that is homeless (using race-specific enrollment)
+    black_share = black_count / enroll_black,
+    white_share = white_count / enroll_white,
+    hispanic_share = hispanic_count / enroll_hispanic,
+    other_share = other_count / enroll_other,
+    
+    # Coverage by race
+    coverage_black = enroll_nonsupp_black / enroll_black,
+    coverage_white = enroll_nonsupp_white / enroll_white,
+    coverage_hispanic = enroll_nonsupp_hispanic / enroll_hispanic,
+    coverage_other = enroll_nonsupp_other / enroll_other
+  )
+
+# Create quality variables
+county_homeless <- county_homeless |>
+  mutate(
+    across(
+      c(homeless, black, white, hispanic, other),
+      list(
+        quality_count = ~case_when(
+          get(paste0(cur_column(), "_count_ub")) / get(paste0(cur_column(), "_count_lb")) <= 1.05 ~ 1,
+          get(paste0(cur_column(), "_count_ub")) / get(paste0(cur_column(), "_count_lb")) <= 1.1 ~ 2,
+          !is.na(get(paste0(cur_column(), "_count"))) ~ 3,
+          TRUE ~ NA_real_
+        )
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+
+# Adjust quality for small enrollment
+county_homeless <- county_homeless |>
+  mutate(
+    homeless_quality_count = if_else(enrollment < 30, 3, homeless_quality_count)
+  )
+
+```
+
+## Apply Data Quality Rules
+
+```{r}
+#| label: quality-rules
+
+# Replace with -1 (NA) when homeless count < 10
+county_homeless <- county_homeless |>
+  mutate(
+    across(
+      c(homeless_count, black_count, white_count, hispanic_count, other_count),
+      ~if_else(homeless_count < 10, -1, .x)
+    ),
+    across(
+      matches("_count_lb$|_count_ub$"),
+      ~if_else(homeless_count < 10, -1, .x)
+    ),
+    across(
+      c(homeless_share, black_share, white_share, hispanic_share, other_share),
+      ~if_else(homeless_count < 10, -1, .x)
+    ),
+    across(
+      matches("_quality_count$"),
+      ~if_else(homeless_count < 10, -1, .x)
+    ),
+    across(
+      matches("_quality_count$"),
+      ~if_else(homeless_count >= 10 & homeless_count < 30, 3, .x)
+    )
+  )
+
+# Set all to -1 if share > 1
+county_homeless <- county_homeless |>
+  mutate(
+    across(
+      c(homeless, black, white, hispanic, other),
+      list(
+        count = ~if_else(get(paste0(cur_column(), "_share")) > 1 & 
+                          !is.na(get(paste0(cur_column(), "_share"))), -1, .x),
+        count_lb = ~if_else(get(paste0(cur_column(), "_share")) > 1 & 
+                             !is.na(get(paste0(cur_column(), "_share"))), -1, .x),
+        count_ub = ~if_else(get(paste0(cur_column(), "_share")) > 1 & 
+                             !is.na(get(paste0(cur_column(), "_share"))), -1, .x),
+        share = ~if_else(get(paste0(cur_column(), "_share")) > 1 & 
+                          !is.na(get(paste0(cur_column(), "_share"))), -1, .x),
+        quality_count = ~if_else(get(paste0(cur_column(), "_share")) > 1 & 
+                                  !is.na(get(paste0(cur_column(), "_share"))), -1, .x)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+
+# Check subgroup totals vs total homeless
+county_homeless <- county_homeless |>
+  mutate(
+    # Create non-missing versions for summing
+    across(
+      c(black_count, white_count, hispanic_count, other_count),
+      ~if_else(.x == -1, NA_real_, .x),
+      .names = "{.col}_missing"
+    ),
+    # Calculate total of race subgroups
+    total_race = rowSums(select(., ends_with("_count_missing")), na.rm = TRUE),
+    share_race_total = (total_race / homeless_count) * 100,
+    share_race_total = if_else(is.na(black_count_missing), NA_real_, share_race_total)
+  )
+
+# Replace with -1 when subgroup totals are < 70% or > 110% of total homeless
+county_homeless <- county_homeless |>
+  mutate(
+    across(
+      c(black, white, hispanic, other),
+      list(
+        count = ~if_else((share_race_total < 70 | share_race_total > 110) & 
+                          !is.na(share_race_total), -1, .x),
+        count_lb = ~if_else((share_race_total < 70 | share_race_total > 110) & 
+                             !is.na(share_race_total), -1, .x),
+        count_ub = ~if_else((share_race_total < 70 | share_race_total > 110) & 
+                             !is.na(share_race_total), -1, .x),
+        share = ~if_else((share_race_total < 70 | share_race_total > 110) & 
+                          !is.na(share_race_total), -1, .x),
+        quality_count = ~if_else((share_race_total < 70 | share_race_total > 110) & 
+                                  !is.na(share_race_total), -1, .x)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+
+# Apply suppression rules: set to -1 when count <= 2
+county_homeless <- county_homeless |>
+  mutate(
+    across(
+      c(homeless, black, white, hispanic, other),
+      list(
+        count_lb = ~if_else(get(paste0(cur_column(), "_count")) <= 2, -1, .x),
+        count_ub = ~if_else(get(paste0(cur_column(), "_count")) <= 2, -1, .x),
+        share = ~if_else(get(paste0(cur_column(), "_count")) <= 2, -1, .x),
+        quality_count = ~if_else(get(paste0(cur_column(), "_count")) <= 2, -1, .x),
+        count = ~if_else(get(paste0(cur_column(), "_count")) <= 2, -1, .x)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+
+```
+
+## Merge with County Crosswalk
+
+```{r}
+#| label: merge-crosswalk
+
+# Read county crosswalk
+county_crosswalk <- read_rds(here(intermediate_dir, "countyfile.rds"))
+
+# Merge and filter to relevant years
+county_final <- county_crosswalk |>
+  filter(year %in% 2019:2022) |>
+  left_join(
+    county_homeless,
+    by = c("year", "state", "county")
+  )
+
+# Clean up columns
+county_final <- county_final |>
+  select(
+    -enrollment, -starts_with("coverage"), -starts_with("enroll_"),
+    -ends_with("_districts_suppress"), -starts_with("min_"), 
+    -starts_with("count_supp_"), -ends_with("_missing"),
+    -total_race
+  ) |>
+  arrange(desc(year), state, county)
+
+```
+
+## Quality Checks
+
+```{r}
+#| label: quality-checks
+
+# Summary statistics by year
+county_final |>
+  group_by(year) |>
+  summarize(
+    n_counties = n(),
+    homeless_missing = sum(is.na(homeless_count)),
+    mean_homeless_share = mean(homeless_share[homeless_share > 0], na.rm = TRUE),
+    median_homeless_share = median(homeless_share[homeless_share > 0], na.rm = TRUE)
+  )
+
+# Check coverage by quality level
+county_final |>
+  group_by(homeless_quality_count) |>
+  summarize(
+    n = n(),
+    mean_share = mean(homeless_share[homeless_share > 0], na.rm = TRUE)
+  )
+
+# Verify data quality: count should always be between lower and upper bounds
+county_final |>
+  filter(
+    homeless_count > 0,
+    (homeless_count < homeless_count_lb | homeless_count > homeless_count_ub)
+  ) |>
+  nrow() # Should be 0
+
+# Check race/ethnicity totals
+county_final |>
+  summarize(
+    mean_share_race_total = mean(share_race_total[!is.na(share_race_total)]),
+    median_share_race_total = median(share_race_total[!is.na(share_race_total)])
+  )
+
+```
+
+## Visual Checks
+
+```{r}
+#| label: visual-checks
+
+# Distribution of homeless share by year
+county_final |>
+  filter(homeless_share > 0, homeless_share < 1) |>
+  ggplot(aes(x = homeless_share)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~year) +
+  labs(
+    title = "Distribution of Homeless Share by Year",
+    x = "Share of Students Homeless",
+    y = "Count of Counties"
+  )
+
+# Distribution by quality level
+county_final |>
+  filter(homeless_share > 0, homeless_share < 1, homeless_quality_count > 0) |>
+  ggplot(aes(x = homeless_share)) +
+  geom_histogram(bins = 50) +
+  facet_grid(year ~ homeless_quality_count, 
+             labeller = label_both) +
+  labs(
+    title = "Distribution of Homeless Share by Year and Quality",
+    x = "Share of Students Homeless",
+    y = "Count of Counties"
+  )
+
+```
+
+## Export Final Data
+
+```{r}
+#| label: export
+
+# Convert -1 to "NA" and missing to "NA" for export
+county_export <- county_final |>
+  mutate(
+    across(
+      where(is.numeric),
+      ~case_when(
+        .x == -1 ~ "NA",
+        is.na(.x) ~ "NA",
+        TRUE ~ as.character(.x)
+      )
+    )
+  )
+
+# Create quality_share variables (same as quality_count)
+county_export <- county_export |>
+  mutate(
+    homeless_quality_share = homeless_quality_count,
+    black_quality_share = black_quality_count,
+    white_quality_share = white_quality_count,
+    hispanic_quality_share = hispanic_quality_count,
+    other_quality_share = other_quality_count
+  )
+
+# Export "all" (total homeless) data
+county_export_all <- county_export |>
+  select(
+    year, state, county,
+    count_homeless = homeless_count,
+    count_homeless_lb = homeless_count_lb,
+    count_homeless_ub = homeless_count_ub,
+    share_homeless = homeless_share,
+    count_homeless_quality = homeless_quality_count,
+    share_homeless_quality = homeless_quality_share
+  )
+
+write_csv(
+  county_export_all,
+  here(final_dir, "homelessness_2019-2022_county.csv")
+)
+
+# Prepare subgroup data for export
+county_export_subgroup <- county_export |>
+  select(
+    year, state, county,
+    homeless_count, homeless_count_lb, homeless_count_ub, 
+    homeless_share, homeless_quality_count, homeless_quality_share,
+    black_count, black_count_lb, black_count_ub, 
+    black_share, black_quality_count, black_quality_share,
+    white_count, white_count_lb, white_count_ub, 
+    white_share, white_quality_count, white_quality_share,
+    hispanic_count, hispanic_count_lb, hispanic_count_ub, 
+    hispanic_share, hispanic_quality_count, hispanic_quality_share,
+    other_count, other_count_lb, other_count_ub, 
+    other_share, other_quality_count, other_quality_share
+  ) |>
+  rename(code_county = county) |>
+  pivot_longer(
+    cols = -c(year, state, code_county),
+    names_to = c(".value", "subgroup"),
+    names_pattern = "(.+)_(homeless|black|white|hispanic|other)$"
+  ) |>
+  mutate(
+    subgroup_type = if_else(subgroup == "homeless", "all", "race-ethnicity"),
+    subgroup = case_when(
+      subgroup == "homeless" ~ "All",
+      subgroup == "black" ~ "Black, Non-Hispanic",
+      subgroup == "white" ~ "White, Non-Hispanic",
+      subgroup == "hispanic" ~ "Hispanic",
+      subgroup == "other" ~ "Other Races and Ethnicities",
+      TRUE ~ subgroup
+    )
+  ) |>
+  rename(
+    county = code_county,
+    count_homeless = count,
+    count_homeless_lb = count_lb,
+    count_homeless_ub = count_ub,
+    share_homeless = share,
+    count_homeless_quality = quality_count,
+    share_homeless_quality = quality_share
+  ) |>
+  select(
+    year, state, county, subgroup_type, subgroup,
+    count_homeless, count_homeless_lb, count_homeless_ub,
+    share_homeless, count_homeless_quality, share_homeless_quality
+  ) |>
+  arrange(desc(year), state, county, subgroup_type, subgroup)
+
+write_csv(
+  county_export_subgroup,
+  here(final_dir, "homelessness_2019-2022_subgroups_county.csv")
+)
+
+message("Export complete!")
+message("Files saved to: ", final_dir)
+
+```
+
+## Session Info
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+
+```
+
