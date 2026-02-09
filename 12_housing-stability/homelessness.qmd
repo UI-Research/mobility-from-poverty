@@ -1,0 +1,964 @@
+---
+title: "Number and Share of Public-School Children Experiencing Homelessness"
+author: "Manuel Alcalá Kovalski"
+date: today
+format:
+  html:
+    self-contained: true
+    toc: true
+    code-fold: show
+editor_options:
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+params:
+  geography: "county"
+  years: !expr 2019:2022
+---
+
+```{r}
+#| label: description
+#| include: false
+
+# This program creates the number and share of homeless students by county or
+# place for school years 2019-20 through 2022-23, including breakdowns by
+# race/ethnicity.
+#
+# Geography is controlled by params$geography ("county" or "place")
+#
+# Code History:
+# - Original Stata code by E. Blom (2020/08/04)
+# - Updated by E. Gutierrez (September 2022, February 2024, December 2024)
+# - Translated to R/Quarto by Manu Alcalá Kovalski (2026)
+```
+
+## Overview
+
+This program calculates metrics for the **Housing Stability** predictor:
+
+- **Count**: Number of public-school students experiencing homelessness
+- **Share**: Proportion of enrolled students experiencing homelessness
+
+**Geography:** `r params$geography`
+**Years:** `r paste(params$years, collapse = ", ")`
+
+### Data Notes
+
+- **Data suppression**: Values between 0-2 are suppressed (marked as "S") to protect student privacy. If only one value is suppressed in a state-year, the next smallest value is also suppressed.
+- **Suppression handling**: Suppressed values are replaced with 1 (midpoint) for aggregation. Lower bound = 0, upper bound = 2 (or next smallest if ≤2 suppressions).
+- **Deduplication**: Data are unduplicated by LEA, but students who switch LEAs within a geography may be counted multiple times.
+- **Data source**: EdDataExpress (formerly EdFacts) for homeless counts; CCD for enrollment denominators.
+- **Race/ethnicity denominators**: Subgroup shares use race-specific enrollment as denominator (e.g., Black homeless / Black enrolled).
+
+### Quality Flags
+
+| Score | Criteria |
+|-------|----------|
+| 1 | Upper/lower bound ratio ≤ 1.05 |
+| 2 | Upper/lower bound ratio between 1.05 and 1.1 |
+| 3 | Ratio > 1.1, or enrollment < 30, or count between 10-30 |
+| NA | Count < 10, share > 1, or race totals outside 70-110% of total |
+
+## Setup
+
+```{r}
+#| label: setup
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(educationdata)
+library(glue)
+
+options(scipen = 999)
+
+# Validate geography parameter
+stopifnot(
+"params$geography must be 'county' or 'place'" =
+    params$geography %in% c("county", "place")
+)
+
+# Define paths
+data_dir <- here("12_housing-stability", "data")
+raw_dir <- here(data_dir, "raw")
+final_dir <- here(data_dir, "final")
+
+# Create directories if needed
+walk(c(data_dir, raw_dir, final_dir), dir.create, showWarnings = FALSE, recursive = TRUE)
+
+# Geography-specific settings
+geo_settings <- list(
+  county = list(
+    crosswalk_file = here("geographic-crosswalks", "data", "county-populations.csv"),
+    geo_var = "county",
+    ccd_geo_field = "county_code",
+    id_width = 3
+
+),
+  place = list(
+    crosswalk_file = here("geographic-crosswalks", "data", "place-populations.csv"),
+    geo_var = "place",
+    ccd_geo_field = "city_location",
+    id_width = 5
+  )
+)
+
+settings <- geo_settings[[params$geography]]
+```
+
+## Load Geographic Crosswalk
+
+```{r}
+#| label: load-crosswalk
+
+crosswalk <- read_csv(settings$crosswalk_file, show_col_types = FALSE) |>
+  mutate(
+    state = str_pad(state, width = 2, pad = "0"),
+    !!settings$geo_var := str_pad(
+      .data[[settings$geo_var]],
+      width = settings$id_width,
+      pad = "0"
+    )
+  )
+
+if (params$geography == "place") {
+  # For place geography, we need city names for matching to CCD
+  crosswalk <- crosswalk |>
+    rename(city_name_original = place_name) |>
+    mutate(
+      # Normalize city names to match CCD city_location field
+      city_name = city_name_original |>
+        str_remove(" town$") |>
+        str_remove(" village$") |>
+        str_remove(" municipality$") |>
+        str_remove(" urban county$") |>
+        str_remove(" city$") |>
+        str_to_title(),
+      # Hardcoded fixes for specific city name mismatches
+      city_name = case_when(
+        city_name == "San Buenaventura (Ventura)" ~ "Ventura",
+        city_name == "Athens-Clarke County Unified Government (Balance)" ~ "Athens",
+        city_name == "Augusta-Richmond County Consolidated Government (Balance)" ~ "Augusta",
+        city_name == "Macon-Bibb County" ~ "Macon",
+        city_name == "Boise City" ~ "Boise",
+        city_name == "Lexington-Fayette" ~ "Lexington",
+        city_name == "Louisville/Jefferson County Metro Government (Balance)" ~ "Louisville",
+        city_name == "Nashville-Davidson Metropolitan Government (Balance)" ~ "Nashville",
+        city_name == "Mcallen" ~ "Mcallen",
+        city_name == "Mckinney" ~ "Mckinney",
+        TRUE ~ city_name
+      )
+    ) |>
+    select(-population, -city_name_original, -state_name, -in_universe)
+} else {
+  crosswalk <- crosswalk |>
+    select(-population, -state_name, -county_name, -in_universe)
+}
+
+# Filter crosswalk to requested years (crosswalk already has year column)
+crosswalk_years <- crosswalk |>
+  filter(year %in% params$years)
+```
+
+## Download CCD District Data
+
+The Common Core of Data (CCD) provides district-level enrollment and geographic information.
+
+```{r}
+#| label: download-ccd
+
+# Download CCD district directory data
+message("Downloading CCD district directory data...")
+
+ccd_directory <- map_dfr(params$years, function(yr) {
+  message(glue("  Year {yr}...
+"))
+
+  # Select columns based on geography
+  cols <- if (params$geography == "county") {
+    c("year", "leaid", "county_code", "enrollment")
+  } else {
+    c("year", "leaid", "county_code", "city_location", "enrollment")
+  }
+
+  get_education_data(
+    level = "school-districts",
+    source = "ccd",
+    topic = "directory",
+    filters = list(year = yr),
+    add_labels = FALSE
+  ) |>
+    select(all_of(cols)) |>
+    filter(!is.na(county_code))
+})
+
+# Process geographic identifiers
+ccd_directory <- ccd_directory |>
+  mutate(
+    county_code = str_pad(county_code, width = 5, pad = "0"),
+    state = str_sub(county_code, 1, 2),
+    county = str_sub(county_code, 3, 5)
+  ) |>
+  filter(str_length(county) == 3)
+
+if (params$geography == "place") {
+  # Normalize city names for matching
+  ccd_directory <- ccd_directory |>
+    mutate(
+      city_name = city_location |>
+        str_to_lower() |>
+        str_to_title()
+    )
+}
+```
+
+```{r}
+#| label: download-ccd-race
+
+# Download CCD enrollment by race/ethnicity
+message("Downloading CCD enrollment by race...")
+
+ccd_race <- map_dfr(params$years, function(yr) {
+  message(glue("  Year {yr}..."))
+
+  get_education_data(
+    level = "school-districts",
+    source = "ccd",
+    topic = "enrollment",
+    subtopic = "race",
+    filters = list(year = yr, grade = 99, sex = 99),
+    add_labels = FALSE
+  ) |>
+    select(year, leaid, race, enrollment) |>
+    filter(race != 99)
+})
+
+# Reshape to wide format with race-specific enrollment
+ccd_race_wide <- ccd_race |>
+  mutate(
+    race_var = case_when(
+      race == 1 ~ "enroll_white",
+      race == 2 ~ "enroll_black",
+      race == 3 ~ "enroll_hispanic",
+      race == 4 ~ "enroll_asian",
+      race == 5 ~ "enroll_amin_an",
+      race == 6 ~ "enroll_nh_pi",
+      race == 7 ~ "enroll_twomore",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(race_var)) |>
+  select(-race) |>
+  pivot_wider(
+    names_from = race_var,
+    values_from = enrollment,
+    values_fill = 0
+  ) |>
+  mutate(
+    # Combine smaller race categories into "other"
+    enroll_other = enroll_asian + enroll_amin_an + enroll_nh_pi + enroll_twomore
+  ) |>
+  select(year, leaid, enroll_white, enroll_black, enroll_hispanic, enroll_other)
+
+# Merge CCD datasets
+ccd_merged <- ccd_directory |>
+  left_join(ccd_race_wide, by = c("year", "leaid"))
+```
+
+## Download EdDataExpress Homelessness Data
+
+EdDataExpress publishes homeless student enrollment data (Data Group 655).
+
+### Manual Download Instructions for 2022-23 Data
+
+Due to changes in the EdDataExpress website, data for 2022-23 must be manually downloaded.
+The website has known performance issues (documented December 2024):
+
+- The "Reset Filters" button does not work properly
+- Filters may disappear or the page may appear blank - refresh and try again
+- Datasets are limited to 150,000 rows
+- The default changed to show only one state (Alabama)
+
+**Note:** As of February 2026, 2023-24 data is not yet available on EdDataExpress.
+
+**Step-by-step instructions:**
+
+1. Go to: https://eddataexpress.ed.gov/download/data-builder/data-download-tool
+2. **Clear pre-set filters first**: For each filter on the left menu (State, Level, School Year,
+   Population), click "Deselect All" to clear the defaults
+3. **Set filters in this order** (important - set other filters BEFORE state):
+   - **Level**: Select "Local Education Agency"
+   - **School Year**: Select "2022-2023"
+   - **Population**: Select "Homeless Students"
+   - **State**: Leave empty (all states) or select specific states
+4. Verify **Data Group = 655** ("Homeless students enrolled") is shown in results
+5. Click "Download Data"
+6. Save to: `12_housing-stability/data/raw/`
+   - Save as `2022-23 LEA homeless student data.csv`
+
+**Alternatively**, the 2022-23 file is available on Box in the `Metrics_2025_round` folder.
+
+
+```{r}
+#| label: download-eddataexpress
+
+# Download URLs for available years (2019-2021 have direct URLs)
+# Note: 2022+ requires manual download due to EdDataExpress website changes
+download_urls <- tribble(
+  ~year, ~url,
+  2019, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_6526/SY1920_FS118_DG655_LEA_data_files.zip",
+  2020, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_8321/SY2021_FS118_DG655_LEA_data_files.zip",
+  2021, "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/SY2122_FS118_DG655_LEA_data_files.zip"
+)
+
+# Download and extract zip files
+walk2(download_urls$year, download_urls$url, function(yr, url) {
+  zip_file <- here(raw_dir, glue("EdDataEx_Homelessness_{yr}.zip"))
+
+  if (!file.exists(zip_file)) {
+    message(glue("Downloading EdDataExpress data for {yr}..."))
+    download.file(url, zip_file, mode = "wb")
+    unzip(zip_file, exdir = raw_dir)
+  }
+})
+```
+
+```{r}
+#| label: import-eddataexpress
+
+# Function to read EdDataExpress files
+read_eddataexpress <- function(yr) {
+  # File names vary by year
+  file_name <- case_when(
+    yr == 2019 ~ "SY1920_FS118_DG655_LEA.csv",
+    yr == 2020 ~ "SY2021_FS118_DG655_LEA.csv",
+    yr == 2021 ~ "SY2122_FS118_DG655_LEA.csv",
+    yr == 2022 ~ "2022-23 LEA homeless student data.csv"
+  )
+
+  file_path <- here(raw_dir, file_name)
+
+  if (!file.exists(file_path)) {
+    warning(glue("File not found for year {yr}: {file_path}"))
+    return(NULL)
+  }
+
+  message(glue("Reading EdDataExpress data for {yr}..."))
+
+  read_csv(file_path, show_col_types = FALSE) |>
+    clean_names() |>
+    mutate(year = yr)
+}
+
+# Read all available years
+eddataexpress_raw <- map_dfr(params$years, read_eddataexpress)
+
+# Check what years we have data for
+available_years <- unique(eddataexpress_raw$year)
+message(glue("Data available for years: {paste(available_years, collapse = ', ')}"))
+
+if (length(available_years) == 0) {
+  stop("No EdDataExpress data files found. Please download the required files.")
+}
+```
+
+## Clean and Reshape Homelessness Data
+
+```{r}
+#| label: clean-eddataexpress
+
+# Filter to homeless students enrolled (data_group 655) and relevant subgroups
+eddataexpress_clean <- eddataexpress_raw |>
+  filter(
+    data_group == 655,
+    !subgroup %in% c(
+      "", "Children with disabilities", "English Learner",
+      "Migratory students", "Unaccompanied Youth",
+      "Children with one or more disabilities (IDEA)"
+    )
+  ) |>
+  mutate(
+    # Recode subgroups to short names
+    subgroup_short = case_when(
+      subgroup == "American Indian or Alaska Native" ~ "amin_an",
+      subgroup == "Black or African American" ~ "black",
+      subgroup == "Hispanic/Latino" ~ "hispanic",
+      subgroup == "White" ~ "white",
+      subgroup == "Two or more races" ~ "twomore",
+      subgroup == "Native Hawaiian or Other Pacific Islander" ~ "nh_pi",
+      subgroup == "Asian" ~ "asian",
+      subgroup == "All Students in LEA" ~ "homeless",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(subgroup_short)) |>
+  select(year, leaid = nces_lea_id, subgroup = subgroup_short, value) |>
+  pivot_wider(
+    names_from = subgroup,
+    values_from = value
+  ) |>
+  mutate(
+    leaid = str_pad(as.character(leaid), width = 7, pad = "0"),
+    fipst = str_sub(leaid, 1, 2)
+  )
+```
+
+## Process Suppression
+
+Suppressed values (marked as "S") represent 1-2 students. We replace with 1 for aggregation and create confidence bounds.
+
+```{r}
+#| label: process-suppression
+
+# Race variables to process
+race_vars <- c("homeless", "black", "hispanic", "white", "asian", "amin_an", "nh_pi", "twomore")
+
+# Function to process suppression for a single variable
+process_single_var_suppression <- function(data, var) {
+  data |>
+    mutate(
+      # Flag suppressed values
+      "supp_{var}" := if_else(.data[[var]] == "S", 1L, 0L),
+      # Replace "S" with "1" and convert to numeric
+      "{var}" := as.numeric(if_else(.data[[var]] == "S", "1", .data[[var]]))
+    ) |>
+    # Calculate min and count of suppressions by year-state
+    group_by(year, fipst) |>
+    mutate(
+      "min_{var}" := min(.data[[var]], na.rm = TRUE),
+      "count_supp_{var}" := sum(.data[[glue("supp_{var}")]], na.rm = TRUE)
+    ) |>
+    ungroup() |>
+    # Create confidence bounds
+    mutate(
+      "{var}_lb" := if_else(
+        .data[[glue("supp_{var}")]] == 1,
+        0,
+        .data[[var]]
+      ),
+      "{var}_ub" := case_when(
+        .data[[glue("supp_{var}")]] == 1 & .data[[glue("count_supp_{var}")]] <= 2 ~
+          .data[[glue("min_{var}")]],
+        .data[[glue("supp_{var}")]] == 1 ~ 2,
+        TRUE ~ .data[[var]]
+      )
+    )
+}
+
+# Apply suppression processing to all race variables
+homeless_processed <- reduce(
+  race_vars,
+  process_single_var_suppression,
+  .init = eddataexpress_clean
+)
+
+# Create "other" category by combining smaller race groups
+homeless_processed <- homeless_processed |>
+  rowwise() |>
+  mutate(
+    other = sum(c_across(c(twomore, nh_pi, asian, amin_an)), na.rm = TRUE),
+    # If all components were NA/suppressed, set to 1 (like Stata)
+    other = if_else(other == 0 & all(is.na(c(twomore, nh_pi, asian, amin_an))), 1, other)
+  ) |>
+  ungroup()
+
+# Process suppression for "other" category
+homeless_processed <- homeless_processed |>
+  mutate(
+    supp_other = if_else(other == 1, 1L, 0L)
+  ) |>
+  group_by(year, fipst) |>
+  mutate(
+    min_other = min(other, na.rm = TRUE),
+    count_supp_other = sum(supp_other, na.rm = TRUE)
+  ) |>
+  ungroup() |>
+  mutate(
+    other_lb = if_else(supp_other == 1, 0, other),
+    other_ub = case_when(
+      supp_other == 1 & count_supp_other <= 2 ~ min_other,
+      supp_other == 1 ~ 2,
+      TRUE ~ other
+    )
+  )
+
+# Select final variables needed for merge
+homeless_final <- homeless_processed |>
+  select(
+    year, leaid,
+    homeless, homeless_lb, homeless_ub, supp_homeless,
+    black, black_lb, black_ub, supp_black,
+    hispanic, hispanic_lb, hispanic_ub, supp_hispanic,
+    white, white_lb, white_ub, supp_white,
+    other, other_lb, other_ub, supp_other
+  )
+```
+
+## Merge and Aggregate to Geography Level
+
+```{r}
+#| label: merge-aggregate
+
+# Merge homeless data with CCD
+homeless_merged <- homeless_final |>
+  inner_join(ccd_merged, by = c("year", "leaid"))
+
+# Handle missing/negative enrollment
+homeless_merged <- homeless_merged |>
+  mutate(
+    enrollment = if_else(enrollment < 0 | is.na(enrollment), 0, enrollment)
+  )
+
+# Set homeless counts to 0 where enrollment is 0
+count_vars <- c("homeless", "black", "white", "hispanic", "other")
+
+homeless_merged <- homeless_merged |>
+  mutate(
+    across(
+      all_of(count_vars),
+      ~ if_else(enrollment == 0, 0, .x)
+    ),
+    across(
+      matches("^(homeless|black|white|hispanic|other)_(lb|ub)$"),
+      ~ if_else(enrollment == 0, 0, .x)
+    ),
+    across(
+      starts_with("supp_"),
+      ~ if_else(enrollment == 0, 0L, .x)
+    )
+  )
+
+# Create enrollment variables for coverage calculation (non-suppressed districts)
+homeless_merged <- homeless_merged |>
+  mutate(
+    across(
+      all_of(count_vars),
+      list(
+        enroll_nonsupp = ~ if_else(
+          get(paste0("supp_", cur_column())) != 1,
+          enrollment,
+          NA_real_
+        )
+      ),
+      .names = "{.fn}_{.col}"
+    )
+  )
+
+# Aggregate to geography level
+if (params$geography == "county") {
+  geo_homeless <- homeless_merged |>
+    group_by(year, state, county) |>
+    summarize(
+      across(c(homeless, black, hispanic, white, other), ~ sum(.x, na.rm = TRUE)),
+      across(matches("_(lb|ub)$"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("supp_"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("enroll_nonsupp_"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("enroll_"), ~ sum(.x, na.rm = TRUE)),
+      enrollment = sum(enrollment, na.rm = TRUE),
+      .groups = "drop"
+    )
+} else {
+  # For place, aggregate by city_name then join to crosswalk
+  geo_homeless <- homeless_merged |>
+    group_by(year, state, city_name) |>
+    summarize(
+      across(c(homeless, black, hispanic, white, other), ~ sum(.x, na.rm = TRUE)),
+      across(matches("_(lb|ub)$"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("supp_"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("enroll_nonsupp_"), ~ sum(.x, na.rm = TRUE)),
+      across(starts_with("enroll_"), ~ sum(.x, na.rm = TRUE)),
+      enrollment = sum(enrollment, na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+# Rename count variables
+geo_homeless <- geo_homeless |>
+  rename_with(
+    ~ str_c(.x, "_count"),
+    .cols = all_of(count_vars)
+  ) |>
+  rename_with(
+    ~ str_replace(.x, "_(lb|ub)$", "_count_\\1"),
+    .cols = matches("^(homeless|black|white|hispanic|other)_(lb|ub)$")
+  )
+```
+
+## Calculate Shares and Quality Metrics
+
+```{r}
+#| label: calculate-shares
+
+# Join race-specific enrollment for denominators
+geo_homeless <- geo_homeless |>
+  mutate(
+    # Share of all students who are homeless
+    homeless_share = homeless_count / enrollment,
+
+    # Share of each race that is homeless (race-specific denominator)
+    black_share = black_count / enroll_black,
+    white_share = white_count / enroll_white,
+    hispanic_share = hispanic_count / enroll_hispanic,
+    other_share = other_count / enroll_other,
+
+    # Coverage metrics
+    coverage_homeless = enroll_nonsupp_homeless / enrollment
+  )
+```
+
+```{r}
+#| label: calculate-quality
+
+# Function to calculate quality flag based on upper/lower bound ratio
+calc_quality <- function(count, lb, ub) {
+  ratio <- ub / pmax(lb, 0.001)
+  case_when(
+    ratio <= 1.05 ~ 1L,
+    ratio <= 1.1 ~ 2L,
+    !is.na(count) ~ 3L,
+    TRUE ~ NA_integer_
+  )
+}
+
+# Calculate quality flags for each variable
+geo_homeless <- geo_homeless |>
+  mutate(
+    homeless_quality_count = calc_quality(homeless_count, homeless_count_lb, homeless_count_ub),
+    black_quality_count = calc_quality(black_count, black_count_lb, black_count_ub),
+    white_quality_count = calc_quality(white_count, white_count_lb, white_count_ub),
+    hispanic_quality_count = calc_quality(hispanic_count, hispanic_count_lb, hispanic_count_ub),
+    other_quality_count = calc_quality(other_count, other_count_lb, other_count_ub)
+  )
+
+# Adjust quality for small total enrollment
+geo_homeless <- geo_homeless |>
+  mutate(
+    homeless_quality_count = if_else(enrollment < 30, 3L, homeless_quality_count)
+  )
+```
+
+## Apply Data Suppression Rules
+
+Five layers of suppression to protect privacy and ensure data quality.
+
+```{r}
+#| label: apply-suppression-rules
+
+# Rule 1: If homeless_count < 10, suppress all metrics
+geo_homeless <- geo_homeless |>
+  mutate(
+    across(
+      c(ends_with("_count"), ends_with("_count_lb"), ends_with("_count_ub"),
+        ends_with("_share"), ends_with("_quality_count")),
+      ~ if_else(homeless_count < 10, NA_real_, as.numeric(.x))
+    )
+  )
+
+# Rule 2: Quality = 3 if 10 <= homeless_count < 30
+geo_homeless <- geo_homeless |>
+  mutate(
+    across(
+      ends_with("_quality_count"),
+      ~ if_else(homeless_count >= 10 & homeless_count < 30, 3, .x)
+    )
+  )
+
+# Rule 3: If share > 1, suppress (impossible value)
+for (var in count_vars) {
+  share_var <- paste0(var, "_share")
+  geo_homeless <- geo_homeless |>
+    mutate(
+      across(
+        starts_with(var),
+        ~ if_else(.data[[share_var]] > 1 & !is.na(.data[[share_var]]), NA_real_, .x)
+      )
+    )
+}
+
+# Rule 4: If race subgroup totals are <70% or >110% of total homeless, suppress race metrics
+geo_homeless <- geo_homeless |>
+  mutate(
+    total_race = rowSums(
+      across(c(black_count, white_count, hispanic_count, other_count)),
+      na.rm = TRUE
+    ),
+    share_race_total = (total_race / homeless_count) * 100,
+    share_race_total = if_else(is.na(black_count), NA_real_, share_race_total)
+  )
+
+race_vars_only <- c("black", "white", "hispanic", "other")
+for (var in race_vars_only) {
+  geo_homeless <- geo_homeless |>
+    mutate(
+      across(
+        starts_with(var),
+        ~ if_else(
+          (share_race_total < 70 | share_race_total > 110) & !is.na(share_race_total),
+          NA_real_,
+          .x
+        )
+      )
+    )
+}
+
+# Rule 5: If count <= 2, suppress (reapply cell size suppression)
+for (var in count_vars) {
+  count_var <- paste0(var, "_count")
+  geo_homeless <- geo_homeless |>
+    mutate(
+      across(
+        starts_with(var),
+        ~ if_else(.data[[count_var]] <= 2 & !is.na(.data[[count_var]]), NA_real_, .x)
+      )
+    )
+}
+```
+
+## Merge with Crosswalk and Finalize
+
+```{r}
+#| label: finalize
+
+# Join to crosswalk to ensure complete geography coverage
+if (params$geography == "county") {
+  final_data <- crosswalk_years |>
+    left_join(
+      geo_homeless |> select(-matches("^(supp_|enroll_|coverage_|total_race|share_race_total)")),
+      by = c("year", "state", "county")
+    )
+} else {
+  final_data <- crosswalk_years |>
+    left_join(
+      geo_homeless |> select(-matches("^(supp_|enroll_|coverage_|total_race|share_race_total)")),
+      by = c("year", "state", "city_name")
+    ) |>
+    select(-city_name)
+}
+
+# Create share quality variables (same as count quality)
+final_data <- final_data |>
+  mutate(
+    homeless_quality_share = homeless_quality_count,
+    black_quality_share = black_quality_count,
+    white_quality_share = white_quality_count,
+    hispanic_quality_share = hispanic_quality_count,
+    other_quality_share = other_quality_count
+  )
+
+# Sort data
+final_data <- final_data |>
+  arrange(desc(year), state, .data[[settings$geo_var]])
+```
+
+## Quality Checks
+
+```{r}
+#| label: quality-checks
+
+# Summary by year
+message("Summary by year:")
+final_data |>
+  group_by(year) |>
+  summarize(
+    n_geographies = n(),
+    n_with_data = sum(!is.na(homeless_count)),
+    pct_with_data = round(100 * n_with_data / n_geographies, 1),
+    mean_share = mean(homeless_share, na.rm = TRUE),
+    median_share = median(homeless_share, na.rm = TRUE)
+  ) |>
+  print()
+
+# Quality flag distribution
+message("\nQuality flag distribution:")
+final_data |>
+  count(year, homeless_quality_count) |>
+  pivot_wider(names_from = homeless_quality_count, values_from = n, values_fill = 0) |>
+  print()
+
+# Verify bounds: count should always be between lb and ub
+bounds_check <- final_data |>
+  filter(
+    !is.na(homeless_count),
+    homeless_count < homeless_count_lb | homeless_count > homeless_count_ub
+  )
+
+if (nrow(bounds_check) > 0) {
+  warning(glue("{nrow(bounds_check)} observations have counts outside bounds!"))
+} else {
+  message("\n Bounds check passed: all counts within [lb, ub]")
+}
+
+# Check for impossible shares
+share_check <- final_data |>
+  filter(!is.na(homeless_share) & (homeless_share < 0 | homeless_share > 1))
+
+if (nrow(share_check) > 0) {
+  warning(glue("{nrow(share_check)} observations have shares outside [0, 1]!"))
+} else {
+  message(" Share check passed: all shares in [0, 1]")
+}
+```
+
+```{r}
+#| label: visual-checks
+#| fig-width: 10
+#| fig-height: 6
+
+# Distribution of homeless share by year
+final_data |>
+  filter(!is.na(homeless_share), homeless_share > 0, homeless_share < 0.5) |>
+  ggplot(aes(x = homeless_share)) +
+  geom_histogram(bins = 50, fill = "#1696d2", color = "white") +
+  facet_wrap(~year) +
+  scale_x_continuous(labels = scales::percent_format()) +
+  labs(
+    title = glue("Distribution of Homeless Share by Year ({str_to_title(params$geography)} Level)"),
+    x = "Share of Students Experiencing Homelessness",
+    y = glue("Number of {str_to_title(params$geography)}s")
+  ) +
+  theme_minimal()
+
+# Distribution by quality level
+final_data |>
+  filter(!is.na(homeless_share), !is.na(homeless_quality_count),
+         homeless_share > 0, homeless_share < 0.5) |>
+  ggplot(aes(x = homeless_share)) +
+  geom_histogram(bins = 30, fill = "#1696d2", color = "white") +
+  facet_grid(year ~ homeless_quality_count, labeller = label_both) +
+  scale_x_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Distribution of Homeless Share by Year and Quality Flag",
+    x = "Share of Students Experiencing Homelessness",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+## Export Final Data
+
+```{r}
+#| label: export
+
+# Determine year range for file names
+year_range <- glue("{min(available_years)}-{max(available_years)}")
+geo_label <- if (params$geography == "place") "city" else "county"
+
+# Prepare data for export (convert NA to empty string for CSV)
+export_data <- final_data |>
+  mutate(across(where(is.numeric), ~ as.character(round(.x, 10)))) |>
+  mutate(across(everything(), ~ if_else(is.na(.x) | .x == "NA", "", .x)))
+
+# Export final data (total homeless)
+final_data_file <- here(
+  final_dir,
+  glue("homelessness_{year_range}_{geo_label}.csv")
+)
+
+final_data_export <- export_data |>
+  select(
+    year, state, !!settings$geo_var,
+    count_homeless = homeless_count,
+    count_homeless_lb = homeless_count_lb,
+    count_homeless_ub = homeless_count_ub,
+    share_homeless = homeless_share,
+    count_homeless_quality = homeless_quality_count,
+    share_homeless_quality = homeless_quality_share
+  )
+
+write_csv(final_data_export, final_data_file, na = "")
+message(glue("Saved: {final_data_file}"))
+
+# Export subgroup data (long format)
+subgroup_file <- here(
+  final_dir,
+  glue("homelessness_{year_range}_subgroups_{geo_label}.csv")
+)
+
+# Reshape to long format
+export_subgroups <- export_data |>
+  select(
+    year, state, !!settings$geo_var,
+    homeless_count, homeless_count_lb, homeless_count_ub,
+    homeless_share, homeless_quality_count, homeless_quality_share,
+    black_count, black_count_lb, black_count_ub,
+    black_share, black_quality_count, black_quality_share,
+    white_count, white_count_lb, white_count_ub,
+    white_share, white_quality_count, white_quality_share,
+    hispanic_count, hispanic_count_lb, hispanic_count_ub,
+    hispanic_share, hispanic_quality_count, hispanic_quality_share,
+    other_count, other_count_lb, other_count_ub,
+    other_share, other_quality_count, other_quality_share
+  ) |>
+  pivot_longer(
+    cols = -c(year, state, !!settings$geo_var),
+    names_to = c("subgroup", ".value"),
+    names_pattern = "(homeless|black|white|hispanic|other)_(.*)"
+  ) |>
+  rename(
+    count_homeless = count,
+    count_homeless_lb = count_lb,
+    count_homeless_ub = count_ub,
+    share_homeless = share,
+    count_homeless_quality = quality_count,
+    share_homeless_quality = quality_share
+  ) |>
+  mutate(
+    subgroup_type = if_else(subgroup == "homeless", "all", "race-ethnicity"),
+    subgroup = case_when(
+      subgroup == "homeless" ~ "All",
+      subgroup == "black" ~ "Black, Non-Hispanic",
+      subgroup == "white" ~ "White, Non-Hispanic",
+      subgroup == "hispanic" ~ "Hispanic",
+      subgroup == "other" ~ "Other Races and Ethnicities"
+    )
+  ) |>
+  select(
+    year, state, !!settings$geo_var, subgroup_type, subgroup,
+    count_homeless, count_homeless_lb, count_homeless_ub,
+    share_homeless, count_homeless_quality, share_homeless_quality
+  ) |>
+  arrange(desc(year), state, .data[[settings$geo_var]], subgroup_type, subgroup)
+
+write_csv(export_subgroups, subgroup_file, na = "")
+message(glue("Saved: {subgroup_file}"))
+
+message(glue("\n Export complete for {params$geography} geography!"))
+```
+
+## Final Data Evaluation
+
+Run the standardized data evaluation tests.
+
+```{r}
+#| label: final-evaluation
+#| error: true
+
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+
+# Test final data
+evaluate_final_data(
+  exp_form_path = glue("10a_final-evaluation/evaluation_form_homeless_student_{params$geography}.csv"),
+  data = read_csv(final_data_file, show_col_types = FALSE),
+  geography = params$geography,
+  subgroups = FALSE,
+  confidence_intervals = TRUE
+)
+
+# Test subgroup data
+evaluate_final_data(
+  exp_form_path = glue("10a_final-evaluation/evaluation_form_homeless_student_race_eth_{params$geography}.csv"),
+  data = read_csv(subgroup_file, show_col_types = FALSE),
+  geography = params$geography,
+  subgroups = TRUE,
+  confidence_intervals = TRUE
+)
+```
+
+## Session Info
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+```
