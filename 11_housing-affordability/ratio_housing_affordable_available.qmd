@@ -274,199 +274,6 @@ if (length(years_to_query) > 0) {
 
 ### Crosswalk microdata from PUMAs to geography of interest
 
-```{r, update county-place crosswalk}
-#| include: false
-#| eval: false
-
-## this addresses two issues:
-##  - CT counties change in 2022
-##  - pre-2020 county-place crosswalk does not exist, but is needed for back-filling
-
-#### ----CT Counties Change in 2022----####
-## Obtain a dedicated CT Planning Region to Place Crosswalk from GeoCorr
-# *Crosswalk type*: Planning Regions to Places
-# *States:* Connecticut
-# *Source geography:* 2022 Connecticut Planning Region
-# *Target geography:* 2020 Places
-# *Weighting variable:* Population (2020 census)
-# *Output Options:* CSV w/ second allocation factor (AFACT2)
-
-## Read in the dedicated crosswalk for CT Planning regions
-ct_planning_region_crosswalk <- read_csv(
-  here("geographic-crosswalks", "data", "geocorr2022_ct_planning_region_to_place.csv"),
-  skip = 1
-) %>%
-  select(
-    countyfip = `Connecticut planning region`,
-    CountyName = `Connecticut planning region name`,
-    state = `State code`,
-    place = `Place code`,
-    PlaceName = `Place name`,
-    stab = `State abbr.`,
-    population = `Total population (2020 Census)`,
-    afact = `ctregion-to-place allocation factor`,
-    afact2 = `place-to-ctregion allocation factor`
-  ) %>%
-  mutate(population_vintage = 2020)
-
-## Read in the existing county-place crosswalk
-county_place_crosswalk_2020_2021 <- read_csv(
-  here("geographic-crosswalks", "data", "geocorr2022_county_place_2020_2021.csv")
-) %>%
-  mutate(
-    state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
-    place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
-    countyfip = str_pad(as.character(countyfip), side = "left", width = 5, pad = "0"),
-    population_vintage = 2020,
-    crosswalk_period = "2020-2021"
-  ) %>%
-  rename(population = pop20) %>%
-  select(-county)
-
-## all places should be in both crosswalks
-stopifnot(
-  county_place_crosswalk_2020_2021 %>%
-    filter(state == "09", !place %in% ct_planning_region_crosswalk$place) %>%
-    nrow() == 0
-)
-
-## remove old CT counties, add new CT planning regions
-county_place_crosswalk_2022_2029 <- county_place_crosswalk_2020_2021 %>%
-  filter(state != "09") %>%
-  bind_rows(ct_planning_region_crosswalk) %>%
-  arrange(countyfip, PlaceName) %>%
-  mutate(crosswalk_period = "2022-2029")
-
-## there should be exactly nine distinct county-level records for the state of CT
-stopifnot(
-  county_place_crosswalk_2022_2029 %>%
-    filter(state == "09") %>%
-    distinct(CountyName) %>%
-    nrow() == 9
-)
-
-county_place_crosswalk_2022_2029 %>%
-  write_csv(here("geographic-crosswalks", "data", "geocorr2022_county_place_2022_onwards.csv"))
-
-#### ----Pre-2020 County-Place Crosswalk is Needed for Back-Filling----####
-# *Crosswalk type*: County to Place
-# *States:* All
-# *Source geography:* 2014 Counties
-# *Target geography:* 2014 Places
-# *Weighting variable:* Population (2010 census)
-# *Output Options:* CSV w/ second allocation factor (AFACT2)
-county_place_crosswalk_pre_2020 <- read_csv(
-  here("geographic-crosswalks", "data", "geocorr2018_county_place_2014_thru_2019.csv"),
-  skip = 1
-) %>%
-  clean_names() %>%
-  rename_with(~ str_remove_all(.x, "x2014_|_2014$|14")) %>%
-  select(
-    countyfip = county_code,
-    CountyName = county_name,
-    state = state_code,
-    place,
-    PlaceName = place_name,
-    stab = state_abbreviation,
-    population = population_2010,
-    afact = county_to_placefp_allocation_factor,
-    afact2 = placefp_to_county_allocation_factor
-  ) %>%
-  mutate(
-    population_vintage = 2010,
-    crosswalk_period = "pre-2020"
-  )
-
-## this crosswalk is from 2014 vintage geographies, but effective beginning in 2018
-## we have a new city - South Fulton GA
-## we add the records from the post-2020
-
-#### ----Create Longitudinal County-Place Crosswalk----####
-crosswalk_years <- tibble(
-  year = c(2010:2029),
-  crosswalk_period = c(rep("pre-2020", 10), rep("2020-2021", 2), rep("2022-2029", 8))
-)
-
-county_place_crosswalk_longitudinal <- bind_rows(
-  county_place_crosswalk_pre_2020,
-  county_place_crosswalk_2020_2021,
-  county_place_crosswalk_2022_2029
-) %>%
-  left_join(crosswalk_years, by = "crosswalk_period", relationship = "many-to-many") %>%
-  filter(stab != "PR")
-
-## there should be 20 years per county
-stopifnot(
-  county_place_crosswalk_longitudinal %>%
-    filter(countyfip == "01001") %>%
-    distinct(year) %>%
-    nrow() == 20
-)
-
-place_populations <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) %>%
-  mutate(place_fip = str_c(state, place))
-
-county_populations <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) %>%
-  mutate(county_fip = str_c(state, county))
-
-county_benchmarking <- county_place_crosswalk_longitudinal %>%
-  group_by(year, crosswalk_period) %>%
-  summarize(
-    distinct_counties = n_distinct(countyfip)
-  ) %>%
-  left_join(
-    county_populations %>%
-      group_by(year) %>%
-      summarize(distinct_counties_benchmark = n_distinct(county_fip))
-  ) %>%
-  filter(!is.na(distinct_counties_benchmark), distinct_counties != distinct_counties_benchmark)
-
-stopifnot(
-  nrow(county_benchmarking) == 0
-)
-
-place_benchmark <- county_place_crosswalk_longitudinal %>%
-  mutate(place_fip = str_c(state, place)) %>%
-  filter(
-    ## addressing South Fulton GA -- due to crosswalk availability, we don't
-    ## produce estimates for South Fulton for these years
-    place_fip %in% place_populations$place_fip,
-    !(str_detect(PlaceName, "South Fulton") & year %in% c(2018:2021))
-  ) %>%
-  group_by(year, crosswalk_period) %>%
-  summarize(
-    distinct_places = n_distinct(place_fip)
-  ) %>%
-  left_join(
-    place_populations %>%
-      group_by(year) %>%
-      summarize(distinct_places_benchmark = n_distinct(place_fip))
-  ) %>%
-  mutate(
-    distinct_places_benchmark = case_when(
-      ## addressing South Fulton GA -- due to crosswalk availability, we don't
-      ## produce estimates for South Fulton for these years
-      year < 2022 & year > 2017 ~ distinct_places_benchmark - 1,
-      TRUE ~ distinct_places_benchmark
-    )
-  ) %>%
-  filter(!is.na(distinct_places_benchmark), distinct_places != distinct_places_benchmark)
-
-stopifnot(
-  nrow(place_benchmark) == 0
-)
-
-## Some place names are missing (and corresponding place codes are effectively NA)
-## This is fine. These are where counties don't overlap with places. We retain these
-## because there are a few (n = ~10) counties that don't overlap with any places,
-## and if we drop these, we can't benchmark to our total expected county population
-## numbers as easily/accurately
-# county_place_crosswalk_longitudinal %>%
-#   skimr::skim()
-
-write_csv(county_place_crosswalk_longitudinal, here("geographic-crosswalks", "data", "county_place_crosswalk_longitudinal.csv"))
-```
-
 ```{r}
 # Function for writing lightly tailored crosswalks to a temporary folder for subsequent use
 
@@ -963,18 +770,66 @@ county_income_limits <- county_income_limits2 %>%
   mutate(across(.cols = c(state, county, year), .fns = as.character))
 
 if (geography == "place") {
-  county_place_crosswalk <- read_csv(
-    here("geographic-crosswalks", "data", "county_place_crosswalk_longitudinal.csv")
+  ## Read period-specific crosswalks and standardize column names
+  ## Pre-2020 crosswalk (2014 vintage geographies, used for years < 2020)
+  crosswalk_pre_2020 <- read_csv(
+    here("geographic-crosswalks", "data", "geocorr2018_county_place_2014_thru_2019.csv"),
+    skip = 1
+  ) %>%
+    transmute(
+      countyfip = county14,
+      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
+      place = str_pad(as.numeric(placefp14), side = "left", width = 5, pad = "0"),
+      population = pop10,
+      afact
+    ) %>%
+    filter(state != "72") ## exclude Puerto Rico
+
+  ## 2020-2021 crosswalk
+  crosswalk_2020_2021 <- read_csv(
+    here("geographic-crosswalks", "data", "geocorr2022_county_place_2020_2021.csv")
+  ) %>%
+    transmute(
+      countyfip = str_pad(as.character(countyfip), side = "left", width = 5, pad = "0"),
+      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
+      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
+      population = pop20,
+      afact
+    ) %>%
+    filter(state != "72")
+
+  ## 2022+ crosswalk (includes CT planning regions replacing CT counties)
+  crosswalk_2022_plus <- read_csv(
+    here("geographic-crosswalks", "data", "geocorr2022_county_place_2022_onwards.csv")
+  ) %>%
+    transmute(
+      countyfip,
+      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
+      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
+      population,
+      afact
+    ) %>%
+    filter(state != "72")
+
+  ## Expand each crosswalk by the relevant years and combine
+  years_numeric <- as.numeric(years)
+
+  county_place_crosswalk <- bind_rows(
+    crosswalk_pre_2020 %>%
+      crossing(year = as.character(years_numeric[years_numeric < 2020])),
+    crosswalk_2020_2021 %>%
+      crossing(year = as.character(years_numeric[years_numeric %in% 2020:2021])),
+    crosswalk_2022_plus %>%
+      crossing(year = as.character(years_numeric[years_numeric >= 2022]))
   ) %>%
     transmute(
       county = str_sub(countyfip, 3, 5),
-      year = as.character(year),
-      state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
-      place = str_pad(as.numeric(place), side = "left", width = 5, pad = "0"),
+      year,
+      state,
+      place,
       afact,
       population
-    ) %>%
-    filter(year %in% years)
+    )
 
   place_income_limits <- county_income_limits %>%
     left_join(county_place_crosswalk, by = c("state", "county", "year"), relationship = "many-to-many") %>%
