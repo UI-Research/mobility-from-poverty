@@ -156,12 +156,18 @@ if (!dir.exists(temporary_data_path)) {
 More information on the API can be found here: <https://cran.r-project.org/web/packages/ipumsr/vignettes/ipums-api.html> If you don't already have one, you will need register for an IPUMS API key here: <https://uma.pop.umn.edu/usa/registration/new>
 
 ```{r}
-extract_housing_microdata <- function(year) {
-  define_extract_micro(
+# Function to extract housing microdata for multiple years in a single API call
+# This is much faster than making separate API calls for each year
+extract_housing_microdata <- function(years) {
+  # Create sample IDs for all requested years (e.g., "us2014a", "us2015a", ...)
+  sample_ids <- paste0("us", years, "a")
+
+  microdata <- define_extract_micro(
     collection = "usa",
-    description = "Housing microdata extract", # description of extract
-    samples = c(paste0("us", year, "a")), # use ACS data
-    variables = c(
+    description = paste("Housing microdata extract:", paste(years, collapse = ", ")),
+    samples = sample_ids,
+    variables = list( ## a list is necessary to accommodate the var_spec() object
+      "YEAR", ## year of the sample (needed to split multi-year extracts)
       "HHWT", ## household weight -- appropriate for statements about households
       "PERWT", ## person weight -- appropriate for statements about individuals
       "REPWT", ## replicate weights
@@ -169,7 +175,7 @@ extract_housing_microdata <- function(year) {
       "ADJUST", ## a factor for adjusting within-calendar-year costs
       "STATEFIP", ## 2-character state FIPS code
       "PUMA", ## code identifying the public-use microdata area (PUMA)
-      "GQ", ## "general quarters"--identifies the household type
+      var_spec("GQ", case_selections = c("1", "2")), ## only households (GQ < 3), exclude group quarters
       "OWNERSHP", ## tenure
       "OWNCOST", ## monthly owner costs
       "RENT", ## monthly rent
@@ -177,17 +183,14 @@ extract_housing_microdata <- function(year) {
       "HHINCOME", ## household income
       "VALUEH", ## housing unit value
       "VACANCY", ## vacancy status of the housing unit
-      "BEDROOMS" # , ## number of bedrooms
-      # "KITCHEN", ## presence of cooking facilities
-      # "PLUMBING"
-    ), ## presence of plumbing facilities
+      "BEDROOMS"
+    ),
     data_structure = "rectangular"
   ) %>%
     submit_extract() %>%
     wait_for_extract() %>%
     download_extract(download_dir = temporary_data_path) %>%
     read_ipums_ddi() %>%
-    # roughly 3.3 million records
     read_ipums_micro() %>%
     rename(
       "puma" = "PUMA",
@@ -197,9 +200,12 @@ extract_housing_microdata <- function(year) {
       statefip = sprintf("%0.2d", as.numeric(statefip)),
       puma = sprintf("%0.5d", as.numeric(puma))
     ) %>%
-    arrange(statefip, puma) %>%
-    # save temp file with API pull
-    write_csv(here(temporary_data_path, paste0("housing_microdata_", year, ".csv")))
+    arrange(statefip, puma)
+
+  # Split by year and save to year-specific files (maintains backward compatibility with code that reads year-by-year files)
+  microdata %>%
+    group_by(YEAR) %>%
+    group_walk(~ write_csv(.x, here(temporary_data_path, paste0("housing_microdata_", .y$YEAR, ".csv"))))
 }
 
 # Helper function to check for the presence of already-downloaded microdata
@@ -215,23 +221,28 @@ get_years_to_query <- function(
 }
 
 # If microdata have not been previously queried and stored locally, do so now
-# by appplying our microdata function across all outstanding years
+# Submit a single API request for all missing years (much faster than year-by-year)
 years_to_query <- get_years_to_query(years = county_years, geography = geography)
 if (length(years_to_query) > 0) {
-  walk(years_to_query, extract_housing_microdata)
+  extract_housing_microdata(years_to_query)
 }
 ```
 
 ### Download vacant housing microdata from the IPUMS API
 
 ```{r}
-# Function for querying the API - vacant unit data
-extract_vacancy_microdata <- function(year) {
-  define_extract_micro(
+# Function to extract vacancy microdata for multiple years in a single API call
+# This is much faster than making separate API calls for each year
+extract_vacancy_microdata <- function(years) {
+  # Create sample IDs for all requested years
+  sample_ids <- paste0("us", years, "a")
+
+  microdata <- define_extract_micro(
     collection = "usa",
-    description = "Vacancy microdata extract",
-    samples = c(paste0("us", year, "a")),
+    description = paste("Vacancy microdata extract:", paste(years, collapse = ", ")),
+    samples = sample_ids,
     variables = list( ## a list is necessary to accommodate the var_spec() object
+      "YEAR", ## year of the sample (needed to split multi-year extracts)
       "HHWT",
       "REPWT",
       var_spec("GQ", case_selections = c("0")), # just download cases where GQ == 0 (vacant)
@@ -242,9 +253,7 @@ extract_vacancy_microdata <- function(year) {
       "VACANCY",
       "RENTGRS",
       "RENT",
-      "BEDROOMS" # ,
-      # "KITCHEN",
-      # "PLUMBING"
+      "BEDROOMS"
     ),
     data_structure = "hierarchical"
   ) %>%
@@ -261,14 +270,18 @@ extract_vacancy_microdata <- function(year) {
       statefip = sprintf("%0.2d", as.numeric(statefip)),
       puma = sprintf("%0.5d", as.numeric(puma))
     ) %>%
-    arrange(statefip, puma) %>%
-    write_csv(here(temporary_data_path, paste0("vacancy_microdata_", year, ".csv")))
+    arrange(statefip, puma)
+
+  # Split by year and save to year-specific files (maintains backward-compatibility with code that reads year-by-year files)
+  microdata %>%
+    group_by(YEAR) %>%
+    group_walk(~ write_csv(.x, here(temporary_data_path, paste0("vacancy_microdata_", .y$YEAR, ".csv"))))
 }
 
 # If microdata have not been previously queried and stored locally, do so now
-# by appplying our microdata function across all outstanding years
+# Submit a single API request for all missing years (much faster than year-by-year)
 if (length(years_to_query) > 0) {
-  walk(years_to_query, extract_vacancy_microdata)
+  extract_vacancy_microdata(years_to_query)
 }
 ```
 
@@ -493,7 +506,7 @@ vacancy_microdata <- list.files(here(temporary_data_path), full.names = TRUE) %>
       ) %>% # rented or sold but not yet occupied
       # Convert 9999999 to NA and then multiply by ADJUST for all non-missing observations
       mutate(
-        year = YEAR,
+        year = as.numeric(str_extract(.x, "[0-9]{4}")), # extract year from filename
         # "0" represents NA: https://usa.ipums.org/usa-action/variables/RENT#codes_section
         # And, though not noted in IPUMS documentation, this also applies for the
         # RENTGRS variable
@@ -772,16 +785,17 @@ county_income_limits <- county_income_limits2 %>%
 if (geography == "place") {
   ## Read period-specific crosswalks and standardize column names
   ## Pre-2020 crosswalk (2014 vintage geographies, used for years < 2020)
+  ## Note: Row 2 contains descriptions, not data, so we skip it after reading
   crosswalk_pre_2020 <- read_csv(
-    here("geographic-crosswalks", "data", "geocorr2018_county_place_2014_thru_2019.csv"),
-    skip = 1
+    here("geographic-crosswalks", "data", "geocorr2018_county_place_2014_thru_2019.csv")
   ) %>%
+    filter(county14 != "County code (2014)") %>% ## remove description row
     transmute(
       countyfip = county14,
       state = str_pad(as.numeric(state), side = "left", width = 2, pad = "0"),
       place = str_pad(as.numeric(placefp14), side = "left", width = 5, pad = "0"),
-      population = pop10,
-      afact
+      population = as.numeric(pop10),
+      afact = as.numeric(afact)
     ) %>%
     filter(state != "72") ## exclude Puerto Rico
 
