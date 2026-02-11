@@ -35,7 +35,10 @@ Our second metric accounts for this dynamic and measures the ratio of units that
 
 Below is an example of the structure of the data we will produce. Note that the final data also includes quality indicators for each of the metrics (not shown here). This script is used to produce both county- and place-level estimates, though it must be re-run to generate estimates for each geography, with the geography specified in the file `params` at top.
 
-```{r, echo = FALSE}
+```{r}
+#| label: example-output-structure
+#| echo: false
+
 tibble::tribble(
   ~year, ~state, ~county, ~subgroup, ~subgroup_type, ~ratio_affordable_30ami,
   ~ratio_affordable_50ami, ~ratio_affordable_80ami, ~ratio_affordable_available_30ami,
@@ -113,6 +116,8 @@ tibble::tribble(
 ## Step 0: Configuration and setup
 
 ```{r}
+#| label: setup
+
 library(tidyverse)
 library(ipumsr)
 library(readxl)
@@ -156,6 +161,8 @@ if (!dir.exists(temporary_data_path)) {
 More information on the API can be found here: <https://cran.r-project.org/web/packages/ipumsr/vignettes/ipums-api.html> If you don't already have one, you will need register for an IPUMS API key here: <https://uma.pop.umn.edu/usa/registration/new>
 
 ```{r}
+#| label: download-housing-microdata
+
 # Function to extract housing microdata for multiple years in a single API call
 # This is much faster than making separate API calls for each year
 extract_housing_microdata <- function(years) {
@@ -231,6 +238,8 @@ if (length(years_to_query) > 0) {
 ### Download vacant housing microdata from the IPUMS API
 
 ```{r}
+#| label: download-vacancy-microdata
+
 # Function to extract vacancy microdata for multiple years in a single API call
 # This is much faster than making separate API calls for each year
 extract_vacancy_microdata <- function(years) {
@@ -288,6 +297,8 @@ if (length(years_to_query) > 0) {
 ### Crosswalk microdata from PUMAs to geography of interest
 
 ```{r}
+#| label: crosswalk-puma-to-geography
+
 # Function for writing lightly tailored crosswalks to a temporary folder for subsequent use
 
 puma_geography_crosswalk <- function(year, geography) {
@@ -411,6 +422,8 @@ walk(place_years, ~ crosswalk_microdata(year = .x, geography = "place"))
 For more information: [https://usa.ipums.org/usa-action/variables/GQ#codes_section](https://usa.ipums.org/usa-action/variables/GQ#codes_sectionhttps://usa.ipums.org/usa-action/variables/GQ#codes_section)
 
 ```{r}
+#| label: prepare-occupied-housing-microdata
+
 ## combine microdata across years
 housing_microdata <- list.files(here(temporary_data_path), full.names = TRUE) %>%
   # keep all file names that match the appropriate geography and one of the data years
@@ -481,6 +494,8 @@ The housing microdata does not include vacant units, which we query separately f
 Note: `ADJUST` standardizes income variables within a calendar year. See here for more information: <https://usa.ipums.org/usa/acsincadj.shtml>.
 
 ```{r}
+#| label: prepare-vacancy-microdata
+
 vacancy_microdata <- list.files(here(temporary_data_path), full.names = TRUE) %>%
   # keep all file names that match the appropriate geography and one of the data years
   keep(
@@ -558,6 +573,8 @@ test_that(
 For more information see: [https://usa.ipums.org/usa-action/variables/RENTGRS#description_section](https://usa.ipums.org/usa-action/variables/RENTGRS#description_sectionhttps://usa.ipums.org/usa-action/variables/RENTGRS#description_section)
 
 ```{r}
+#| label: calculate-rent-ratio
+
 # Import crosswalks to merge PUMAs to places and counties
 crosswalk_path <- if_else(
   geography == "place",
@@ -620,6 +637,8 @@ In this section, we:
 -   Crosswalk the AMI thresholds to our geographies of interest
 
 ```{r}
+#| label: import-ami-data
+
 # Access via https://www.huduser.gov/portal/datasets/il.html#data_2022
 income_limits_urls_1 <- c(
   "https://www.huduser.gov/portal/datasets/il/il14/Poverty.xls",
@@ -691,6 +710,8 @@ Income limits are specified at one of two geographies: the county (mostly), or t
 -   For the case where we're producing place-level estimates, we then interpolate the county-level income limits to the place level, weighting by population.
 
 ```{r}
+#| label: crosswalk-ami-to-geography
+
 ## addressing revised (starting in 2022) CT counties
 if (as.numeric(max(c(county_years, place_years)) >= 2022)) {
   ## a crosswalk that links CT subcounties to revised CT counties
@@ -873,6 +894,8 @@ Here we calculate indicator variables that designate which units are affordable 
 The base AMI level is for a four-person household living in a three-bedroom unit (technically, 2.67 bedrooms, because it is assumed that each bedroom houses 1.5 people). As noted above, we do not make adjustments to our estimates based on the number of people in each household, nor on the number of bedrooms in each unit. Instead, we apply the base AMI level uniformly across all households and units.
 
 ```{r}
+#| label: calculate-household-affordability
+
 ## these are data on occupied housing units
 household_affordability <- tidylog::left_join(
   housing_microdata,
@@ -967,6 +990,8 @@ household_affordability <- tidylog::left_join(
 ```
 
 ```{r}
+#| label: calculate-vacant-affordability
+
 ## these are data on vacant housing units
 vacant_affordability <- tidylog::left_join(
   vacant_crosswalk,
@@ -1015,6 +1040,8 @@ vacant_affordability <- tidylog::left_join(
 ## Step 5: Aggregate and calculate metrics
 
 ```{r}
+#| label: aggregate-calculate-metrics
+
 household_affordability_summed <- household_affordability %>%
   group_by(statefip, .data[[geography]], year) %>%
   summarize(
@@ -1085,6 +1112,8 @@ housing_summed <- tidylog::left_join(
 If the unweighted sum of interpolated households is under 30, we suppress that cell because it is likely to be highly imprecise.
 
 ```{r}
+#| label: finalize-export-data
+
 # read in the puma interpolation quality files, these contain `puma_flag`,
 # which provides a score from 1-3 describing the mean geographic allocation quality
 # for each geography
@@ -1252,6 +1281,8 @@ write_csv(
 The final dataset, including all subgroups, meets all the assertions contained in `evaluate_final_data.R`.
 
 ```{r}
+#| label: run-standardized-qc-checks
+
 ## we modify the expectations form to contain the same years for which we're running
 ## this script:
 data_form_paths <- list.files(
@@ -1307,6 +1338,8 @@ test_that(
 The counts of distinct geographies (places/counties) align with expected counts for each geography for each year.
 
 ```{r}
+#| label: test-geography-counts
+
 population_listing1 <- read_csv(here("geographic-crosswalks", "data", paste0(geography, "-populations.csv"))) %>%
   mutate(
     year = as.character(year),
@@ -1399,6 +1432,8 @@ test_that(
 Both metrics are ratios and cannot be negative. We extend the assumption and assert that no ratios are equal to zero, which mathematically is feasible but practically is highly unlikely.
 
 ```{r}
+#| label: test-no-negative-ratios
+
 test_that(
   "No ratios are negative or zero",
   {
@@ -1416,6 +1451,8 @@ test_that(
 In particular, this is a check for Connecticut due to changing counties (pre-post 2022),
 
 ```{r}
+#| label: test-no-all-na-states
+
 test_that(
   "No state comprises only NA values",
   {
@@ -1443,6 +1480,8 @@ test_that(
 Affordable-and-available ratios by definition must be equal to or lesser than the corresponding affordable ratio.
 
 ```{r}
+#| label: test-available-less-than-affordable
+
 test_that(
   "Affordable-and-available ratios are less than or equal to affordable ratios",
   {
@@ -1469,6 +1508,8 @@ test_that(
 Unless substantive changes have been made to the process of calculating the metrics, every metric value for every geography calculated during the current cycle should be exactly the same as the value calculated during the preceding year.
 
 ```{r}
+#| label: compare-prior-year-estimates
+
 ## data are available from this URL: https://datacatalog.urban.org/dataset/mobility-metrics-data-upward-mobility-framework
 ## specific links used in the code will likely need to be updated year-to-year
 
@@ -1566,6 +1607,8 @@ metrics_differences_wide_plot %>%
 ```
 
 ```{r}
+#| label: test-no-breaking-changes
+
 # Test that current calculations match prior published values (within floating point tolerance)
 tolerance <- 1e-10
 
@@ -1614,6 +1657,8 @@ test_that(
 We anticipate that missingness is greater for the more restrictive income subgroups (e.g., missingness for 30 AMI is greater than missingness for 80 AMI).
 
 ```{r}
+#| label: describe-missingness
+
 housing_subgroups %>%
   select(year, c(matches("share"), -matches("quality"))) %>%
   group_by(year) %>%
@@ -1630,7 +1675,10 @@ housing_subgroups %>%
 
 We anticipate the the distributions for a given metric will be similar across years, and that the peaks of distributions will be generally be lower for lower AMI levels.
 
-```{r, fig.width = 10}
+```{r}
+#| label: plot-distributions
+#| fig-width: 10
+
 housing_subgroups %>%
   select(c(subgroup, year, matches("share"), -matches("quality"))) %>%
   pivot_longer(-c(subgroup, year)) %>%
@@ -1665,6 +1713,8 @@ Metrics generally should not exhibit huge year-over-year changes within the same
 -   Conversely, the 30% AMI ratios should show the most variation because this AMI threshold encompasses fewer households and housing units, leading to greater percentage variability year-over-year.
 
 ```{r}
+#| label: plot-yoy-changes
+
 if (length(c(county_years, place_years) %>% unique()) > 1) {
   year_over_year_changes <- housing_subgroups %>%
     select(-matches("quality")) %>%
@@ -1699,6 +1749,8 @@ if (length(c(county_years, place_years) %>% unique()) > 1) {
 Estimates should generally align with estimates produced by NLIHC as part of their "The GAP" series. We've provided values from their most recent (as of writing) publication, which relies on 2022 data.
 
 ```{r}
+#| label: compare-to-nlihc
+
 # data from: https://nlihc.org/sites/default/files/gap/2024/Gap-Report_2024.pdf
 #  Appendix B
 
