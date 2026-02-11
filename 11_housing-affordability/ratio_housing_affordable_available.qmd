@@ -1566,28 +1566,45 @@ metrics_differences_wide_plot %>%
 ```
 
 ```{r}
-# test_that(
-#   "Values produced for the most recent year's data, using the current year's codebase,
-#   are the same as those produced the prior year", {
-#   expect_true(
-#     metrics_prior %>%
-#       tidylog::left_join(
-#         housing_subgroups %>%
-#           mutate(subgroup = subgroup %>% str_to_sentence) %>%
-#           select(-subgroup_type, -matches("quality")),
-#         by = c("state", geography, "year", "subgroup")) %>%
-#       transmute(
-#         year,
-#         state,
-#         !!geography,
-#         across(
-#           .cols = matches("prior"),
-#           .fns = ~ if_else(.x != get(cur_column() %>% str_remove("_prior")), 1, 0))) %>%
-#       summarize(across(matches("prior"), ~ sum(.x, na.rm = TRUE))) %>%
-#       pivot_longer(everything()) %>%
-#       pull(value) %>%
-#       max() == 0)
-#   })
+# Test that current calculations match prior published values (within floating point tolerance)
+tolerance <- 1e-10
+
+test_that(
+  "Values produced by current codebase match prior year's published values (within tolerance)", {
+
+    differences <- metrics_prior %>%
+      tidylog::left_join(
+        housing_subgroups %>%
+          mutate(subgroup = subgroup %>% str_to_sentence()) %>%
+          select(-subgroup_type, -matches("quality")),
+        by = c("state", geography, "year", "subgroup")
+      ) %>%
+      transmute(
+        year,
+        state,
+        !!geography,
+        subgroup,
+        across(
+          .cols = matches("_prior$"),
+          .fns = ~ abs(.x - get(cur_column() %>% str_remove("_prior"))),
+          .names = "{.col}_diff"
+        )
+      ) %>%
+      summarize(
+        across(matches("_diff$"), ~ max(.x, na.rm = TRUE))
+      ) %>%
+      pivot_longer(everything(), names_to = "metric", values_to = "max_diff")
+
+    # All max differences should be below tolerance
+    expect_true(
+      all(differences$max_diff < tolerance),
+      info = paste(
+        "Max differences by metric:",
+        paste(differences$metric, "=", format(differences$max_diff, scientific = TRUE), collapse = ", ")
+      )
+    )
+  }
+)
 ```
 
 ### Data descriptions
