@@ -126,7 +126,30 @@ library(urbnthemes)
 library(openxlsx)
 library(testthat)
 library(janitor)
+library(aws.s3)
 options(scipen = 99999) ## no scientific notation
+
+# AWS S3 configuration for caching IPUMS extracts and intermediate results
+# Internal users: enter the passkey into your environment using Sys.setenv().
+# Authentication steps are explained here: https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/
+# You will have to request access to the access key.
+s3_bucket <- "mobility-from-poverty-test"
+s3_dir <- "housing-affordability/data"
+ipums_extract_date <- "02_11_26" # Update this when changing IPUMS extract variables
+
+# Check if AWS is available (will be FALSE for external users without credentials)
+aws_available <- tryCatch(
+ bucket_exists(bucket = s3_bucket),
+ error = function(e) FALSE
+)
+
+# Helper function to check if S3 object exists (suppresses 404 noise when object doesn't exist)
+s3_object_exists <- function(object, bucket) {
+  tryCatch(
+    object_exists(object = object, bucket = bucket),
+    error = function(e) FALSE
+  )
+}
 
 geography <- params$geography
 place_years <- params$place_years %>% unlist()
@@ -165,54 +188,89 @@ More information on the API can be found here: <https://cran.r-project.org/web/p
 
 # Function to extract housing microdata for multiple years in a single API call
 # This is much faster than making separate API calls for each year
+# Uses AWS S3 caching when available to avoid redundant IPUMS API calls
+# Caches individual year files to S3 for flexibility
 extract_housing_microdata <- function(years) {
-  # Create sample IDs for all requested years (e.g., "us2014a", "us2015a", ...)
-  sample_ids <- paste0("us", years, "a")
+  # Check which years are already cached on S3 or available locally
+  years_to_download <- years
+  if (aws_available) {
+    years_on_s3 <- years[map_lgl(years, ~ s3_object_exists(
+      paste0(s3_dir, "/ipums/housing_microdata_", .x, ".csv"),
+      s3_bucket
+    ))]
 
-  microdata <- define_extract_micro(
-    collection = "usa",
-    description = paste("Housing microdata extract:", paste(years, collapse = ", ")),
-    samples = sample_ids,
-    variables = list( ## a list is necessary to accommodate the var_spec() object
-      "YEAR", ## year of the sample (needed to split multi-year extracts)
-      "HHWT", ## household weight -- appropriate for statements about households
-      "PERWT", ## person weight -- appropriate for statements about individuals
-      "REPWT", ## replicate weights
-      "PERNUM", ## unique individual
-      "ADJUST", ## a factor for adjusting within-calendar-year costs
-      "STATEFIP", ## 2-character state FIPS code
-      "PUMA", ## code identifying the public-use microdata area (PUMA)
-      var_spec("GQ", case_selections = c("1", "2")), ## only households (GQ < 3), exclude group quarters
-      "OWNERSHP", ## tenure
-      "OWNCOST", ## monthly owner costs
-      "RENT", ## monthly rent
-      "RENTGRS", ## monthly rent plus utilities
-      "HHINCOME", ## household income
-      "VALUEH", ## housing unit value
-      "VACANCY", ## vacancy status of the housing unit
-      "BEDROOMS"
-    ),
-    data_structure = "rectangular"
-  ) %>%
-    submit_extract() %>%
-    wait_for_extract() %>%
-    download_extract(download_dir = temporary_data_path) %>%
-    read_ipums_ddi() %>%
-    read_ipums_micro() %>%
-    rename(
-      "puma" = "PUMA",
-      "statefip" = "STATEFIP"
-    ) %>%
-    mutate(
-      statefip = sprintf("%0.2d", as.numeric(statefip)),
-      puma = sprintf("%0.5d", as.numeric(puma))
-    ) %>%
-    arrange(statefip, puma)
+    # Download cached years from S3
+    for (year in years_on_s3) {
+      s3_object <- paste0(s3_dir, "/ipums/housing_microdata_", year, ".csv")
+      local_path <- here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))
+      message(paste0("Reading housing microdata for ", year, " from S3 cache..."))
+      save_object(object = s3_object, bucket = s3_bucket, file = local_path)
+    }
 
-  # Split by year and save to year-specific files (maintains backward compatibility with code that reads year-by-year files)
-  microdata %>%
-    group_by(YEAR) %>%
-    group_walk(~ write_csv(.x, here(temporary_data_path, paste0("housing_microdata_", .y$YEAR, ".csv"))))
+    years_to_download <- setdiff(years, years_on_s3)
+  }
+
+  # Download remaining years from IPUMS if needed
+  if (length(years_to_download) > 0) {
+    message(paste0("Downloading housing microdata from IPUMS API for years: ", paste(years_to_download, collapse = ", ")))
+    sample_ids <- paste0("us", years_to_download, "a")
+
+    microdata <- define_extract_micro(
+      collection = "usa",
+      description = paste("Housing microdata extract:", paste(years_to_download, collapse = ", ")),
+      samples = sample_ids,
+      variables = list(
+        "YEAR",
+        "HHWT",
+        "PERWT",
+        "REPWT",
+        "PERNUM",
+        "ADJUST",
+        "STATEFIP",
+        "PUMA",
+        var_spec("GQ", case_selections = c("1", "2")),
+        "OWNERSHP",
+        "OWNCOST",
+        "RENT",
+        "RENTGRS",
+        "HHINCOME",
+        "VALUEH",
+        "VACANCY",
+        "BEDROOMS"
+      ),
+      data_structure = "rectangular"
+    ) %>%
+      submit_extract() %>%
+      wait_for_extract() %>%
+      download_extract(download_dir = temporary_data_path) %>%
+      read_ipums_ddi() %>%
+      read_ipums_micro() %>%
+      rename(
+        "puma" = "PUMA",
+        "statefip" = "STATEFIP"
+      ) %>%
+      mutate(
+        statefip = sprintf("%0.2d", as.numeric(statefip)),
+        puma = sprintf("%0.5d", as.numeric(puma))
+      ) %>%
+      arrange(statefip, puma)
+
+    # Split by year, save locally, and cache to S3
+    microdata %>%
+      group_by(YEAR) %>%
+      group_walk(function(data, key) {
+        year <- key$YEAR
+        local_path <- here(temporary_data_path, paste0("housing_microdata_", year, ".csv"))
+        write_csv(data, local_path)
+
+        # Cache to S3 if available
+        if (aws_available) {
+          message(paste0("Caching housing microdata for ", year, " to S3..."))
+          s3_object <- paste0(s3_dir, "/ipums/housing_microdata_", year, ".csv")
+          put_object(local_path, object = s3_object, bucket = s3_bucket, show_progress = TRUE, multipart = TRUE)
+        }
+      })
+  }
 }
 
 # Helper function to check for the presence of already-downloaded microdata
@@ -242,49 +300,84 @@ if (length(years_to_query) > 0) {
 
 # Function to extract vacancy microdata for multiple years in a single API call
 # This is much faster than making separate API calls for each year
+# Uses AWS S3 caching when available to avoid redundant IPUMS API calls
+# Caches individual year files to S3 for flexibility
 extract_vacancy_microdata <- function(years) {
-  # Create sample IDs for all requested years
-  sample_ids <- paste0("us", years, "a")
+  # Check which years are already cached on S3 or available locally
+  years_to_download <- years
+  if (aws_available) {
+    years_on_s3 <- years[map_lgl(years, ~ s3_object_exists(
+      paste0(s3_dir, "/ipums/vacancy_microdata_", .x, ".csv"),
+      s3_bucket
+    ))]
 
-  microdata <- define_extract_micro(
-    collection = "usa",
-    description = paste("Vacancy microdata extract:", paste(years, collapse = ", ")),
-    samples = sample_ids,
-    variables = list( ## a list is necessary to accommodate the var_spec() object
-      "YEAR", ## year of the sample (needed to split multi-year extracts)
-      "HHWT",
-      "REPWT",
-      var_spec("GQ", case_selections = c("0")), # just download cases where GQ == 0 (vacant)
-      "ADJUST",
-      "STATEFIP",
-      "PUMA",
-      "VALUEH",
-      "VACANCY",
-      "RENTGRS",
-      "RENT",
-      "BEDROOMS"
-    ),
-    data_structure = "hierarchical"
-  ) %>%
-    submit_extract() %>%
-    wait_for_extract() %>%
-    download_extract(download_dir = temporary_data_path) %>%
-    read_ipums_ddi() %>%
-    read_ipums_micro() %>%
-    rename(
-      "puma" = "PUMA",
-      "statefip" = "STATEFIP"
-    ) %>%
-    mutate(
-      statefip = sprintf("%0.2d", as.numeric(statefip)),
-      puma = sprintf("%0.5d", as.numeric(puma))
-    ) %>%
-    arrange(statefip, puma)
+    # Download cached years from S3
+    for (year in years_on_s3) {
+      s3_object <- paste0(s3_dir, "/ipums/vacancy_microdata_", year, ".csv")
+      local_path <- here(temporary_data_path, paste0("vacancy_microdata_", year, ".csv"))
+      message(paste0("Reading vacancy microdata for ", year, " from S3 cache..."))
+      save_object(object = s3_object, bucket = s3_bucket, file = local_path)
+    }
 
-  # Split by year and save to year-specific files (maintains backward-compatibility with code that reads year-by-year files)
-  microdata %>%
-    group_by(YEAR) %>%
-    group_walk(~ write_csv(.x, here(temporary_data_path, paste0("vacancy_microdata_", .y$YEAR, ".csv"))))
+    years_to_download <- setdiff(years, years_on_s3)
+  }
+
+  # Download remaining years from IPUMS if needed
+  if (length(years_to_download) > 0) {
+    message(paste0("Downloading vacancy microdata from IPUMS API for years: ", paste(years_to_download, collapse = ", ")))
+    sample_ids <- paste0("us", years_to_download, "a")
+
+    microdata <- define_extract_micro(
+      collection = "usa",
+      description = paste("Vacancy microdata extract:", paste(years_to_download, collapse = ", ")),
+      samples = sample_ids,
+      variables = list(
+        "YEAR",
+        "HHWT",
+        "REPWT",
+        var_spec("GQ", case_selections = c("0")),
+        "ADJUST",
+        "STATEFIP",
+        "PUMA",
+        "VALUEH",
+        "VACANCY",
+        "RENTGRS",
+        "RENT",
+        "BEDROOMS"
+      ),
+      data_structure = "hierarchical"
+    ) %>%
+      submit_extract() %>%
+      wait_for_extract() %>%
+      download_extract(download_dir = temporary_data_path) %>%
+      read_ipums_ddi() %>%
+      read_ipums_micro() %>%
+      rename(
+        "puma" = "PUMA",
+        "statefip" = "STATEFIP"
+      ) %>%
+      mutate(
+        statefip = sprintf("%0.2d", as.numeric(statefip)),
+        puma = sprintf("%0.5d", as.numeric(puma))
+      ) %>%
+      arrange(statefip, puma)
+
+    # Split by year, save locally, and cache to S3
+    microdata %>%
+      group_by(YEAR) %>%
+      group_walk(function(data, key) {
+        year <- key$YEAR
+        local_path <- here(temporary_data_path, paste0("vacancy_microdata_", year, ".csv"))
+        write_csv(data, local_path)
+
+        # Cache to S3 if available
+        if (aws_available) {
+          message(paste0("Caching vacancy microdata for ", year, " to S3..."))
+          s3_object <- paste0(s3_dir, "/ipums/vacancy_microdata_", year, ".csv")
+          put_object(local_path, object = s3_object, bucket = s3_bucket, show_progress = TRUE, multipart = TRUE)
+        }
+      })
+  }
 }
 
 # If microdata have not been previously queried and stored locally, do so now
@@ -342,6 +435,14 @@ walk(county_years, ~ puma_geography_crosswalk(year = .x, geography = "county"))
 
 # Function for applying crosswalks to microdata
 crosswalk_microdata <- function(year, geography) {
+  output_path <- here(temporary_data_path, paste0(geography, "_prepared_microdata_", year, ".csv"))
+
+  # Skip if output already exists
+  if (file.exists(output_path)) {
+    message(paste0("Skipping ", geography, " ", year, " - prepared microdata already exists"))
+    return(invisible(NULL))
+  }
+
   # we clear out unused objects here due to possible memory constraints
   gc(verbose = FALSE)
 
@@ -662,19 +763,43 @@ income_limits_urls <- tibble(
 ) %>%
   filter(url_years %in% years)
 
+# Downloads and processes HUD income limits for a given year
+# Uses AWS S3 caching when available to avoid redundant downloads
+# Caches the original xlsx/xls file with a standardized name
 download_hud_income_limits <- function(year, url) {
-  filename <- str_split(url, "/") %>%
+  # Extract original file extension from URL
+  original_filename <- str_split(url, "/") %>%
     .[[1]] %>%
     .[[length(.)]]
-  download.file(url = url, destfile = here(temporary_data_path, filename), mode = "wb")
+  file_ext <- tools::file_ext(original_filename)
+
+  # Standardized filename with original extension preserved
+  filename <- paste0("hud_income_limits_", year, ".", file_ext)
+  s3_object <- paste0(s3_dir, "/hud/", filename)
+  local_path <- here(temporary_data_path, filename)
+
+  # Check if cached file exists on S3
+  if (aws_available && s3_object_exists(s3_object, s3_bucket)) {
+    message(paste0("Reading HUD income limits for ", year, " from S3 cache..."))
+    save_object(object = s3_object, bucket = s3_bucket, file = local_path)
+  } else {
+    message(paste0("Downloading HUD income limits for ", year, " from HUD..."))
+    download.file(url = url, destfile = local_path, mode = "wb")
+
+    # Cache to S3 if available
+    if (aws_available) {
+      message(paste0("Caching HUD income limits for ", year, " to S3..."))
+      put_object(local_path, object = s3_object, bucket = s3_bucket, show_progress = TRUE, multipart = TRUE)
+    }
+  }
+
   # Import the data file as a dataframe
-  fmr_income_limits <- readxl::read_excel(path = here(temporary_data_path, filename)) %>%
+  fmr_income_limits <- readxl::read_excel(path = local_path) %>%
     janitor::clean_names() %>%
     ## the name for the fips variable changes after 2023
     {
       if (year >= 2023) rename(., fips2010 = fips) else (.)
     } %>%
-    # rename_with(.cols = everything(), .fn = ~ .x %>% str_replace_all(c("eli" = "l30", "^l" = "level_"))) %>%
     transmute(
       year = year,
       fips = fips2010,
@@ -1264,7 +1389,7 @@ years <- if_else(
   paste0(place_years, collapse = "_")
 )
 
-# export the final data
+# export the final data locally
 write_csv(
   housing_overall,
   here("11_housing-affordability", "data", "final", str_c("housing_", geography, "_", years, ".csv"))
@@ -1274,6 +1399,33 @@ write_csv(
   housing_subgroups,
   here("11_housing-affordability", "data", "final", str_c("housing_", geography, "_", years, "_subgroups.csv"))
 )
+
+# also cache final results to S3 if available
+if (aws_available) {
+  message("Caching final results to S3...")
+
+  # Cache overall metrics
+  tmp_overall <- tempfile(fileext = ".csv")
+  write_csv(housing_overall, tmp_overall)
+  put_object(
+    tmp_overall,
+    object = paste0(s3_dir, "/final/housing_", geography, "_", years, ".csv"),
+    bucket = s3_bucket,
+    show_progress = TRUE
+  )
+  unlink(tmp_overall)
+
+  # Cache subgroup metrics
+  tmp_subgroups <- tempfile(fileext = ".csv")
+  write_csv(housing_subgroups, tmp_subgroups)
+  put_object(
+    tmp_subgroups,
+    object = paste0(s3_dir, "/final/housing_", geography, "_", years, "_subgroups.csv"),
+    bucket = s3_bucket,
+    show_progress = TRUE
+  )
+  unlink(tmp_subgroups)
+}
 ```
 
 ## Step 7: Conduct quality checks
