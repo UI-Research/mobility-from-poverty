@@ -4,7 +4,7 @@
 #' differences in observations and variables. Outputs formatted markdown sections
 #' suitable for use with `results: asis` in Quarto/R Markdown documents.
 #'
-#' @param list A named list containing two data frames: `local` and `catalog`.
+#' @param data_list A named list containing two data frames: `local` and `catalog`.
 #'   Both should have comparable structures for meaningful comparison.
 #' @param header Character string. The header text to display for this comparison
 #'   section (typically the file name being compared).
@@ -34,14 +34,14 @@
 #' }
 #'
 #' @export
-compare_data <- function(list, header) {
+compare_data <- function(data_list, header) {
   
   # Output markdown header for this comparison section
   cat("### ", header, "\n\n") 
   
   # Extract local and catalog data frames from the input list
-  local <- list[["local"]]
-  catalog <- list[["catalog"]]
+  local <- data_list[["local"]]
+  catalog <- data_list[["catalog"]]
   
   # Get all shared column names to use as join keys
   by_all <- intersect(names(local), names(catalog))
@@ -103,50 +103,21 @@ compare_data <- function(list, header) {
   # Get all variables that exist in both datasets
   vars_shared <- intersect(names(local), names(catalog))
   
-  # For local: find which shared variables have non-NA values in differing rows
-  # This identifies variables that actually changed (not just structural differences)
-  if (nrow(only_in_local) > 0 && length(vars_shared) > 0) {
-    vars_diff_local <- only_in_local |>
-      select(any_of(vars_shared)) |>
-      summarise(across(everything(), ~sum(!is.na(.)))) |>
-      pivot_longer(everything(), names_to = "variable", values_to = "n_rows") |>
-      filter(n_rows > 0) |>
-      pull(variable)
-  } else {
-    vars_diff_local <- character(0)
+  vars_differ <- vector(mode = "logical", length = length(vars_shared))
+  names(vars_differ) <- vars_shared
+  for (var in vars_shared) {
+    
+    vars_differ[var] <- identical(pull(local, var), pull(catalog, var))
+    
   }
-  
-  # For catalog: find which shared variables have non-NA values in differing rows
-  if (nrow(only_in_catalog) > 0 && length(vars_shared) > 0) {
-    vars_diff_catalog <- only_in_catalog |>
-      select(any_of(vars_shared)) |>
-      summarise(across(everything(), ~sum(!is.na(.)))) |>
-      pivot_longer(everything(), names_to = "variable", values_to = "n_rows") |>
-      filter(n_rows > 0) |>
-      pull(variable)
-  } else {
-    vars_diff_catalog <- character(0)
-  }
+
+  vars_with_diffs <- vars_shared[!vars_differ]
   
   # --- COMBINE RESULTS: SCHEMA + VALUE DIFFERENCES ---
   
-  # Combine variables that are either new/removed OR have changed values in local
-  vars_with_diffs_local <- unique(c(vars_only_local, vars_diff_local))
-  
   cat("**Variables in local that differ from catalog (new or changed values):**\n\n")
-  if (length(vars_with_diffs_local) > 0) {
-    cat(paste("-", vars_with_diffs_local, collapse = "\n"), "\n")
-  } else {
-    cat("None\n")
-  }
-  cat("\n")
-  
-  # Combine variables that are either new/removed OR have changed values in catalog
-  vars_with_diffs_catalog <- unique(c(vars_only_catalog, vars_diff_catalog))
-  
-  cat("**Variables in catalog that differ from local (new or changed values):**\n\n")
-  if (length(vars_with_diffs_catalog) > 0) {
-    cat(paste("-", vars_with_diffs_catalog, collapse = "\n"), "\n")
+  if (length(vars_with_diffs) > 0) {
+    cat(paste("-", vars_with_diffs, collapse = "\n"), "\n")
   } else {
     cat("None\n")
   }
