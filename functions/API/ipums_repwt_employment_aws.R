@@ -102,7 +102,7 @@ ipums_repwt_employment_aws <- function(extract_name, extract_date, extract_descr
   #Lower variable names and get rid of unnecessary variables
   acs_imported <- micro_data %>%
     rename_with(tolower) %>% 
-    select(-serial, -strata, -cluster, -year,
+    select(-serial, -cluster, -year,
            -pernum, -perwt, -hhwt, -gq, -age) %>% 
     mutate(sample = as_factor(sample),
            unique_person_id = paste0(sample, cbserial, cbpernum))
