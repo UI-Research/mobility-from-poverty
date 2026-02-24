@@ -1,0 +1,607 @@
+---
+title: "Jobs Paying a Living Wage"
+author: "Kevin Werner, Kassandra Martincheck, and Aaron R. Williams"
+abstract: "This document combines Bureau of Labor Statistics Quarterly Census of Employment and Wages (QCEW) data and Living Wage Institute data to calculate how much of the cost of living the average pay of jobs covers for different industries."
+format: 
+  html:
+    toc: true
+embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load Software
+
+```{r}
+#| message: false
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(readxl)
+
+# increase the download timeout in case the internet is slow
+options(timeout = 120)
+
+theme_set(theme_minimal())
+
+```
+
+## QCEW data
+
+We first download data from the BLS for the [Quarterly Census of Employment and Wages (QCEW)](https://www.bls.gov/cew/downloadable-data-files.htm). The file layout is available [here](https://www.bls.gov/cew/about-data/downloadable-file-layouts/high-level/home.htm). Data codes are available [here](https://www.bls.gov/cew/about-data/documentation-guide.htm).
+
+### Download QCEW data
+
+```{r}
+#' This downloads the QCEW data from the BLS website and saves it in the data
+#' directory
+#'
+#' @param bls_path The filepath of the .xlsx document with QCEW data from the BLS
+#' @param year The last two digits of the year
+#'
+#' @returns
+#' 
+download_qcew <- function(bls_path, year) {
+  
+  temp_file_path <- tempfile()
+  temp_dir_path <- tempdir()
+  output_file <- here("02_jobs-paying-living-wages", "data", "qcew", str_glue("allhlcn{year}.xlsx"))
+  
+  if (file.exists(output_file)) {
+    
+    return(str_glue("QCEW for {year} already downloaded."))
+    
+  }
+  
+  download.file(
+    url = bls_path, 
+    destfile = temp_file_path
+  )
+  
+  unzip(temp_file_path, exdir = temp_dir_path)
+  
+  file.rename(
+    paste0(temp_dir_path, "/allhlcn", year, ".xlsx"), 
+    output_file
+  )
+  
+  unlink(temp_file_path)
+  unlink(temp_dir_path)
+  
+}
+
+qcew_urls <- tribble(
+  ~url, ~year,
+  "https://data.bls.gov/cew/data/files/2014/xls/2014_all_county_high_level.zip", 14,
+  "https://data.bls.gov/cew/data/files/2015/xls/2015_all_county_high_level.zip", 15,
+  "https://data.bls.gov/cew/data/files/2016/xls/2016_all_county_high_level.zip", 16,
+  "https://data.bls.gov/cew/data/files/2017/xls/2017_all_county_high_level.zip", 17,
+  "https://data.bls.gov/cew/data/files/2018/xls/2018_all_county_high_level.zip", 18,
+  "https://data.bls.gov/cew/data/files/2019/xls/2019_all_county_high_level.zip", 19,
+  "https://data.bls.gov/cew/data/files/2020/xls/2020_all_county_high_level.zip", 20,
+  "https://data.bls.gov/cew/data/files/2021/xls/2021_all_county_high_level.zip", 21,
+  "https://data.bls.gov/cew/data/files/2022/xls/2022_all_county_high_level.zip", 22,
+  "https://data.bls.gov/cew/data/files/2023/xls/2023_all_county_high_level.zip", 23,
+  "https://data.bls.gov/cew/data/files/2024/xls/2024_all_county_high_level.zip", 24
+)
+
+walk2(
+  .x = qcew_urls$url,
+  .y = qcew_urls$year,
+  .f = download_qcew
+)
+
+```
+
+### Load and Clean QCEW Data
+
+We clean the QCEW data so it only includes data for total covered employment at the county level. We convert missing values, represented at zeros, to `NA`.
+
+```{r}
+qcew_files <- list.files(here("02_jobs-paying-living-wages", "data", "qcew"))
+
+#' Load and clean the QCEW .xlsx files
+#'
+#' @param file The file name
+#'
+#' @returns Cleaned QCEW data
+#' 
+load_qcew <- function(file) {
+  
+  # pull year from the file name
+  year <- paste0("20", str_remove_all(file, "[a-z]|[\\.]")) |>
+    as.numeric()
+  
+  read_excel(here("02_jobs-paying-living-wages", "data", "qcew", file)) |>
+    clean_names() |>
+    filter(area_type == "County") |>
+    mutate(
+      year = as.numeric(year),
+      geo_id = paste0(st, cnty),
+      annual_average_weekly_wage = na_if(annual_average_weekly_wage, 0),
+      annual_average_establishment_count = na_if(annual_average_establishment_count, 0)
+    )
+  
+}
+
+qcew_industry <- map_dfr(.x = qcew_files, .f = load_qcew)
+
+```
+
+
+```{r}
+qcew_industry <- qcew_industry |>
+  mutate(
+    subgroup = case_when(
+      naics == 10 & own == 0 ~ "All",
+      naics == 101 ~ "Goods Producing",
+      naics == 10 & own %in% c(1, 2, 3) ~ "Public Administration",
+      naics == 1021 ~ "Trade, Transit, Utilities",
+      naics == 1022 ~ "Information Services",
+      naics == 1023 | naics == 1024 ~ "Professional Services",
+      naics == 1025 ~ "Education and Health",
+      naics == 1026 | naics == 1027 ~ "Leisure and Other"
+    )
+  ) 
+
+qcew_industry <- qcew_industry |>
+  filter(!is.na(subgroup))
+
+```
+
+Some NAICS codes are combined into industries. We need to collapse these codes into industries. We average the weekly wages and sum establishment counts.
+
+```{r}
+qcew_industry <- qcew_industry |>
+  group_by(year, st, cnty, geo_id, subgroup) |>
+  summarize(
+    annual_average_weekly_wage = mean(annual_average_weekly_wage),
+    annual_average_establishment_count = sum(annual_average_establishment_count)
+  ) |>
+  ungroup()
+
+```
+
+We only keep some of the variables.
+
+```{r}
+qcew_industry <- qcew_industry |>
+  select(
+    year,
+    state = st, 
+    county = cnty,
+    geo_id,
+    annual_average_weekly_wage, annual_average_establishment_count, subgroup
+  )
+
+```
+
+The QCEW includes county 999, which is for "Unknown Or Undefined" area. We drop these.
+
+```{r}
+qcew_industry <- qcew_industry |>
+  filter(county != "999")
+
+```
+
+### QCEW Data Checks
+
+We explore the QCEW data to evaluate the quality of the data. 
+
+```{r}
+summary(qcew_industry$annual_average_weekly_wage)
+
+```
+
+We look at counties with large changes in the rank of `annual_average_weekly_wage`.
+
+```{r}
+# high variance
+big_wage_changes <- qcew_industry |>
+  group_by(year, subgroup) |>
+  mutate(rank = rank(annual_average_weekly_wage, ties.method = "average")) |>
+  group_by(state, county, subgroup) |>
+  mutate(rank_change = rank - lag(rank)) |>
+  arrange(desc(abs(rank_change))) |>
+  ungroup()
+
+big_wage_changes_id <- big_wage_changes |>
+  slice_max(rank_change, n = 100) |>
+  pull(geo_id)
+
+qcew_industry |>
+  filter(geo_id %in% big_wage_changes_id) |>
+  mutate(geo_id = paste0(state, county)) |>
+  ggplot(aes(year, annual_average_weekly_wage, group = geo_id)) +
+  geom_line(alpha = 0.3) +
+  facet_wrap(~ subgroup) +
+  labs(
+    title = "Some Counties Have Very Noisy Average Wages",
+    subtitle = "100 Counties with Large Changes in Rank"
+  )
+
+```
+
+```{r}
+# annual_average_establishment_count
+summary(qcew_industry$annual_average_establishment_count)
+
+```
+
+We look at counties with large changes in the rank of `annual_average_establishment_count`.
+
+```{r}
+# high variance
+big_establishment_changes <- qcew_industry |>
+  group_by(year, subgroup) |>
+  mutate(rank = rank(annual_average_establishment_count, ties.method = "average")) |>
+  group_by(state, county) |>
+  mutate(rank_change = rank - lag(rank)) |>
+  arrange(desc(abs(rank_change))) |>
+  ungroup()
+
+big_establishment_changes_id <- big_wage_changes |>
+  slice_max(rank_change, n = 100) |>
+  pull(geo_id)
+
+qcew_industry |>
+  filter(geo_id %in% big_establishment_changes_id) |>
+  mutate(geo_id = paste0(state, county)) |>
+  ggplot(aes(year, annual_average_establishment_count, group = geo_id)) +
+  geom_line(alpha = 0.3) +
+  facet_wrap(~ subgroup, scales = "free_y") +
+  labs(
+    title = "The Number of Establishments is Not very Noisy",
+    subtitle = "100 Counties with Large Changes in Rank"
+  )
+
+```
+
+We expect every county to be included 8 times (11 years x 8 industry types). Some counties are included fewer times and these are the usual suspects in Alaska, Connecticut, and South Dakota.
+
+```{r}
+count(qcew_industry, state, county) |>
+  filter(n != 88) |>
+  print(n  = Inf)
+
+```
+
+```{r}
+qcew_industry <- qcew_industry |>
+  select(-geo_id)
+
+```
+
+## Load MIT Data
+
+Next we process data from the Living Wage Institute. We can't publicly share this data. All files are available on Box.
+
+We use several different years of Living Wage Institute data. Since we don't have the underlying data for all years from 2014 to the present, we inflation adjust the years we have to fill in the gaps. 
+
+- We inflation adjust 2018 (in 2019 dollars) for 2014, 2015, 2016, 2017, and 2018 (in 2018 dollars).
+- We inflation adjust 2022 for 2021.
+- We use 2023 data. 
+- We use 2024 data.
+
+```{r}
+#| message: false
+
+living_wage_2018 <- read_csv(
+  here("02_jobs-paying-living-wages", "data", "living-wage", "mit-living-wage.csv")
+) 
+
+living_wage_2018 <- living_wage_2018 |>
+  filter(adults == "1 Adult", children == "2 Children") |>
+  distinct() |>
+  # convert 2018 dollars into 2019 dollars using the CPI values from inflation_adjust()
+  mutate(wage =  wage * 255.657 / 251.107)
+  
+living_wage_2014_2018 <- bind_rows(
+  living_wage_2018 |>
+    mutate(year = 2014),
+    living_wage_2018 |>
+    mutate(year = 2015),
+    living_wage_2018 |>
+    mutate(year = 2016),
+    living_wage_2018 |>
+    mutate(year = 2017),
+  living_wage_2018
+)
+
+```
+
+```{r}
+#| message: false
+
+living_wage_2022 <- read_csv(
+  here("02_jobs-paying-living-wages", "data", "living-wage", "mit-living-wage-2022.csv")
+) 
+
+living_wage_2022 <- living_wage_2022 |>
+  filter(adults == "1 Adult", children == "2 Children") |>
+  distinct()
+
+living_wage_2019_2022 <- bind_rows(
+  living_wage_2022 |>
+    mutate(year = 2019),
+  living_wage_2022 |>
+    mutate(year = 2020),
+  living_wage_2022,
+  living_wage_2022 |>
+    mutate(year = 2022)
+)
+
+```
+
+```{r}
+#| message: false
+
+living_wage_2023 <- read_csv(
+  here("02_jobs-paying-living-wages", "data", "living-wage", "mit-living-wage-2023.csv")
+) |>
+  select(
+    year,
+    state = state_fips,
+    county = county_fips,
+    hourly_living_wage,
+    wage = hourly_living_wage,
+    wage_adj = hourly_living_wage
+  ) |>
+  mutate(county = str_sub(county, start = 3, end = 5))
+
+```
+
+```{r}
+living_wage_2024 <- read_excel(
+  here("02_jobs-paying-living-wages", "data", "living-wage", "LWI-BenchmarkSeries-County-Urban Institute-2025-10-10.xlsx")
+) |>
+  select(
+    year,
+    state = state_fips,
+    county = county_fips,
+    hourly_living_wage,
+    wage = hourly_living_wage,
+    wage_adj = hourly_living_wage
+  ) |>
+  mutate(year = 2024) |>
+  mutate(county = str_sub(county, start = 3, end = 5))
+
+```
+
+### Inflation Adjust
+
+We use the [CPI-U](https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm) to inflation adjust the living wages values to different years. In all cases, the goal is to end up with nominal dollars.  
+
+```{r}
+#' Inflation adjust LWI data
+#'
+#' @param data The Living Wage Institute data in a tibble
+#' @param qcew_year The represented by the LWI data
+#'
+#' Values in earlier years should decrease (e.g., 2014 should be lower than 
+#' 2018) because the resulting data are in nominal dollars.
+#' 
+inflation_adjust <- function(data, qcew_year) {
+  
+  # CPI-U annual averages from BLS (Consumer Price Index for All Urban Consumers)
+  # Source: https://www.bls.gov/regions/mid-atlantic/data/consumerpriceindexannualandsemiannual_table.htm
+  cpi_u <- c(
+    "2014" = 236.736,
+    "2015" = 237.017,
+    "2016" = 240.007,
+    "2017" = 245.120,
+    "2018" = 251.107,
+    "2019" = 255.657,
+    "2020" = 258.811,
+    "2021" = 270.970,
+    "2022" = 292.655,
+    "2023" = 304.702,
+    "2024" = 313.689
+  )
+  
+  data |>
+    mutate(wage_adj = wage * cpi_u[as.character(year)] / cpi_u[as.character(qcew_year)])
+  
+  
+}
+
+living_wage_2014_2018 <- inflation_adjust(data = living_wage_2014_2018, qcew_year = 2018)
+
+living_wage_2019_2022 <- inflation_adjust(data = living_wage_2019_2022, qcew_year = 2022)
+
+```
+
+Combine all of the data into a series of living wage metrics.
+
+```{r}
+living_wage <- bind_rows(
+  living_wage_2014_2018,
+  living_wage_2019_2022,
+  living_wage_2023,
+  living_wage_2024
+) |>
+  mutate(geo_id = paste0(state, county))
+
+living_wage <- living_wage |>
+  select(-adults, -children)
+
+```
+
+### Living Wage Data Checks
+
+Perform some quality checks on the LWI data. 
+
+```{r}
+summary(living_wage$wage_adj)
+
+```
+
+Inflation adjusting maintains the sort order of the data, which is different than the reported data. There are also big gaps on the seams between data sources.
+
+```{r}
+big_lw_changes <- living_wage |>
+  group_by(year) |>
+  mutate(rank = rank(wage_adj, ties.method = "average")) |>
+  group_by(state, county) |>
+  mutate(rank_change = rank - lag(rank)) |>
+  arrange(desc(abs(rank_change))) |>
+  ungroup()
+
+big_lw_changes_id <- big_lw_changes |>
+  slice_max(rank_change, n = 200) |>
+  pull(geo_id)
+
+living_wage |>
+  filter(geo_id %in% big_lw_changes_id) |>
+  ggplot(aes(year, wage_adj, group = geo_id)) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Some Counties Have Very Noisy Living Wages",
+    subtitle = "200 Counties with Large Changes in Rank"
+  )
+
+```
+
+## Join Data
+
+Both data sets approximately have the correct number of observations per year. 
+
+```{r}
+count(qcew_industry, year, subgroup)
+count(living_wage, year)
+
+```
+
+There are a few mismatches between counties in the expected places like Alaska and Connecticut.
+
+```{r}
+qcew_industry |>
+  anti_join(living_wage, by = c("year", "state", "county")) |>
+  count(state, county)
+
+living_wage |>
+  anti_join(qcew_industry, by = c("year", "state", "county")) |>
+  count(state, county)
+
+```
+
+Finally, we combine the QCEW and Living Wage Institute data. We use an `inner_join()` because we only want to keep observations common to both data sets. Later, we will fill in missing values using the target geographies file.
+
+```{r}
+combined_data <- inner_join(qcew_industry, living_wage, by = c("year", "state", "county"))
+
+count(combined_data, year)
+
+```
+
+## Calculate Living Wage Ratio
+
+We convert the adjusted hourly wage into a weekly wage and then compare with the weekly QCEW wage data.
+
+```{r}
+combined_data <- combined_data |>
+  mutate(weekly_living_wage = wage_adj * 40) |>
+  mutate(ratio_living_wage = annual_average_weekly_wage / weekly_living_wage)
+
+```
+
+## Data Quality
+
+Greg and Kevin established the original data quality flag based on the number of establishments in the geography.
+
+- Greater than or equal to 30 is 1
+- Less than 30 is 3
+
+```{r}
+combined_data <- combined_data |>
+  mutate(
+    ratio_living_wage_quality = if_else(
+      condition = annual_average_establishment_count < 30,
+      true = 3,
+      false = 1
+    )
+  )
+
+```
+
+## Join to Target Geography File
+
+We join our calculated data to the target geographies file for counties. 
+
+```{r}
+#| message: false
+
+target_counties <- read_csv(here("geographic-crosswalks", "data", "county-populations.csv")) |>
+  select(year, state, county)
+
+target_counties <- expand_grid(
+  target_counties,
+  subgroup = c("All", "Education and Health", "Goods Producing", "Information Services", "Leisure and Other", "Professional Services", "Public Administration", "Trade, Transit, Utilities")
+)
+
+```
+
+```{r}
+final_data <- left_join(
+  target_counties,
+  combined_data,
+  by = c("year", "state", "county", "subgroup")
+)
+
+anti_join(
+  combined_data,
+  target_counties,
+  by = c("year", "state", "county", "subgroup")
+) |>
+  count(state, county)
+
+map_dbl(final_data, ~sum(is.na(.x)))
+
+```
+
+Finally, we add the `subgroup_type` variables.
+
+```{r}
+final_data <- final_data |>
+  mutate(subgroup_type = if_else(subgroup == "All", "all", "industry"))
+
+```
+
+## Finalize File
+
+```{r}
+final_data <- final_data |>
+  select(year, state, county, subgroup_type, subgroup, ratio_living_wage, ratio_living_wage_quality)
+
+write_csv(
+  final_data, 
+  file = here("02_jobs-paying-living-wages", "data", "final", "living_wage_county_industry_longitudinal.csv")
+)
+
+```
+
+## Evaluation
+
+```{r}
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+```
+
+## Run Evaluation Test
+
+Enter the information into the `evaluate_final_data` function. 
+
+In order to run the function, we fill out the relevant arguments. Living wage data does not have confidence intervals but includes one subgroup.
+
+County level data subgroup.
+
+```{r}
+evaluate_final_data(
+  exp_form_path = "10a_final-evaluation/evaluation_form_living_wage_industry_county.csv",
+  data = final_data,  
+  geography = "county",
+  subgroups = TRUE, 
+  confidence_intervals = FALSE
+)
+
+```
