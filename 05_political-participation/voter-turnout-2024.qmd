@@ -101,6 +101,8 @@ if (!file.exists(mit_data)) {
   )
   
 }
+
+
 ```
 
 Next we load and clean the data. 
@@ -118,8 +120,8 @@ mit <- read_csv(here::here("05_political-participation",
 mit <- mit %>%
   tidylog::filter(year == 2024) 
 
-check <- mit %>% 
-  filter(state == "CONNECTICUT")
+kansas_data <- mit %>% 
+  filter(state == "KANSAS")
 ```
 
 ### Calculating Totals
@@ -535,7 +537,7 @@ joined_data <- joined_data %>%
 
 ```
 
-Six observations have voter turnout above `1`. This is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
+28 observations have voter turnout above `1`. For states outside of Kansas, this is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
 
 ```{r}
 joined_data %>%
@@ -544,6 +546,43 @@ joined_data %>%
 joined_data <- joined_data %>%
   mutate(election_turnout = if_else(condition = election_turnout > 1, true = 1, false = election_turnout))
 
+```
+
+However Kansas has a problem.
+
+This code scrapes the vote count from Wikipedia: 
+
+```{r}
+# scrape data from Wikipedia with rvest
+wiki_kansas <- read_html("https://en.wikipedia.org/wiki/2024_United_States_presidential_election_in_Kansas")
+
+wiki_votes_kansas <- wiki_kansas %>%
+  html_elements("td:nth-child(10)") %>%
+  html_text() %>%
+  # clean numbers as characters to numerics
+  str_replace_all(",", "") %>%
+  str_replace_all("\n", "") %>%
+  as.numeric()
+
+
+# the name column in the data doesn't scrape well so we manually state it
+kansas_counties <- kansas_data %>% 
+  select(county_name, totalvotes) %>% 
+  unique()
+
+kansas_comp <- bind_cols(kansas_counties, as_tibble(wiki_votes_kansas)) %>% 
+  mutate(diff = totalvotes - value,
+         diff_check_lead = totalvotes - lead(value, 1))
+
+rm(wiki_kansas, wiki_votes_kansas, kansas_counties)
+
+```
+
+The MIT data started to incorrectly assign the vote data to counties halfway through this list due to skipping Johnson county. 
+
+```{r}
+kansas_comp %>% 
+  knitr::kable()
 ```
 
 **Check:** Is voter turnout bounded by 0 and 1 inclusive
