@@ -96,9 +96,11 @@ if (!dir.exists(mit_directory)) {
 if (!file.exists(mit_data)) {
   
   download.file(
-    "https://dataverse.harvard.edu/api/access/datafile/13390025?format=original&gbrecs=true",
+    "https://dataverse.harvard.edu/api/access/datafile/13573089?format=original&gbrecs=true",
     destfile = mit_data
   )
+  
+  
   
 }
 
@@ -117,111 +119,14 @@ mit <- read_csv(here::here("05_political-participation",
   mutate(FIPS = as.character(FIPS),
          FIPS = str_pad(FIPS, width = 5, side = "left", pad = "0"))
 
+```
+
+Filter for year 2024 and keep only relevant variables.
+
+```{r}
 mit <- mit %>%
-  tidylog::filter(year == 2024) 
-
-kansas_data <- mit %>% 
-  filter(state == "KANSAS")
-```
-
-### Calculating Totals
-
-The voting `mode` category and the categories under `candidate` differ by state in the 2024 data. This requires further cleaning to get the totals as including the entire vote category now results in duplicates.
-
-The table below shows the differences in state mode categories. Some states have "total votes" alone while others have a combination of modes. Some have NA.
-```{r}
-mit %>% 
-  select(state, mode, candidatevotes) %>% 
-  unique() %>% 
-  group_by(state, mode) %>% 
-  summarise(category_apperance = n(),
-            candidate_votes = sum(candidatevotes)) %>% 
-  reactable::reactable(
-  filterable = TRUE,
-  defaultPageSize = 6
-)
-```
-
-The table below shows the differences in state candidate categories. Some states have "total votes" as a candidate category. 
-
-```{r}
-mit %>% 
-  select(state, candidate, candidatevotes) %>% 
-  unique() %>% 
-  group_by(state, candidate) %>% 
-  summarise(category_apperance = n(),
-            candidate_votes = sum(candidatevotes)) %>% 
-  reactable::reactable(
-  filterable = TRUE,
-  defaultPageSize = 6
-)
-```
-
-The total are inconsistent in these data and you can get different answers based on which values are used. Showing Vermont as an example, we can see we get slightly different totals using three approaches. 
-
-1) Using the 'total votes' column which is unique for each county. Note that this value results in very different numbers overall for states when compared to Wikipedia and census published totals,
-
-```{r}
-mit %>% 
-  filter(state == "VERMONT") %>% 
-  select(state, county_name, FIPS, totalvotes) %>% 
-  unique() %>% 
-  summarise(total_votes = sum(totalvotes, na.rm = TRUE))
-```
-
-2) Using the 'candidatevotes' column and filtering the candidate column for the value "TOTAL VOTES CAST" category
-
-```{r}
-mit %>% 
-  filter(state == "VERMONT", candidate == "TOTAL VOTES CAST") %>% 
-  select(state, county_name, FIPS, candidatevotes) %>% 
-  unique() %>% 
-  summarise(total_votes = sum(candidatevotes, na.rm = TRUE))
-```
-
-3) Using the 'candidatevotes' column and filtering the candidate column to exclude the "TOTAL VOTES CAST" category
-
-```{r}
-mit %>% 
-  filter(state == "VERMONT", candidate != "TOTAL VOTES CAST") %>% 
-  select(state, county_name, FIPS, candidatevotes) %>% 
-  unique() %>% 
-  summarise(total_votes = sum(candidatevotes, na.rm = TRUE))
-```
-
-For consistency we need to pick an approach.
-
-We decide to only use "TOTAL VOTES" or NA from the mode and we need to remove "TOTAL VOTES CAST" from the candidate category.
-
-Show the vote distribution by mode for all states 
-
-```{r}
-mit %>% 
-   group_by(mode) %>% 
-  summarise(votes = sum(candidatevotes))
-
-```
-
-New Mexico requires additional attention because it does not include a total row. 
-
-To fix we change all of the mode category to "TOTAL VOTES" for New Mexico and then for the entire data filter to either "TOTAL VOTES" or NA.
-```{r}
-mit %>% 
-  filter(state == "NEW MEXICO") %>% 
-  group_by(mode) %>% 
-  summarise(votes = sum(candidatevotes))
-
-mit %>% 
-  filter(state == "SOUTH DAKOTA", county_name == "BROOKINGS") %>% 
-  group_by(mode) %>% 
-  summarise(votes = sum(candidatevotes))
-
-mit <- mit %>% 
-  mutate(mode = case_when(state == "NEW MEXICO" ~ "TOTAL VOTES", 
-                          state == "SOUTH DAKOTA" & mode == "VOTE CENTER" ~ "TOTAL VOTES",
-                          TRUE ~ mode)) %>% 
-  filter(candidate != "TOTAL VOTES CAST", mode %in% c("TOTAL VOTES", NA_character_))
-
+  tidylog::filter(year == 2024) %>% 
+  select(state, county_name, year, state_po, FIPS, mode, candidatevotes, totalvotes) 
 ```
 
 [Shannon County, South Dakota (FIPS 46113) changed to Oglala Lakota County, South Dakota (FIPS 46102) in 2015.](https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.html) The MIT data have the correct county name but they do not have the correct FIPS code.
@@ -238,18 +143,9 @@ mit <- mit %>%
 
 ```
 
-For St. Francis county Arkansas there seems to be a mistake in the data - all [census documentation](https://www.census.gov/quickfacts/fact/table/stfranciscountyarkansas/PST045224) indicates this county FIP is "05123" but it is being reported by MIT as "05135". We see this result in a mismatch later in this code when joining to the CVAP data. 
-
-Correct it here.
-
-```{r}
-mit <- mit %>%
-  mutate(FIPS = if_else(county_name == "ST FRANCIS" & state == "ARKANSAS", "05123", FIPS))
-```
-
 In prior years there were nine observations without FIPS codes originating from the District of Columbia and a county in Rhode Island formerly titled "FEDERAL PRECINCT." The census corrected this in the 2024 data and there are no longer any cases with missing fips.
 
-There are no missing observations for `candidatevotes` or `totalvotes` and no observations for which `totalvotes` is 0.
+There are some missing observations for `candidatevotes` but none for `totalvotes` and no observations for which `totalvotes` is 0.
 
 ```{r}
 mit %>%
@@ -265,6 +161,7 @@ mit %>%
 
 Alaska is reported as Districts instead of counties. We replace the FIPS codes for all Alaska observations with `02000`. 
 ```{r}
+
 mit <- mit %>%
   mutate(FIPS = if_else(state == "ALASKA", "02000", FIPS))
 
@@ -286,16 +183,31 @@ mit %>%
 
 ```
 
-We sum the candidate votes and create `state` and `county`.
+This is because in 2024 MIT introduced the vote mode variable. The voting `mode` categories differ by state in the 2024 data. For some states this includes an additional "total vote" row which results in duplicates when summed.
+
+The table below shows the differences in state mode categories. Some states have "total votes" alone while others have a combination of modes. Some have NA.
+```{r}
+mit %>% 
+  select(state, mode, candidatevotes) %>% 
+  unique() %>% 
+  group_by(state, mode) %>% 
+  summarise(category_apperance = n(),
+            candidate_votes = sum(candidatevotes)) %>% 
+  reactable::reactable(
+  filterable = TRUE,
+  defaultPageSize = 6
+)
+```
+
+The 'totalvotes' column provides a clean version of the county total votes. To clean the data we drop the candidate votes from the dataset and keep unique rows. This results in one row per county.
+
+We also create `state` and `county`.
 
 ```{r}
-mit_counties <- mit %>%
-  group_by(year, state, county_name, FIPS) %>%
-  summarize(votes = sum(candidatevotes)) %>%
-  ungroup()
-
-check <- mit_counties %>% 
-  filter(state == "50")
+mit_counties <- mit %>% 
+  select(year, state, county_name, FIPS, totalvotes) %>% 
+  unique() %>% 
+  rename(votes = totalvotes)
 
 # create state and county
 mit_counties <- mit_counties %>%
@@ -360,7 +272,7 @@ mit_counties %>%
 
 ```
 
-The aggregated nationwide total from MIT of 155,115,321 is also very close to the 155,240,955 votes reported on Wikipedia. We have 125,634 less votes than Wikipedia.
+The aggregated nationwide total from MIT of 155,209,552 is also very close to the 155,240,955 votes reported on Wikipedia. We have just over 34k less votes than Wikipedia.
 
 ```{r}
 state_votes %>%
@@ -381,11 +293,13 @@ mit_counties %>%
 
 ### Census 
 
-Read in Census data on 2024 election trunout 
+Read in Census data on 2024 election turnout. The census releases the "P20" table every two years following national level elections. 
+
+"Since 1964, the U.S. Census Bureau has fielded the Voting and Registration supplement to the CPS every 2 years in November. While the Census Bureau has collected voting and registration data since 1964, the CPS has gathered  citizenship data for congressional voting only since 1978. The CPS is the only source of voting and registration data produced by the U.S. Census Bureau."
 
 ```{r}
 #Specify the URL of the Excel file from the Census website 
-excel_url <- "https://www2.census.gov/programs-surveys/cps/tables/p20/587/vote04a_2024.xlsx" # Replace with latest year if updating
+  excel_url <- "https://www2.census.gov/programs-surveys/cps/tables/p20/587/vote04a_2024.xlsx" # Replace with latest year if updating
 
 #Download the file to a temporary location
 httr::GET(excel_url, httr::write_disk(tf <- tempfile(fileext = ".xlsx")))
@@ -537,7 +451,7 @@ joined_data <- joined_data %>%
 
 ```
 
-28 observations have voter turnout above `1`. For states outside of Kansas, this is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
+6 observations have voter turnout above `1`. This is likely because of sampling error in the denominator. We set these values to one and all of these cases will be flagged. 
 
 ```{r}
 joined_data %>%
@@ -546,43 +460,6 @@ joined_data %>%
 joined_data <- joined_data %>%
   mutate(election_turnout = if_else(condition = election_turnout > 1, true = 1, false = election_turnout))
 
-```
-
-However Kansas has a problem.
-
-This code scrapes the vote count from Wikipedia: 
-
-```{r}
-# scrape data from Wikipedia with rvest
-wiki_kansas <- read_html("https://en.wikipedia.org/wiki/2024_United_States_presidential_election_in_Kansas")
-
-wiki_votes_kansas <- wiki_kansas %>%
-  html_elements("td:nth-child(10)") %>%
-  html_text() %>%
-  # clean numbers as characters to numerics
-  str_replace_all(",", "") %>%
-  str_replace_all("\n", "") %>%
-  as.numeric()
-
-
-# the name column in the data doesn't scrape well so we manually state it
-kansas_counties <- kansas_data %>% 
-  select(county_name, totalvotes) %>% 
-  unique()
-
-kansas_comp <- bind_cols(kansas_counties, as_tibble(wiki_votes_kansas)) %>% 
-  mutate(diff = totalvotes - value,
-         diff_check_lead = totalvotes - lead(value, 1))
-
-rm(wiki_kansas, wiki_votes_kansas, kansas_counties)
-
-```
-
-The MIT data started to incorrectly assign the vote data to counties halfway through this list due to skipping Johnson county. 
-
-```{r}
-kansas_comp %>% 
-  knitr::kable()
 ```
 
 **Check:** Is voter turnout bounded by 0 and 1 inclusive
