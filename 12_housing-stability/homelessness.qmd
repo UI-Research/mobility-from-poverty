@@ -40,25 +40,49 @@ This program calculates metrics for the **Housing Stability** predictor:
 - **Count**: Number of public-school students experiencing homelessness
 - **Share**: Proportion of enrolled students experiencing homelessness
 
-**Geography:** `r params$geography`
+**Geography:** `r params$geography` 
 **Years:** `r paste(params$years, collapse = ", ")`
 
 ### Data Notes
 
-- **Data suppression**: Values between 0-2 are suppressed (marked as "S") to protect student privacy. If only one value is suppressed in a state-year, the next smallest value is also suppressed.
-- **Suppression handling**: Suppressed values are replaced with 1 (midpoint) for aggregation. Lower bound = 0, upper bound = 2 (or next smallest if ≤2 suppressions).
-- **Deduplication**: Data are unduplicated by LEA, but students who switch LEAs within a geography may be counted multiple times.
-- **Data source**: EdFacts (2014-2018) and EdDataExpress (2019+) for homeless counts; CCD for enrollment denominators.
-- **Race/ethnicity data**: Only available for 2019+. Subgroup shares use race-specific enrollment as denominator (e.g., Black homeless / Black enrolled).
+-   **Deduplication**: Data are unduplicated by LEA, but students who switch LEAs within a geography may be counted multiple times.
+-   **Data source**: EdFacts (2014-2018) and EdDataExpress (2019+) for homeless counts; CCD for enrollment denominators.
+-   **Race/ethnicity data**: Only available for 2019+. Subgroup shares use race-specific enrollment as denominator (e.g., Black homeless / Black enrolled).
+
+### Suppression Methodology
+
+Suppression in this metric occurs at two stages: the source data (EdFacts) and post-aggregation rules applied after rolling up LEAs to the county/place level.
+
+**1. Source-level suppression (EdFacts "S" values)**
+
+EdFacts marks LEA-level counts as "S" when the value is between 0 and 2 students, to protect student privacy. If only one LEA in a state-year has a suppressed value, the next-smallest value is also suppressed (complementary suppression) to prevent back-calculation from published totals. See the [LEA Homeless Enrolled Public File Documentation](https://www2.ed.gov/about/inits/ed/edfacts/data-files/lea-homeless-enrolled-sy2019-20-public-file-documentation.docx) for the exact suppression rules, [EdFacts File Specification 118](https://www.ed.gov/data/edfacts-initiative/edfacts-resources/edfacts-file-specifications/edfacts-file-specifications-sy-2023-24) (DG 655), and the [NCHE data page](https://nche.ed.gov/data-and-stats/).
+
+**2. Midpoint imputation**
+
+We replace each "S" with 1 (the midpoint of the 0-2 range) so that suppressed LEAs contribute to county/place aggregates rather than being dropped entirely. To quantify the uncertainty this introduces, we carry a lower bound of 0 and an upper bound of 2 for each suppressed cell. When a state-year has two or fewer suppressed LEAs, the upper bound is set to the minimum observed value in that state-year instead of 2, because complementary suppression means at least one of those cells had a true value above 2.
+
+**3.Post-aggregation suppression (apply-suppression-rules chunk)**
+
+After aggregation to the county/place level we apply five additional rules that go beyond the source "S" values:
+
+| Rule | Condition | Action |
+|------------------|-------------------------------|-----------------------|
+| 1 | Total homeless count \< 10 | Suppress all metrics (count, share, quality) |
+| 2 | Total homeless count 10-29 | Set quality flag to 3 |
+| 3 | Any share \> 1 | Suppress that subgroup (impossible value from enrollment mismatch) |
+| 4 | Race subgroup sum outside 70-110% of total | Suppress all race metrics |
+| 5 | Any count ≤ 2 after aggregation | Re-suppress (cell size too small at geography level) |
+
+Rules 1-2 ensure that small-count geographies are either suppressed or flagged. Rules 3-4 catch data-quality issues from enrollment-denominator mismatches. Rule 5 re-applies cell-size suppression after LEA-to-geography aggregation, since some geographies contain only one LEA whose suppressed value was imputed.
 
 ### Quality Flags
 
-| Score | Criteria |
-|-------|----------|
-| 1 | Upper/lower bound ratio ≤ 1.05 |
-| 2 | Upper/lower bound ratio between 1.05 and 1.1 |
-| 3 | Ratio > 1.1, or enrollment < 30, or count between 10-30 |
-| NA | Count < 10, share > 1, or race totals outside 70-110% of total |
+| Score | Criteria                                                         |
+|-------|------------------------------------------------------------------|
+| 1     | Upper/lower bound ratio ≤ 1.05                                   |
+| 2     | Upper/lower bound ratio between 1.05 and 1.1                     |
+| 3     | Ratio \> 1.1, or enrollment \< 30, or count between 10-30        |
+| NA    | Count \< 10, share \> 1, or race totals outside 70-110% of total |
 
 ## Setup
 
@@ -285,33 +309,30 @@ EdDataExpress publishes homeless student enrollment data (Data Group 655).
 
 ### Manual Download Instructions for 2022-23 Data
 
-Due to changes in the EdDataExpress website, data for 2022-23 must be manually downloaded.
-The website has known performance issues (documented December 2024):
+Due to changes in the EdDataExpress website, data for 2022-23 must be manually downloaded. The website has known performance issues (documented December 2024):
 
-- The "Reset Filters" button does not work properly
-- Filters may disappear or the page may appear blank - refresh and try again
-- Datasets are limited to 150,000 rows
-- The default changed to show only one state (Alabama)
+-   The "Reset Filters" button does not work properly
+-   Filters may disappear or the page may appear blank - refresh and try again
+-   Datasets are limited to 150,000 rows
+-   The default changed to show only one state (Alabama)
 
 **Note:** As of February 2026, 2023-24 data is not yet available on EdDataExpress.
 
 **Step-by-step instructions:**
 
-1. Go to: https://eddataexpress.ed.gov/download/data-builder/data-download-tool
-2. **Clear pre-set filters first**: For each filter on the left menu (State, Level, School Year,
-   Population), click "Deselect All" to clear the defaults
-3. **Set filters in this order** (important - set other filters BEFORE state):
-   - **Level**: Select "Local Education Agency"
-   - **School Year**: Select "2022-2023"
-   - **Population**: Select "Homeless Students"
-   - **State**: Leave empty (all states) or select specific states
-4. Verify **Data Group = 655** ("Homeless students enrolled") is shown in results
-5. Click "Download Data"
-6. Save to: `12_housing-stability/data/raw/`
-   - Save as `2022-23 LEA homeless student data.csv`
+1.  Go to: https://eddataexpress.ed.gov/download/data-builder/data-download-tool
+2.  **Clear pre-set filters first**: For each filter on the left menu (State, Level, School Year, Population), click "Deselect All" to clear the defaults
+3.  **Set filters in this order** (important - set other filters BEFORE state):
+    -   **Level**: Select "Local Education Agency"
+    -   **School Year**: Select "2022-2023"
+    -   **Population**: Select "Homeless Students"
+    -   **State**: Leave empty (all states) or select specific states
+4.  Verify **Data Group = 655** ("Homeless students enrolled") is shown in results
+5.  Click "Download Data"
+6.  Save to: `12_housing-stability/data/raw/`
+    -   Save as `2022-23 LEA homeless student data.csv`
 
 **Alternatively**, the 2022-23 file is available on Box in the `Metrics_2025_round` folder.
-
 
 ```{r}
 #| label: download-eddataexpress
