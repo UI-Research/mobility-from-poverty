@@ -227,6 +227,11 @@ if (has_race_data) {
   ccd_race <- map_dfr(race_years, function(yr) {
     message(glue("  Year {yr}..."))
 
+    # In the CCD enrollment data, grade = 99 is the "total across all grades"
+    # code and sex = 99 is the "total across both sexes" code. These are NCES
+    # aggregate indicator values, not actual grade levels. Without these filters,
+    # the API returns separate rows for every grade-by-sex combination, which
+    # would need to be summed to get district-level totals.
     get_education_data(
       level = "school-districts",
       source = "ccd",
@@ -411,10 +416,15 @@ if (length(available_years) == 0) {
 eddataexpress_clean <- eddataexpress_raw |>
   filter(
     data_group == 655,
-    !subgroup %in% c(
-      "", "Children with disabilities", "English Learner",
-      "Migratory students", "Unaccompanied Youth",
-      "Children with one or more disabilities (IDEA)"
+    subgroup %in% c(
+      "All Students in LEA",
+      "American Indian or Alaska Native",
+      "Black or African American",
+      "Hispanic/Latino",
+      "White",
+      "Two or more races",
+      "Native Hawaiian or Other Pacific Islander",
+      "Asian"
     )
   ) |>
   mutate(
@@ -817,7 +827,7 @@ if (has_race_data) {
 
 # Sort data
 final_data <- final_data |>
-  arrange(desc(year), state, .data[[settings$geo_var]])
+  arrange(year, state, .data[[settings$geo_var]])
 ```
 
 ## Quality Checks
@@ -902,6 +912,36 @@ final_data |>
     y = "Count"
   ) +
   theme_minimal()
+
+# Distribution of homeless share by race/ethnicity subgroup
+if (has_race_data) {
+  final_data |>
+    filter(year %in% race_years) |>
+    select(year, state, !!settings$geo_var,
+           black_share, white_share, hispanic_share, other_share) |>
+    pivot_longer(
+      cols = ends_with("_share"),
+      names_to = "subgroup",
+      values_to = "share"
+    ) |>
+    mutate(
+      subgroup = subgroup |>
+        str_remove("_share") |>
+        str_to_title() |>
+        recode("Other" = "Other Races")
+    ) |>
+    filter(!is.na(share), share > 0, share < 0.5) |>
+    ggplot(aes(x = share)) +
+    geom_histogram(bins = 30, fill = "#1696d2", color = "white") +
+    facet_grid(year ~ subgroup) +
+    scale_x_continuous(labels = scales::percent_format()) +
+    labs(
+      title = glue("Homeless Share by Race/Ethnicity ({str_to_title(params$geography)} Level)"),
+      x = "Share of Students Experiencing Homelessness",
+      y = glue("Number of {str_to_title(params$geography)}s")
+    ) +
+    theme_minimal()
+}
 ```
 
 ## Export Final Data
@@ -990,7 +1030,7 @@ if (has_race_data) {
       count_homeless, count_homeless_lb, count_homeless_ub,
       share_homeless, count_homeless_quality, share_homeless_quality
     ) |>
-    arrange(desc(year), state, .data[[settings$geo_var]], subgroup_type, subgroup)
+    arrange(year, state, .data[[settings$geo_var]], subgroup_type, subgroup)
 
   write_csv(export_subgroups, subgroup_file, na = "")
   message(glue("Saved: {subgroup_file}"))
