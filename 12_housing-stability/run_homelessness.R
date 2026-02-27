@@ -14,6 +14,7 @@ quarto_render(
   execute_params = list(geography = "county", years = 2014:2022)
 )
 
+
 # Render for place
 quarto_render(
   here("12_housing-stability", "homelessness.qmd"),
