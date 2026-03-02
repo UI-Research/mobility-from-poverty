@@ -1,16 +1,15 @@
 ---
 title: "Voter Turnout 2024"
-author: ""
+author: "Aaron R. Williams and JP Walsh"
 date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
-output:
+format:
   html:
-    embed-resources: true
-    number_sections: false
-    self_contained: TRUE
-    code_folding: show
-    toc: TRUE
-    toc_float: TRUE
-    css: !expr here::here("21_political-participation", "www", "web_report.css")
+    toc: true
+    code-fold: show
+embed-resources: true
+execute: 
+  warning: false
+  message: false
 editor_options:
   chunk_output_type: console
 ---
@@ -27,10 +26,6 @@ This metric is a county-level estimate of voter turnout. We use Presidential Ele
 
 See the [United States Elections Project](https://election.lab.ufl.edu/voter-turnout/) for more information.
 
-## Authors
-
-Originally written in 2024, updated by JP Walsh in 2026.
-
 **Process:**
 
 1. Calculate votes in the 2024 Presidential election
@@ -38,7 +33,6 @@ Originally written in 2024, updated by JP Walsh in 2026.
 3. Divide 1. by 2. to calculate voter turnout
 4. Add data quality flags
 5. Save the data
-
 
 ```{r rmarkdown-setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -51,6 +45,7 @@ library(tidyverse)
 library(urbnthemes)
 library(sf)
 library(rvest)
+library(here)
 
 set_urbn_defaults(style = "print")
 
@@ -64,7 +59,7 @@ We use the MIT Election Data and Science Lab for county-level votes in the 2024 
 
 To download the data manually, go to [this link](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ). On the right side of the page, click "Access Dataset" and under "Download Options" select "Original Format ZIP." Complete the License/Data Use Agreement by providing your name, email, institution, and position, and then click "Accept." Once you've downloaded the data, unzip the file and move it into the `21_political-participation/voter-turnout/data/mit` directory.
 
-Alternatively, from the [landing page](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ), scroll down to the file list and right click on the tabular data file (e.g., `countypres_2000-2024.tab` for 2024 - the only other file is an `md` file). Select "Copy Link Address." This link should include a 7 digit string after `fileID=`. Replace the 7 digit string in the `download.file()` command below with the new string (between `datafile/` and `?format=`). This will download the data directly. 
+Alternatively, from the [landing page](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/VOQCHQ), scroll down to the file list and right click on the tabular data file (e.g., `countypres_2000-2024.tab` for 2024 - the only other file is an `md` file). Select "Copy Link Address." This link should include an 8 digit string after `fileID=`. Replace the 8 digit string in the `download.file()` command below with the new string (between `datafile/` and `?format=`). This will download the data directly. 
 
 ```{r}
 # create a data folder for intermediate data files
@@ -219,14 +214,13 @@ mit_counties <- mit_counties %>%
          votes)
 ```
 
-## Turnout comparisons
+#### Turnout comparisons
 
 We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2024_United_States_presidential_election) and with totals published by the [Census](https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html). 
 
-### Wikipedia 
+##### Wikipedia 
 
 This code scrapes the vote count from Wikipedia: 
-
 
 ```{r}
 # scrape data from Wikipedia with rvest
@@ -272,7 +266,7 @@ mit_counties %>%
 
 ```
 
-The aggregated nationwide total from MIT of 155,209,552 is also very close to the 155,240,955 votes reported on Wikipedia. We have just over 34k less votes than Wikipedia.
+The aggregated nationwide total from MIT of 155,209,552 is also very close to the 155,240,955 votes reported on Wikipedia. We have just over 31k less votes than Wikipedia.
 
 ```{r}
 state_votes %>%
@@ -291,11 +285,11 @@ mit_counties %>%
 
 ```
 
-### Census 
+##### Census 
 
-Read in Census data on 2024 election turnout. The census releases the "P20" table every two years following national level elections. 
+The Census Bureau reports [voter turnout estimates from the Current Population Survey](https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html). The census releases the "P20" table every two years following national level elections. 
 
-"Since 1964, the U.S. Census Bureau has fielded the Voting and Registration supplement to the CPS every 2 years in November. While the Census Bureau has collected voting and registration data since 1964, the CPS has gathered  citizenship data for congressional voting only since 1978. The CPS is the only source of voting and registration data produced by the U.S. Census Bureau."
+> Since 1964, the U.S. Census Bureau has fielded the Voting and Registration supplement to the CPS every 2 years in November. While the Census Bureau has collected voting and registration data since 1964, the CPS has gathered  citizenship data for congressional voting only since 1978. The CPS is the only source of voting and registration data produced by the U.S. Census Bureau.
 
 ```{r}
 #Specify the URL of the Excel file from the Census website 
@@ -345,6 +339,8 @@ mit_counties %>%
 ```
 
 ## 2. Denominator
+
+### Calculate
 
 The denominator for the analysis should be the total age-eligible citizen population ([data here](https://www.census.gov/programs-surveys/decennial-census/about/voting-rights/cvap.2020.html))
 
@@ -404,7 +400,7 @@ cvap <- cvap %>%
 
 ```
 
-We need to crosswalk the Connecticut counties in the CVAP data to Planning Regions in order to merge with the MIT data
+We need to crosswalk the Connecticut Planning Regions in the CVAP data back to pre-2023 counties in order to merge with the MIT data
 
 ```{r}
 cw_connecticut <- read_csv(here::here("geographic-crosswalks", "data", "connecticut_planning_regions_to_pre_2023_counties.csv")) %>% 
@@ -425,7 +421,8 @@ cvap_join <- cvap %>%
          county = str_sub(FIPS, -3)) %>% 
   group_by(state, county, FIPS) %>% 
   summarise(cvap = sum(cvap * afact),
-            cvap_moe = sum(cvap_moe * afact))
+            cvap_moe = sum(cvap_moe * afact)) |>
+  ungroup()
 ```
 
 ## 3. Combine and calculate turnout
@@ -435,7 +432,8 @@ We combine the data. The join works for all counties except for counties in Alas
 ```{r}
 joined_data <- left_join(cvap_join, mit_counties, by = c("state", "county"))
 
-anti_join(cvap_join, mit_counties, by = c("state", "county"))
+anti_join(cvap_join, mit_counties, by = c("state", "county")) |>
+  print(n = Inf)
 
 ```
 
@@ -540,7 +538,7 @@ joined_data %>%
 ## 5. Save the data
 
 ```{r}
-# load the 2020 county file
+# load the 2024 county file
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv")) %>%
   tidylog::filter(year == 2024) %>%
   select(-year)
@@ -550,6 +548,17 @@ all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 all_counties <- all_counties %>%
   mutate(year = 2024) %>%
   select(year, state, county, election_turnout, election_turnout_quality, population) 
+
+```
+
+```{r}
+all_counties |>
+  map_dbl(~sum(is.na(.x)))
+
+
+```
+
+```{r}
 
 all_counties %>%
   select(-population) %>%
@@ -576,9 +585,9 @@ all_counties %>%
                        "voter-turnout-2016-2024.csv"))
 ```
 
-## Benchmark against 2020
+## Benchmark Against Past Data
 
-### Compare turnout
+### Compare turnout with 2020
 
 ```{r}
 turnout2020 <- read_csv(here::here("21_political-participation",
@@ -614,7 +623,7 @@ turnout_combined %>%
   geom_point(alpha = 0.1) +
   labs(
     title = "Large changes in turnout are in low-population areas",
-    subtitle = "Exclusing counties with 1+ million people"
+    subtitle = "Excluding counties with 1+ million people"
     ) +
   scatter_grid()
 
@@ -624,11 +633,86 @@ turnout_combined %>%
 
 ```
 
+### Compare turnout with 2016
+
+```{r}
+turnout2016 <- read_csv(here::here("21_political-participation",
+                                    "data",
+                                    "final",
+                                   "voter-turnout-2016.csv"))
+
+
+turnout_combined <- left_join(
+  all_counties,
+  turnout2016,
+  by = c("state", "county"),
+  suffix = c("_2024", "_2016")
+)
+
+turnout_combined <- turnout_combined %>%
+  mutate(change = election_turnout_2024 - election_turnout_2016)
+
+turnout_combined %>%
+  ggplot(aes(election_turnout_2024, election_turnout_2016, color = population < 10000)) +
+  geom_abline() +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Most voter turnouts increased modestly",
+    subtitle = "Counties with fewer than 10,000 people in yellow"
+  ) +
+  coord_equal() +
+  scatter_grid()
+
+turnout_combined %>%
+  filter(population < 1000000) %>%
+  ggplot(aes(population, change)) +
+  geom_point(alpha = 0.1) +
+  labs(
+    title = "Large changes in turnout are in low-population areas",
+    subtitle = "Excluding counties with 1+ million people"
+    ) +
+  scatter_grid()
+
+turnout_combined %>%
+  arrange(desc(abs(change))) %>%
+  select(-year_2024, -year_2016)
+
+```
+
+### Multiple Years
+
+```{r}
+folder <- here::here("21_political-participation", "data", "final")
+
+turnout_longitudinal <- bind_rows(
+  read_csv(here(folder, "voter-turnout-2016.csv")),
+  read_csv(here(folder, "voter-turnout-2020.csv")),
+  all_counties
+)
+
+turnout_longitudinal <- turnout_longitudinal |>
+  group_by(state, county) |>
+  mutate(turnout_variation  = sum(abs(election_turnout - median(election_turnout)))) |>
+  ungroup()
+
+turnout_longitudinal |>
+  ggplot(aes(election_turnout_quality, turnout_variation)) +
+  geom_point(alpha = 0.1)
+
+```
+
 ### Compare quality
 
 ```{r}
-turnout_combined %>%
-  count(election_turnout_quality_2020, election_turnout_quality_2024)
+turnout_longitudinal %>%
+  select(year, state, county, ends_with("_quality")) |>
+  pivot_wider(
+    id_cols = c(state, county),
+    names_from = year,
+    values_from = ends_with("quality")
+    
+  ) |>
+  count(`2016`, `2020`, `2024`)
 
 ```
 
