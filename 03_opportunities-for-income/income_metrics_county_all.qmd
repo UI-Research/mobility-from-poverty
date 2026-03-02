@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 params:
   year: "2024"
-  inflation_adjust: 1.883
+  inflation_year: "2024"
 ---
 
 ## Overview
@@ -507,51 +507,20 @@ select(acs_crosswalked, hhwt, repwt1, repwt80, afact)
 
 This section makes two adjustments to then dollar `household_income` values that account for inflation. First, we apply CPI adjustments for all values to the latest year in dollar value.
 
-This adjustment table is provided by the [IPUMS website](https://usa.ipums.org/usa/cpi99.shtml). IPUMS updates this table for new ACS years annually, users will have to add the additional years below.
+This adjustment table is provided by the [IPUMS website](https://usa.ipums.org/usa/cpi99.shtml). IPUMS updates this table for new ACS years annually, users may have to update the link in the 'read_html' statement below.
 
 ```{r}
-cpi_text <- "Data Year	Income Year	X	CPI99	=	1999 dollars
-1940	1939 dollars	X	11.986	=	1999 dollars
-1950	1949 dollars	X	7.000	=	1999 dollars
-1960	1959 dollars	X	5.725	=	1999 dollars
-1970	1969 dollars	X	4.540	=	1999 dollars
-1980	1979 dollars	X	2.295	=	1999 dollars
-1990	1989 dollars	X	1.344	=	1999 dollars
-2000	1999 dollars	X	1.000	=	1999 dollars
-2000 	2000 dollars	X	0.967	=	1999 dollars
-2001	2001 dollars	X	0.941	=	1999 dollars
-2002	2002 dollars	X	0.926	=	1999 dollars
-2003	2003 dollars	X	0.905	=	1999 dollars
-2004	2004 dollars	X	0.882	=	1999 dollars
-2005	2005 dollars	X	0.853	=	1999 dollars
-2006	2006 dollars	X	0.826	=	1999 dollars
-2007	2007 dollars	X	0.804	=	1999 dollars
-2008	2008 dollars	X	0.774	=	1999 dollars
-2009	2009 dollars	X	0.777	=	1999 dollars
-2010	2010 dollars	X	0.764	=	1999 dollars
-2011	2011 dollars	X	0.741	=	1999 dollars
-2012	2012 dollars	X	0.726	=	1999 dollars
-2013	2013 dollars	X	0.715	=	1999 dollars
-2014	2014 dollars	X	0.704	=	1999 dollars
-2015	2015 dollars	X	0.703	=	1999 dollars
-2016	2016 dollars	X	0.694	=	1999 dollars
-2017	2017 dollars	X	0.679	=	1999 dollars
-2018	2018 dollars	X	0.663	=	1999 dollars
-2019	2019 dollars	X	0.652	=	1999 dollars
-2020	2020 dollars	X	0.644	=	1999 dollars
-2021	2021 dollars	X	0.615	=	1999 dollars
-2022	2022 dollars	X	0.569	=	1999 dollars
-2023	2023 dollars	X	0.547	=	1999 dollars
-2024	2024 dollars	X	0.531	=	1999 dollars"
-
-# Convert to tidy tibble
-cpi_data <- read_tsv(cpi_text, skip = 1, col_names = FALSE) %>%
-  select(data_year = X1, income_year = X2, cpi_to_1999 = X4) %>%
-  mutate(
-    income_year = parse_number(income_year),
-    cpi_to_1999 = as.numeric(cpi_to_1999),
-    data_year = as.numeric(data_year)  
-  )
+cpi_data <- rvest::read_html("https://usa.ipums.org/usa/cpi99.shtml") %>%
+    rvest::html_element("table") %>%
+    rvest::html_table() %>%
+    janitor::clean_names() %>%
+    select(data_year, income_year, cpi_to_1999 = cpi99) %>%
+    mutate(
+      data_year = as.numeric(data_year),
+      income_year = parse_number(income_year),
+      cpi_to_1999 = as.numeric(cpi_to_1999)
+    ) %>%
+    filter(!is.na(data_year)) # drop the second 2000 row which gets parsed as NA due to a trailing space
 ```
 
 Convert all values to 1999 dollars.  
@@ -561,16 +530,37 @@ acs_crosswalked <- acs_crosswalked %>%
   left_join(cpi_data, by = c("year" = "data_year")) %>% 
   mutate(
     household_income = household_income*cpi_to_1999
-  ) 
+  ) %>% 
+  select(-cpi_to_1999)
 ```
 
-Now we want to adjust all values to the latest year available. This value comes from adjustment values also provided by [IPUMS](https://cps.ipums.org/cps/cpi99.shtml) and should be set in the parameters argument.
+Now we want to adjust all values to the latest year available. This value comes from adjustment values also provided by [IPUMS](https://cps.ipums.org/cps/cpi99.shtml) and is scraped below. We adjust all values to the inflation year set in the parameters argument. 
+
+```{r}
+cpi_data <- rvest::read_html("https://cps.ipums.org/cps/cpi99.shtml") %>%
+    rvest::html_nodes("table") %>%
+    rvest::html_table() 
+
+cpi_data <- cpi_data[[2]] %>% 
+    janitor::clean_names() %>%
+    select(income_year, alternate_factor) %>%
+    mutate(
+      income_year = str_sub(income_year, 1, 4),
+      income_year = as.numeric(income_year),
+      alternate_factor = as.numeric(alternate_factor)
+    ) %>% 
+  filter(income_year == params$inflation_year)
+
+```
+
 
 ```{r}
 acs_crosswalked <- acs_crosswalked %>%
+  left_join(cpi_data, by = c("year" = "income_year")) %>% 
   mutate(
-    household_income = household_income*params$inflation_adjust
-  ) 
+    household_income = household_income*alternate_factor
+  ) %>% 
+  select(-alternate_factor)
 ```
 
 Next, we apply the ADJUST variable to `household_income`. 

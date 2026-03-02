@@ -14,6 +14,7 @@ editor_options:
   chunk_output_type: console
 params:
   year: "2023"
+  inflation_year: "2024"
 ---
 
 *Program for the creation of the Opportunity for Income Predictor subgroups at the county level*
@@ -77,7 +78,7 @@ ipums_repwt_extract_date <- "03_07_25"
 If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
 
 ```{r}
-single_year_update = "No"
+single_year_update = "Yes"
 ```
 
 Define existing intermediate years and read them into function to combine. 
@@ -472,6 +473,66 @@ select(acs_crosswalked, hhwt, repwt1, repwt80, afact)
 
 ```
 
+### Inflation Adjustment
+
+This section makes two adjustments to then dollar `household_income` values that account for inflation. First, we apply CPI adjustments for all values to the latest year in dollar value.
+
+This adjustment table is provided by the [IPUMS website](https://usa.ipums.org/usa/cpi99.shtml). IPUMS updates this table for new ACS years annually, users may have to update the link in the 'read_html' statement below.
+
+```{r}
+cpi_data <- rvest::read_html("https://usa.ipums.org/usa/cpi99.shtml") %>%
+    rvest::html_element("table") %>%
+    rvest::html_table() %>%
+    janitor::clean_names() %>%
+    select(data_year, income_year, cpi_to_1999 = cpi99) %>%
+    mutate(
+      data_year = as.numeric(data_year),
+      income_year = parse_number(income_year),
+      cpi_to_1999 = as.numeric(cpi_to_1999)
+    ) %>%
+    filter(!is.na(data_year)) # drop the second 2000 row which gets parsed as NA due to a trailing space
+```
+
+Convert all values to 1999 dollars.  
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>%
+  left_join(cpi_data, by = c("year" = "data_year")) %>% 
+  mutate(
+    household_income = household_income*cpi_to_1999
+  ) %>% 
+  select(-cpi_to_1999)
+```
+
+Now we want to adjust all values to the latest year available. This value comes from adjustment values also provided by [IPUMS](https://cps.ipums.org/cps/cpi99.shtml) and is scraped below. We adjust all values to the inflation year set in the parameters argument. 
+
+```{r}
+cpi_data <- rvest::read_html("https://cps.ipums.org/cps/cpi99.shtml") %>%
+    rvest::html_nodes("table") %>%
+    rvest::html_table() 
+
+cpi_data <- cpi_data[[2]] %>% 
+    janitor::clean_names() %>%
+    select(income_year, alternate_factor) %>%
+    mutate(
+      income_year = str_sub(income_year, 1, 4),
+      income_year = as.numeric(income_year),
+      alternate_factor = as.numeric(alternate_factor)
+    ) %>% 
+  filter(income_year == params$inflation_year)
+
+```
+
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>%
+  left_join(cpi_data, by = c("year" = "income_year")) %>% 
+  mutate(
+    household_income = household_income*alternate_factor
+  ) %>% 
+  select(-alternate_factor)
+```
+
 Apply the Adjust variable to `household_income`. Adjust converts the dollar amounts to the amount that they would have been had they been earned entirely during the calendar year. This is to deal with households being surveyed at different times during the year.
 
 ```{r}
@@ -551,7 +612,7 @@ Clean up the confidence interval bounds and sort the data.
 ```{r}
 #| label: finalize-all
 results_all <- finalize_metric(results_all,
-                               .geo_level = place)
+                               .geo_level = county)
 ```
 
 ```{r}
@@ -629,7 +690,7 @@ results_race_ethnicity <- acs_race_ethnicity %>%
 ```{r}
 #| label: finalize-race-ethnicity
 results_race_ethnicity <- finalize_metric(results_race_ethnicity,
-                                          .geo_level = place)
+                                          .geo_level = county)
 ```
 
 ```{r}
@@ -709,7 +770,7 @@ results_gender <- acs_gender %>%
 ```{r}
 #| label: finalize-gender
 results_gender <- finalize_metric(results_gender,
-                                  .geo_level = place)
+                                  .geo_level = county)
 ```
 
 ```{r}
