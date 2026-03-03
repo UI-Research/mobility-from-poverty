@@ -210,11 +210,11 @@ mit_counties <- mit_counties %>%
          votes)
 ```
 
-We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2020_United_States_presidential_election). This code scrapes the vote count: 
+We compare the aggregated totals to the state total posted on [Wikipedia](https://web.archive.org/web/20230629100426/https://en.wikipedia.org/wiki/2020_United_States_presidential_election). This code scrapes the vote count: 
 
 ```{r}
 # scrape data from Wikipedia with rvest
-wiki <- read_html("https://en.wikipedia.org/wiki/2020_United_States_presidential_election")
+wiki <- read_html("https://web.archive.org/web/20230629100426/https://en.wikipedia.org/wiki/2020_United_States_presidential_election")
 
 wiki_votes <- wiki %>%
   html_elements("td:nth-child(20)") %>%
@@ -354,7 +354,7 @@ We calculate turnout and the standard error for the CVAP estimate.
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout = votes / cvap,
+    share_election_turnout = votes / cvap,
     cvap_se = cvap_moe / 1.645
   ) %>%
   mutate(cv = cvap_se / cvap)
@@ -368,7 +368,7 @@ joined_data %>%
   filter(votes > cvap)
 
 joined_data <- joined_data %>%
-  mutate(election_turnout = if_else(condition = election_turnout > 1, true = 1, false = election_turnout))
+  mutate(share_election_turnout = if_else(condition = share_election_turnout > 1, true = 1, false = share_election_turnout))
 
 ```
 
@@ -376,18 +376,18 @@ joined_data <- joined_data %>%
 
 ```{r}
 stopifnot(
-  max(joined_data$election_turnout, na.rm = TRUE) <= 1
+  max(joined_data$share_election_turnout, na.rm = TRUE) <= 1
 )
 
 stopifnot(
-  min(joined_data$election_turnout, na.rm = TRUE) >= 0
+  min(joined_data$share_election_turnout, na.rm = TRUE) >= 0
 )
 
 ```
 
 ```{r}
 joined_data %>%
-  ggplot(aes(votes, election_turnout)) +
+  ggplot(aes(votes, share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_x_log10() +
   scale_y_continuous(limits = c(0, 1),
@@ -396,7 +396,7 @@ joined_data %>%
   labs(title = "There Isn't Much Relationship Between Turnout and Votes")
 
 joined_data %>%
-  ggplot(aes(cvap, election_turnout)) +
+  ggplot(aes(cvap, share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_x_log10() +
   scale_y_continuous(limits = c(0, 1),
@@ -425,21 +425,21 @@ If anything, a stricter threshold is necessary because the estimates are used in
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout_quality = case_when(
-      is.na(election_turnout) ~ NA_real_,
+    share_election_turnout_quality = case_when(
+      is.na(share_election_turnout) ~ NA_real_,
       cv >= 0.15 ~ 3,
       cv >= 0.05 ~ 2,
       TRUE ~ 1
     )
   )
 
-count(joined_data, election_turnout_quality)
+count(joined_data, share_election_turnout_quality)
 
 ```
 
 ```{r}
 joined_data %>%
-  ggplot(aes(factor(election_turnout_quality), election_turnout)) +
+  ggplot(aes(factor(share_election_turnout_quality), share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_y_continuous(limits = c(0, 1),
                      expand = expansion(mult = c(0, 0.1))) +
@@ -459,12 +459,13 @@ all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 
 all_counties <- all_counties %>%
   mutate(year = 2020) %>%
-  select(year, state, county, election_turnout, election_turnout_quality, population) 
+  select(year, state, county, share_election_turnout, share_election_turnout_quality, population) 
 
 all_counties %>%
   select(-population) %>%
-  write_csv(here::here("05_local-governance",
-                       "voter-turnout",
+  write_csv(here::here("21_political-participation",
+                       "data", 
+                       "final",
                        "voter-turnout-2020.csv"))
   
 ```
@@ -487,10 +488,10 @@ turnout_combined <- left_join(
 )
 
 turnout_combined <- turnout_combined %>%
-  mutate(change = election_turnout_2020 - election_turnout_2016)
+  mutate(change = share_election_turnout_2020 - share_election_turnout_2016)
 
 turnout_combined %>%
-  ggplot(aes(election_turnout_2016, election_turnout_2020, color = population < 10000)) +
+  ggplot(aes(share_election_turnout_2016, share_election_turnout_2020, color = population < 10000)) +
   geom_abline() +
   geom_point(alpha = 0.1) +
   labs(
@@ -520,6 +521,6 @@ turnout_combined %>%
 
 ```{r}
 turnout_combined %>%
-  count(election_turnout_quality_2016, election_turnout_quality_2020)
+  count(share_election_turnout_quality_2016, share_election_turnout_quality_2020)
 
 ```
