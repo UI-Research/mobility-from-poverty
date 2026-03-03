@@ -214,9 +214,70 @@ mit_counties <- mit_counties %>%
          votes)
 ```
 
+#### Fix Connecticut counties
+
+
+We need to crosswalk the pre-2023 counties in the MIT data to the updated Connecticut planning regions.
+
+```{r}
+cw_connecticut <- read_csv(here::here("geographic-crosswalks", "data", "connecticut_planning_regions_to_pre_2023_counties.csv"),
+                           skip = 2, col_names = c("CTcounty", "county", "CountyName", "CTCountyName", "pop20", "afact2", "afact")) %>% 
+  select(FIPS = county, FIPS_old = CTcounty, afact, afact2) %>% 
+   mutate(FIPS = as.character(FIPS),
+         FIPS = str_pad(FIPS, width = 5, side = "left", pad = "0"),
+         FIPS_old = as.character(FIPS_old),
+         FIPS_old = str_pad(FIPS_old, width = 5, side = "left", pad = "0"))
+```
+
+Create a data frame with just CT and join on the crosswalk.
+```{r}
+mit_ct <- mit_counties %>% 
+  filter(state == "09") %>% 
+  mutate(FIPS_old = paste0(state, county))
+
+mit_ct_join <- mit_ct %>% 
+  left_join(cw_connecticut, by = c("FIPS_old"))
+```
+
+Create a data frame without CT 
+```{r}
+mit_non_ct <- mit_counties %>% 
+  filter(state != "09")
+
+```
+
+Sum the eligible voting population weighted by the AFACT in CT planning regions
+```{r}
+mit_ct_join <- mit_ct_join %>% 
+  group_by(year, FIPS) %>% 
+  summarise(votes = sum(votes * afact)) %>% 
+  ungroup() %>% 
+  mutate(state = str_sub(FIPS, start = 1, end = 2),
+         county = str_sub(FIPS, start = 3, end = 5)) %>% 
+  select(-FIPS)
+```
+
+Compare Connecticut voting sums.
+
+```{r}
+sum(pull(mit_ct, votes))
+sum(pull(mit_ct_join, votes))
+stopifnot(abs(sum(pull(mit_ct, votes)) - sum(pull(mit_ct_join, votes))) < 50)
+```
+
+Combine the CT data back onto the overall data.
+```{r}
+mit_counties <- bind_rows(mit_non_ct, mit_ct_join) 
+```
+
+Alaska shows voting districts which are not comparable to counties. To test our count we drop Alaska from the data and subtract 30 counties from our usual total.
+```{r}
+stopifnot(nrow(mit_counties %>% filter(state != "02")) == 3144-30)
+```
+
 #### Turnout comparisons
 
-We compare the aggregated totals to the state total posted on [Wikipedia](https://en.wikipedia.org/wiki/2024_United_States_presidential_election) and with totals published by the [Census](https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html). 
+We compare the aggregated totals to the state total posted on [Wikipedia](https://web.archive.org/web/20260301183408/https://en.wikipedia.org/wiki/2024_United_States_presidential_election) and with totals published by the [Census](https://www.census.gov/data/tables/time-series/demo/voting-and-registration/p20-587.html). 
 
 ##### Wikipedia 
 
@@ -224,7 +285,7 @@ This code scrapes the vote count from Wikipedia:
 
 ```{r}
 # scrape data from Wikipedia with rvest
-wiki <- read_html("https://en.wikipedia.org/wiki/2024_United_States_presidential_election")
+wiki <- read_html("https://web.archive.org/web/20260301183408/https://en.wikipedia.org/wiki/2024_United_States_presidential_election")
 
 wiki_votes <- wiki %>%
   html_elements("td:nth-child(23)") %>%
@@ -373,8 +434,6 @@ if (!file.exists(cvap_data)) {
 
 Next, we load and clean the data. The variable of interest is `cvap_est`.
 
-> cvap_est: The rounded estimate of the total number of United States citizens 18 years of age or older for that geographic area and group.
-
 ```{r}
 cvap <- read_csv(here::here("21_political-participation", 
                             "data",
@@ -400,39 +459,14 @@ cvap <- cvap %>%
 
 ```
 
-We need to crosswalk the Connecticut Planning Regions in the CVAP data back to pre-2023 counties in order to merge with the MIT data
-
-```{r}
-cw_connecticut <- read_csv(here::here("geographic-crosswalks", "data", "connecticut_planning_regions_to_pre_2023_counties.csv")) %>% 
-  select(FIPS = county, FIPS_old = CTcounty, afact) %>% 
-   mutate(FIPS = as.character(FIPS),
-         FIPS = str_pad(FIPS, width = 5, side = "left", pad = "0"),
-         FIPS_old = as.character(FIPS_old),
-         FIPS_old = str_pad(FIPS_old, width = 5, side = "left", pad = "0"))
-```
-
-Join onto CVAP data and sum the eligible voting population weighted by the AFACT
-
-```{r}
-cvap_join <- cvap %>% 
-  left_join(cw_connecticut, by = c("FIPS")) %>% 
-  mutate(FIPS = ifelse(state == "09", FIPS_old, FIPS),
-         afact = ifelse(is.na(afact), 1, afact),
-         county = str_sub(FIPS, -3)) %>% 
-  group_by(state, county, FIPS) %>% 
-  summarise(cvap = sum(cvap * afact),
-            cvap_moe = sum(cvap_moe * afact)) |>
-  ungroup()
-```
-
 ## 3. Combine and calculate turnout
 
 We combine the data. The join works for all counties except for counties in Alaska and [Kalawao County, Hawaii (FIPS 15005 which is a judicial district of Maui County (FIPS 15009))](https://en.wikipedia.org/wiki/Kalawao_County,_Hawaii). Alaska is dropped entirely because it doesn't have a county that exists in `cvap`.
 
 ```{r}
-joined_data <- left_join(cvap_join, mit_counties, by = c("state", "county"))
+joined_data <- left_join(cvap, mit_counties, by = c("state", "county"))
 
-anti_join(cvap_join, mit_counties, by = c("state", "county")) |>
+anti_join(cvap, mit_counties, by = c("state", "county")) |>
   print(n = Inf)
 
 ```
@@ -442,7 +476,7 @@ We calculate turnout and the standard error for the CVAP estimate.
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout = votes / cvap,
+    share_election_turnout = votes / cvap,
     cvap_se = cvap_moe / 1.645
   ) %>%
   mutate(cv = cvap_se / cvap)
@@ -456,7 +490,7 @@ joined_data %>%
   filter(votes > cvap)
 
 joined_data <- joined_data %>%
-  mutate(election_turnout = if_else(condition = election_turnout > 1, true = 1, false = election_turnout))
+  mutate(share_election_turnout = if_else(condition = share_election_turnout > 1, true = 1, false = share_election_turnout))
 
 ```
 
@@ -464,18 +498,18 @@ joined_data <- joined_data %>%
 
 ```{r}
 stopifnot(
-  max(joined_data$election_turnout, na.rm = TRUE) <= 1
+  max(joined_data$share_election_turnout, na.rm = TRUE) <= 1
 )
 
 stopifnot(
-  min(joined_data$election_turnout, na.rm = TRUE) >= 0
+  min(joined_data$share_election_turnout, na.rm = TRUE) >= 0
 )
 
 ```
 
 ```{r}
 joined_data %>%
-  ggplot(aes(votes, election_turnout)) +
+  ggplot(aes(votes, share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_x_log10() +
   scale_y_continuous(limits = c(0, 1),
@@ -484,7 +518,7 @@ joined_data %>%
   labs(title = "There Isn't Much Relationship Between Turnout and Votes")
 
 joined_data %>%
-  ggplot(aes(cvap, election_turnout)) +
+  ggplot(aes(cvap, share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_x_log10() +
   scale_y_continuous(limits = c(0, 1),
@@ -513,21 +547,35 @@ If anything, a stricter threshold is necessary because the estimates are used in
 ```{r}
 joined_data <- joined_data %>%
   mutate(
-    election_turnout_quality = case_when(
-      is.na(election_turnout) ~ NA_real_,
+    share_election_turnout_quality = case_when(
+      is.na(share_election_turnout) ~ NA_real_,
       cv >= 0.15 ~ 3,
       cv >= 0.05 ~ 2,
       TRUE ~ 1
     )
   )
 
-count(joined_data, election_turnout_quality)
-
 ```
+
+Connecticut and Missouri have inherent issues with their voting reporting data. Manually update the quality of these states to reflect poor quality.
+
+```{r}
+joined_data <- joined_data %>% 
+  mutate(
+    share_election_turnout_quality = ifelse(
+      state %in% c("09", "29"), 
+      pmax(2, share_election_turnout_quality), 
+      share_election_turnout_quality
+    )
+  )
+
+count(joined_data, share_election_turnout_quality)
+```
+
 
 ```{r}
 joined_data %>%
-  ggplot(aes(factor(election_turnout_quality), election_turnout)) +
+  ggplot(aes(factor(share_election_turnout_quality), share_election_turnout)) +
   geom_point(alpha = 0.1) +
   scale_y_continuous(limits = c(0, 1),
                      expand = expansion(mult = c(0, 0.1))) +
@@ -547,9 +595,16 @@ all_counties <- left_join(all_counties, joined_data, by = c("state", "county"))
 
 all_counties <- all_counties %>%
   mutate(year = 2024) %>%
-  select(year, state, county, election_turnout, election_turnout_quality, population) 
+  select(year, state, county, share_election_turnout, share_election_turnout_quality, population) 
 
 ```
+
+Test if 'all_counties' is 3,144 rows
+
+```{r}
+stopifnot(nrow(all_counties) == 3144)
+```
+
 
 ```{r}
 all_counties |>
@@ -604,10 +659,10 @@ turnout_combined <- left_join(
 )
 
 turnout_combined <- turnout_combined %>%
-  mutate(change = election_turnout_2024 - election_turnout_2020)
+  mutate(change = share_election_turnout_2024 - share_election_turnout_2020)
 
 turnout_combined %>%
-  ggplot(aes(election_turnout_2024, election_turnout_2020, color = population < 10000)) +
+  ggplot(aes(share_election_turnout_2024, share_election_turnout_2020, color = population < 10000)) +
   geom_abline() +
   geom_point(alpha = 0.1) +
   labs(
@@ -650,10 +705,10 @@ turnout_combined <- left_join(
 )
 
 turnout_combined <- turnout_combined %>%
-  mutate(change = election_turnout_2024 - election_turnout_2016)
+  mutate(change = share_election_turnout_2024 - share_election_turnout_2016)
 
 turnout_combined %>%
-  ggplot(aes(election_turnout_2024, election_turnout_2016, color = population < 10000)) +
+  ggplot(aes(share_election_turnout_2024, share_election_turnout_2016, color = population < 10000)) +
   geom_abline() +
   geom_point(alpha = 0.1) +
   labs(
@@ -692,11 +747,11 @@ turnout_longitudinal <- bind_rows(
 
 turnout_longitudinal <- turnout_longitudinal |>
   group_by(state, county) |>
-  mutate(turnout_variation  = sum(abs(election_turnout - median(election_turnout)))) |>
+  mutate(turnout_variation  = sum(abs(share_election_turnout - median(share_election_turnout)))) |>
   ungroup()
 
 turnout_longitudinal |>
-  ggplot(aes(election_turnout_quality, turnout_variation)) +
+  ggplot(aes(share_election_turnout_quality, turnout_variation)) +
   geom_point(alpha = 0.1)
 
 ```
