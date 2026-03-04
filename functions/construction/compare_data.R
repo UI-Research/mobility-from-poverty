@@ -43,6 +43,14 @@ compare_data <- function(data_list, header) {
   local <- data_list[["local"]]
   catalog <- data_list[["catalog"]]
   
+  if (identical(as.data.frame(local), as.data.frame(catalog))) {
+    
+    cat("Files are identical!\n\n")
+    
+    return(NULL)
+    
+  }
+  
   # Get all shared column names to use as join keys
   by_all <- intersect(names(local), names(catalog))
   
@@ -104,20 +112,35 @@ compare_data <- function(data_list, header) {
   vars_shared <- intersect(names(local), names(catalog))
   
   vars_differ <- vector(mode = "logical", length = length(vars_shared))
+  vars_obs_differ <- vector(mode = "numeric", length = length(vars_shared))
   names(vars_differ) <- vars_shared
+  names(vars_obs_differ) <- vars_shared
   for (var in vars_shared) {
     
     vars_differ[var] <- identical(pull(local, var), pull(catalog, var))
     
+    # compare the first values
+    local_vec <- pull(local, var)
+    catalog_vec <- pull(catalog, var)[1:length(local_vec)]
+    
+    # compare for equivalence and correctly handle NA
+    result <- local_vec != catalog_vec
+    both_na <- is.na(local_vec) & is.na(catalog_vec)
+    result[is.na(result)] <- TRUE # one side is NA, treat as different
+    result[both_na] <- FALSE      # both NA, treat as same
+    
+    vars_obs_differ[var] <- sum(result)
+    
   }
 
   vars_with_diffs <- vars_shared[!vars_differ]
+  vars_num_diffs <- vars_obs_differ[!vars_differ]
   
   # --- COMBINE RESULTS: SCHEMA + VALUE DIFFERENCES ---
   
   cat("**Variables in local that differ from catalog (new or changed values):**\n\n")
   if (length(vars_with_diffs) > 0) {
-    cat(paste("-", vars_with_diffs, collapse = "\n"), "\n")
+    cat(paste("-", paste0(vars_with_diffs, " (", vars_num_diffs, ")"), collapse = "\n"), "\n")
   } else {
     cat("None\n")
   }
