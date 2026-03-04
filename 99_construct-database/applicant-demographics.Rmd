@@ -1,0 +1,356 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+    self_contained: TRUE
+    code_folding: hide
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 2
+    css: !expr here::here("10_construct-database", "www", "web_report.css")
+    editor_options:
+      chunk_output_type: console
+---
+
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+
+![](www/images/urban-institute-logo.png)
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(tidycensus)
+library(urbnthemes)
+library(reactable)
+library(readxl)
+
+set_urbn_defaults()
+
+```
+
+# County Population
+
+```{r}
+# https://www2.census.gov/geo/pdfs/maps-data/maps/reference/us_regdiv.pdf
+regions <- 
+  tribble(
+    ~state_fips, ~state, ~region,
+    "01", "Alabama", "South",
+    "02", "Alaska", "West",  
+    "04", "Arizona", "West",        
+    "05", "Arkansas", "South",
+    "06", "California", "West",    
+    "08", "Colorado", "West",      
+    "09", "Connecticut", "Northeast",   
+    "10", "Delaware", "South",   
+    "11", "District of Columbia", "South",
+    "12", "Florida", "South",      
+    "13", "Georgia", "South",       
+    "15", "Hawaii", "West",       
+    "16", "Idaho", "West",        
+    "17", "Illinois", "Midwest",    
+    "18", "Indiana", "Midwest",      
+    "19", "Iowa", "Midwest",
+    "20", "Kansas", "Midwest",     
+    "21", "Kentucky", "South",   
+    "22", "Louisiana", "South",  
+    "23", "Maine", "Norsttheast",      
+    "24", "Maryland", "South",      
+    "25", "Massachusetts", "Northeast", 
+    "26", "Michigan", "Midwest",       
+    "27", "Minnesota", "Midwest",      
+    "28", "Mississippi", "South",   
+    "29", "Missouri", "Midwest",
+    "30", "Montana", "West",       
+    "31", "Nebraska", "Midwest",      
+    "32", "Nevada", "West",        
+    "33", "New Hampshire", "Northeast", 
+    "34", "New Jersey", "Northeast",    
+    "35", "New Mexico", "West",    
+    "36", "New York", "Northeast",      
+    "37", "North Carolina", "South",
+    "38", "North Dakota", "Midwest",   
+    "39", "Ohio", "Midwest",           
+    "40", "Oklahoma", "South",
+    "41", "Oregon", "West", 
+    "42", "Pennsylvania", "Northeast", 
+    "44", "Rhode Island", "Northeast",
+    "45", "South Carolina", "South",
+    "46", "South Dakota",  "Midwest",
+    "47", "Tennessee", "South",
+    "48", "Texas", "South",
+    "49", "Utah", "West",
+    "50", "Vermont", "Northeast",    
+    "51", "Virginia", "South",     
+    "53", "Washington", "West",  
+    "54", "West Virginia", "South",
+    "55", "Wisconsin", "Midwest",
+    "56", "Wyoming", "West" 
+  )
+
+```
+
+```{r}
+population <- 
+  get_estimates(geography = "county", product = "population", year = 2019, output = "wide") %>%
+  rename_all(tolower)
+
+```
+
+```{r}
+population %>%
+  arrange(desc(pop)) %>%
+  mutate(`Number of Counties` = row_number(),
+         `Share of U.S. Population` = cumsum(pop) / sum(pop)) %>%
+  ggplot(aes(`Number of Counties`, `Share of U.S. Population`)) +
+  geom_line() + 
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(title = "Most Americans Live in a Minority of Counties",
+       subtitle = "Proportion of Population Represented by Counties of Decreasing Size",
+       caption = "Source: Census Population Estimates Project 2018") +  
+  scatter_grid()
+
+population %>%
+  arrange(desc(pop)) %>%
+  mutate(`Number of Counties` = row_number(),
+         `Share of U.S. Population` = cumsum(pop) / sum(pop)) %>%
+  ggplot(aes(pop, `Share of U.S. Population`)) + 
+  geom_line() +
+  scale_x_reverse(breaks = c(0, 100000, 500000, 1000000, 5000000, 10000000),
+                  labels = scales::comma) +
+  scale_y_continuous(expand = c(0, 0)) + 
+  scatter_grid() +
+  labs(title = "Most Americans Live in Counties with More than 100,000 People",
+       subtitle = "Proportion of Population Represented by Counties of Decreasing Size",
+       caption = "Source: Census Population Estimates Project 2018") +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+# Demographics 
+
+```{r pull-county-data, results = "hide"}
+vars <- tribble(
+  ~variable, ~var_name,
+  "B01003_001", "population",
+  "B01001B_001", "black", 
+  "B01001H_001", "non_hispanic_white",
+  "B01001I_001", "hispanic_or_latino",
+  "B06012_002", "poverty",
+  # median household income
+  "B19013_001", "med_hh_income",
+  "B19301_001", "pc_income",
+  "DP02_0092P", "foreign_born",
+  "B01002_001", "median_age",
+  "DP02_0064P", "ed_ba",
+  "DP02_0065P", "ed_ma"
+)
+
+acs2018 <- get_acs(geography = "county",
+                   variables  = vars$variable,
+                   year = 2018,
+                   geometry = FALSE,
+                   progress = FALSE)
+
+acs2018 <- left_join(acs2018, vars, by = "variable") %>%
+  select(geoid = GEOID, 
+         name = NAME, 
+         estimate, 
+         var_name) %>%
+  pivot_wider(names_from = var_name,
+              values_from = estimate)
+
+acs2018 <- acs2018 %>%
+  mutate(poverty = poverty / population) %>%
+  mutate(
+    ed_ba_plus = (ed_ba + ed_ma) / 100,
+    foreign_born = foreign_born / 100,
+    black = black / population,
+    non_hispanic_white = non_hispanic_white / population,
+    hispanic_or_latino = hispanic_or_latino / population
+  ) %>%
+  select(-ed_ba, -ed_ma)
+
+# filter to counties of interest
+fips <- read_excel(here::here("10_construct-database", "RFI Applicant List w. Codes.xlsx")) %>%
+  pull(`FIPS Code`)
+
+fips <- as.character(flatten(str_split(fips, "; "))) %>%
+  str_pad(width = 5, pad = "0")
+
+combined_data <- left_join(population, acs2018, by = "geoid") %>%
+  filter(geoid %in% fips) %>%
+  mutate(state = str_sub(geoid, start = 1, end = 2),
+         county = str_sub(geoid, start = 3, end = 5)) %>%
+  select(state,
+         county,
+         name = name.x,
+         population,
+         density,
+         black,
+         non_hispanic_white,
+         hispanic_or_latino,
+         foreign_born,
+         poverty,
+         med_hh_income,
+         pc_income,
+         ed_ba_plus) %>%
+  filter(state != "72")
+
+combined_data %>%
+  left_join(regions, by = c("state" = "state_fips")) %>%
+  count(region)
+
+write_csv(combined_data, here::here("10_construct-database", "applicant-demographics.csv"))
+
+```
+
+* `population` Number of people in the county 
+* `density` Number of people per square mile in the county
+* `black` Proportion of the population that is black, (Hispanic and non-Hispanic)
+* `non_hispanic_white` Proportion of the population that is white, non-Hispanic
+* `hispanic_or_latino` Proportion of the population that is Hispanic or Latino
+* `foreign_born` Proportion of the population that is foreign born
+* `poverty` Proportion of the population living below the poverty level
+* `med_hh_income` Median household income in the county
+* `pc_income` Average per capita income in the county
+* `ed_ba_plus`Proportion of the population ages 25+ with a BA degree or higher
+
+All estimates come from the 2014-2018 5-Year American Community Service except population. Population comes from the 2018 Population Estimates Project by the Census Bureau. 
+
+**Scroll right to see more variables**
+
+```{r}
+combined_data %>%
+  reactable(
+    columns = list(
+      density = colDef(format = colFormat(digits = 1)),
+      non_hispanic_white = colDef(format = colFormat(digits = 2)),
+      black = colDef(format = colFormat(digits = 2)),
+      hispanic_or_latino = colDef(format = colFormat(digits = 2)),
+      foreign_born = colDef(format = colFormat(digits = 2)),
+      poverty = colDef(format = colFormat(digits = 2))
+    ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+```
+
+# File Quality
+
+The following table describes the quality of the data for the communities of interest. There are 30 metrics because some of the metrics contain multiple variables. For example, the race-ethnicity exposure metrics have variables for white non-Hispanic, Black non-Hispanic, and Hispanic. Most variables for most communities have "Good" quality. 
+
+```{r}
+metrics <- read_csv(here::here("10_construct-database", "mobility-metrics.csv"))
+
+metrics <- metrics %>%
+  mutate(geoid = paste0(state, county)) %>%
+  filter(geoid %in% fips) 
+
+metrics_quality <- metrics %>%
+  select(county_name, state_name, ends_with("_quality")) %>%
+  pivot_longer(cols = -c(state_name, county_name)) %>%
+  group_by(state_name, county_name) %>%
+  summarize(quality_good = sum(value == 1, na.rm = TRUE),
+            quality_marginal = sum(value == 2, na.rm = TRUE),
+            quality_poor = sum(value == 3, na.rm = TRUE),
+            missing_values = sum(is.na(value)))
+
+metrics_quality %>%
+  reactable(
+    # columns = list(
+    #   density = colDef(format = colFormat(digits = 1)),
+    #   non_hispanic_white = colDef(format = colFormat(digits = 2)),
+    #   black = colDef(format = colFormat(digits = 2)),
+    #   hispanic_or_latino = colDef(format = colFormat(digits = 2)),
+    #   foreign_born = colDef(format = colFormat(digits = 2)),
+    #   poverty = colDef(format = colFormat(digits = 2))
+    # ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+write_csv(metrics_quality, here::here("10_construct-database", "mobility-metrics-quality.csv"))
+
+```
+
+This table shows the share of each metric that have "Good" quality. 
+
+```{r}
+metrics %>%
+  select(ends_with("_quality")) %>%
+  pivot_longer(cols = everything()) %>%
+  mutate(value = if_else(is.na(value), 0, value)) %>%
+  group_by(name) %>%
+  summarize(share_good = mean(value == 1)) %>%
+  reactable(
+    columns = list(
+      share_good = colDef(format = colFormat(digits = 3))
+    ),
+    filterable = TRUE,
+    searchable = TRUE,
+    defaultPageSize = 20,
+    highlight = TRUE
+  )
+
+```
+
+```{r}
+
+finalists <- c(06097,
+               06001,
+               06065,
+               08069,
+               11001,
+               12111,
+               17031,
+               17097,
+               21111,
+               22071,
+               24510,
+               27123,
+               28133,
+               29019,
+               36029,
+               37021,
+               37135,
+               39113,
+               39153,
+               42003,
+               42077,
+               42095,
+               42101,
+               48201,
+               51059,
+               53033,
+               55079)
+
+metrics %>%
+  filter(geoid %in% finalists) %>%
+  select(state, county, state_name, county_name, population) %>%
+  write_csv(here::here("10_construct-database", "finalist-populations.csv"))
+
+
+```
+
+
+
+
+
