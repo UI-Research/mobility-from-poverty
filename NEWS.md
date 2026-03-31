@@ -7,7 +7,6 @@
 - Update number and share of public-school children who are ever homeless during the school year (#506).
 - Update ratio of the share of total home values owned by a racial or ethnic group to the share of households of the same group (#499).
 - Update share of the voting-age population who turns out to vote (#515).
-- Update average annual improvement in English Language Arts (#501).
 - Remove medical debt metric because of changes in debt reporting (#560).
 - Add tests against previous data on the Data Catalog (#557).
 
