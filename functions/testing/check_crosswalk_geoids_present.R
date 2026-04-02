@@ -13,7 +13,6 @@ if (!requireNamespace("stringdist", quietly = TRUE)) {
 #' @param crosswalk_geo_cols Optional character vector of column names in the crosswalk to build the GEOID. This should include a state column (e.g., `"state"`, `"statefip"`, or `"statefp"`) and one geography detail column (e.g., `"county"` or `"place"`). In most cases, this does not need to be specified: the function will attempt to infer these columns automatically. However, if your crosswalk file uses non-standard column names (e.g., `"STATEFP10"` or `"COUNTYCD"`), you should pass the appropriate column names explicitly.
 #' @param metric_geo_cols Optional character vector of column names in the metric file to build the GEOID. Same requirements and inference behavior as `crosswalk_geo_cols`. You only need to provide this if your metric file uses non-standard column names for state or geography.
 #' @param years Optional numeric vector of years to restrict the check.
-#' @param crosswalk_years Optional numeric vector of valid years for the crosswalk.
 #' @return Invisibly returns a tibble with summary validation results.
 validate_geographies <- function(crosswalk_path,
                                  metric_path,
