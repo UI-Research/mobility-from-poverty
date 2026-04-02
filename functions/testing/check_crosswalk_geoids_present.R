@@ -13,7 +13,10 @@ if (!requireNamespace("stringdist", quietly = TRUE)) {
 #' @param crosswalk_geo_cols Optional character vector of column names in the crosswalk to build the GEOID. This should include a state column (e.g., `"state"`, `"statefip"`, or `"statefp"`) and one geography detail column (e.g., `"county"` or `"place"`). In most cases, this does not need to be specified: the function will attempt to infer these columns automatically. However, if your crosswalk file uses non-standard column names (e.g., `"STATEFP10"` or `"COUNTYCD"`), you should pass the appropriate column names explicitly.
 #' @param metric_geo_cols Optional character vector of column names in the metric file to build the GEOID. Same requirements and inference behavior as `crosswalk_geo_cols`. You only need to provide this if your metric file uses non-standard column names for state or geography.
 #' @param years Optional numeric vector of years to restrict the check.
-#' @return Invisibly returns a tibble with summary validation results.
+#' @return Invisibly returns a tibble with one row per year (or a single row if
+#'   the metric file has no `year` column) containing validation results:
+#'   `crosswalk_file`, `metric_file`, `year`, `all_present`, `n_missing`, and
+#'   `missing_geoids` (a list column).
 validate_geographies <- function(crosswalk_path,
                                  metric_path,
                                  crosswalk_geo_cols = NULL,
@@ -58,39 +61,81 @@ validate_geographies <- function(crosswalk_path,
   validate_columns(metric_geo_cols, names(metric), "metric")
 
   # Build GEOIDs
-  crosswalk_geoids <- crosswalk %>%
-    mutate(geoid = str_c(!!!syms(crosswalk_geo_cols))) %>%
-    distinct(geoid)
+  crosswalk_with_geoid <- crosswalk %>%
+    mutate(geoid = str_c(!!!syms(crosswalk_geo_cols)))
 
-  metric_geoids <- metric %>%
-    mutate(geoid = str_c(!!!syms(metric_geo_cols))) %>%
-    distinct(geoid)
+  metric_with_geoid <- metric %>%
+    mutate(geoid = str_c(!!!syms(metric_geo_cols)))
 
-  # Compare GEOIDs
-  missing_geoids <- setdiff(crosswalk_geoids$geoid, metric_geoids$geoid)
-  all_present <- length(missing_geoids) == 0
+  # Compare GEOIDs per year (or overall if no year column)
+  if ("year" %in% names(metric)) {
+    metric_years <- sort(unique(metric_with_geoid$year))
 
-  # Output
-  if (all_present) {
-    cli::cli_alert_success(
-      "All geoids in {.file {crosswalk_file}} are present in {.file {metric_file}}."
-    )
+    results <- purrr::map_dfr(metric_years, function(yr) {
+      yr_metric_geoids <- metric_with_geoid %>%
+        filter(year == yr) %>%
+        distinct(geoid) %>%
+        pull(geoid)
+
+      yr_cw_geoids <- get_crosswalk_geoids_for_year(
+        crosswalk_with_geoid, yr
+      )
+
+      missing <- setdiff(yr_cw_geoids, yr_metric_geoids)
+
+      tibble::tibble(
+        year = yr,
+        n_missing = length(missing),
+        missing_geoids = list(missing)
+      )
+    })
+
+    results <- results %>%
+      mutate(
+        crosswalk_file = crosswalk_file,
+        metric_file = metric_file,
+        all_present = n_missing == 0
+      ) %>%
+      select(crosswalk_file, metric_file, year, all_present, n_missing,
+             missing_geoids)
+
+    report_per_year_results(results, crosswalk_file, metric_file)
+
   } else {
-    cli::cli_alert_warning(
-      "Found {length(missing_geoids)} missing geoids from {.file {crosswalk_file}} not present in {.file {metric_file}}."
+    crosswalk_geoids <- crosswalk_with_geoid %>%
+      distinct(geoid) %>%
+      pull(geoid)
+
+    metric_geoids <- metric_with_geoid %>%
+      distinct(geoid) %>%
+      pull(geoid)
+
+    missing <- setdiff(crosswalk_geoids, metric_geoids)
+    all_present <- length(missing) == 0
+
+    if (all_present) {
+      cli::cli_alert_success(
+        "All geoids in {.file {crosswalk_file}} are present in {.file {metric_file}}."
+      )
+    } else {
+      cli::cli_alert_warning(
+        "Found {length(missing)} missing geoids from {.file {crosswalk_file}} not present in {.file {metric_file}}."
+      )
+      cli::cli_text("Missing GEOIDs:")
+      cli::cli_ul(missing)
+    }
+
+    results <- tibble::tibble(
+      crosswalk_file = crosswalk_file,
+      metric_file = metric_file,
+      year = NA_integer_,
+      all_present = all_present,
+      n_missing = length(missing),
+      missing_geoids = list(missing)
     )
-    cli::cli_text("Missing GEOIDs:")
-    cli::cli_ul(missing_geoids)
-    cli::cli_text("Check your crosswalk logic and determine if this is expected.")
   }
 
-  tibble::tibble(
-    crosswalk_file = crosswalk_file,
-    metric_file = metric_file,
-    all_present = all_present,
-    n_missing = length(missing_geoids),
-    missing_geoids = list(missing_geoids)
-  ) %>% invisible()
+  results %>% invisible()
 }
 
 #' Filter crosswalk and metric data by year or crosswalk period logic
@@ -176,6 +221,73 @@ filter_by_crosswalk_year_logic <- function(crosswalk, metric, years = NULL) {
   }
 
   return(list(crosswalk, metric))
+}
+
+#' Get crosswalk GEOIDs applicable to a specific metric year
+#'
+#' Determines which crosswalk GEOIDs apply to a given year based on the
+#' crosswalk's temporal structure: `year` column, `crosswalk_period` column,
+#' or no temporal column (all GEOIDs apply to all years).
+#'
+#' @param crosswalk_with_geoid A crosswalk data frame with a `geoid` column
+#'   already constructed.
+#' @param yr A single year value to match against.
+#' @return A character vector of distinct GEOIDs.
+#' @keywords internal
+get_crosswalk_geoids_for_year <- function(crosswalk_with_geoid, yr) {
+  if ("year" %in% names(crosswalk_with_geoid)) {
+    cw_subset <- crosswalk_with_geoid %>% filter(year == yr)
+  } else if ("crosswalk_period" %in% names(crosswalk_with_geoid)) {
+    period <- if (yr <= 2021) "pre-2022" else "2022"
+    cw_subset <- crosswalk_with_geoid %>% filter(crosswalk_period == period)
+  } else {
+    cw_subset <- crosswalk_with_geoid
+  }
+
+  cw_subset %>% distinct(geoid) %>% pull(geoid)
+}
+
+#' Report per-year GEOID validation results to the console
+#'
+#' Prints a summary of per-year GEOID comparison results using `cli` formatting.
+#' Years with no missing GEOIDs get a single summary line; years with gaps
+#' are listed individually with their missing GEOIDs.
+#'
+#' @param results A tibble with columns `year`, `n_missing`, `missing_geoids`,
+#'   and `all_present`.
+#' @param crosswalk_file The crosswalk filename (for display).
+#' @param metric_file The metric filename (for display).
+#' @keywords internal
+report_per_year_results <- function(results, crosswalk_file, metric_file) {
+  years_ok <- results %>% filter(all_present)
+  years_with_gaps <- results %>% filter(!all_present)
+
+  if (nrow(years_with_gaps) == 0) {
+    cli::cli_alert_success(
+      "All geoids in {.file {crosswalk_file}} are present in {.file {metric_file}} for all {nrow(results)} year(s)."
+    )
+    return(invisible(NULL))
+  }
+
+  if (nrow(years_ok) > 0) {
+    cli::cli_alert_success(
+      "{nrow(years_ok)} year(s) have all geoids present: {.val {paste(years_ok$year, collapse = ', ')}}"
+    )
+  }
+
+  for (i in seq_len(nrow(years_with_gaps))) {
+    row <- years_with_gaps[i, ]
+    cli::cli_alert_warning(
+      "Year {row$year}: {row$n_missing} missing geoid(s)"
+    )
+    missing <- row$missing_geoids[[1]]
+    if (length(missing) <= 20) {
+      cli::cli_ul(missing)
+    } else {
+      cli::cli_ul(head(missing, 20))
+      cli::cli_text("... and {length(missing) - 20} more.")
+    }
+  }
 }
 
 #' Infer geography columns in a dataset
