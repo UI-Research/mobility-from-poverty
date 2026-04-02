@@ -1,0 +1,197 @@
+---
+title: "Validate Geographies Function Example"
+author: "Manuel Alcala Kovalski"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute:
+  warning: false
+  error: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Overview
+
+`validate_geographies()` checks whether all geographic identifiers (GEOIDs)
+in a crosswalk file are present in a metric's final data. The crosswalk is
+the source of truth for which counties or places should exist. Running this
+check at the end of a metric creation script catches silent geography drops
+before they make it into the combined database.
+
+The function lives in `functions/testing/check_crosswalk_geoids_present.R`.
+
+```{r}
+#| label: setup
+library(tidyverse)
+source(here::here("functions", "testing", "check_crosswalk_geoids_present.R"))
+```
+
+## Example 1: County-level check
+
+This checks the housing affordability metric against the long county
+crosswalk. The crosswalk has a `year` column, so the function checks each
+year independently.
+
+```{r}
+#| label: county-check
+result_county <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_county.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  )
+)
+
+result_county |> select(year, all_present, n_missing)
+```
+
+## Example 2: Place-level check
+
+Same metric at the place level, using the long place crosswalk.
+
+```{r}
+#| label: place-check
+result_place <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_place.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  )
+)
+
+result_place |> select(year, all_present, n_missing)
+```
+
+## Example 3: Crosswalk with `crosswalk_period`
+
+Some crosswalks use `crosswalk_period` ("pre-2022" / "2022") instead of a
+`year` column. The PUMA-to-county crosswalk is the main example. The function
+maps each metric year to its corresponding period and checks GEOIDs
+accordingly.
+
+```{r}
+#| label: puma-crosswalk-check
+result_puma <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "crosswalk_puma_to_county.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  )
+)
+
+result_puma |> select(year, all_present, n_missing)
+```
+
+## Example 4: Detecting per-year gaps
+
+This is the key scenario the function is designed to catch. If a county is
+present in most years but missing from one, the per-year check flags it. We
+simulate this by dropping 5 Alabama counties from 2018 only.
+
+```{r}
+#| label: per-year-gap
+metric <- read_csv(
+  here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  ),
+  show_col_types = FALSE
+)
+
+# Drop 5 counties from 2018 only
+dropped_counties <- metric |>
+  filter(year == 2018, state == "01") |>
+  distinct(state, county) |>
+  slice_head(n = 5)
+
+dropped_counties
+
+metric_with_gap <- metric |>
+  anti_join(
+    dropped_counties |> mutate(year = 2018),
+    by = c("state", "county", "year")
+  )
+
+# Write to a temp file and validate
+tmp <- tempfile(fileext = ".csv")
+write_csv(metric_with_gap, tmp)
+
+result_gap <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_county.csv"
+  ),
+  metric_path = tmp
+)
+
+result_gap |> select(year, all_present, n_missing)
+```
+
+The function correctly identifies that 2018 is missing 5 GEOIDs while all
+other years pass.
+
+## Example 5: Filtering to specific years
+
+The `years` parameter restricts the check to specific years. This is useful
+when you only want to validate the years you just updated.
+
+```{r}
+#| label: year-filter
+result_filtered <- validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_county.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  ),
+  years = c(2022, 2023)
+)
+
+result_filtered |> select(year, all_present, n_missing)
+```
+
+## Example 6: Error handling
+
+The function provides informative errors when inputs are wrong. Here we pass
+a misspelled column name to show the fuzzy matching suggestion.
+
+```{r}
+#| label: misspelled-column
+validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_county.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  ),
+  metric_geo_cols = c("stte", "county")
+)
+```
+
+And here we request a year that does not exist in the data.
+
+```{r}
+#| label: nonexistent-year
+validate_geographies(
+  crosswalk_path = here::here(
+    "geographic-crosswalks", "data", "long-xwalk_county.csv"
+  ),
+  metric_path = here::here(
+    "02_housing", "data", "final",
+    "housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023.csv"
+  ),
+  years = 2050
+)
+```
