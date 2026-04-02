@@ -10,6 +10,7 @@ format:
     code-fold: show
 execute: 
   warning: false
+  error: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -22,7 +23,24 @@ Metric leads should include this function near the end of their programs, prefer
 
 The function lives in the "functions/testing" file in the repository and is a R script title "evaluate_final_data.R". 
 
-The template for the final data expectation evaluation form is also in the "functions/testing" as a CSV document titled "final_data_evaluation_form.csv".
+## Update
+
+
+This function was updated in 2025 by Ridhi Purohit.
+
+In prior versions, the template for the final data expectation evaluation form was in the "functions/testing" as a CSV document titled "final_data_evaluation_form.csv". However, as part of the update the tests not rely on a file "data/technical_specification/" which is pulled from a main file for this project that has technical specs.
+
+
+The update goals are as follows:
+
+- The workflow assumes that a final data frame will have columns and data aligned with the expectations in the Wiki (for both overall and subgroups csv files).
+
+- When the evaluate_final_data() function is run on final data files generated during version 2025 update, not all files will pass the checks because earlier the Metric Leads had more freedom to structure the data files. It would be helpful to evaluate the checks that fail while referencing the data file's content.
+
+- This upgrade aims to move away from final evaluation forms for each metric to consolidate data specification.
+
+- Based on the review and nuances of certain metrics, the code might need further updates.
+Right now the code expects the final data file to have all metric years present. This is going to be re-evaluated and updated after initial review.
 
 ## Example
 
@@ -31,7 +49,7 @@ This function must be used inside the program that creates your metric. It shoul
 The first step is to source the function at the top of your program using the following code. This will stage the function in your environment.
 
 ```{r}
-source(here::here("functions", "testing", "evaluate_final_data.R"))
+source(here::here("functions", "testing", "evaluate_final_data_checks.R"))
 ```
 
 In order to run the function you must fill out all relevant arguments to match the specifics of your code and final data file being tested. In this example, we evaluate the 2022 subgroup data for the housing availability metric.
@@ -39,7 +57,11 @@ In order to run the function you must fill out all relevant arguments to match t
 As a first step, this example reads in the actual final data for the housing availability metric with subgroups at the county level for 2022. Note that this data would exist as a data frame within the program you are working on so you would not need to read it in.
 
 ```{r}
-final_data <- read_csv(here("02_housing/data/available_2022_subgroups_county.csv"), show_col_types = FALSE)
+final_data_dis <- read_csv(here("08_education/data/final/metrics_college_county_disability_longitudinal.csv"), show_col_types = FALSE)
+
+final_data_gender <- read_csv(here("08_education/data/final/metrics_college_place_gender_longitudinal.csv"), show_col_types = FALSE)
+
+final_data_single_year <- read_csv(here("04_health/data/final_data/neonatal_health_2022.csv"), show_col_types = FALSE)
 ```
 
 The function's first argument asks for the path to the final data evaluation form. Note that we have filled out an example final data evaluation form for this example which you can find in the "functions/testing" folder. Generally, users should save their final data evaluation forms in the final data folder related to that metric.
@@ -51,9 +73,33 @@ Third, the function asks whether there are subgroups in this data.
 Finally, the function asks whether there are confidence intervals in this data.
 
 ```{r}
-evaluate_final_data(exp_form_path = "functions/testing/example_final_data_evaluation_form_housing.csv",
-                data = final_data,  geography = "county",
-                subgroups = TRUE, confidence_intervals = FALSE)
+evaluate_final_data(metric_var = "share_hs_degree",
+                data = final_data_dis,  geo = "county", all_expected_years = TRUE,
+                subgroups = TRUE, subgrp_type = c("all", "disability"),
+                confidence_intervals = FALSE)
 ```
 
-It passed! Yay!
+Passed! 
+
+## Fail example
+
+Right now this is only set up for counties. Note below for place level data.
+
+```{r}
+evaluate_final_data(metric_var = "share_hs_degree",
+                data = final_data_gender,  geo = "place", all_expected_years = TRUE,
+                subgroups = TRUE, subgrp_type = c("all", "gender"),
+                confidence_intervals = FALSE)
+```
+
+It fails because the place information is not in the specs.
+
+Also files that are split up between years fail because they do not match the specs. The low birth weight file fails for multiple reasons including the years expectation and the FIPS code format.
+
+```{r}
+evaluate_final_data(metric_var = "share_low_birth_weight",
+                data = final_data_gender,  geo = "county", all_expected_years = FALSE,
+                subgroups = FALSE,
+                confidence_intervals = FALSE)
+```
+
