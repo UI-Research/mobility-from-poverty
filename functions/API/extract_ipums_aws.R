@@ -97,7 +97,7 @@
     #Lower variable names and get rid of unnecessary variables
     acs_imported <- micro_data %>%
       rename_with(tolower) %>% 
-      select(-serial, -raced, -strata, - cluster, -hispand, -empstatd)
+      select(-serial, -raced, -cluster, -hispand, -empstatd)
     
     rm(micro_data)
     
