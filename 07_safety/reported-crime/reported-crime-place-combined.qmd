@@ -37,7 +37,7 @@ set_urbn_defaults(style = "print")
 
 ```
 
-This metric represents the place-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2021-2023.
+This metric represents the place-level rate of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for years 2021-2024.
 
 The rest of this program is organized as follows:
 
@@ -66,7 +66,13 @@ The creation of this metric relies on data from the FBI's National Incident-Base
 
 We use criminologist Jacob Kaplan's pre-processed NIBRS data available [here](https://dataverse.harvard.edu/dataverse/ucrdata) instead of raw data downloaded directly from the FBI. Instructions for downloading the data are included in the next section.
 
-## 0.2 Changes from previous round of updates
+## 0.2 Changes from previous round of updates (2026)
++ Added the newest year of data, 2024.
++ The 2024 Offense Segment data was not yet available on Harvard Dataverse as of April 2026. All years (2021-2024) were downloaded from [Jacob Kaplan's ICPSR repository](https://www.openicpsr.org/openicpsr/project/118281) (V11, released August 2025). The per-year `.rds` files have the same structure and column names as the Harvard Dataverse files. All years were re-run with the latest data release, as agencies backfill prior years.
++ Updated the Batch Header file to `nibrs_batch_header_1991_2024.rds` from ICPSR.
++ Updated the offense code for "sex offenses - fondling" which was renamed to "sex offenses - criminal sexual contact" in the V11 release. The previous code also had a typo ("incident" instead of "indecent") which prevented this offense from matching; both issues are now fixed.
+
+## 0.3 Changes from round prior to that (2025)
 + Added the newest year of data, 2023
 + Previous versions of the metric relied on two files: One that separately tried to match place FIPS codes onto the agency-level data and brought in population denominators from the ACS, and one that actually calculated the metric. I've integrated the two programs into one in this round of updates to be more straightforward and intuitive.
 + Access to the data changed from OpenICPSR to Harvard Dataverse, and the storage format of the data changed. Therefore, the section of the program that reads in the data has changed.
@@ -76,21 +82,24 @@ This section describes the steps for manually downloading the NIBRS data segment
 
 We get offense counts from one segment of the NIBRS: the Offense Segment.
 
-Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program. Manually downloading these data is a six-step process, but you will only need to do each of these steps once for the creation of this metric:
+Accessing these data requires completing a license/data use agreement. Therefore, we do not directly download the data in this program.
 
-1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
-2. Select National Incident-Based Reporting System (NIBRS) - Offense Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/TODXCL).
-3. For each year you need to download, click on the relevant `.rds` file (e.g., `nibrs_offense_segment_YYYY.rds`).
-4. Towards the top right of the screen, select `Access File` and, from the dropdown menu, select `Original File Format` under `Download Options`.
-5. Complete the `License/Data Use Agreement` by entering your `Name`, `Email`, `Institution`, `Position`, and the `Additional Questions` (`How will this data be used (e.g. personal project, academic paper, for-profit project)`, `What is your research question?`, and `Do you agree to cite the data properly if used in publications?`).
-6. Move the zip file from your `Downloads` folder to the `\mobility-from-poverty\07_safety\data\offense-segment` directory.
+For data years 2021-2023, the Offense Segment is available on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/TODXCL) as individual per-year `.rds` files. As of April 2026, 2024 data was not yet on Harvard Dataverse.
+
+For the 2026 metric update, all years (2021-2024) were downloaded from [Jacob Kaplan's ICPSR repository](https://www.openicpsr.org/openicpsr/project/118281) (V11, released August 2025). The download process:
+
+1. Navigate to [Kaplan's NIBRS data on ICPSR](https://www.openicpsr.org/openicpsr/project/118281).
+2. Download `offense_segment_rds_1991_2024.zip`.
+3. Complete the license/data use agreement.
+4. Unzip the file. It contains individual per-year `.rds` files with the same naming convention as Harvard Dataverse (e.g., `nibrs_offense_segment_YYYY.rds`).
+5. Move the files for 2021-2024 to the `mobility-from-poverty/07_safety/data/offense-segment` directory.
 
 # 2. Prepare to read in and clean NIBRS Offense Segment
-This section reads in and cleans the NIBRS Offense Segment data for 2021-2023. Each offense in the data has an offense code. We are interested in the rate of both violent crimes and property crimes. We first identify each offense type in the data using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf) so that we can later aggregate offenses from the individual-level to the agency-level by offense type.
+This section reads in and cleans the NIBRS Offense Segment data for 2021-2024. Each offense in the data has an offense code. We are interested in the rate of both violent crimes and property crimes. We first identify each offense type in the data using Section 2.3 of the [2021.1 National Incident-Based Reporting System User Manual](https://bjs.ojp.gov/sites/g/files/xyckuh236/files/sarble/data_common/nibrs-user-manual-2021-1041521.pdf) so that we can later aggregate offenses from the individual-level to the agency-level by offense type.
 
 ## 2.1 Identify violent and property crimes
 ```{r identify-crime-type, eval = FALSE}
-# Create data frame for all offense and type combinations for 2021-2023.
+# Create data frame for all offense and type combinations for 2021-2024.
 codes <- tribble(
   ~offense,	~crime_against,
   "animal cruelty",	                                                    "society",	
@@ -146,7 +155,7 @@ codes <- tribble(
   "prostitution offenses - purchasing prostitution",	                  "society",		
   "robbery",	                                                          "property",
   "sex offenses - failure to register as a sex offender",	              "society",
-  "sex offenses - fondling (incident liberties/child molest)",	        "person",
+  "sex offenses - criminal sexual contact (formerly: fondling (indecent liberties/child molest))",	        "person",
   "sex offenses - incest",	                                            "person",
   "sex offenses - rape",	                                              "person",
   "sex offenses - sexual assault with an object",	                      "person",
@@ -210,13 +219,14 @@ Apply the function to each year of the offense segment data
 offenses_21_agency <- clean_offense_data(year = 2021)
 offenses_22_agency <- clean_offense_data(year = 2022)
 offenses_23_agency <- clean_offense_data(year = 2023)
+offenses_24_agency <- clean_offense_data(year = 2024)
 ```
 
 Append agency/year-level offense counts and remove extraneous files
 ```{r append-offenses, eval=FALSE}
-offenses_agency <- bind_rows(offenses_21_agency, offenses_22_agency, offenses_23_agency)
+offenses_agency <- bind_rows(offenses_21_agency, offenses_22_agency, offenses_23_agency, offenses_24_agency)
 
-rm(codes, violent, property, clean_offense_data, offenses_21_agency, offenses_22_agency, offenses_23_agency)
+rm(codes, violent, property, clean_offense_data, offenses_21_agency, offenses_22_agency, offenses_23_agency, offenses_24_agency)
 
 ```
 
@@ -273,20 +283,19 @@ At each step, we split the data into observations that have a place FIPS code ma
 
 
 ## 4.1 Instructions to manually download NIBRS Batch Header Segment
-Manually downloading these data from the Harvard Dataverse is a five-step process, but you will only need to do each of these steps once for the creation of this metric:
+The Batch Header Segment is available on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HUI9WF) and on [ICPSR](https://www.openicpsr.org/openicpsr/project/118281).
 
-  1. Navigate to the Uniform Crime Reporting (UCR) Program Data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataverse/ucrdata).
-  2. Select National Incident-Based Reporting System - Batch Header Segment [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/HUI9WF).
-  3. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10899624&version=2.0).
-  4. Select `Access File`
-      + Select `Gzip Archive` under `Download Options`
-      + Agree to the Dataset Terms by entering your `Name`, `Email`, `Institution`, `Position`, and answer `How will this data be used`, and then select `Accept` at the bottom of the pop-up
-  5. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data\batch-header-segment-and-agencies` directory after you have cloned the repository for this project from GitHub.
+For the 2026 metric update, we used the ICPSR version (`batch_header_rds_1991_2024.zip` from V11) which includes 2024. Download and unzip, then move `nibrs_batch_header_1991_2024.rds` to the `mobility-from-poverty/07_safety/data/batch-header-segment-and-agencies` directory.
 
 ## 4.2 Load and clean NIBRS Batch Header Files
 Load Batch Header File
 ```{r load-bhf, message=FALSE}
-batch_header_file_full <- readRDS(here::here("07_safety", "data", "batch-header-segment-and-agencies", "nibrs_batch_header_1991_2023.rds"))
+batch_header_file_full <- readRDS(here::here("07_safety", "data", "batch-header-segment-and-agencies", "nibrs_batch_header_1991_2024.rds")) |>
+  # ICPSR V11 uses lowercase state names and abbreviations; normalize to title case
+  mutate(
+    state = str_to_title(state),
+    state_abbreviation = str_to_upper(state_abbreviation)
+  )
 
 ```
 
@@ -294,7 +303,7 @@ Filter the file to the appropriate year, select relevant variables, and rename a
 ```{r clean-bhf}
 batch_header_file <- batch_header_file_full |>
   filter(
-    year %in% c(2021, 2022, 2023),
+    year %in% c(2021, 2022, 2023, 2024),
     # number_of_months_reported != "0"
     ) |>
   select(
@@ -324,8 +333,8 @@ Change the values for core city indicator from `Y`/`N` to `0`/`1`
 batch_header_file <- batch_header_file |>
   mutate(
     core_city = case_when(
-      core_city=="Y" ~ as.numeric(1),
-      core_city=="N" ~ as.numeric(0),
+      core_city %in% c("Y", "y") ~ as.numeric(1),
+      core_city %in% c("N", "n") ~ as.numeric(0),
       TRUE ~ NA_real_
     )
   )
@@ -521,7 +530,7 @@ leaic <- leaic |>
 ```
 
 ### 4.3c Join LEAIC onto NIBRS data by agency identifier
-Join the LEAIC to the 2021-2023 NIBRS Batch Header Files by agency.
+Join the LEAIC to the 2021-2024 NIBRS Batch Header Files by agency.
 3,323 agencies are in the BHF but not the 2012 crosswalk. The crosswalk is from 2012, so these could be new agencies from 2013-2023.
 ```{r join-bhf-leaic}
 joined_ba_leaic <- left_join(
@@ -566,7 +575,7 @@ This file contains our 486 places of interest with both their name and place FIP
 ```{r load-urban-places, message=FALSE}
 # Read in Urban places file
 urban_places <- read_csv(file = here::here("geographic-crosswalks", "data", "place-populations.csv")) |>
-  filter(year %in% c(2021, 2022, 2023))
+  filter(year %in% c(2021, 2022, 2023, 2024))
 
 urban_places |>
   group_by(year) |>
@@ -644,11 +653,14 @@ We want to use this crosswalk to merge a single place code onto each remaining a
 ### 4.5b Load and clean county-place crosswalk
 
 ```{r load-geocorr-xw}
-county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_county_place.csv"))
+# The crosswalk was split into pre/post-2022 versions to handle Connecticut's
+# county-to-planning-region change. We use the 2022-onwards version since it
+# covers the majority of our data years (2022-2024).
+county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_county_place_2022_onwards.csv"))
 
 ```
 
-Filter the crosswalk observations to only places in our Urban universe of places. 
+Filter the crosswalk observations to only places in our Urban universe of places.
 ```{r filter-xw, message=FALSE}
 # First create a state/place GEOID
 county_place_xw <- county_place_xw |>
@@ -657,11 +669,12 @@ county_place_xw <- county_place_xw |>
     state = str_pad(state, 2, pad = "0"),
     place = as.character(place),
     place = str_pad(place, 5, pad = "0"),
+    county_fips = str_sub(as.character(str_pad(countyfip, 5, pad = "0")), 3, 5),
     GEOID = str_c(state, place)
   ) |>
   select(
     state_fips = state,
-    county_fips = county,
+    county_fips,
     place,
     GEOID
   )
@@ -805,7 +818,7 @@ Load ACS variable for our first and last years. Manually explore each file and s
 ```{r check-acs-variables, eval = FALSE}
 # Check ACS variables for the first and last years to see if they change over time
 variables_fy <- tidycensus::load_variables(2021, "acs5")
-variables_ly <- tidycensus::load_variables(2023, "acs5")
+variables_ly <- tidycensus::load_variables(2024, "acs5")
 
 test_fy <- variables_fy |> filter(name %in% c("B01003_001"))
 
@@ -823,7 +836,7 @@ rm(test_ly)
 First create vectors for years and variables of interest
 ```{r specify-acs-years-vars}
 # Create a list of all our years
-years <- lst(2021, 2022, 2023)
+years <- lst(2021, 2022, 2023, 2024)
 
 # Create a vector for our ACS variables of interest
 my_vars <- c(
@@ -980,7 +993,7 @@ rates_place |>
 # 7. Validation
 This section performs several checks on the calculated rates of violent and property crimes.
 
-Check the distribution of rates of property crimes for 2021-2023.
+Check the distribution of rates of property crimes for 2021-2024.
 ```{r}
 rates_place |>
   group_by(year) |>
@@ -1001,7 +1014,7 @@ rates_place |>
 
 ```
 
-Check the distribution of rates of violent crimes for 2021-2023.
+Check the distribution of rates of violent crimes for 2021-2024.
 ```{r}
 rates_place |>
   group_by(year) |>
@@ -1149,7 +1162,7 @@ rates_place |>
 
 
 # 8. Save and write out data
-This section saves and write out the final data file. This file is long by place and year (2021-2023). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
+This section saves and write out the final data file. This file is long by place and year (2021-2024). It contains our place-level estimates of reported violent crimes per 100,000 people and reported property crimes per 100,000 people for each year.
 
 Construct the final file.
 ```{r prepare-final}
