@@ -653,10 +653,12 @@ We want to use this crosswalk to merge a single place code onto each remaining a
 ### 4.5b Load and clean county-place crosswalk
 
 ```{r load-geocorr-xw}
-# The crosswalk was split into pre/post-2022 versions to handle Connecticut's
-# county-to-planning-region change. We use the 2022-onwards version since it
-# covers the majority of our data years (2022-2024).
-county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_county_place_2022_onwards.csv"))
+# The original geocorr2022_county_place.csv was replaced with a longitudinal
+# file that handles the Connecticut county-to-planning-region transition.
+# Filter to our data years so 2021 uses old CT counties and 2022+ uses
+# planning regions automatically.
+county_place_xw <- read_csv(here::here("geographic-crosswalks", "data", "county_place_crosswalk_longitudinal.csv")) |>
+  filter(year %in% c(2021, 2022, 2023, 2024))
 
 ```
 
@@ -673,11 +675,13 @@ county_place_xw <- county_place_xw |>
     GEOID = str_c(state, place)
   ) |>
   select(
+    year,
     state_fips = state,
     county_fips,
     place,
     GEOID
-  )
+  ) |>
+  distinct()
 
 # Filter crosswalk
 urban_places <- urban_places |>
@@ -691,7 +695,7 @@ county_place_xw <- county_place_xw |>
 Filter the crosswalk observations only those counties that correspond with one place.
 ```{r keep-1to1-matches}
 county_place_xw <- county_place_xw |>
-  group_by(state_fips, county_fips) |>
+  group_by(year, state_fips, county_fips) |>
   mutate(n = n()) |>
   ungroup() |>
   filter(n == 1)
@@ -703,7 +707,7 @@ county_place_xw <- county_place_xw |>
 joined_ba_cpxw <- left_join(
   x = ba_mis_urb,
   y = county_place_xw,
-  by = c("state_fips", "county_fips")
+  by = c("year", "state_fips", "county_fips")
 ) |>
   select(-c(GEOID, n))
 ```
