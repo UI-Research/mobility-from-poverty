@@ -44,7 +44,7 @@ This file is a prerequisite file to the following files:
 
 You must run this file before either of the above files to create either metric at the county-level.
 
-This file pulls in a universe of law enforcement agencies that have reported criminal activity and arrests in 2021-2023. It then joins on county FIPS codes to those agencies. For agencies that serve more than one county, this program assigns a weight to that agency to determine the percentage of activity that should be associated with each county served by that agency. Next, it pulls in population and demographic information from the American Community Survey (ACS). Lastly, it creates several files that are used in the creation of each metric.
+This file pulls in a universe of law enforcement agencies that have reported criminal activity and arrests in 2021-2024. It then joins on county FIPS codes to those agencies. For agencies that serve more than one county, this program assigns a weight to that agency to determine the percentage of activity that should be associated with each county served by that agency. Next, it pulls in population and demographic information from the American Community Survey (ACS). Lastly, it creates several files that are used in the creation of each metric.
 
 The rest of this file is organized as follows:
 
@@ -63,7 +63,7 @@ This file assumes that you have cloned the GitHub repository for this project to
 ## 1. Background and NIBRS Batch Header File download
 This program and the safety metrics rely on National Incident-based Reporting System (NIBRS) data. NIBRS is an annual data collection that compiles information on criminal incidents and arrests reported by participating law enforcement agencies. It is a part of the Uniform Crime Reporting Program (UCR) which is administered by the Federal Bureau of Investigation (FBI).
 
-NIBRS data as constructed and formatted by the FBI are stored in a single file. These data are organized by various segment levels (record types). Working with the NIBRS data in its single-file format is difficult. To facilitate use of NIBRS data, criminologist [Jacob Kaplan](https://www.jacobdkaplan.com/) has cleaned and processed the data. We use these data which are available on the [Harvard Dataverse](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/CIQIVF&version=1.0). (Note that prior to data year 2023, these data were accessed from the National Archive of Criminal Justice Data (NACJD), the criminal justice archive within ICPSR, available [here](https://www.icpsr.umich.edu/web/NACJD/series/128).)
+NIBRS data as constructed and formatted by the FBI are stored in a single file. These data are organized by various segment levels (record types). Working with the NIBRS data in its single-file format is difficult. To facilitate use of NIBRS data, criminologist [Jacob Kaplan](https://www.jacobdkaplan.com/) has cleaned and processed the data. We use these data which are available on [Harvard Dataverse](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/CIQIVF&version=1.0) and [ICPSR](https://www.openicpsr.org/openicpsr/project/118281). As of April 2026, the 2024 data was not yet on Harvard Dataverse, so all years (2021-2024) were downloaded from [Jacob Kaplan's ICPSR repository](https://www.openicpsr.org/openicpsr/project/118281) (V11, released August 2025).
 
 The segment of NIBRS data this file is concerned with is called the Batch Header File (also called the Batch Header Segment). Prior to the 2013 data, the Batch Header information was released as three segments. Due to the NIBRS data rapidly growing in size, the FBI released a single file instead. The Batch Header File identifies individual police agencies by originating agency identifier (ORI). An individual police agency (ORI) will appear in the batch header segment once. It also includes variables for each county served by each agency, which is what we are particularly interested in. The data used for both safety metrics (arrests and crimes) are reported at the agency-level. The purpose of using the Batch Header File is to be able to link the agencies to counties for those metrics.
 
@@ -71,16 +71,13 @@ To learn more about NIBRS data, consult Jacob Kaplan's book titled [Uniform Crim
 
 We do not want to use NIBRS data for some years and UCR data for others. However, because of lack of reporting, **there are a lot of missing values prior to 2021 for NIBRS data**. Future updates of the safety metrics may want to include historical NIBRS data back to 2014 and should keep this in mind.
 
-Note that we only use the 2023 Batch Header File, and in past updates, we only used the 2022 Batch Header File for both 2021 and 2022. Using the Batch Header File from each year might be more accurate, but for the most part it won't matter, especially because so few agencies reported through NIBRS prior to 2021. Future updates may consider using the Batch Header Files for each year. Prior to data year 2023 each file was only available separately, but they are now available in a single file via Harvard Dataverse.
-    
-Manually downloading these data from the Harvard Dataverse is a four-step process, but you will only need to do each of these steps once for the creation of this metric:
+The Batch Header File is available as a single file covering all years on both Harvard Dataverse and ICPSR. For the 2026 metric update, we used the ICPSR version (`batch_header_rds_1991_2024.zip` from V11) which includes 2024.
 
-  1. Navigate to the Uniform Crime Reporting (UCR) Program Data > National Incident-Based Reporting System (NIBRS) data portal hosted on Harvard Dataverse [here](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/CIQIVF).
-  2. Scroll down to `nibrs_batch_header_1991_2023.rds` and select the file [here](https://dataverse.harvard.edu/file.xhtml?fileId=10592187&version=1.0).
-  3. Select `Access File`
-      + Select `Gzip Archive` under `Download Options`
-      + Agree to the Dataset Terms by entering your `Name`, `Email`, `Institution`, `Position`, and answer `How will this data be used`, and then select `Accept` at the bottom of the pop-up
-  4. This will download an `.rds` file titled `nibrs_batch_header_1991_2023.rds`. Move this file to the `mobility-from-poverty\07_safety\data` directory after you have cloned the repository for this project from GitHub.
+Manually downloading these data is a three-step process:
+
+  1. Navigate to [Kaplan's NIBRS data on ICPSR](https://www.openicpsr.org/openicpsr/project/118281).
+  2. Download `batch_header_rds_1991_2024.zip`. Complete the license/data use agreement.
+  3. Unzip and move `nibrs_batch_header_1991_2024.rds` to the `mobility-from-poverty/07_safety/data` directory.
 
 
 ## 2. Load and clean NIBRS Batch Header File
@@ -89,16 +86,19 @@ This section reads in and cleans the reporting agency data contained in the Batc
 ### 2.1 Get universe of agencies from the 2022 NIBRS Batch Header File
 Load Batch Header File
 ```{r load-bhf, message=FALSE}
-batch_header_file_full <- readRDS(here::here("07_safety", "data", "nibrs_batch_header_1991_2023.rds"))
-
-bhf22 <- read_tsv(here::here("07_safety", "data", "38925-0001-Data.tsv"))
+batch_header_file_full <- readRDS(here::here("07_safety", "data", "nibrs_batch_header_1991_2024.rds")) |>
+  # ICPSR V11 uses lowercase state names and abbreviations; normalize to title case
+  mutate(
+    state = str_to_title(state),
+    state_abbreviation = str_to_upper(state_abbreviation)
+  )
 
 ```
 
 Filter the file to the appropriate year, select relevant necessary, and rename as necessary. We use the codebook (`ICPSR_38925\DS0001\38925-0001-Codebook-ICPSR`) to determine what each variable represents.
 ```{r clean-bhf}
 batch_header_file <- batch_header_file_full |>
-  filter(year %in% c(2021, 2022, 2023)) |>
+  filter(year %in% c(2021, 2022, 2023, 2024)) |>
   select(
     ori,
     agency_indicator,
@@ -125,8 +125,8 @@ Change the values for core city indicator from `Y`/`N` to `0`/`1`
 batch_header_file <- batch_header_file |>
   mutate(
     core_city = case_when(
-      core_city=="Y" ~ as.numeric(1),
-      core_city=="N" ~ as.numeric(0),
+      core_city %in% c("Y", "y") ~ as.numeric(1),
+      core_city %in% c("N", "n") ~ as.numeric(0),
       TRUE ~ NA_real_
     )
   )
@@ -135,7 +135,7 @@ batch_header_file <- batch_header_file |>
 
 
 Clean geography information on the batch header file.
-```{r clean-bhf}
+```{r check-states}
 # See what states/territories are included
 batch_header_file |>
   group_by(state_name, state_abbreviation) |>
@@ -144,7 +144,7 @@ batch_header_file |>
 ```
 
 
-```{r clean-bhf}
+```{r clean-bhf-geo}
 batch_header_file <- batch_header_file |>
   # Remove US territories by name because no FIPS codes
   filter(!state_name %in% c("Guam", "Puerto Rico", "Virgin Islands")) |>
@@ -386,7 +386,7 @@ Note that future updates of the safety metrics may want to pull data back to 201
 ```{r check-acs-variables}
 # Check ACS variables for the first and last years to see if they change over time
 variables_fy <- tidycensus::load_variables(2021, "acs5")
-variables_ly <- tidycensus::load_variables(2023, "acs5")
+variables_ly <- tidycensus::load_variables(2024, "acs5")
 
 test_fy <- variables_fy |> filter(name %in% c("B01003_001", "B01001_005", "B01001_006", "B01001_029", "B01001_030", "B01001A_005", "B01001B_005", "B01001C_005", "B01001D_005", "B01001E_005"))
 
@@ -404,7 +404,7 @@ Note that if additional subgroups for either safety metric are desired in future
 Note that future updates of the safety metrics may want to pull data back to 2014, in which case the list of years should be changed below.
 ```{r specify-acs-years-vars}
 # Create a list of all our years
-years <- lst(2021, 2022, 2023)
+years <- lst(2021, 2022, 2023, 2024)
 
 # Create a vector for our ACS variables of interest
 my_vars <- c(
