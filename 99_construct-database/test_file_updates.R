@@ -8,55 +8,55 @@ source("functions/construction/test_input_data.R")
 
 ## Housing Affordability 
 
-read_csv("02_housing/data/available_2022_county.csv") |>
+read_csv("11_housing-affordability/data/available_2022_county.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE)
 
-read_csv("02_housing/data/available_2022_subgroups_county.csv") |>
+read_csv("11_housing-affordability/data/available_2022_subgroups_county.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
-read_csv("02_housing/data/available_2022_city.csv") |>
+read_csv("11_housing-affordability/data/available_2022_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("02_housing/data/available_2022_subgroups_city.csv") |>
+read_csv("11_housing-affordability/data/available_2022_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
-read_csv("02_housing/data/housing_2022_county.csv") |>
+read_csv("11_housing-affordability/data/housing_2022_county.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE)
 
-read_csv("02_housing/data/housing_2022_subgroups_county.csv") |>
+read_csv("11_housing-affordability/data/housing_2022_subgroups_county.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
-read_csv("02_housing/data/housing_2022_city.csv") |>
+read_csv("11_housing-affordability/data/housing_2022_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("02_housing/data/housing_2022_subgroups_city.csv") |>
+read_csv("11_housing-affordability/data/housing_2022_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
 ## Homelessness
 
-read_csv("02_housing/data/final/homelessness_2020_21_city.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2020_21_city.csv") |>
   evaluate_input_data(geography = "place")
 
-read_csv("02_housing/data/final/homelessness_all_subgroups_city.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_all_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("02_housing/data/final/homelessness_2020_21_county.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2020_21_county.csv") |>
   evaluate_input_data()
 
-read_csv("02_housing/data/final/homelessness_all_subgroups_county.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_all_subgroups_county.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
 #These files were deleted inadvertantly in a pull request - must be replaced 
-#read_csv("02_housing/homelessness_all_county.csv") |>
+#read_csv("12_housing-stability/homelessness_all_county.csv") |>
 #evaluate_input_data(geography = "place")
 
-#read_csv("02_housing/homelessness_all_county.csv") |>
+#read_csv("12_housing-stability/homelessness_all_county.csv") |>
 #evaluate_input_data()
 
 

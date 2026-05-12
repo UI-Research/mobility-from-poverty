@@ -62,7 +62,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 # Repository Contents
 
-This repository was previously organized by nine domains. Due to updates in the framework, we are in the process of moving code and data to folders for the 24 predictors. The migration is ongoing, so you may see a mix of domain-based folders (e.g., `01_financial-well-being/`, `02_housing/`) and predictor-based organization.
+This repository was previously organized by nine domains. Due to updates in the framework, we are in the process of moving code and data to folders for the 24 predictors. The migration is ongoing, so you may see a mix of domain-based folders (e.g., `01_financial-well-being/`) and predictor-based organization.
 
 | Predictor folder |
 |:----------------|
