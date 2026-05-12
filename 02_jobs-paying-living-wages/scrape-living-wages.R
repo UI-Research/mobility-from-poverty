@@ -2,7 +2,7 @@ library(tidyverse)
 library(rvest)
 library(polite)
 
-source(here::here("09_employment", "get_living_wages.R"))
+source(here::here("01_employment-opportunities", "get_living_wages.R"))
 
 # read in crosswalk file
 all_counties <- read_csv(here::here("geographic-crosswalks", "data", "county-file.csv")) %>%
@@ -15,7 +15,7 @@ all_counties %>%
   map_df(.f = get_living_wages, sleep_time = 10)
 
 # read in the scraped data
-mit <- read_csv(here::here("09_employment", "mit-living-wage-scraped_12_15_22.csv"), 
+mit <- read_csv(here::here("01_employment-opportunities", "mit-living-wage-scraped_12_15_22.csv"), 
                 col_names = FALSE) %>%
   mutate(state = str_sub(X1, 1, 2),
          county = str_sub(X1, 3, 5)) %>%
@@ -31,6 +31,6 @@ joined_data <- left_join(all_counties, mit, by = c("state", "county"))
 joined_data %>%
   select(year, state, county, adults, children, wage) %>%
   mutate(year = 2021) %>% 
-  write_csv(here::here("09_employment", "mit-living-wage-2022.csv"))
+  write_csv(here::here("01_employment-opportunities", "mit-living-wage-2022.csv"))
   
   
