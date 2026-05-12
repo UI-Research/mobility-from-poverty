@@ -1,0 +1,123 @@
+---
+title: "Compare Local Data with Data Catalog"
+author: "Aaron R. Williams"
+date: now
+abstract: This document compares the UMI data on the Urban Institute catalog with updated versions of the data that are local. This is meant to help with quality control when updating UMI data. 
+date-format: "MMMM D, YYYY h:mm a z"
+format: 
+  html:
+    toc: true
+embed-resources: true
+editor: source
+execute: 
+  code-fold: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r}
+#| message: false
+
+library(tidyverse)
+library(here)
+
+source(here("functions", "construction", "compare_data.R"))
+
+```
+
+## Load Data
+
+This section loads the remote and local versions of the data and combines them into a list. The URLs for the remote data need to be updated before each run.
+
+```{r}
+read_data <- function(file, date, local_path, root_url) {
+
+  data <- 
+    list(
+      `local` = read_csv(here(local_path, file), show_col_types = FALSE),
+      `catalog` = read_csv(paste0(root_url, date, file), show_col_types = FALSE)
+    )
+  
+  return(data)
+  
+}
+
+root_url <- "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/"
+local_path <- here("data")
+
+data_urls <- tribble(
+  ~date, ~file,
+  "2025/12/12/", "11_mobility-metrics_county_longitudinal.csv",
+  "2025/05/13/", "12_mobility-metrics_county_race-ethnicity_longitudinal.csv",
+  "2025/12/12/", "13_mobility-metrics_county_race-share_longitudinal.csv",
+  "2025/05/13/", "14_mobility-metrics_county_income_longitudinal.csv",
+  "2025/05/13/", "15_mobility-metrics_county_age_longitudinal.csv",
+  "2025/05/13/", "18_mobility-metrics_county_disability_longitudinal.csv",
+  "2025/12/12/", "19_mobility-metrics_county_industry_longitudinal.csv",
+  "2025/05/13/", "20_mobility-metrics_county_mothers_education_longitudinal.csv",
+  "2025/12/12/", "61_mobility-metrics_place_longitudinal.csv",
+  "2025/05/13/", "62_mobility-metrics_place_race-ethnicity_longitudinal.csv",
+  "2025/12/12/", "63_mobility-metrics_place_race-share_longitudinal.csv",
+  "2025/05/13/", "64_mobility-metrics_place_income_longitudinal.csv",
+  "2025/05/13/", "65_mobility-metrics_place_age_longitudinal.csv",
+  "2025/05/13/", "66_mobility-metrics_place_gender_longitudinal.csv",
+  "2025/05/13/", "67_mobility-metrics_place_tenure_longitudinal.csv",
+  "2025/05/13/", "68_mobility-metrics_place_disability_longitudinal.csv"
+)
+
+data <- map2(
+  .x = data_urls$file |>
+    purrr::set_names(),
+  .y = data_urls$date,
+  .f = ~read_data(
+    file = .x, 
+    date = .y,
+    local_path = local_path, 
+    root_url = root_url
+  )
+)
+
+```
+
+## Data Quality
+
+This iterates a function over each pair of data sets and calculates several comparisons:
+
+- Identifies observations (rows) unique to local or catalog datasets
+- Counts differing observations by year
+- Lists variables (columns) present in only one dataset
+- Identifies shared variables that have different values
+
+```{r}
+#| results: asis
+
+walk2(
+  .x = data,
+  .y = names(data),
+  .f = ~compare_data(.x, .y)
+)
+
+```
+
+## Medians
+
+This sections repeats the comparison for the medians file.
+
+```{r}
+
+medians <- 
+  list(
+    `local` = read_csv(here("99_construct-database", "county_medians_year_suppressed.csv"), show_col_types = FALSE),
+    `catalog` = read_csv("https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/2025/12/12/county_medians_year_suppressed.csv", show_col_types = FALSE)
+  )
+
+
+compare_data(data_list = medians, "medians")
+
+
+
+```
+
+

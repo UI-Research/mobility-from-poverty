@@ -1,0 +1,72 @@
+---
+title: "Comparison of Ratios of Housing Units Affordable and Available Outputs Across Updates"
+format: 
+  html:
+    toc: true
+    code-line-numbers: true
+    embed-resources: true
+    code-fold: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Overview
+
+This file includes quick scatterplots to compare the changes between the 2024-2025 version (led by Will Curran-Groome) of the housing affordability/availability metrics and the updated 2025-2026 version (led by Manuel Alcalá Kovalski). The goal is to summarize the effect of updates, specifically adding 2024 data.
+
+These scatterplots only look at the availability metric (i.e., the ratio between housing units affordable and available at various income levels and the number of households at or below those income levels) for 2023. The plots are broken out by AMI level (30%, 50%, 80%), subgroup (owner, renter), and for both counties and places/cities. 
+
+## Configuration and setup
+
+```{r}
+library(tidyverse)
+library(here)
+library(urbnthemes)
+options(scipen = 99999) ## no scientific notation
+```
+
+```{r}
+create_comparison_scatterplot <- function(geo) {
+  years <- c(2014:2019, 2021:2024) |> paste0(collapse = "_")
+
+  # Read previous year's data
+  previous <- read_csv(
+  str_c(
+    "https://raw.githubusercontent.com/UI-Research/mobility-from-poverty/refs/heads/main/02_housing/data/final/",
+    "housing_", geo, "_2014_2015_2016_2017_2018_2019_2021_2022_2023_subgroups.csv"
+  )) |>
+    pivot_longer(cols = starts_with("share_")) |>
+    rename("value_previous" = "value")
+
+  # Read updated data
+  updated <- read_csv(
+    here("11_housing-affordability", "data", "final", str_c("housing_", geo, "_", years, "_subgroups.csv"))) |>
+    pivot_longer(cols = starts_with("share_")) |>
+    rename("value_updated" = "value")
+
+  # Combine and plot
+  previous |>
+    left_join(updated, by = c("year", "state", geo, "subgroup_type", "subgroup", "name")) |>
+    filter(!str_detect(name, "quality")) |>
+    filter(year == 2023, subgroup != "All") |>
+    ggplot() +
+    geom_point(aes(x = value_previous, y = value_updated, color = subgroup), alpha = 0.5, size = 0.5) +
+    facet_wrap(~ name) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    labs(
+      title = str_c("Comparison of ratios (", geo, ", 2023)"),
+      y = "Updated",
+      x = "Previous") +
+    theme_urbn_print()
+}
+```
+
+## Comparison scatterplots
+
+```{r, fig.width=10}
+create_comparison_scatterplot(geo = "county")
+create_comparison_scatterplot(geo = "place")
+```
+

@@ -82,13 +82,27 @@ if (isTRUE(subgroups)) {
   
 }
 
-#Check if confidence intervals and data quality NA values align 
+#Check if confidence intervals and data quality NA values align
 if (isTRUE(confidence_intervals)) {
-  
-  stopifnot(sum(is.na(select(data, ends_with("_lb")))) == sum(is.na(select(data, ends_with("_quality")))))
-  stopifnot(sum(is.na(select(data, ends_with("_ub")))) == sum(is.na(select(data, ends_with("_quality")))))
-  stopifnot(sum(is.na(select(data, ends_with("_ub")))) == sum(is.na(select(data, ends_with("_lb")))))
-  
+
+  # Get variables that have confidence intervals from the form
+  ci_vars <- exp_form %>%
+    filter(confidence_intervals_yes_or_no == "Yes") %>%
+    pull(metric_name_as_written_in_final_data_file)
+
+  # For each variable with CIs, check that _lb, _ub, and _quality NAs align
+  for (var in ci_vars) {
+    lb_col <- paste0(var, "_lb")
+    ub_col <- paste0(var, "_ub")
+    quality_col <- paste0(var, "_quality")
+
+    if (all(c(lb_col, ub_col, quality_col) %in% names(data))) {
+      stopifnot(sum(is.na(data[[lb_col]])) == sum(is.na(data[[quality_col]])))
+      stopifnot(sum(is.na(data[[ub_col]])) == sum(is.na(data[[quality_col]])))
+      stopifnot(sum(is.na(data[[ub_col]])) == sum(is.na(data[[lb_col]])))
+    }
+  }
+
 }
 
 # check fips
@@ -120,20 +134,24 @@ stopifnot(length(unique(dplyr::pull(data_geoid, geoid_length))) == 1)
 ##Variable names
 if (isTRUE(subgroups)) {
   exp_form_variables <- exp_form_variables %>%
-    select(-all_years_use_no_space, 
-           -confidence_intervals_yes_or_no, 
-           -quality_variables_available_yes_or_no) %>% 
-    pivot_longer(cols = everything()) %>%  
-    pull(value) %>% 
+    select(-all_years_use_no_space,
+           -confidence_intervals_yes_or_no,
+           -quality_variables_available_yes_or_no) %>%
+    pivot_longer(cols = everything()) %>%
+    pull(value) %>%
+    na.omit() %>%
+    unique() %>%
     sort()
 } else {
   exp_form_variables <- exp_form_variables %>%
-    select(-all_years_use_no_space, 
-           -confidence_intervals_yes_or_no, 
-           -quality_variables_available_yes_or_no, 
-           -subgroup_type, -subgroup) %>% 
-    pivot_longer(cols = everything()) %>%   
-    pull(value) %>% 
+    select(-all_years_use_no_space,
+           -confidence_intervals_yes_or_no,
+           -quality_variables_available_yes_or_no,
+           -subgroup_type, -subgroup) %>%
+    pivot_longer(cols = everything()) %>%
+    pull(value) %>%
+    na.omit() %>%
+    unique() %>%
     sort()
 }
 

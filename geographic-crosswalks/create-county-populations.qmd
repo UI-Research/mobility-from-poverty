@@ -20,15 +20,19 @@ library(tidyverse)
 library(tidycensus)
 library(assertr)
 library(here)
-library(epoxy)
 
-use_epoxy_glue_engine()
 theme_set(theme_minimal())
 options(scipen = 999)
 
 ```
 
+```{r}
+number_of_years <- 12
+
+```
+
 ## 2014
+
 In 2014, there are 3,142 counties. In 2020, Valdez-Cordova Census Area
 split into Chugach Census Area and Copper River Census Area.
 
@@ -233,7 +237,8 @@ final_population <- bind_rows(
 )
 
 final_population <- final_population |>
-  arrange(year, state, county)
+  arrange(year, state, county) |> 
+  mutate(in_universe = TRUE)
 ```
 
 Fix a typo in the county name for "Lower Connecticut River Valley Planning
@@ -246,28 +251,30 @@ final_population <- final_population |>
   ))
 ```
 
-## Remove Connecticut Counties
-
-Connecticut stopped using its **eight historical counties** as functional
-governmental units in 1960. In 2022, the Census Bureau updated its data
-reporting to align with Connecticut's governance structure, which divides the
-state into **nine planning regions** that reflect the state’s **nine**
-**Regional Councils of Government (COGs)**. These regions are now used for
-reporting, replacing the old **eight historical counties**. As new census data
-products will follow this structure, we will only report data for **planning
-regions** for 2022 onward. Due to data quality concerns with crosswalking from the old
-historical counties to planning regions, we **will not provide a crosswalk between the two**.
-To learn more about this issue, see the [geographic harmonization guide](geographic-harmonization-guide.qmd#sec-ct-planning-regions).  
-
-As of Jan 2025 - we are no longer removing the previous CT counties. 8 CT counties
-through 2021, then 9 planning regions from 2022 onward.
+SOme county names have excess white spaces. 
 
 ```{r}
-#| label: remove-old-ct-counties
+final_population <- final_population |>
+  mutate(county_name = str_trim(county_name))
 
-#final_population <- final_population |>
-#  filter(!(state_name == "Connecticut" & year < 2022))
 ```
+
+## Add 2025 Data
+
+We need counties for 2025 but skip adding the population, which isn't available yet. 
+
+```{r}
+final_population <- bind_rows(
+  final_population,
+  final_population |>
+    filter(year == 2024) |>
+    mutate(year = 2025) |>
+    select(-population)
+)
+
+```
+
+## Evaluate
 
 ```{r}
 #| label: tally-counties-by-year
@@ -287,16 +294,10 @@ n_counties_2020_2021 <- get_n_counties(final_population, between(year, 2020, 202
 n_counties_2022_2023 <- get_n_counties(final_population, year >= 2022)
 ```
 
-```{epoxy}
-# Removing these **eight counties** leaves us with:
-
-# -   **{.comma n_counties_2014_2019}** counties in 2014-2019
-# -   **{.comma n_counties_2020_2021}** counties in 2020-2021
-# -   **{.comma n_counties_2022_2023}** counties in 2022-2023.
-```
 ## Evaluation
 
 **Check:** Do we have the expected number of counties?
+
 ```{r}
 final_population |>
   count(year) |>
@@ -304,6 +305,7 @@ final_population |>
     within_bounds(3142, 3144),
     n
   )
+
 ```
 
 ```{r}
@@ -354,7 +356,7 @@ We can look at counties with FIPS that don't show up in every year.
 final_population |>
   group_by(state, county) |>
   mutate(fips_frequency = n()) |>
-  filter(fips_frequency != 10) |>
+  filter(fips_frequency != number_of_years) |>
   ungroup() |>
   distinct(state, county, state_name, county_name) |>
   print(n = Inf)
@@ -367,7 +369,7 @@ We can look at places with county names that don't show up in every year.
 final_population |>
   group_by(state_name, county_name) |>
   mutate(fips_frequency = n()) |>
-  filter(fips_frequency != 10) |>
+  filter(fips_frequency != number_of_years) |>
   ungroup() |>
   distinct(state, county, state_name, county_name) |>
   print(n = Inf)

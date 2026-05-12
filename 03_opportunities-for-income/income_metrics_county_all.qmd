@@ -1,0 +1,1038 @@
+---
+title: "Opportunity for Income Predictor, county-level"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+params:
+  year: "2024"
+  inflation_year: "2024"
+---
+
+## Overview
+
+*Program for the creation of the Opportunity for Income Predictor at the county level*
+
+**Purpose**: This document produces county-level estimates of household income at the 20th, 50th (median), and 80th percentiles using American Community Survey (ACS) microdata. These metrics help assess economic opportunity and income distribution across U.S. counties.
+
+**Output**: A longitudinal CSV file containing income percentiles, confidence intervals, and quality flags for all U.S. counties (excluding Puerto Rico) across multiple years.
+
+**Expected Runtime**: 30-60 minutes depending on server capacity and data volume. The ACS microdata is large (~1-2GB per year) and requires significant computing resources.
+
+**Authors**: ACS Code initially written by Tina Chelidze and updated by JP Walsh in 2022-2023, 2025 and 2026.
+
+**Data Source**: Primary data derived from the IPUMS API.
+
+**Methodology**: Based on processes developed by Paul Johnson and Kevin Werner in SAS.
+
+## Output Data Dictionary
+
+The final output file contains the following variables:
+
+- **year**: ACS survey year
+- **state**: State FIPS code (2 digits)
+- **county**: County FIPS code (3 digits)
+- **pctl_income_20**: 20th percentile of household income (dollars) - 20% of households earn this amount or less
+- **pctl_income_20_lb**: Lower bound of 95% confidence interval for 20th percentile
+- **pctl_income_20_ub**: Upper bound of 95% confidence interval for 20th percentile
+- **pctl_income_20_quality**: Quality flag (1=best, 3=worst) based on geographic allocation and sample size
+- **pctl_income_50**: 50th percentile (median) of household income (dollars)
+- **pctl_income_50_lb**: Lower bound of 95% confidence interval for median
+- **pctl_income_50_ub**: Upper bound of 95% confidence interval for median
+- **pctl_income_50_quality**: Quality flag for median income
+- **pctl_income_80**: 80th percentile of household income (dollars) - 80% of households earn this amount or less
+- **pctl_income_80_lb**: Lower bound of 95% confidence interval for 80th percentile
+- **pctl_income_80_ub**: Upper bound of 95% confidence interval for 80th percentile
+- **pctl_income_80_quality**: Quality flag for 80th percentile
+
+### Quality Flag Definitions
+
+The quality flags indicate reliability based on geographic allocation and effective sample size:
+
+- **Quality 1**: PUMA(s) entirely contained within county boundaries + adequate sample (n≥30)
+- **Quality 2**: PUMA(s) partially overlap county boundaries + adequate sample (n≥30)
+- **Quality 3**: PUMA(s) have complex geographic overlaps + adequate sample (n≥30)
+- **NA (suppressed)**: Effective sample size < 30 (insufficient data for reliable estimates)
+
+## Important Notes and Warnings
+
+**AWS Access (Internal Users)**: If using the AWS feature, enter your passkey into your environment using `Sys.setenv()`. Authentication steps are explained in this [blog](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/). You must request access to the access key.
+
+**Computing Requirements**: The ACS microdata is large (1-2GB per year) and requires significant RAM (8GB+ recommended) and processing time. Use a server with adequate computing power.
+
+**Critical File Path Requirement**: Ensure no folders in your repository filepath contain the acronym "UMF" - this will cause an error in the `extract_ipums_aws()` function. Check your file path using `here::here()`.
+
+**Data Exclusions**: Puerto Rico (statefip = 72) is excluded from the analysis.
+
+## Parameters Guide
+
+This document uses several key parameters that control data processing:
+
+- **params$year**: The ACS year to process (e.g., "2024"). Set in the YAML header.
+- **single_year_update**: Set to "Yes" when adding one new year to existing data; "No" when reprocessing all years for validation.
+- **existing_years**: Vector of all previously processed years. Update this when adding new years.
+- **ipums_extract_date**: Date of the IPUMS data extract (format: "mm_dd_yy"). Update only when re-pulling data from IPUMS.
+- **ipums_repwt_extract_date**: Date of the replicate weights extract. Should match IPUMS extract date.
+
+## Housekeeping
+
+### Load Required Packages
+
+Load all necessary R packages. If you do not have an IPUMS API key, create one via the [IPUMS website](https://www.ipums.org/).
+
+**Key packages**:
+- `ipumsr`: Interface to IPUMS API for downloading ACS microdata
+- `srvyr`: Survey-weighted statistics with replicate weights
+- `tidyverse`: Data manipulation and visualization
+- `aws.s3`: AWS S3 integration for data storage (optional)
+
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+library(srvyr)
+library(scales)
+
+options(scipen = 999)
+
+theme_set(theme_minimal())
+
+# DO NOT PUSH YOUR API KEY. You only have to run this once and then comment it out as below.
+#set_ipums_api_key("Your KEY", save = TRUE)
+
+# AWS configuration (for internal users with access)
+s3_dir <- "metric_name/data/acs"
+my_bucket <- "mobility-from-poverty-test"
+
+# Source custom functions
+# extract_ipums_aws: Downloads ACS microdata from IPUMS API or retrieves from AWS S3
+source(here::here("functions", "API", "extract_ipums_aws.R"))
+# ipums_repwt_household_aws: Downloads household-level replicate weights for standard errors
+source(here::here("functions", "API", "ipums_repwt_household_aws.R"))
+# evaluate_final_data: Validates output data structure and completeness
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+# finalize_metric: Cleans confidence intervals and formats final output
+source(here::here("03_opportunities-for-income", "R", "finalize_metric.R"))
+# calc_income_quantiles: Calculates income percentiles using survey weights
+source(here::here("03_opportunities-for-income", "R", "calc_income_quantiles.R"))
+```
+
+### Extract Dates
+
+Date of IPUMS extract. Denote the latest date that the IPUMS extract was changed and pulled both for the overall data and the repweights. The recommended date notation format is "mm_dd_yy". 
+
+**Important**: These dates serve as version control for the IPUMS data extracts. Only update these dates when you actually re-pull data from IPUMS with changes (new variables, years, or corrections). For internal reviewers using AWS, keep these dates as last entered by the metric lead unless you intend to modify the extract.
+
+**Why separate dates?**: Household data and replicate weights are extracted separately from IPUMS, so they may have different pull dates.
+
+```{r}
+ipums_extract_date <- "02_13_25"
+ipums_repwt_extract_date <- "02_13_25"
+```
+
+### Single Year Update Flag
+
+If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
+
+**When to use "Yes"**: Adding one new year (e.g., 2024) to existing historical data. The program will process only the new year and exit before validation.
+
+**When to use "No"**: Reprocessing all years or running full validation on the complete longitudinal dataset.
+
+```{r}
+single_year_update = "No"
+```
+
+### Define Existing Years
+
+Define all years for which intermediate data files already exist. When adding a new year, add it to this vector after successfully processing that year.
+
+**Update procedure**: After successfully running this script with a new year and `single_year_update = "Yes"`, add that year to this vector for future validation runs. 
+
+```{r}
+existing_years <- c("2014", "2015", "2016", "2017", "2018", "2019", "2021", "2022", "2023", "2024")
+```
+
+## Read ACS Data
+
+### Define Survey Years
+
+Read in the ACS extracts using the `extract_ipums()` function. The survey list defines which ACS years to download from IPUMS.
+
+**Survey naming convention**: IPUMS uses the format "usYYYYa" for 1-year ACS data (e.g., "us2024a" for 2024 1-year ACS).
+
+**To see available surveys**: Run `get_sample_info("acs")` to view all available ACS surveys and their IPUMS identifiers.
+
+```{r}
+
+acs_surveys <- list(paste0("us", params$year, "a"))
+
+```
+
+
+### Household-Level Data
+
+Run extract. This will trigger an import process through IPUMS or retrieve cached data from AWS S3 if available.
+
+**Key variables extracted**:
+- **HHWT**: Household weight for statistical weighting
+- **HHINCOME**: Total household income in the past 12 months
+- **PERNUM**: Person number within household (we use PERNUM=1 to count each household once)
+- **GQ**: Group quarters status (we keep only households, not institutional settings)
+- **PUMA**: Public Use Microdata Area (geographic unit)
+- **ADJUST**: Inflation adjustment factor to standardize income across survey periods
+
+**Extract versioning**: If a new IPUMS pull is required, update the `extract_date` argument above. The extract only needs updating if changes or additions are required from IPUMS (new years, variables, or corrections).
+
+**Processing note**: Add detail to your extract description so it's clear what the extract was used for when reviewing IPUMS extracts later. 
+
+```{r}
+acs <- extract_ipums_aws(
+  extract_name = paste0("umf_data_", params$year, "_income_all"),
+  extract_date = ipums_extract_date,
+  extract_description = paste0("Microdata pull for Mobility Metric Predictors.
+  American Community Survey, overall,", params$year, "(1-year)."),
+  survey = acs_surveys
+)
+```
+
+Isolate data to include each household only once. ACS microdata contains one record per person, but we need household-level income statistics.
+
+**Why PERNUM == 1?**: The PERNUM variable identifies person number within a household. Filtering to PERNUM == 1 selects only the first person listed in each household (typically the householder), ensuring we count each household exactly once. The HHINCOME variable is the same for all members of a household, so we only need one record per household.
+
+```{r}
+acs_hh <- acs %>%
+  filter(pernum == 1)
+```
+
+Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
+
+```{r}
+count(acs_hh, sample)
+```
+
+
+### Replicate Weights 
+
+Read in household-level replicate weights for the entire population. These will be used in creating standard errors and confidence intervals for the income quantile calculations.
+
+**What are replicate weights?**: The ACS uses replicate weights to estimate variance and standard errors for survey statistics. Each of the 80 replicate weights represents a slightly different resampling of the data, allowing us to calculate how much uncertainty exists in our estimates.
+
+**Why separate from main data?**: Replicate weights are stored separately in IPUMS due to file size. The main extract contains 1 weight (HHWT), while the replicate weight extract contains 80 weights (REPWT1-REPWT80). 
+```{r}
+repwts <- ipums_repwt_household_aws(
+  extract_name = paste0("household_replicate_weights_", params$year, "_1year"),
+  extract_date = ipums_repwt_extract_date,
+  extract_description = paste0("Household replicate weights for Income Opportunities 
+  Metric Predictors. American Community Survey,", params$year, "(1-year)."),
+  survey = acs_surveys
+)  %>% 
+  select(-cbserial, -cbpernum)
+
+```
+
+Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
+
+```{r}
+count(repwts, sample)
+
+```
+
+Remove the sample variable.
+
+```{r}
+repwts_hh <- repwts %>% 
+  select(-sample)
+
+```
+
+### Merge on repwts
+
+Merge the replicate weights onto the ACS samples using the unique person identifier.
+
+**Data check**: The following code verifies that all records successfully merge. The number of unique person IDs should be identical in both datasets and the combined dataset.
+```{r}
+length(unique(pull(acs_hh, unique_person_id)))
+
+length(unique(pull(repwts_hh, unique_person_id)))
+
+acs_combined <- 
+  left_join(
+    acs_hh,
+    repwts_hh,
+    by = "unique_person_id"
+  )
+
+length(unique(pull(acs_combined, unique_person_id)))
+
+rm(acs_hh)
+rm(repwts_hh)
+
+```
+
+
+## Clean Data
+
+### Handle Missing Values
+
+Missing data is reported in various ways by IPUMS. This step identifies missing values in key variables and converts them to R's standard NA format.
+
+**IPUMS missing value conventions**:
+- Numeric variables use special codes (e.g., 9999999) to indicate missing data
+- These must be converted to NA for proper statistical analysis
+
+#### Vacancy Status
+
+* **Vacancy:** reported as "0". Note there should be no vacancy results by default of the structure of census data read in (all should be "0") because we filter to occupied housing units through the household-level extract. Confirm this is true with the following test.
+
+```{r}
+stopifnot(all(acs_combined$vacancy == "0"))
+```
+
+#### Household Income
+
+* **HHINCOME:** Missing values reported as "9999999".
+
+**Why are some values missing?**: Some households may have:
+- Refused to report income
+- Not known their income at survey time  
+- Other data quality issues
+
+These missing values are legitimate and will be excluded from percentile calculations. Note there are no vacant properties in the data by default of the household-level structure.
+
+```{r}
+acs_combined %>% 
+  ggplot(aes(x = hhincome)) +
+  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Household Income Variable Results") +
+  ylab("Density")
+```
+
+Turn the missing/"not in universe" values for the `hhincome` variable into NAs. Rename to the more meaningful "household_income". 
+
+```{r}
+
+acs_clean <- acs_combined %>%
+  mutate(household_income = ifelse(hhincome == 9999999, NA_integer_,
+                          hhincome)
+  )
+
+```
+
+Look at distribution of `household_income` after adjustment. Some outliers will still exist but bunching around the missing value should not be present.
+
+```{r}
+
+acs_clean %>% 
+  ggplot(aes(x = household_income)) +
+  geom_density(adjust = 5, color = "blue", fill = alpha("blue", 0.3)) +
+  theme_minimal() +
+  ggtitle("Household Income Variable Results") +
+  ylab("Density")
+
+```
+
+### Filter to Households Only
+
+Select our group quarters - we want to keep only households (not group quarters like dormitories, prisons, or nursing homes).
+
+**Group Quarters (GQ) definitions**:
+- **Households under 1970 definition**: Traditional family households
+- **Additional households under 1990 definition**: Expanded household definition
+- **Additional households under 2000 definition**: Further expanded to include more household types
+- **Group quarters**: Institutional and non-institutional group living situations (excluded)
+
+**Why exclude group quarters?**: Household income is not a meaningful concept for institutional populations. We focus on private households.
+```{r}
+acs_clean %>% 
+  group_by(gq) %>% 
+  count()
+```
+
+```{r}
+acs_clean <- acs_clean %>%
+  filter(gq %in% c("Households under 1970 definition", 
+                   "Additional households under 1990 definition",
+                   "Additional households under 2000 definition"))
+```
+
+Check that group quarters fall only into household categories.
+
+```{r}
+acs_clean %>% 
+  count(gq) %>% 
+  ggplot(mapping = aes(x = gq, y = n)) +
+  geom_col() +
+  theme_minimal() +
+  ggtitle("GQ, All Records") +
+ geom_text(mapping = aes(label = n), vjust = -1) +    
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "GQ",
+       y = NULL) +
+  scale_x_discrete(labels = label_wrap(10))
+
+```
+
+## Geographic Crosswalk
+
+### PUMA to County Mapping
+
+Read in the PUMA to county crosswalk file. This file is created by the program `generate_puma_county_crosswalks.rmd` in the geographic-crosswalks folder.
+
+**Why is a crosswalk needed?**: ACS microdata is released at the PUMA (Public Use Microdata Area) level to protect respondent privacy. PUMAs contain ~100,000+ people but do not align with county boundaries. We must use a crosswalk to allocate PUMA-level data to counties.
+
+**AFACT variable**: The crosswalk contains an allocation factor (AFACT) representing the proportion of a PUMA's population that falls within each county. For example, if a PUMA spans two counties (60% in County A, 40% in County B), records from that PUMA will be weighted accordingly.
+
+**Geographic allocation quality**: Counties composed of PUMAs entirely within their boundaries receive quality flag 1; counties requiring geographic allocation receive flags 2 or 3 depending on complexity. 
+
+```{r}
+puma_county_crosswalk <- read_csv(
+  here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")
+)
+```
+
+Create a version with just unique counties for creating a version of the data that matches the UMF county list.
+
+**Note**: Puerto Rico (statefip = 72) is excluded from analysis. Different crosswalks apply before and after 2022 due to PUMA boundary changes.
+
+```{r}
+if(params$year < 2022){
+  county_list <- puma_county_crosswalk %>%
+    filter(crosswalk_period == "pre-2022") %>% 
+    select(statefip, county) %>% 
+    filter(statefip != 72) %>% 
+    unique()
+
+}else{
+  county_list <- puma_county_crosswalk %>% 
+  filter(crosswalk_period == "2022") %>% 
+  select(statefip, county) %>% 
+  filter(statefip != 72) %>% 
+  unique()
+}
+```
+
+## Merge Crosswalk 
+
+### Apply Time-Specific Crosswalk
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+
+**Why two crosswalks?**: PUMA boundaries were redrawn in 2022 based on 2020 Census data. Data from 2021 and earlier uses 2010-based PUMAs; 2022+ uses 2020-based PUMAs. We must apply the appropriate crosswalk for each time period.
+
+```{r}
+acs_clean <- acs_clean %>% 
+  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
+
+```
+
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
+
+```{r}
+count(acs_clean, crosswalk_period, year)
+
+```
+
+Join the cleaned ACS data onto the crosswalk.
+
+```{r}
+acs_crosswalked <- left_join(
+  acs_clean, 
+  puma_county_crosswalk, 
+  by = c("crosswalk_period", "statefip","puma"),
+  relationship = "many-to-many"
+)
+
+```
+
+Run an anti_join to see what data does not combine. We keep all counties so there should be no observations resulting from the anti-join.
+
+```{r}
+anti_join(acs_clean, 
+          puma_county_crosswalk, 
+          by = c("crosswalk_period", "statefip","puma")
+)
+
+rm(acs_clean)
+```
+
+Drop any observations with NA for `afact` (i.e. there is no county of interest overlapping this PUMA).
+```{r}
+count(acs_crosswalked, is.na(afact))
+
+acs_crosswalked <- acs_crosswalked %>% 
+  drop_na(afact)
+
+```
+
+Also filter out cases where `afact` is equal to zero. These cases will not be counted in the metric calculation.
+
+```{r}
+count(acs_crosswalked, afact == 0)
+
+acs_crosswalked <- acs_crosswalked %>% 
+  filter(afact > 0)
+
+```
+
+### Adjust Weights for Geographic Allocation
+
+Adjust the household weight and all replicate weights to account for PUMA-to-county mapping.
+
+**Why adjust weights?**: When a PUMA spans multiple counties, we multiply the household weight by the allocation factor (AFACT) to proportionally distribute that PUMA's households to each county. For example, if AFACT = 0.6, we assign 60% of the household's weight to that county.
+
+**Applies to all weights**: Both the main household weight (HHWT) and all 80 replicate weights (REPWT1-REPWT80) must be adjusted to maintain statistical validity.
+
+```{r}
+select(acs_crosswalked, hhwt, repwt1, repwt80, afact)
+
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(hhwt = hhwt * afact,
+         across(matches("repwt[0-9]+"), ~.x * afact))
+
+select(acs_crosswalked, hhwt, repwt1, repwt80, afact) 
+
+```
+
+### Inflation Adjustment
+
+This section makes two adjustments to then dollar `household_income` values that account for inflation. First, we apply CPI adjustments for all values to the latest year in dollar value.
+
+This adjustment table is provided by the [IPUMS website](https://usa.ipums.org/usa/cpi99.shtml). IPUMS updates this table for new ACS years annually, users may have to update the link in the 'read_html' statement below.
+
+```{r}
+cpi_data <- rvest::read_html("https://usa.ipums.org/usa/cpi99.shtml") %>%
+    rvest::html_element("table") %>%
+    rvest::html_table() %>%
+    janitor::clean_names() %>%
+    select(data_year, income_year, cpi_to_1999 = cpi99) %>%
+    mutate(
+      data_year = as.numeric(data_year),
+      income_year = parse_number(income_year),
+      cpi_to_1999 = as.numeric(cpi_to_1999)
+    ) %>%
+    filter(!is.na(data_year)) # drop the second 2000 row which gets parsed as NA due to a trailing space
+```
+
+Convert all values to 1999 dollars.  
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>%
+  left_join(cpi_data, by = c("year" = "data_year")) %>% 
+  mutate(
+    household_income = household_income*cpi_to_1999
+  ) %>% 
+  select(-cpi_to_1999)
+```
+
+Now we want to adjust all values to the latest year available. This value comes from adjustment values also provided by [IPUMS](https://cps.ipums.org/cps/cpi99.shtml) and is scraped below. We adjust all values to the inflation year set in the parameters argument. 
+
+```{r}
+cpi_data <- rvest::read_html("https://cps.ipums.org/cps/cpi99.shtml") %>%
+    rvest::html_nodes("table") %>%
+    rvest::html_table() 
+
+alternate_factor <- cpi_data[[2]] %>% 
+    janitor::clean_names() %>%
+    select(income_year, alternate_factor) %>%
+    mutate(
+      income_year = str_sub(income_year, 1, 4),
+      income_year = as.numeric(income_year),
+      alternate_factor = as.numeric(alternate_factor)
+    ) %>% 
+  filter(income_year == params$inflation_year) %>% 
+  select(alternate_factor) %>% 
+  pull()
+```
+
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(
+    household_income = household_income*alternate_factor
+  ) 
+```
+
+Next, we apply the ADJUST variable to `household_income`. 
+
+**What is ADJUST?**: IPUMS provides an inflation adjustment factor that converts income amounts to constant dollars for the survey year. The ADJUST factor accounts for:
+- Inflation between the income reference period and survey year
+- Households being surveyed at different times during the year
+- Price level changes within the survey year
+
+**Why multiply income by ADJUST?**: This standardizes all income values to the same time period, making them comparable across survey months.
+
+```{r}
+
+acs_crosswalked <- acs_crosswalked %>%
+  mutate(
+    household_income = household_income*adjust
+  ) 
+
+```
+
+Confirm there are no missing values remaining in the data set for the household income variable. 
+
+```{r}
+acs_crosswalked %>%
+  filter(is.na(household_income)) %>% 
+  count()
+
+```
+
+Confirm there are no vacant properties included in the data.
+
+```{r}
+acs_crosswalked %>%
+  filter(is.na(vacancy)) %>% 
+  count()
+
+```
+
+## Create Income Metric: All Households
+
+Create the income metric for all households (no demographic subgroups).
+
+**Objective**: Calculate the 20th, 50th (median), and 80th percentiles of household income by county.
+
+**Interpretation**:
+- **20th percentile**: 20% of households earn this amount or less (lower-income benchmark)
+- **50th percentile (median)**: Half of households earn more, half earn less (typical income)
+- **80th percentile**: 80% of households earn this amount or less (higher-income benchmark)
+
+**Statistical approach**: 
+- Weighted by household weight (HHWT × AFACT) to represent population
+- Uses replicate weights to calculate 95% confidence intervals
+- Applies jackknife variance estimation (JK1 method with 80 replicates)
+
+### Pre-drop Suppressed Cells
+
+#### Calculate Effective Sample Size
+
+First, to save time when processing the metric, calculate the effective sample count for each county.
+
+**Effective sample calculation**: Sum of the AFACT variable for all records in a county. This represents the "effective" number of survey responses after geographic allocation.
+
+**Why not just count records?**: A record with AFACT = 0.6 contributes only 60% of a full sample, so simple record counts would overstate sample size for counties with split PUMAs.
+
+**Suppression threshold**: Counties with effective sample < 30 are suppressed (set to NA) because estimates would be too unreliable. This follows standard statistical disclosure practices.
+
+```{r}
+#| label: all-effective-samples
+
+acs_all <- acs_crosswalked %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  mutate(effective_sample = sum(afact)) %>% 
+  ungroup()
+
+# calculate the number of statistics after suppressing values
+acs_all %>%
+  group_by(year, sample, crosswalk_period, statefip, county) %>%
+  summarize(
+    effective_sample = max(effective_sample)
+  ) %>%
+  ungroup() %>%
+  summarize(
+    original_stats = n(),
+    unsuppressed_stats = sum(effective_sample >= 30)
+  )
+
+```
+
+Remove records from counties below the size quality cutoff. 
+
+```{r}
+#| label: subset-all
+
+acs_all <- acs_all %>% 
+  filter(effective_sample >= 30)
+
+```
+
+### Calculate Metric
+
+Calculate the county-level income percentiles with confidence intervals.
+
+**Survey methodology**: The `calc_income_quantiles()` function:
+1. Sets up survey design with replicate weights (JK1 method)
+2. Calculates 20th, 50th, 80th percentiles with survey weights
+3. Generates 95% confidence intervals using replicate weights
+4. Returns geographic allocation quality from crosswalk
+
+**Processing note**: Data is split by state to improve computational efficiency with large datasets. 
+
+```{r}
+#| label: calc-all
+
+results_all <- acs_all %>%
+  group_split(statefip) %>% 
+  map_dfr(~ calc_income_quantiles(.data = .x, .geo_level = county))
+
+```
+
+Clean up the confidence interval bounds and sort the data.
+
+```{r}
+#| label: finalize-all
+
+results_all <- finalize_metric(results_all, 
+                               .geo_level = county)
+
+```
+
+```{r}
+rm(acs_all)
+
+```
+
+## Add Suppressed Rows to Data
+
+### Include All Counties in Output
+
+To create the metric we suppressed counties that did not meet the threshold for sample size, but we need to include these in the final data as NA values for completeness.
+
+**Why add back suppressed counties?**: Users need a complete list of all counties (even those with NA values) to avoid confusion about which counties were excluded vs. missing data.
+
+Expand the county_list file so it includes every year in the results. Join the results onto this file and test that the number of records matches the total number of counties we anticipate.
+
+**Expected counts**:
+- Pre-2022: 3,143 counties per year
+- 2022+: 3,144 counties per year (county boundary change)
+```{r}
+expanded_county_list <- county_list %>% 
+  left_join(results_all, by = c("statefip", "county"), relationship = "many-to-many") %>%
+  mutate(geoid = paste0(statefip, county)) %>% 
+  expand(year, geoid) %>% 
+  mutate(statefip = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 5)) 
+
+results_all_expand <- expanded_county_list %>% 
+  left_join(results_all, by = c("year", "statefip", "county")) %>% 
+  filter(!is.na(year))
+
+if(params$year < 2022){
+stopifnot(nrow(results_all_expand) == 3143 * n_distinct(results_all_expand$year))
+}else{
+  stopifnot(nrow(results_all_expand) == 3144 * n_distinct(results_all_expand$year))
+}
+
+```
+
+## Data Quality Flags
+
+### Assign Quality Indicators
+
+Add a flag for data quality - a numeric variable between 1 and 3 with 1 representing the best quality and 3 representing the worst.
+
+**Quality flag basis**:
+1. **Geographic allocation quality** from the crosswalk file (how cleanly PUMAs map to counties)
+2. **Effective sample size** (must be ≥30 to report estimates)
+
+**Quality flag assignment**:
+- **Quality 1**: PUMAs entirely within county + adequate sample
+- **Quality 2**: PUMAs partially overlap county + adequate sample  
+- **Quality 3**: Complex PUMA overlaps + adequate sample
+- **NA**: Effective sample < 30 (all income values also NA)
+
+**Note**: Quality flags are identical for all three percentiles (20th, 50th, 80th) within a county-year because they're based on the same underlying sample and geographic allocation.
+
+```{r}
+metrics_income_all <- results_all_expand %>% 
+  mutate(
+   pctl_income_20_quality = if_else(
+      is.na(pctl_income_20), 
+      NA_real_,
+      geographic_allocation_quality
+    ),
+    pctl_income_50_quality = if_else(
+      is.na(pctl_income_50), 
+      NA_real_,
+      geographic_allocation_quality
+    ),
+    pctl_income_80_quality = if_else(
+      is.na(pctl_income_80), 
+      NA_real_,
+      geographic_allocation_quality
+    )
+  )
+```
+
+### Write Out Intermediate Data
+
+Save intermediate files for each year to AWS S3 (if available) or local storage.
+
+**Purpose**: Intermediate files allow validation across all years without reprocessing. When adding a new year, we can combine it with existing years for quality checks.
+
+```{r}
+if(isTRUE(bucket_exists(bucket = my_bucket))){
+    
+    # write file to S3
+    tmp <- tempfile()
+    on.exit(unlink(tmp))
+    write_csv(metrics_income_all, file = tmp)
+    
+    # put object with an upload progress bar
+    put_object(tmp, object = paste0(s3_dir, "/metrics_income_county_all", "_", params$year, ".csv"), bucket = my_bucket, 
+               show_progress = TRUE, multipart = FALSE)
+    
+}
+```
+
+### Exit Point for Single Year Updates
+
+If updating a single year, the program ends here. The new year's data has been saved to intermediate storage.
+
+**Next steps after single year update**:
+1. Add the new year to the `existing_years` vector
+2. Set `single_year_update = "No"` 
+3. Re-run to perform validation across all years and create the final longitudinal dataset
+
+```{r}
+if(single_year_update == "Yes"){
+  knitr::knit_exit()
+}
+```
+
+## Validation
+
+### Multi-Year Quality Checks
+
+Validate results for all years of available output. This section runs only when `single_year_update = "No"`.
+
+**Validation objectives**:
+1. Check distributions of income percentiles for outliers
+2. Verify reasonable year-over-year changes
+3. Assess suppression rates by year
+4. Confirm quality flag distributions
+
+### Read Intermediate Files
+
+Read in the intermediate files created for each ACS year available.
+
+Function reads the CSVs from intermediate folder or from AWS if the user has access. This combines all years into a single longitudinal dataset for validation.
+
+```{r}
+read_intermediate <- function(year, file_type){
+  
+  if(isTRUE(bucket_exists(bucket = my_bucket))) {
+    
+    data_year <- s3read_using(FUN=read_csv, 
+                 bucket = my_bucket, 
+                 object=paste0(s3_dir, "/metrics_income_", file_type, "_", year, ".csv")) %>% 
+      mutate(crosswalk_period = as.character(crosswalk_period))
+  
+  
+  }
+  else{
+  
+  read_csv(paste0(here::here("03_opportunities-for-income", "data", "intermediate", "income"), 
+                  "/", "metrics_income", file_type, "_", year, ".csv"))
+  }
+  
+}
+```
+
+```{r}
+
+metrics_income_all <- map_df(.x = existing_years, .f = ~read_intermediate(year = .x,
+                                                                          file_type = "county_all"))
+```
+
+
+Summarize the predictors for the 1-year and 5-year data.
+```{r}
+metrics_income_all %>% 
+  select(pctl_income_20:pctl_income_80) %>% 
+  summary()
+```
+
+
+### Visualize Income Distributions
+
+Examine distributions of income percentiles by county for recent years.
+
+**Expected patterns**:
+- 80th percentile should be higher than 50th (median), which should be higher than 20th
+- Distributions should be relatively smooth without extreme outliers
+- Year-over-year distributions should be similar (incomes change gradually)
+```{r}
+metrics_income_all %>% 
+  filter(year == params$year) %>% 
+  select(pctl_income_20, pctl_income_50, pctl_income_80) %>% 
+  pivot_longer(cols = c(pctl_income_20, pctl_income_50, pctl_income_80), names_to = "income", values_to = "percentile") %>% 
+  ggplot(aes(x = percentile, color = income, fill = income)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Income percentiles (1-year data)") +
+  ylab("Density")
+```
+
+Median income distribution over time (inflation adjusted)
+
+```{r}
+metrics_income_all %>% 
+  filter(year %in% c(params$year, 2014, 2019)) %>% 
+  select(year, pctl_income_50) %>% 
+  mutate(year = as.character(year),
+         year = factor(year, levels = c("2014", "2019", params$year))) %>% 
+  ggplot(aes(x = pctl_income_50, color = year, fill = year)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Median Income Comparison Over Time") +
+  ylab("Density")
+```
+
+80th percentile income distribution over time (inflation adjusted)
+
+```{r}
+metrics_income_all %>% 
+  filter(year %in% c(params$year, 2014, 2019)) %>% 
+  select(year, pctl_income_80) %>% 
+  mutate(year = as.character(year),
+         year = factor(year, levels = c("2014", "2019", params$year))) %>% 
+  ggplot(aes(x = pctl_income_80, color = year, fill = year)) +
+  geom_density(alpha = 0.15) +
+  theme_minimal() +
+  ggtitle("Median Income Comparison Over Time") +
+  ylab("Density")
+```
+
+Median income for select counties over time
+
+```{r}
+metrics_income_all %>% 
+  mutate(countyfip = paste0(statefip, county)) %>% 
+  filter(countyfip %in% c("17031", "06037", "48201", "51760")) %>% 
+  mutate(county = case_when(countyfip == "17031" ~ "Cook, IL",
+                            countyfip == "06037" ~ "Los Angeles, CA",
+                            countyfip == "48201" ~ "Harris, TX",
+                            countyfip == "51760" ~ "Richmond, VA"),
+         county = factor(county, levels = c("Cook, IL",
+                                            "Los Angeles, CA",
+                                            "Harris, TX",
+                                            "Richmond, VA"))) %>% 
+  ggplot(aes(year, pctl_income_50, color = county)) +
+  geom_line() +
+  scale_x_continuous(expand = expansion(mult = c(0.002, 0)), 
+                     limits = c(2014, 2024)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.002)), 
+                     labels = scales::dollar, 
+                     limits = c(0, 100000)) +
+  labs(x = "Year",
+       y = "Median Income (2024 dollars)")
+```
+
+80th percentile income for select counties over time
+
+```{r}
+metrics_income_all %>% 
+  mutate(countyfip = paste0(statefip, county)) %>% 
+  filter(countyfip %in% c("17031", "06037", "48201", "51760")) %>% 
+  mutate(county = case_when(countyfip == "17031" ~ "Cook, IL",
+                            countyfip == "06037" ~ "Los Angeles, CA",
+                            countyfip == "48201" ~ "Harris, TX",
+                            countyfip == "51760" ~ "Richmond, VA"),
+         county = factor(county, levels = c("Cook, IL",
+                                            "Los Angeles, CA",
+                                            "Harris, TX",
+                                            "Richmond, VA"))) %>% 
+  ggplot(aes(year, pctl_income_80, color = county)) +
+  geom_line() +
+  scale_x_continuous(expand = expansion(mult = c(0.002, 0)), 
+                     limits = c(2014, 2024)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.002)), 
+                     labels = scales::dollar, 
+                     limits = c(0, 200000)) +
+  labs(x = "Year",
+       y = "Median Income (2024 dollars)")
+```
+
+### Quality Flag Distribution
+
+Examine the counts of the quality flag across all years. We look at quality for `pctl_income_20` - given how the quality variable is created, it will be identical to the quality results for income_50 and income_80.
+
+**Expected distribution**: Most counties should have quality flags 1 or 2. Quality flag 3 should be less common. NA values represent suppressed counties (effective sample < 30).
+```{r}
+metrics_income_all %>% 
+  select(pctl_income_20_quality) %>% 
+  ggplot(aes(x = pctl_income_20_quality)) +
+  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
+  theme_minimal() +
+  ggtitle("Quality Flag (1-year data") +
+  ylab("Count")
+```
+
+### Suppression Rates
+
+Tabulate share of data suppressed by year.
+
+**Expected suppression**: 50-200 counties per year typically have insufficient sample (varies by year and ACS sample design). Rural counties with small populations are most likely to be suppressed.
+```{r}
+metrics_income_all %>% 
+  group_by(year) %>% 
+  filter(is.na(pctl_income_20)) %>% 
+  count()
+```
+
+## Final Test and Export
+
+### Prepare Final Dataset
+
+Finalize variable names and structure for the final longitudinal dataset.
+
+Rename state.
+
+```{r}
+metrics_income_all <- metrics_income_all %>% 
+  rename("state" = "statefip")
+```
+
+Order the variables how we want.
+
+```{r}
+metrics_income_all <- metrics_income_all %>% 
+  select(year, state, county, pctl_income_20, pctl_income_20_lb, 
+         pctl_income_20_ub,
+         pctl_income_20_quality,
+         pctl_income_50, pctl_income_50_lb, 
+         pctl_income_50_ub, 
+         pctl_income_50_quality,
+         pctl_income_80, pctl_income_80_lb, 
+         pctl_income_80_ub,
+         pctl_income_80_quality)
+```
+
+### Automated Quality Checks
+
+Run file through the `evaluate_final_data()` function. This validates:
+- Correct variable names and types
+- Expected number of records (3,143 or 3,144 × number of years)
+- No missing geographic identifiers
+- Confidence intervals properly bounded (LB ≤ estimate ≤ UB)
+- Data completeness against expected evaluation form
+
+```{r}
+
+evaluate_final_data(data = metrics_income_all, exp_form_path = here::here("10a_final-evaluation", "evaluation_form_income_overall_county.csv"), geography = "county", subgroups = FALSE, confidence_intervals = TRUE)
+
+```
+
+### Export as CSV
+
+```{r}
+
+metrics_income_all %>% 
+  head(10)
+
+write_csv(metrics_income_all, 
+          here::here("03_opportunities-for-income", "final", "metrics_income_county_all_longitudinal.csv"))
+```

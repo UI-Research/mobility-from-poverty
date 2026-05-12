@@ -13,7 +13,7 @@ execute:
 editor_options: 
   chunk_output_type: console
 params:
-  year: "2023"
+  year: "2024"
 ---
 
 *Program for the creation of the Employment Opportunities Upward Mobility Predictor at the place-level*
@@ -22,26 +22,44 @@ ACS Code: Initially written by Tina Chelidze, updated by JP Walsh and Aaron Will
 
 Primary data derived from the IPUMS API. Based on processes developed by Paul Johnson and Kevin Werner in SAS.
 
-*User note* This program depends on extracts from the IPUMS ACS API interface. If you are updating the extract please remember to update the extract_date to reflect the time of the latest extract in the Housekeeping section of this program.
+## Executive Summary
 
-Please select your year by updating 'params$year' in the YAML parameters above.
+**What this script does:** Calculates place-level employment-to-population ratios for adults ages 25-54 using American Community Survey (ACS) microdata.
 
-*Internal users* If you are an internal tester using the AWS feature of this program remember to enter the passkey into your environment using Sys.setenv(). Authentication steps are nicely explained in this [blog](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/). You will have to request access to the access key.
+**Key metric:** `share_employed` - the proportion of prime working-age adults (25-54) who are employed, with confidence intervals and quality flags.
 
-*User warning* The ACS micro data used to create this metric is large and will take time to read in. It is strongly recommended that you use a server with significant computing power to run this. For internal Urban Institute users, the SAS server provides a good option.
+**Geographic aggregation:** PUMA-level data crosswalked to place (city) boundaries using allocation factors.
+
+**Output:** Longitudinal dataset covering the largest 486 U.S. places with annual employment opportunity metrics.
+
+**Compute requirements:** Large microdata files require significant memory. Recommended for server environments.
+
+---
+
+### User Notes
+
+*Parameters:* Update `params$year` in the YAML header to specify which ACS year to process.
+
+*Extract dates:* If updating the IPUMS extract, remember to update `ipums_extract_date` and `ipums_repwt_extract_date` in the Housekeeping section.
+
+*AWS storage:* Internal users can store intermediate files on AWS S3. Authentication steps are explained in this [blog](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/). Contact the project lead for access credentials.
+
+*Performance:* ACS microdata files are large and processing is time-intensive. Strongly recommended to use a server with significant computing power (e.g., Urban Institute SAS server).
 
 ## Housekeeping
+
+### Load Required Packages
 
 Read in packages for use. If you do not have an IPUMS API key you will need to make one via the [IPUMS website](https://www.ipums.org/).
 
 ```{r}
-library(tidyverse)
-library(ipumsr)
-library(reactable)
-library(srvyr)
-library(scales)
-library(furrr)
-library(tictoc)
+library(tidyverse)   # Data manipulation and visualization
+library(ipumsr)      # IPUMS API interface
+library(reactable)   # Interactive tables
+library(srvyr)       # Survey-weighted statistics
+library(scales)      # Formatting functions
+library(furrr)       # Parallel processing
+library(tictoc)      # Timing functions
 
 options(scipen = 999)
 
@@ -53,39 +71,90 @@ theme_set(theme_minimal())
 s3_dir <- "metric_name/data/acs"
 my_bucket <- "mobility-from-poverty-test"
 
-source(here::here("functions", "API", "extract_ipums_aws.R"))
-source(here::here("functions", "API", "ipums_repwt_employment_aws.R"))
-source(here::here("functions", "testing", "evaluate_final_data.R"))
-source(here::here("09_employment", "R", "finalize_metric.R"))
-source(here::here("09_employment", "R", "calc_survey_mean.R"))
-source(here::here("09_employment", "R", "calc_survey_mean_subgroup.R"))
+# Load custom functions
+source(here::here("functions", "API", "extract_ipums_aws.R"))              # Retrieves ACS microdata via IPUMS API
+source(here::here("functions", "API", "ipums_repwt_employment_aws.R"))    # Retrieves replicate weights
+source(here::here("functions", "testing", "evaluate_final_data.R"))       # Validates final output
+source(here::here("09_employment", "R", "finalize_metric.R"))            # Cleans confidence intervals
+source(here::here("09_employment", "R", "calc_survey_mean.R"))           # Computes survey-weighted means
+source(here::here("09_employment", "R", "calc_survey_mean_subgroup.R"))  # Computes subgroup means
 
 ```
+
+### Configuration Parameters
+
+**IPUMS Extract Dates**
 
 Date of IPUMS extract. Denote the latest date that the IPUMS extract was changed and pulled both for the overall data and the repweights. The recommended date notation format is "mm_dd_yy". 
 
-For internal reviewers, if you plan to utilize AWS keep this date as it was last entered by the metric lead unless you intend to change the extract.
+**Important:** For internal reviewers using AWS, keep this date as it was last entered by the metric lead unless you intend to change the extract. Changing this date will trigger a new data pull from IPUMS.
 
 ```{r}
-ipums_extract_date <- "01_13_25"
-ipums_repwt_extract_date <- "01_13_25"
+ipums_extract_date <- "01_20_26"        # Date of main ACS microdata extract
+ipums_repwt_extract_date <- "01_20_26"  # Date of replicate weights extract
 ```
 
-If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
+**Single Year Update Flag**
+
+If this is to update a single year of new data, set `single_year_update` to "Yes". This will process only the year specified in `params$year` and skip the validation section. If processing multiple years or running full validation, set to "No".
 
 ```{r}
-single_year_update = "No"
+single_year_update = "No"  # Set to "Yes" for single-year updates
 ```
 
-Define existing intermediate years and read them into function to combine. 
+**Existing Years for Longitudinal Analysis**
+
+Define all years with existing intermediate data files. These will be combined for validation and final longitudinal output.
 
 ```{r}
-existing_years <- c("2014", "2015", "2016", "2017", "2018", "2019", "2021", "2022", "2023")
+existing_years <- c("2014", "2015", "2016", "2017", "2018", "2019", "2021", "2022", "2023", "2024")
 ```
+
+## Methodology Overview
+
+### Population Definition
+
+**Target population:** Adults ages 25-54 (prime working age)
+- This age range captures the core labor force, excluding younger individuals who may be in school and older individuals approaching retirement
+- Only household residents included (group quarters excluded)
+- Person-level weights adjusted for PUMA-to-place allocation
+
+### Employment Definition
+
+Employment status based on IPUMS EMPSTAT variable:
+- **Employed:** EMPSTAT == 1
+- **Excludes:** Not in labor force, unemployed, not in universe (institutionalized populations)
+
+### Geographic Aggregation
+
+**Challenge:** ACS microdata provides geography at the PUMA level (100,000+ population), but we need place-level (city) estimates.
+
+**Solution:** PUMA-to-place crosswalk using allocation factors (`afact`):
+- `afact` represents the proportion of a PUMA's population residing in each overlapping place
+- Person weights multiplied by `afact` to distribute individuals across places
+- Some PUMAs map entirely to one place (afact = 1.0)
+- Others span multiple places (afact < 1.0 for each)
+- Analysis limited to the largest 486 places for reliable estimates
+
+### Quality Thresholds
+
+**Sample size requirement:** Minimum of 30 effective samples per place
+- Effective sample = sum of `afact` values (proxy for survey record count)
+- Places below threshold are suppressed (NA values in final data)
+
+**Quality flags (1-3 scale):**
+- **1 (Best):** High sample size, clean geographic allocation
+- **2 (Moderate):** Acceptable sample size, some crosswalk complexity
+- **3 (Caution):** Suppressed due to low sample size OR complex allocation
+
+### Expected Output Counts
+
+- **486 large places** included in analysis (consistent across years)
+- Places are census-designated incorporated places and Census Designated Places (CDPs)
 
 ## Read ACS Data
 
-Read in the ACS extracts using the `extract_ipums()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
+Read in the ACS extracts using the `extract_ipums_aws()` function. Make sure to change the survey list to reflect what years you want to include in the data. The surveys being used in the code are defined in the code chunk below. For a list of available ACS surveys and their titles via the IPUMSR package you can run the following function: get_sample_info("acs").
 
 ```{r}
 
@@ -120,7 +189,15 @@ Look at the distribution of survey samples in the data. The number of unique sam
 count(acs, sample)
 ```
 
-Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation. Note: the replicate weights are limited to these ages during the data pull. 
+**Filter to prime working age population**
+
+Isolate the data to 25-54 year-olds. This is the standard prime working-age range used in employment analysis:
+- Excludes younger adults who may be completing education
+- Excludes older adults approaching retirement age
+- Provides most stable measure of labor force participation
+
+Note: The replicate weights are also limited to these ages during the data pull to match this population. 
+
 ```{r}
 acs_age <- acs %>% 
   filter(age >= 25 & age <= 54) 
@@ -303,7 +380,9 @@ place_list <- puma_place_crosswalk %>%
 
 ## Merge Crosswalk 
 
-Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
+**Handle PUMA geography changes**
+
+Create a variable in the ACS data indicating whether the survey is pre or post-2022. This is necessary because PUMA boundaries were redefined in 2022 based on the 2020 Census, requiring different crosswalk files.
 
 ```{r}
 acs_clean <- acs_clean %>% 
@@ -318,14 +397,19 @@ count(acs_clean, crosswalk_period, year)
 
 ```
 
-Join the cleaned ACS data onto the crosswalk.
+**Join PUMA-to-place crosswalk**
+
+Join the cleaned ACS data onto the crosswalk. This is a many-to-many join because:
+- One PUMA can overlap multiple places (person assigned to multiple places with different afact values)
+- Multiple PUMAs can contribute to one place
+- The `afact` variable will be used later to weight person records appropriately
 
 ```{r}
 acs_crosswalked <- left_join(
   acs_clean, 
   puma_place_crosswalk, 
   by = c("crosswalk_period", "statefip","puma"),
-  relationship = "many-to-many"
+  relationship = "many-to-many"  # Expected: PUMAs map to multiple places
 )
 
 rm(acs_clean)
@@ -348,7 +432,7 @@ acs_crosswalked <- acs_crosswalked %>%
 
 ```
 
-Also filter out cases where `afact` is equal to zero. These cases will not be counted in the metric calculation.
+Also filter out cases where `afact` is equal to zero. These cases represent PUMAs with no overlap to places of interest and will not be counted in the metric calculation.
 
 ```{r}
 count(acs_crosswalked, afact == 0)
@@ -358,13 +442,21 @@ acs_crosswalked <- acs_crosswalked %>%
 
 ```
 
-Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
+**Apply allocation factors to survey weights**
+
+Adjust the person weight and all replicate weights to account for PUMA-to-place mapping. This is the key step that distributes individuals across places when their PUMA spans multiple places.
+
+**Example:** If a PUMA overlaps 3 places with afact values of 0.5, 0.3, and 0.2:
+- Each person in that PUMA appears 3 times in the data (one row per place)
+- Their weights are multiplied by afact so they contribute fractionally to each place
+- Sum of weighted contributions across places equals their original weight
+
 ```{r}
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
 
 acs_crosswalked <- acs_crosswalked %>%
-  mutate(perwt = perwt * afact) %>% 
-  mutate(across(matches("repwtp[0-9]+"), ~.x * afact))
+  mutate(perwt = perwt * afact) %>%  # Main person weight
+  mutate(across(matches("repwtp[0-9]+"), ~.x * afact))  # All 80 replicate weights
 
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
 
@@ -533,6 +625,32 @@ if(single_year_update == "Yes"){
 }
 ```
 
+## Data Dictionary
+
+### Key Variables in Final Output
+
+| Variable | Type | Description | Range/Values |
+|----------|------|-------------|-------------|
+| `year` | Integer | ACS survey year | 2014-2024 |
+| `state` | Character | State FIPS code (2-digit) | 01-56 |
+| `place` | Character | Place FIPS code (5-digit) | 00001-99999 |
+| `share_employed` | Numeric | Employment-to-population ratio for ages 25-54 | 0.0-1.0 |
+| `share_employed_lb` | Numeric | Lower bound of 90% confidence interval | 0.0-1.0 |
+| `share_employed_ub` | Numeric | Upper bound of 90% confidence interval | 0.0-1.0 |
+| `share_employed_quality` | Integer | Quality flag (1=best, 3=suppressed) | 1, 2, 3, NA |
+
+### Intermediate Variables
+
+| Variable | Description | Source |
+|----------|-------------|--------|
+| `effective_sample` | Sum of afact values (sample size proxy) | Calculated from crosswalk |
+| `afact` | Allocation factor for PUMA-place overlap | PUMA-place crosswalk |
+| `employment_status` | Employment status from EMPSTAT | IPUMS ACS |
+| `employed` | Binary indicator (TRUE if EMPSTAT==1) | Calculated |
+| `geographic_allocation_quality` | Crosswalk quality indicator | PUMA-place crosswalk |
+| `perwt` | Person weight (adjusted by afact) | IPUMS ACS (modified) |
+| `repwtp1-repwtp80` | Replicate weights (adjusted by afact) | IPUMS ACS (modified) |
+
 ## Validation
 
 Validate results for all years of available output.
@@ -663,3 +781,121 @@ evaluate_final_data(data = metrics_employment_all, exp_form_path = here::here("1
 write_csv(metrics_employment_all, here::here("09_employment", "data", "final", "metrics_employment_place_all_longitudinal.csv"))
 
 ```
+
+## Expected Outputs
+
+### Intermediate Files
+
+Stored in `09_employment/data/intermediate/` or AWS S3 (if configured):
+
+- **File pattern:** `metrics_employment_all_place_YYYY.csv`
+- **One file per year:** Created during single-year processing
+- **Used for:** Building longitudinal dataset and validation
+
+### Final Output
+
+**File:** `09_employment/data/final/metrics_employment_place_all_longitudinal.csv`
+
+**Structure:**
+- **Rows:** 486 places × number of years processed
+- **Columns:** 7 (year, state, place, share_employed, share_employed_lb, share_employed_ub, share_employed_quality)
+- **Coverage:** 486 largest U.S. places (incorporated places and CDPs)
+- **Time period:** 2014-2024 (excluding 2020 due to COVID-19 ACS disruption)
+
+**Quality notes:**
+- Places with <30 effective samples have NA for share_employed
+- Quality flags indicate reliability (1=best, 3=use with caution)
+- Confidence intervals provided for all non-suppressed estimates
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+**1. IPUMS API Authentication Fails**
+- **Error:** "API key not found" or "Authentication failed"
+- **Solution:** Run `set_ipums_api_key("YOUR_KEY", save = TRUE)` once, then restart R session
+- **Get key:** Register at [IPUMS website](https://www.ipums.org/)
+
+**2. AWS S3 Access Denied**
+- **Error:** "Bucket does not exist" or "Access Denied"
+- **Solution:** Set AWS credentials using `Sys.setenv(AWS_ACCESS_KEY_ID="...", AWS_SECRET_ACCESS_KEY="...")`
+- **Alternative:** Script will fall back to local file storage if AWS unavailable
+- **Documentation:** See [AWS S3 with R blog post](https://www.gormanalysis.com/blog/connecting-to-aws-s3-with-r/)
+
+**3. Memory Errors During Processing**
+- **Error:** "Cannot allocate vector of size..." or R session crashes
+- **Solution:** Run on server with more RAM (minimum 16GB recommended, 32GB+ preferred)
+- **Alternative:** Process one state at a time by modifying the `group_split()` approach
+
+**4. Extract Date Confusion**
+- **When to update:** Only change `ipums_extract_date` if you've modified variables or years in the IPUMS extract
+- **AWS users:** Changing the date triggers a new download; coordinate with team
+- **Format:** Use "mm_dd_yy" format (e.g., "01_20_26")
+
+**5. Mismatched Place Counts**
+- **Error:** Expected 486 places but got different number
+- **Cause:** Crosswalk file may be outdated or filtered incorrectly
+- **Solution:** Verify crosswalk file includes all 486 target places
+- **Check:** Ensure `crosswalk_period` variable correctly assigned
+
+**6. Missing Replicate Weights**
+- **Error:** Join results in NA values for repwtp variables
+- **Cause:** Separate replicate weights extract may have failed
+- **Solution:** Check `ipums_repwt_extract_date` and verify extract completed
+- **Alternative:** Re-run replicate weights extract independently
+
+**7. Long Processing Time**
+- **Expected:** 1-3 hours per year depending on server
+- **Speed up:** Ensure running on server, not local machine
+- **Monitor:** Use `tictoc` package markers to identify slow sections
+- **Note:** The `calc_survey_mean()` step is computationally intensive
+
+### Data Quality Checks
+
+If validation results look unexpected:
+
+1. **Check employment rate distribution:** Should be roughly normal, centered around 0.75-0.85
+2. **Review quality flags:** High proportion of quality=3 may indicate sample size issues
+3. **Examine coefficient of variation:** CV > 0.10 suggests high variability
+4. **Compare to prior years:** Large year-over-year changes warrant investigation
+5. **Verify suppression counts:** Should be relatively consistent across years
+6. **Urban vs suburban patterns:** Larger cities typically have more stable estimates
+
+## Processing Workflow Summary
+
+Complete workflow for reference:
+
+1. **Data Extraction** → Pull ACS microdata and replicate weights from IPUMS API
+2. **Age Filtering** → Subset to ages 25-54 (prime working age)
+3. **Data Cleaning** → Handle missing values, filter to households only
+4. **Geographic Crosswalk** → Map PUMAs to places using allocation factors
+5. **Weight Adjustment** → Multiply person and replicate weights by afact
+6. **Sample Quality Check** → Calculate effective samples, suppress <30
+7. **Metric Calculation** → Compute survey-weighted employment ratios with SEs
+8. **Quality Flags** → Assign quality indicators based on sample size and crosswalk
+9. **Expand to Full Place List** → Add suppressed places with NA values
+10. **Validation** → Review distributions, CVs, and year-over-year changes
+11. **Export** → Save intermediate yearly files and final longitudinal dataset
+
+## References and Documentation
+
+### Primary Data Source
+- **IPUMS USA:** Steven Ruggles, Sarah Flood, Matthew Sobek, et al. IPUMS USA: Version 13.0 [dataset]. Minneapolis, MN: IPUMS, 2023. https://doi.org/10.18128/D010.V13.0
+
+### Methodology Sources
+- **Original SAS implementation:** Paul Johnson and Kevin Werner (methodology foundation)
+- **R translation:** Tina Chelidze (initial), JP Walsh and Aaron Williams (updates 2022-2025)
+
+### Related Documentation
+- **PUMA-Place Crosswalk:** Generated by `geographic-crosswalks/generate_puma_place_crosswalks.Rmd`
+- **Project documentation:** `mobility-from-poverty-documentation/` folder
+- **Custom functions:** `functions/` folder with detailed comments
+
+### External Resources
+- **IPUMS ACS documentation:** https://usa.ipums.org/usa/acs.shtml
+- **ACS replicate weights:** https://usa.ipums.org/usa/repwt.shtml
+- **Srvyr package:** http://gdfe.co/srvyr/
+- **Survey methodology:** Valliant, Dever, and Kreuter (2018). *Practical Tools for Designing and Weighting Survey Samples*
+
+### Support
+For questions about this metric, contact the Upward Mobility Framework team at the Urban Institute.
