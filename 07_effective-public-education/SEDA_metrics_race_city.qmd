@@ -104,7 +104,8 @@ place_clean <- place %>%
                                       place_name == "McAllen" ~ "Mcallen",
                                       place_name == "McKinney" ~ "Mckinney",
          TRUE ~ place_name),
-         city_name = str_to_lower(city_name)) %>% 
+         city_name = str_to_lower(city_name),
+         geoid = paste0(state, place)) %>% 
   select(-place_name, -population)
 ```
 
@@ -173,7 +174,7 @@ Filter for the relevant subject "rla" and define cohorts. Cohorts are defined by
 seda <- seda %>% 
   filter(subject == "rla") %>% 
   mutate(cohort = year - grade + 8) %>% 
-  filter(cohort >= 2014, !is.na(cohort)) %>% 
+  filter(cohort >= 2015, !is.na(cohort)) %>% 
   mutate(year = year - 1)#to match to other dataset that use fall of school year
 
 ```
@@ -570,6 +571,31 @@ plots$quality_over_time
 
 ```
 
+Create rows for all subgroups for all base places in the data. 
+
+```{r}
+seda_all_places <-
+  left_join(
+    place_clean %>% rename(year_join = year) %>% 
+      filter(year_join %in% c(2015:2020)),
+    final_data %>% mutate(year_join = year + 1),
+    by = c("year_join", "place", "state")
+  ) %>% 
+  expand(year_join, geoid, subgroup) %>% 
+  filter(!is.na(subgroup), !is.na(year_join)) %>% 
+   mutate(state = str_sub(geoid, 1, 2),
+         place = str_sub(geoid, 3, 7)) 
+
+final_data <- left_join(
+  seda_all_places,
+  final_data %>% mutate(year_join = year + 1),
+   by = c("year_join", "place", "state", "subgroup")
+) %>% 
+  select(-year) %>% 
+  mutate(year = year_join - 1)
+
+```
+
 ## Data Export
 
 Format the data long with subgroup titles
@@ -608,14 +634,13 @@ long_format <- final_data %>%
     
     arrange(desc(year), state, place, subgroup_type, subgroup)
 
-  
+
 ```
 
 Run final evaluations and Write out all files
 
 ```{r}
 #| error: true
-#| 
 all <- long_format %>% 
   filter(subgroup_type %in% c("all")) %>% 
   select(-subgroup_type, -subgroup)
