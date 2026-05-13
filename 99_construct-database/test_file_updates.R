@@ -350,17 +350,17 @@ read_csv("01_financial-well-being/county-debt-coll-shares-2022.csv") |>
 
 ## House Value
 
-read_csv("01_financial-well-being/final/households_house_value_race_ethnicity_all_city.csv") |>
+read_csv("05_wealth-building-opportunities/final/households_house_value_race_ethnicity_all_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_city.csv") |>
+read_csv("05_wealth-building-opportunities/final/households_house_value_race_ethnicity_subgroup_city.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Age 45 and Over", "Under Age 45"), 
                       confidence_intervals = FALSE)
 
-read_csv("01_financial-well-being/final/households_house_value_race_ethnicity_all_county.csv") |>
+read_csv("05_wealth-building-opportunities/final/households_house_value_race_ethnicity_all_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("01_financial-well-being/final/households_house_value_race_ethnicity_subgroup_county.csv") |>
+read_csv("05_wealth-building-opportunities/final/households_house_value_race_ethnicity_subgroup_county.csv") |>
   evaluate_input_data(subgroups = c("Age 45 and Over", "Under Age 45"), 
                       confidence_intervals = FALSE)
 
@@ -399,20 +399,20 @@ read_csv("04_health/final_data/neonatal_health_subgroup_2018.csv") |>
 
 ## Air quality 
 
-read_csv("06_neighborhoods/environment/data/final/environment_place_longitudinal.csv") |>
+read_csv("19_environmental-quality/data/final/environment_place_longitudinal.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/environment/data/final/environment_place_race_poverty_longitudinal.csv") |>
+read_csv("19_environmental-quality/data/final/environment_place_race_poverty_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Majority Non-White", 
                                                          "Majority White, Non-Hispanic",
                                                          "No Majority Race/Ethnicity",
                                                          "Extreme Poverty", "Not Extreme Poverty"),
                       confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/environment/data/final/environment_county_longitudinal.csv") |>
+read_csv("19_environmental-quality/data/final/environment_county_longitudinal.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/environment/data/final/environment_county_race_poverty_longitudinal.csv") |>
+read_csv("19_environmental-quality/data/final/environment_county_race_poverty_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Majority Non-White", 
                                     "Majority White, Non-Hispanic",
                                     "No Majority Race/Ethnicity",
