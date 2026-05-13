@@ -62,27 +62,27 @@ read_csv("12_housing-stability/data/final/homelessness_all_subgroups_county.csv"
 
 ## Poverty Exposure
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_city_2021.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_city_2021.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_race-ethnicity_city_2021.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_city_2021.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_county_2021.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_county_2021.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_race-ethnicity_county_2021.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_county_2021.csv") |>
   evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_county_2018.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_county_2018.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/poverty-exposure/poverty-exposure_race-ethnicity_county_2018.csv") |>
+read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_county_2018.csv") |>
   evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
