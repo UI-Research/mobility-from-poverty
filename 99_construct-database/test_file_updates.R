@@ -62,27 +62,27 @@ read_csv("12_housing-stability/data/final/homelessness_all_subgroups_county.csv"
 
 ## Poverty Exposure
 
-read_csv("13_economic-inclusions/poverty-exposure_city_2021.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_city_2021.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_city_2021.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_city_2021.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusions/poverty-exposure_county_2021.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_county_2021.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_county_2021.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_county_2021.csv") |>
   evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
 
-read_csv("13_economic-inclusions/poverty-exposure_county_2018.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_county_2018.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_county_2018.csv") |>
+read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_county_2018.csv") |>
   evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
@@ -100,18 +100,18 @@ read_csv("14_racial-diversity/race-ethnicity-exposure-2021.csv") |>
 
 ## Membership associations
 
-read_csv("06_neighborhoods/social-capital/final/social_associations_all_city.csv") |>
+read_csv("15_social-capital/final/social_associations_all_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/social-capital/final/social_associations_all_county.csv") |>
+read_csv("15_social-capital/final/social_associations_all_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## Economic connectedness 
 
-read_csv("06_neighborhoods/social-capital/final/economic_connectedness_city_2022.csv") |>
+read_csv("15_social-capital/final/economic_connectedness_city_2022.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/social-capital/final/economic_connectedness_county_2022.csv") |>
+read_csv("15_social-capital/final/economic_connectedness_county_2022.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## Transportation
