@@ -89,13 +89,13 @@ read_csv("13_economic-inclusions/poverty-exposure_race-ethnicity_county_2018.csv
 
 ## Racial diversity 
 
-read_csv("06_neighborhoods/race-ethnicity-exposure/race-ethnicity-exposure-city-2021.csv") |>
+read_csv("14_racial-diversity/race-ethnicity-exposure-city-2021.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/race-ethnicity-exposure/race-ethnicity-exposure-2018.csv") |>
+read_csv("14_racial-diversity/race-ethnicity-exposure-2018.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/race-ethnicity-exposure/race-ethnicity-exposure-2021.csv") |>
+read_csv("14_racial-diversity/race-ethnicity-exposure-2021.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## Membership associations
