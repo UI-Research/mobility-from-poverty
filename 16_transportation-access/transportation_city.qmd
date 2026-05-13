@@ -36,7 +36,9 @@ library(here)
 
 source(here("functions", "testing", "evaluate_final_data.R"))
 
-theme_set(theme_minimal())
+theme_set(theme_bw())
+
+options(scipen = 999)
 
 ```
 
@@ -45,11 +47,14 @@ theme_set(theme_minimal())
 Before running, please download the entirety of the folders listed below from the following [Box
 folder](https://urbanorg.app.box.com/folder/250262697073) into the
 repository folder. You may be required to unzip the folders but keep the raw files in their folders. 
-`"mobility-from-poverty/06_neighborhoods/transportation/data"`
+`"mobility-from-poverty/16_transportation-access/data/"`
 
 - 2015_tract
 - 2019_tract
 - 2022_tract
+
+Import all the files (and/or combine into one file) with only the
+relevant variables and years
 
 ```{r}
 read_transportation_data <- function(year) {
@@ -77,7 +82,7 @@ transportation_tracts <- map_dfr(
 
 ```
 
-## Clean Transportation Data
+## Clean Data
 
 Create correct FIPS columns.
 
@@ -92,12 +97,6 @@ transportation_tracts <- transportation_tracts |>
 
 ```
 
-```{r}
-transportation_tracts <- transportation_tracts |>
-  mutate(GEOID = paste0(state, county, tract))
-
-```
-
 Only keep variables of interest. `pct_transit_commuters_80ami` is "Transit Ridership % of Workers for the Regional Moderate Household." `t_80ami` is "Transportation Costs % Income for the Regional Typical Household."
 
 ```{r}
@@ -107,6 +106,12 @@ transportation_tracts <- transportation_tracts |>
     share_transit_commuter = pct_transit_commuters_80ami, 
     share_transportation_cost = t_80ami
   )
+
+```
+
+```{r}
+transportation_tracts <- transportation_tracts |>
+  mutate(GEOID = paste0(state, county, tract))
 
 ```
 
@@ -144,9 +149,9 @@ transportation_tracts |>
 
 ```
 
-## Clean Census Quality Data
+## Clean Census Data
 
-We need to pull Census Bureau data to calculate data quality and to calculate subgroups. We start by pulling `B25001_001`, which is the estimate and margin of error for the number of households in the tract. 
+We need to pull Census Bureau data to calculate data quality. We start by pulling `B25001_001`, which is the estimate and margin of error for the number of households in the tract. 
 
 ```{r}
 my_states <- fips_codes |> 
@@ -233,220 +238,21 @@ stopifnot(
 
 ```
 
-## Clean Census Demographic Data
-
-### Pull Data
-
-We need to pull counts of different races and ethnicities at the census tract level to identify tracts for the subgroup analysis. To do this, we pull detailed information and roll up the categories. The following table shows the race/ethnicity categories and the combination of ACS variables into our new variables.
-
-| Variable.    | Depth       | Description    | New Variable   |
-| -----|----|--------------------------------- | -------------- |
-| `B03002_001` | 1 | Estimate!!Total | `total_population`   |
-| `B03002_002` | 2 | Estimate!!Total!!Not Hispanic or Latino | `NA` |
-| `B03002_003` | 3 | Estimate!!Total!!Not Hispanic or Latino!!White alone | `whitenh`  |
-| `B03002_004` | 3 | Estimate!!Total!!Not Hispanic or Latino!!Black or African American alone | `poc`   |
-| `B03002_005` | 3 | Estimate!!Total!!Not Hispanic or Latino!!American Indian and Alaska Native alone | `poc`   |
-| `B03002_006` | 3 | Estimate!!Total!!Not Hispanic or Latino!!Asian alone | `poc`   |
-| `B03002_007` | 3 | Estimate!!Total!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone | `poc`   |
-| `B03002_008` | 3 | Estimate!!Total!!Not Hispanic or Latino!!Some other race alone | `poc`   |
-| `B03002_009` | 3 | Estimate!!Total!!Not Hispanic or Latino!!Two or more races | `poc`  |
-| `B03002_010` | 4 | Estimate!!Total!!Not Hispanic or Latino!!Two or more races!!Two races including Some other race | `NA` |
-| `B03002_011` | 4 | Estimate!!Total!!Not Hispanic or Latino!!Two or more races!!Two races excluding Some other race, and three or more races | `NA` |
-| `B03002_012` | 2 | Estimate!!Total!!Hispanic or Latino | `poc` |
-| `B03002_013` | 3 | Estimate!!Total!!Hispanic or Latino!!White alone | `NA` |
-| `B03002_014` | 3 | Estimate!!Total!!Hispanic or Latino!!Black or African American alone | `NA` |
-| `B03002_015` | 3 | Estimate!!Total!!Hispanic or Latino!!American Indian and Alaska Native alone | `NA` |
-| `B03002_016` | 3 | Estimate!!Total!!Hispanic or Latino!!Asian alone | `NA` |
-| `B03002_017` | 3 | Estimate!!Total!!Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone | `NA` |
-| `B03002_018` | 3 | Estimate!!Total!!Hispanic or Latino!!Some other race alone | `NA` |
-| `B03002_019` | 3 | Estimate!!Total!!Hispanic or Latino!!Two or more races | `NA` |
-| `B03002_020` | 4 | Estimate!!Total!!Hispanic or Latino!!Two or more races!!Two races including Some other race | `NA` |
-| `B03002_021` | 4 | Estimate!!Total!!Hispanic or Latino!!Two or more races!!Two races excluding Some other race, and three or more races | `NA` |
+We join the ACS quality information to the transportation information. 
 
 ```{r}
-acs_tract_pop15 <- map_dfr(
-  .x = my_states,
-  .f = ~ get_acs(
-    geography = "tract",
-    state = .x,
-    table = "B03002",
-    year = 2015,
-    survey = "acs5",
-    output = "wide"
-  )
-)
-
-acs_tract_pop19 <- map_dfr(
-  .x = my_states,
-  .f = ~ get_acs(
-    geography = "tract",
-    state = .x,
-    table = "B03002",
-    year = 2019,
-    survey = "acs5",
-    output = "wide"
-  )
-)
-
-acs_tract_pop22 <- map_dfr(
-  .x = my_states,
-  .f = ~ get_acs(
-    geography = "tract",
-    state = .x,
-    table = "B03002",
-    year = 2022,
-    survey = "acs5",
-    output = "wide"
-  )
-)
-
-acs_tracts <- bind_rows(
-  `2015` = acs_tract_pop15,
-  `2019` = acs_tract_pop19,
-  `2022` = acs_tract_pop22,
-  .id = "year"
-) |>
-  mutate(year = as.numeric(year))
-
-acs_tracts <- acs_tracts |>
-  mutate(
-    state = substr(GEOID, start = 1, stop = 2),
-    county = substr(GEOID, start = 3, stop = 5),
-    tract = substr(GEOID, start = 6, stop = 11)
-  )
-
-```
-
-We join the quality information to the main demographic information. 
-
-```{r}
-acs_tracts <- full_join(
-  acs_tracts,
-  acs_sample_size,
-  by = c("year", "state", "county", "GEOID"), 
+transportation_tracts <- left_join(
+  transportation_tracts,
+  acs_sample_size, 
+  by = c("year", "GEOID", "state", "county"), 
   relationship = "one-to-one"
 )
 
 ```
 
-Rename columns for clarity and calculate counts of people by different races and ethnicities. 
+## Crosswalk to Cities
 
-```{r}
-acs_tracts <- acs_tracts |>  
-  rename(
-    total_population = B03002_001E,
-    non_hispanic = B03002_002E,
-    white_nh = B03002_003E,
-    hispanic = B03002_012E
-  ) |>
-  mutate(
-    poc_non_hispanic =     
-      B03002_004E +
-      B03002_005E +
-      B03002_006E +
-      B03002_007E +
-      B03002_008E +
-      B03002_009E
-  ) |>
-  mutate(poc = poc_non_hispanic + hispanic)
-
-stopifnot(
-  acs_tracts |>
-    filter(total_population != (white_nh + poc_non_hispanic + hispanic)) |>
-    nrow() == 0
-)
-
-stopifnot(
-  acs_tracts |>
-    filter(total_population != (white_nh + poc)) |>
-    nrow() == 0
-)
-
-```
-
-Keep only vars we want.
-
-```{r}
-acs_tracts <- acs_tracts |>
-  select(
-    year, GEOID, state, county, tract, total_population, white_nh, poc,
-    households_est, households_se
-  )
-
-```
-
-### Calculate race category
-
-For each tract, ID the race category by calculating the proportion White, Non-Hispanic and the proportion of every other race and ethnicity. 
-
-```{r}
-acs_tracts <- acs_tracts |>
-  mutate(
-    prop_white_nh = white_nh / total_population,
-    prop_poc = poc / total_population
-  )
-
-stopifnot(
-  acs_tracts |>
-    filter(prop_white_nh + prop_poc != 1) |>
-    nrow() == 0
-)
-
-```
-
-Assign race-category for each tract. These assignments should align with the debt metric.
-
-```{r}
-acs_tracts <- acs_tracts |>
-  mutate(
-    subgroup = case_when(
-      total_population == 0 ~ "No population",
-      prop_white_nh >= 0.6 ~ "White neighborhoods",
-      prop_poc >= 0.6 ~ "Neighborhoods of color",
-      prop_white_nh >= 0.4 | prop_poc >= 0.4 ~ "Mixed neighborhoods",
-      prop_white_nh < 0.4 & prop_poc < 0.4 ~ as.character(NA)
-    )
-  ) 
-
-acs_tracts |>
-  count(subgroup)
-
-```
-
-## Merge ACS and Transportation Data
-
-We join the ACS demographic information to the transportation information. 
-
-```{r}
-combined_tracts <- left_join(
-  transportation_tracts,
-  acs_tracts,
-  by = c("year", "GEOID", "state", "county", "tract")
-)
-
-```
-
-No tracts with transportation data are missing demographic data. There are demographic tracts without transportation information but this is expected because of empty tracts and tracts without households.
-
-```{r}
-anti_join(
-  combined_tracts,
-  acs_tracts, 
-  by = c("year", "GEOID", "state", "county", "tract")
-)
-
-anti_join(
-  acs_tracts, 
-  combined_tracts, 
-  by = c("year", "GEOID", "state", "county", "tract")
-) |>
-  filter(total_population > 0)
-
-```
-
-## Crosswalk Tracts to Places
-
-Bring in the crosswalk of interest (we want the year range to be before 2020, when tract definitions changed)
+Build a multi-year cross walk that uses 2010 and 2020 tract/place definitions. 
 
 ```{r}
 tract_place_crosswalk_2010s <- read_csv(
@@ -505,8 +311,6 @@ places <- read_csv(here("geographic-crosswalks",
 
 ## Join and Aggregate
 
-### Join
-
 Joins are dangerous. 
 
 First, let's see if all places in our target places file are present in the crosswalk. Only South Fulton, Georgia is missing in 2019. 
@@ -520,7 +324,7 @@ anti_join(
 
 ```
 
-Second lets compare the aggregated population from the crosswalk to the populations in the places target geography file. 
+Second let's compare the aggregated population from the crosswalk to the populations in the places target geography file. 
 
 ```{r}
 full_join(
@@ -542,7 +346,7 @@ Third let's see if the CNT contain tracts not included in our places. Most of th
 ```{r}
 # rows from transportation_tracts that are not in the crosswalk
 anti_join(
-  combined_tracts, 
+  transportation_tracts, 
   tract_place_crosswalk, 
   by = c("state", "county", "tract")
 ) |>
@@ -556,7 +360,7 @@ Finally, let's join the crosswalk to the transportation data.
 
 ```{r}
 transportation_tracts_places <- left_join(
-  combined_tracts, 
+  transportation_tracts, 
   tract_place_crosswalk, 
   by = c("year", "state", "county", "tract")
 )
@@ -566,31 +370,11 @@ transportation_tracts_places <- transportation_tracts_places |>
 
 ```
 
-### Calculate metrics
-
-Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2
+Collapse to places and also create data quality marker data quality can be 1 when most of the tracts that fall in the place (e.g., >50% of the tracts) have most of their area falling in the place (e.g., >50% of the tract's area is in the place) otherwise, data quality is 2.
 
 ```{r}
-transportation_places_all <- transportation_tracts_places |>
-  filter(subgroup != "No population") |>
-  group_by(year, state, place) |>
-  summarize(
-    n = n(),
-    share_transit_commuter = weighted.mean(share_transit_commuter, w = households * afact, na.rm = TRUE),
-    share_transportation_cost = weighted.mean(share_transportation_cost, w = households * afact, na.rm = TRUE),
-    households_est = sum(households_est * afact),
-    households_se = sqrt(sum(households_se ^ 2)),
-    match_pop = sum(population * afact),
-    match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE)
-  ) |>
-  ungroup() |>
-  mutate(
-    subgroup_type = "all",
-    subgroup = "All"
-  )
-
-transportation_places_subgroup <- transportation_tracts_places |> 
-  dplyr::group_by(year, state, place, subgroup) |> 
+transportation_places <- transportation_tracts_places |> 
+  dplyr::group_by(year, state, place) |> 
   dplyr::summarize(
     n = n(),
     share_transit_commuter = weighted.mean(share_transit_commuter, w = households * afact, na.rm = TRUE),
@@ -600,32 +384,7 @@ transportation_places_subgroup <- transportation_tracts_places |>
     match_pop = sum(population * afact),
     match_quality = weighted.mean(afact > 0.5, weight = households, na.rm = TRUE)
   ) |>
-  ungroup() |>
-  mutate(
-    subgroup_type = "race-ethnicity"
-  )
-
-transportation_place <- bind_rows(
-  transportation_places_all, 
-  transportation_places_subgroup
-)
-
-```
-
-Some place-race/ethnicity groups are missing. This is because some race/ethnicity groups don't exist in each place. We load the target geography file, join our statistics to the target geography file, and then add zeros for household sizes.
-
-```{r}
-target_statistics <- read_csv(here("geographic-crosswalks", "data", "place-populations.csv")) |>
-  filter(year %in% c(2015, 2019, 2022)) |>
-  select(year, state, place) |>
-  expand_grid(subgroup = c("All", "Neighborhoods of color", "White neighborhoods", "Mixed neighborhoods")) |>
-  mutate(subgroup_type = if_else(subgroup == "All", "all", "race-ethnicity"))
-
-transportation_place <- full_join(
-  target_statistics,
-  transportation_place,
-  by = c("year", "state", "place", "subgroup_type", "subgroup")
-)
+  ungroup() 
 
 ```
 
@@ -634,20 +393,12 @@ Left join with places file to get rid of irrelevant places data
 ```{r}
 transportation_city <- left_join(
   places, 
-  transportation_place, 
+  transportation_places, 
   by = c("year", "state", "place")
 ) |>
   filter(year %in% c(2015, 2019, 2022))
 
-```
-
-We drop the all category and sum the match population to the place level. We then compare this to the population from the place target file. 
-
-```{r}
 transportation_city |>
-  filter(subgroup_type != "all") |>
-  group_by(year, state, place) |>
-  summarize(population = max(population), match_pop = sum(match_pop)) |>
   ggplot(aes(population, match_pop)) +
   geom_abline(color = "red") +
   geom_point(alpha = 0.2) +
@@ -686,16 +437,12 @@ all values are non-negative & count missing values examine outliers.
 ```{r}
 ggplot(transportation_city, aes(x = share_transit_commuter)) +
   geom_histogram() + 
-  facet_grid(year ~ subgroup) +
+  facet_wrap(~ year, nrow = 2) +
   labs(
     x = "Annual Transit Trips for the Regional Moderate Income Household", 
     y = "number of counties"
   )
 ```
-
-Makes sense for most counties to fall in really low transit trip numbers
-since most of the US has no public infrastructure that can be used for
-daily transport
 
 Look at summary stats
 
@@ -717,7 +464,7 @@ transportation_city |>
 ```{r}
 transportation_city |>
   filter(year %in% c(2015, 2019)) |>
-  select(state, place, year, subgroup, population, share_transit_commuter) |>
+  select(state, place, year, population, share_transit_commuter) |>
   pivot_wider(
     names_from = year, 
     values_from = c(population, share_transit_commuter)
@@ -731,7 +478,7 @@ transportation_city |>
 
 transportation_city |>
   filter(year %in% c(2019, 2022)) |>
-  select(state, place, year, subgroup, population, share_transit_commuter) |>
+  select(state, place, year, population, share_transit_commuter) |>
   pivot_wider(
     names_from = year, 
     values_from = c(population, share_transit_commuter)
@@ -743,8 +490,9 @@ transportation_city |>
   coord_equal() +
   labs(subtitle = "Large counties have at least 400,000 people")
 
+
 transportation_city |>
-  group_by(state, place, subgroup) |>
+  group_by(year, state, place) |>
   mutate(change = share_transit_commuter - lag(share_transit_commuter)) |>
   ungroup() |>
   filter(year %in% c(2019, 2022)) |>
@@ -762,8 +510,6 @@ transportation_city |>
 
 ```
 
-Loving County, Texas is missing in 2015. 
-
 ### Distribution
 
 Use stopifnot to check if all values in `transportation_city` are
@@ -779,7 +525,7 @@ all values are non-negative & count missing values examine outliers.
 ```{r}
 ggplot(transportation_city, aes(x = share_transportation_cost)) +
   geom_histogram() + 
-  facet_grid(year ~ subgroup) +
+  facet_wrap(~ year, nrow = 2) +
   labs(
     x = "Annual Transportation Costs for the Regional Moderate Income Household", 
     y = "number of counties"
@@ -811,7 +557,7 @@ transportation_city |>
 ```{r}
 transportation_city |>
   filter(year %in% c(2015, 2019)) |>
-  select(state, place, year, subgroup, population, share_transportation_cost) |>
+  select(state, place, year, population, share_transportation_cost) |>
   pivot_wider(
     names_from = year, 
     values_from = c(population, share_transportation_cost)
@@ -825,7 +571,7 @@ transportation_city |>
 
 transportation_city |>
   filter(year %in% c(2019, 2022)) |>
-  select(state, place, year, subgroup, population, share_transportation_cost) |>
+  select(state, place, year, population, share_transportation_cost) |>
   pivot_wider(
     names_from = year, 
     values_from = c(population, share_transportation_cost)
@@ -838,12 +584,11 @@ transportation_city |>
   labs(subtitle = "Large counties have at least 400,000 people")
 
 transportation_city |>
-  group_by(state, place, subgroup) |>
+  group_by(year, state, place) |>
   mutate(change = share_transportation_cost - lag(share_transportation_cost)) |>
   ungroup() |>
   filter(year %in% c(2019, 2022)) |>
   slice_max(order_by = abs(change), n = 10)
-
 ```
 
 ## Data Quality Marker
@@ -982,7 +727,7 @@ Keep variables of interest and order them appropriately.
 ```{r}
 final_data <- transportation_city |>
   select(
-    year, state, place, subgroup_type, subgroup, share_transit_commuter, share_transit_commuter_quality,
+    year, state, place, share_transit_commuter, share_transit_commuter_quality,
     share_transportation_cost, share_transportation_cost_quality
   ) |>
   arrange(year, state, place)
@@ -993,11 +738,10 @@ Run the evaluation function.
 
 ```{r}
 evaluate_final_data(
-  exp_form_path = here("99a_final-evaluation", "evaluation_form_transportation_city-subgroup.csv"), 
+  exp_form_path = here("99a_final-evaluation", "evaluation_form_transportation_city.csv"), 
   data = final_data, 
   geography = "place", 
-  confidence_intervals = FALSE,
-  subgroups = TRUE
+  confidence_intervals = FALSE
 )
 
 ```
@@ -1010,7 +754,7 @@ final_data |>
     here("06_neighborhoods", 
          "Transportation", 
          "final", 
-         "transportation_subgroup_city.csv")
+         "transportation_all_city.csv")
   )
 
 ```

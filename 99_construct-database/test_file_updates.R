@@ -116,37 +116,37 @@ read_csv("06_neighborhoods/social-capital/final/economic_connectedness_county_20
 
 ## Transportation
 
-read_csv("06_neighborhoods/Transportation/final/transit_cost_all_city.csv") |>
+read_csv("16_transportation-access/final/transit_cost_all_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/Transportation/final/transit_trips_all_city.csv") |>
+read_csv("16_transportation-access/final/transit_trips_all_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_city.csv") |>
+read_csv("16_transportation-access/final/transit_cost_all_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
                                     "Mixed Race and Ethnicity Tracts"))
 
-read_csv("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_city.csv") |>
+read_csv("16_transportation-access/final/transit_trips_all_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
                                     "Mixed Race and Ethnicity Tracts"))
 
-read_csv("06_neighborhoods/Transportation/final/transit_cost_all_county.csv") |>
+read_csv("16_transportation-access/final/transit_cost_all_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/Transportation/final/transit_trips_all_county.csv") |>
+read_csv("16_transportation-access/final/transit_trips_all_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("06_neighborhoods/Transportation/final/transit_cost_all_subgroups_county.csv") |>
+read_csv("16_transportation-access/final/transit_cost_all_subgroups_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
                                     "Mixed Race and Ethnicity Tracts"))
 
-read_csv("06_neighborhoods/Transportation/final/transit_trips_all_subgroups_county.csv") |>
+read_csv("16_transportation-access/final/transit_trips_all_subgroups_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
