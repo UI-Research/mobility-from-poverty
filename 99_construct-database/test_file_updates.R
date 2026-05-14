@@ -157,53 +157,53 @@ read_csv("16_transportation-access/final/transit_trips_all_subgroups_county.csv"
 
 ## Preschool
 
-read_csv("08_education/data/final/metrics_preschool_place_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_all_longitudinal.csv") |>
   evaluate_input_data(geography = "place")
 
-read_csv("08_education/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("08_education/data/final/metrics_preschool_county_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_all_longitudinal.csv") |>
   evaluate_input_data()
 
-read_csv("08_education/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
 
 ## Preschool
 
-read_csv("08_education/data/final/metrics_preschool_place_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_all_longitudinal.csv") |>
   evaluate_input_data(geography = "place")
 
-read_csv("08_education/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("08_education/data/final/metrics_preschool_county_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_all_longitudinal.csv") |>
   evaluate_input_data()
 
-read_csv("08_education/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
 ## SEDA
 
-read_csv("08_education/SEDA_all_metro.csv") |>
+read_csv("07_effective-public-education-hold/data/built/SEDA_all_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("08_education/SEDA_all_subgroups_metro.csv") |>
+read_csv("07_effective-public-education-hold/data/built/SEDA_all_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Economically Disadvantaged", 
                                                          "Female", "Hispanic", "Male",
                                                          "Not Economically Disadvantaged",
                                                          "White, Non-Hispanic"), 
                       confidence_intervals = FALSE)
 
-read_csv("08_education/SEDA_all_county.csv") |>
+read_csv("07_effective-public-education-hold/data/built/SEDA_all_county_2014-2018.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("08_education/SEDA_all_subgroups_county.csv") |>
+read_csv("07_effective-public-education-hold/data/built/SEDA_all_subgroups_county_2014-2018.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Economically Disadvantaged", 
                                     "Female", "Hispanic", "Male",
                                     "Not Economically Disadvantaged",
@@ -212,57 +212,57 @@ read_csv("08_education/SEDA_all_subgroups_county.csv") |>
 
 ## MEPs
 
-read_csv("08_education/data/final_data/meps_city_2020.csv") |>
+read_csv("08_school-economic-diversity/data/final/meps_city_2020.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("08_education/data/final_data/meps_county_2020.csv") |>
+read_csv("08_school-economic-diversity/data/final/meps_county_2020.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## College
 
-read_csv("08_education/data/final/metrics_college_place_all_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_place_all_longitudinal.csv") |>
   evaluate_input_data(geography = "place")
 
-read_csv("08_education/data/final/metrics_college_place_race-ethnicity_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_place_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("08_education/data/final/metrics_college_place_disability_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_place_disability_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("with disability", "without disability"))
 
-read_csv("08_education/data/final/metrics_college_place_gender_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_place_gender_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Female", "Male"))
 
-read_csv("08_education/data/final/metrics_college_county_all_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_county_all_longitudinal.csv") |>
   evaluate_input_data()
 
-read_csv("08_education/data/final/metrics_college_county_race-ethnicity_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_county_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
-read_csv("08_education/data/final/metrics_college_county_disability_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_county_disability_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("with disability", "without disability"))
 
-read_csv("08_education/data/final/metrics_college_county_gender_longitudinal.csv") |>
+read_csv("09_preparation-for-college/data/final/metrics_college_county_gender_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Female", "Male"))
 
 
 ## Digital access
 
-read_csv("08_education/final/digital_access_city_all.csv") |>
+read_csv("10_digital-access/final/digital_access_city_all.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("08_education/final/digital_access_city_subgroup_all.csv") |>
+read_csv("10_digital-access/final/digital_access_city_subgroup_all.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("$50,000 or More",
                                                          "Black", "Hispanic", "Less than $50,000",
                                                          "Other Races and Ethnicities",
                                                          "White"), 
                       confidence_intervals = FALSE)
 
-read_csv("08_education/final/digital_access_county_all.csv") |>
+read_csv("10_digital-access/final/digital_access_county_all.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("08_education/final/digital_access_county_subgroup_all.csv") |>
+read_csv("10_digital-access/final/digital_access_county_subgroup_all.csv") |>
   evaluate_input_data(subgroups = c("$50,000 or More",
                                     "Black", "Hispanic", "Less than $50,000",
                                     "Other Races and Ethnicities",
