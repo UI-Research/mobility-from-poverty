@@ -383,11 +383,7 @@ read_csv("18_neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_co
                                     "Some College", "College Degree or Higher"))
 
 
-read_csv("04_health/final_data/neonatal_health_subgroup_2020.csv") |>
-  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
-                                    "White, Non-Hispanic"))
-
-read_csv("04_health/final_data/neonatal_health_subgroup_2018.csv") |>
+read_csv("18_neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_county.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
