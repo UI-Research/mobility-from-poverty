@@ -520,7 +520,7 @@ You shouldn't make substantive changes on some else's branch.
 
 # Creating the All Metrics Combined Files
 
-The code to create the final collective files that combine all metrics is in `10_construct-database/`
+The code to create the final collective files that combine all metrics is in `99_construct-database/`
 
 There will be two final files.
 The first file with be a year-county file with one row per county per year.
