@@ -18,7 +18,7 @@ params:
 
 *Program for the creation of the english language arts growth metric at the city level*
 
-This file creates city/places level learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. However, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. 
+This file creates county-level learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. However, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. 
 
 Uses MEPS: the share of students attending schools where 20% or more students are in Poverty  **
  - Uses 2014-2024 data
@@ -81,7 +81,7 @@ source(here::here("functions", "testing", "evaluate_final_data.R"))
 Read in the county crosswalk file 
 
 ```{r}
-#| label: read-place-file
+#| label: read-county-file
 county <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
 ```
 
@@ -121,7 +121,7 @@ Filter for the relevant subject "rla" and define cohorts. Cohort are defined by 
 seda <- seda %>% 
   filter(subject == "rla") %>% 
   mutate(cohort = year - grade + 8) %>% 
-  filter(cohort >= 2014, !is.na(cohort)) 
+  filter(cohort >= 2015, !is.na(cohort)) 
 
 ```
 
@@ -428,6 +428,33 @@ plots$quality_over_time
 
 ```
 
+Create rows for all subgroups for all base counties in the data. 
+
+```{r}
+seda_all_counties <-
+  left_join(
+    county_clean %>% rename(year_join = year) %>% 
+      filter(year_join %in% c(2015:2020)),
+    final_data %>% mutate(year_join = year + 1, geoid = paste0(state, county)),
+    by = c("year_join", "county", "state")
+  ) %>% 
+  expand(year_join, geoid, subgroup) %>% 
+  filter(!is.na(subgroup), !is.na(year_join)) %>% 
+   mutate(state = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 7)) 
+
+final_data <- left_join(
+  seda_all_counties,
+  final_data %>% mutate(year_join = year + 1),
+   by = c("year_join", "county", "state", "subgroup")
+) %>% 
+  select(-year) %>% 
+  mutate(year = year_join - 1) %>% 
+  filter(!is.na(county))
+
+```
+
+
 ## Data Export
 
 Format the data long with subgroup titles
@@ -476,6 +503,11 @@ all <- long_format %>%
   filter(subgroup_type %in% c("all")) %>% 
   select(-subgroup_type, -subgroup)
 
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_overall_county.csv",
+                data = all,  geography = "county",
+                subgroups = FALSE, confidence_intervals = TRUE)
+
 data.table::fwrite(all, here::here("07_effective-public-education", "Data", "Final", "seda_all_county.csv"))
                    
 ```
@@ -483,19 +515,32 @@ data.table::fwrite(all, here::here("07_effective-public-education", "Data", "Fin
 
 Write out subgroup files
 ```{r}
+#| error: true
 
 race_eth <- long_format %>% 
   filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_race_ethnicity_county.csv",
+                data = race_eth,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
 
 data.table::fwrite(race_eth, here::here("07_effective-public-education", "Data", "Final", "seda_race_ethnicity_all_county.csv"))
 
 gender <- long_format %>% 
   filter(subgroup_type %in% c("all", "gender"))
 
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_gender_county.csv",
+                data = gender,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
+
 data.table::fwrite(gender, here::here("07_effective-public-education", "Data", "Final", "seda_gender_all_county.csv"))
 
 income <- long_format %>% 
   filter(subgroup_type %in% c("all", "income"))
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_income_county.csv",
+                data = income,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
 
 data.table::fwrite(income, here::here("07_effective-public-education", "Data", "Final", "seda_income_all_county.csv"))
                    
