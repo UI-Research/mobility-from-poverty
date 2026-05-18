@@ -111,18 +111,30 @@ compare_data <- function(data_list, header) {
   # Get all variables that exist in both datasets
   vars_shared <- intersect(names(local), names(catalog))
   
+  mae <- vector(mode = "numeric", length = length(vars_shared))
+  median <- vector(mode = "numeric", length = length(vars_shared))
   vars_differ <- vector(mode = "logical", length = length(vars_shared))
   vars_obs_differ <- vector(mode = "numeric", length = length(vars_shared))
+  names(mae) <- vars_shared
+  names(median) <- vars_shared
   names(vars_differ) <- vars_shared
   names(vars_obs_differ) <- vars_shared
   for (var in vars_shared) {
-    
+
     vars_differ[var] <- identical(pull(local, var), pull(catalog, var))
-    
+
+
     # compare the first values
     local_vec <- pull(local, var)
     catalog_vec <- pull(catalog, var)[1:length(local_vec)]
     
+    # calcualte MAE
+    if (is.numeric(pull(local, var))) {
+
+      mae[var] <- mean(abs(local_vec - catalog_vec), na.rm = TRUE)
+      median[var] <- median(abs(catalog_vec), na.rm = TRUE)
+
+    }
     # compare for equivalence and correctly handle NA
     result <- local_vec != catalog_vec
     both_na <- is.na(local_vec) & is.na(catalog_vec)
@@ -133,6 +145,8 @@ compare_data <- function(data_list, header) {
     
   }
 
+  mae_diffs <- mae[mae != 0]
+  median <- median[mae != 0]
   vars_with_diffs <- vars_shared[!vars_differ]
   vars_num_diffs <- vars_obs_differ[!vars_differ]
   
@@ -140,7 +154,10 @@ compare_data <- function(data_list, header) {
   
   cat("**Variables in local that differ from catalog (new or changed values):**\n\n")
   if (length(vars_with_diffs) > 0) {
-    cat(paste("-", paste0(vars_with_diffs, " (", vars_num_diffs, ")"), collapse = "\n"), "\n")
+    cat(paste("-", 
+    paste0(vars_with_diffs, " (", vars_num_diffs, ")"), 
+    paste0("(", round(mae_diffs[vars_with_diffs], 6),"/", round(median[vars_with_diffs], 4), ")"), 
+    collapse = "\n"), "\n")
   } else {
     cat("None\n")
   }
