@@ -8,94 +8,61 @@ source("functions/construction/test_input_data.R")
 
 ## Housing Affordability 
 
-read_csv("11_housing-affordability/data/available_2022_county.csv") |>
+read_csv("11_housing-affordability/data/final/housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023_2024.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE)
 
-read_csv("11_housing-affordability/data/available_2022_subgroups_county.csv") |>
+read_csv("11_housing-affordability/data/final/housing_county_2014_2015_2016_2017_2018_2019_2021_2022_2023_2024_subgroups.csv") |>
   evaluate_input_data(geography = "county", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
-read_csv("11_housing-affordability/data/available_2022_city.csv") |>
+read_csv("11_housing-affordability/data/final/housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023_2024.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("11_housing-affordability/data/available_2022_subgroups_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
-                      subgroups = c("Renter", "Owner"))
-
-read_csv("11_housing-affordability/data/housing_2022_county.csv") |>
-  evaluate_input_data(geography = "county", confidence_intervals = FALSE)
-
-read_csv("11_housing-affordability/data/housing_2022_subgroups_county.csv") |>
-  evaluate_input_data(geography = "county", confidence_intervals = FALSE, 
-                      subgroups = c("Renter", "Owner"))
-
-read_csv("11_housing-affordability/data/housing_2022_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
-
-read_csv("11_housing-affordability/data/housing_2022_subgroups_city.csv") |>
+read_csv("11_housing-affordability/data/final/housing_place_2014_2015_2016_2017_2018_2019_2021_2022_2023_2024_subgroups.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Renter", "Owner"))
 
 ## Homelessness
 
-read_csv("12_housing-stability/data/final/homelessness_2020_21_city.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2014-2022_city.csv") |>
   evaluate_input_data(geography = "place")
 
-read_csv("12_housing-stability/data/final/homelessness_all_subgroups_city.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2019-2022_subgroups_city.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("12_housing-stability/data/final/homelessness_2020_21_county.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2014-2022_county.csv") |>
   evaluate_input_data()
 
-read_csv("12_housing-stability/data/final/homelessness_all_subgroups_county.csv") |>
+read_csv("12_housing-stability/data/final/homelessness_2019-2022_subgroups_county.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
-
-#These files were deleted inadvertantly in a pull request - must be replaced 
-#read_csv("12_housing-stability/homelessness_all_county.csv") |>
-#evaluate_input_data(geography = "place")
-
-#read_csv("12_housing-stability/homelessness_all_county.csv") |>
-#evaluate_input_data()
 
 
 ## Poverty Exposure
 
-read_csv("13_economic-inclusion/poverty-exposure_city_2021.csv") |>
+read_csv("13_economic-inclusion/final/poverty-exposure_city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_city_2021.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
+read_csv("13_economic-inclusion/final/poverty-exposure_race-ethnicity_city.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusion/poverty-exposure_county_2021.csv") |>
+read_csv("13_economic-inclusion/final/poverty-exposure_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_county_2021.csv") |>
-  evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
-                                    "White, Non-Hispanic"),
-                      confidence_intervals = FALSE)
-
-
-read_csv("13_economic-inclusion/poverty-exposure_county_2018.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
-
-read_csv("13_economic-inclusion/poverty-exposure_race-ethnicity_county_2018.csv") |>
-  evaluate_input_data(subgroups = c("Black", "Hispanic", "Other Races and Ethnicities",
+read_csv("13_economic-inclusion/final/poverty-exposure_race-ethnicity_county.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
 ## Racial diversity 
 
-read_csv("14_racial-diversity/race-ethnicity-exposure-city-2021.csv") |>
+read_csv("14_racial-diversity/final/race-ethnicity-exposure-city.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("14_racial-diversity/race-ethnicity-exposure-2018.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
-
-read_csv("14_racial-diversity/race-ethnicity-exposure-2021.csv") |>
+read_csv("14_racial-diversity/final/race-ethnicity-exposure-county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## Membership associations
@@ -108,114 +75,103 @@ read_csv("15_social-capital/final/social_associations_all_county.csv") |>
 
 ## Economic connectedness 
 
-read_csv("15_social-capital/final/economic_connectedness_city_2022.csv") |>
+read_csv("15_social-capital/final/economic_connectedness_version2025_place_2022.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("15_social-capital/final/economic_connectedness_county_2022.csv") |>
+read_csv("15_social-capital/final/economic_connectedness_version2025_county_2022.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## Transportation
 
-read_csv("16_transportation-access/final/transit_cost_all_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
-
-read_csv("16_transportation-access/final/transit_trips_all_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
-
-read_csv("16_transportation-access/final/transit_cost_all_subgroups_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
-                      subgroups = c("Majority White-NH Tracts", 
-                                    "Majority Non-White Tracts", 
-                                    "Mixed Race and Ethnicity Tracts"))
-
-read_csv("16_transportation-access/final/transit_trips_all_subgroups_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
-                      subgroups = c("Majority White-NH Tracts", 
-                                    "Majority Non-White Tracts", 
-                                    "Mixed Race and Ethnicity Tracts"))
-
-read_csv("16_transportation-access/final/transit_cost_all_county.csv") |>
+read_csv("16_transportation-access/final/transportation_all_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("16_transportation-access/final/transit_trips_all_county.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
-
-read_csv("16_transportation-access/final/transit_cost_all_subgroups_county.csv") |>
+read_csv("16_transportation-access/final/transportation_subgroup_county.csv") |>
   evaluate_input_data(confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
                                     "Mixed Race and Ethnicity Tracts"))
 
-read_csv("16_transportation-access/final/transit_trips_all_subgroups_county.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE, 
+read_csv("16_transportation-access/final/transportation_all_city.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
+
+read_csv("16_transportation-access/final/transportation_subgroup_city.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = FALSE, 
                       subgroups = c("Majority White-NH Tracts", 
                                     "Majority Non-White Tracts", 
                                     "Mixed Race and Ethnicity Tracts"))
+
+
 
 
 # Education
 
 ## Preschool
 
-read_csv("06_access-to-preschool/data/final/metrics_preschool_place_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_all_longitudinal_all.csv") |>
   evaluate_input_data(geography = "place")
 
 read_csv("06_access-to-preschool/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"))
 
-read_csv("06_access-to-preschool/data/final/metrics_preschool_county_all_longitudinal.csv") |>
+read_csv("06_access-to-preschool/data/final/metrics_preschool_place_income_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Below 200% of Poverty Line", "At or Above 200% of Poverty Line"))
+
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_all_longitudinal_all.csv") |>
   evaluate_input_data()
 
 read_csv("06_access-to-preschool/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
                                     "White, Non-Hispanic"))
 
-
-## Preschool
-
-read_csv("06_access-to-preschool/data/final/metrics_preschool_place_all_longitudinal.csv") |>
-  evaluate_input_data(geography = "place")
-
-read_csv("06_access-to-preschool/data/final/metrics_preschool_place_race-ethnicity_longitudinal.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
-                                                         "White, Non-Hispanic"))
-
-read_csv("06_access-to-preschool/data/final/metrics_preschool_county_all_longitudinal.csv") |>
-  evaluate_input_data()
-
-read_csv("06_access-to-preschool/data/final/metrics_preschool_county_race-ethnicity_longitudinal.csv") |>
-  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
-                                    "White, Non-Hispanic"))
+read_csv("06_access-to-preschool/data/final/metrics_preschool_county_income_longitudinal.csv") |>
+  evaluate_input_data(subgroups = c("Below 200% of Poverty Line", "At or Above 200% of Poverty Line"))
 
 ## SEDA
 
-read_csv("07_effective-public-education-hold/data/built/SEDA_all_city.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
+read_csv("07_effective-public-education/Data/Final/seda_all_city.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = TRUE)
 
-read_csv("07_effective-public-education-hold/data/built/SEDA_all_subgroups_city.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Economically Disadvantaged", 
-                                                         "Female", "Hispanic", "Male",
-                                                         "Not Economically Disadvantaged",
+read_csv("07_effective-public-education/Data/Final/seda_race_ethnicity_all_city.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", 
+                                                         "Other Races and Ethnicities",
                                                          "White, Non-Hispanic"), 
-                      confidence_intervals = FALSE)
+                      confidence_intervals = TRUE)
 
-read_csv("07_effective-public-education-hold/data/built/SEDA_all_county_2014-2018.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
+read_csv("07_effective-public-education/Data/Final/seda_income_all_city.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Economically Disadvantaged", 
+                                                         "Not Economically Disadvantaged"), 
+                      confidence_intervals = TRUE)
 
-read_csv("07_effective-public-education-hold/data/built/SEDA_all_subgroups_county_2014-2018.csv") |>
-  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Economically Disadvantaged", 
-                                    "Female", "Hispanic", "Male",
-                                    "Not Economically Disadvantaged",
+read_csv("07_effective-public-education/Data/Final/seda_gender_all_city.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Female", "Male"), 
+                      confidence_intervals = TRUE)
+
+read_csv("07_effective-public-education/Data/Final/seda_all_county.csv") |>
+  evaluate_input_data(confidence_intervals = TRUE)
+
+read_csv("07_effective-public-education/Data/Final/seda_race_ethnicity_all_county.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", 
+                                    "Other Races and Ethnicities",
                                     "White, Non-Hispanic"), 
-                      confidence_intervals = FALSE)
+                      confidence_intervals = TRUE)
 
-## MEPs
+read_csv("07_effective-public-education/Data/Final/seda_income_all_county.csv") |>
+  evaluate_input_data(subgroups = c("Economically Disadvantaged", 
+                                    "Not Economically Disadvantaged"), 
+                      confidence_intervals = TRUE)
 
-read_csv("08_school-economic-diversity/data/final/meps_city_2020.csv") |>
+read_csv("07_effective-public-education/Data/Final/seda_gender_all_county.csv") |>
+  evaluate_input_data(subgroups = c("Female", "Male"), 
+                      confidence_intervals = TRUE)
+
+## MEPS
+
+read_csv("08_school-economic-diversity/data/final/meps_place_2014-2022.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("08_school-economic-diversity/data/final/meps_county_2020.csv") |>
+read_csv("08_school-economic-diversity/data/final/meps_county_2014-2022.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 ## College
@@ -249,24 +205,30 @@ read_csv("09_preparation-for-college/data/final/metrics_college_county_gender_lo
 
 ## Digital access
 
-read_csv("10_digital-access/final/digital_access_city_all.csv") |>
+read_csv("10_digital-access/data/final/digital_access_place_all_longitudinal.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("10_digital-access/final/digital_access_city_subgroup_all.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("$50,000 or More",
-                                                         "Black", "Hispanic", "Less than $50,000",
+read_csv("10_digital-access/data/final/digital_access_place_race_ethnicity_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Hispanic", 
                                                          "Other Races and Ethnicities",
-                                                         "White"), 
+                                                         "White, Non-Hispanic"), 
                       confidence_intervals = FALSE)
 
-read_csv("10_digital-access/final/digital_access_county_all.csv") |>
+read_csv("10_digital-access/data/final/digital_access_place_income_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("$50,000 or More", "Less than $50,000"), 
+                      confidence_intervals = FALSE)
+
+read_csv("10_digital-access/data/final/digital_access_county_all_longitudinal.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("10_digital-access/final/digital_access_county_subgroup_all.csv") |>
-  evaluate_input_data(subgroups = c("$50,000 or More",
-                                    "Black", "Hispanic", "Less than $50,000",
+read_csv("10_digital-access/data/final/digital_access_county_race_ethnicity_longitudinal.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", 
                                     "Other Races and Ethnicities",
-                                    "White"), 
+                                    "White, Non-Hispanic"), 
+                      confidence_intervals = FALSE)
+
+read_csv("10_digital-access/data/final/digital_access_county_income_longitudinal.csv") |>
+  evaluate_input_data(subgroups = c("$50,000 or More", "Less than $50,000"), 
                       confidence_intervals = FALSE)
 
 # Rewarding Work
@@ -301,20 +263,14 @@ read_csv("01_employment-opportunities/data/final/metrics_employment_county_gende
 
 ## Living wage
 
-read_csv("01_employment-opportunities/metrics_wage_ratio_2022.csv") |>
+read_csv("02_jobs-paying-living-wages/living_wage_county_all_longitudinal.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("01_employment-opportunities/metrics_wage_ratio_2022_subgroup.csv") |>
+read_csv("02_jobs-paying-living-wages/living_wage_county_industry_longitudinal.csv") |>
   evaluate_input_data(confidence_intervals = FALSE, subgroups = c("Goods Producing", "Public Administration",
                                                                   "Trade, Transit, Utilities", "Information Services",
                                                                   "Professional Services", "Education and Health", 
                                                                   "Leisure and Other"))
-
-read_csv("01_employment-opportunities/metrics_wage_ratio_2021.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
-
-read_csv("01_employment-opportunities/metrics_wage_ratio_years_v2.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
 
 ## Income
 
@@ -335,18 +291,17 @@ read_csv("03_opportunities-for-income/final/metrics_income_county_race-ethnicity
 
 ## Debt in collections
 
-read_csv("04_financial-security/final/metrics_overall_debt_coll_all_city.csv") |>
-  evaluate_input_data(geography = "place_fips", subgroups = c("Majority White", "Majority Non-White"))
-
 read_csv("04_financial-security/final/metrics_overall_debt_coll_all_county.csv") |>
   evaluate_input_data()
 
-read_csv("04_financial-security/final/share_debt_2018_long.csv") |>
+read_csv("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_county.csv") |>
   evaluate_input_data(subgroups = c("Majority White", "Majority Non-White"))
 
-read_csv("04_financial-security/final/metrics_overall_debt_coll_all_county.csv") |>
-  evaluate_input_data()
+read_csv("04_financial-security/final/metrics_overall_debt_coll_all_city.csv") |>
+  evaluate_input_data(geography = "place")
 
+read_csv("04_financial-security/final/metrics_overall_debt_coll_race_ethnicity_city.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Majority White", "Majority Non-White"))
 
 ## House Value
 
@@ -382,54 +337,62 @@ read_csv("18_neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_co
                                     "Less than High School", "GED/High School Degree",
                                     "Some College", "College Degree or Higher"))
 
-
-read_csv("18_neonatal-health/data/final/rate_low_birth_weight_metric_subgroup_county.csv") |>
-  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
-                                    "White, Non-Hispanic"))
-
 ## Air quality 
-
-read_csv("19_environmental-quality/data/final/environment_place_longitudinal.csv") |>
-  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
-
-read_csv("19_environmental-quality/data/final/environment_place_race_poverty_longitudinal.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("Majority Non-White", 
-                                                         "Majority White, Non-Hispanic",
-                                                         "No Majority Race/Ethnicity",
-                                                         "Extreme Poverty", "Not Extreme Poverty"),
-                      confidence_intervals = FALSE)
 
 read_csv("19_environmental-quality/data/final/environment_county_longitudinal.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
-read_csv("19_environmental-quality/data/final/environment_county_race_poverty_longitudinal.csv") |>
+read_csv("19_environmental-quality/data/final/environment_county_race-ethnicity_longitudinal.csv") |>
   evaluate_input_data(subgroups = c("Majority Non-White", 
                                     "Majority White, Non-Hispanic",
-                                    "No Majority Race/Ethnicity",
-                                    "Extreme Poverty", "Not Extreme Poverty"),
+                                    "No Majority Race/Ethnicity"),
                       confidence_intervals = FALSE)
+
+read_csv("19_environmental-quality/data/final/environment_county_poverty_longitudinal.csv") |>
+  evaluate_input_data(subgroups = c("High-Poverty", "Not High-Poverty"),
+                      confidence_intervals = FALSE)
+
+
+
+read_csv("19_environmental-quality/data/final/environment_place_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
+
+read_csv("19_environmental-quality/data/final/environment_place_race-ethnicity_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("Majority Non-White", 
+                                                         "Majority White, Non-Hispanic",
+                                                         "No Majority Race/Ethnicity"),
+                      confidence_intervals = FALSE)
+
+read_csv("19_environmental-quality/data/final/environment_place_poverty_longitudinal.csv") |>
+  evaluate_input_data(geography = "place", subgroups = c("High-Poverty", "Not High-Poverty"),
+                      confidence_intervals = FALSE)
+
+
 
 ## Exposure to Trauma 
 
 read_csv("20_safety-from-trauma/data/final/rate_injury_deaths_metric_all_county.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
+  evaluate_input_data()
+
+read_csv("20_safety-from-trauma/data/final/rate_injury_deaths_metric_subgroup_county.csv") |>
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Hispanic", "Other Races and Ethnicities",
+                                    "White, Non-Hispanic"))
 
 # Responsible & Just Governance
 
 ## Political Participation
 
-read_csv("21_political-participation/data/final/voter-turnout-city-2020.csv") |>
-  evaluate_input_data(geography = "place", 
+read_csv("21_political-participation/data/final/voter-turnout-2016-2024.csv") |>
+  evaluate_input_data(geography = "county", 
                       confidence_intervals = FALSE)
 
-read_csv("21_political-participation/data/final/voter-turnout-2020.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
+read_csv("21_political-participation/data/final/voter-turnout-city-2016.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("21_political-participation/data/final/voter-turnout-2016.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
+read_csv("21_political-participation/data/final/voter-turnout-city-2020.csv") |>
+  evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
-read_csv("21_political-participation/data/final/voter-turnout-2016-2024.csv") |>
-  evaluate_input_data(confidence_intervals = FALSE)
+
 
 ## Descriptive representation 
 
@@ -453,18 +416,20 @@ read_csv("24_just-policing/data/final/rate_arrests_place_all.csv") |>
   evaluate_input_data(geography = "place", confidence_intervals = FALSE)
 
 read_csv("24_just-policing/data/final/rate_arrests_place_all_subgroup.csv") |>
-  evaluate_input_data(geography = "place", subgroups = c("1014", "1517",
-                                                         "asian_other", "black",
-                                                         "female", "hispanic", "male", "white"),
+  evaluate_input_data(geography = "place", subgroups = c("Black, Non-Hispanic", "Female", 
+                                                         "Hispanic", "Male", 
+                                                         "Other Races and Ethnicities",
+                                                         "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
 read_csv("24_just-policing/data/final/rate_arrests_county_all.csv") |>
   evaluate_input_data(confidence_intervals = FALSE)
 
 read_csv("24_just-policing/data/final/rate_arrests_county_all_subgroup.csv") |>
-  evaluate_input_data(subgroups = c("1014", "1517",
-                                    "asian_other", "black",
-                                    "female", "hispanic", "male", "white"),
+  evaluate_input_data(subgroups = c("Black, Non-Hispanic", "Female", 
+                                    "Hispanic", "Male", 
+                                    "Other Races and Ethnicities",
+                                    "White, Non-Hispanic"),
                       confidence_intervals = FALSE)
 
 
