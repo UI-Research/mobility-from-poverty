@@ -74,7 +74,16 @@ evaluate_final_data <- function(metric_var,
   
   # Pull expected variable names
   expected_variables <- get_expected_metric_vars(tech_spec)
-  
+
+  # Pull expected value range from technical specification
+  expected_range <- tech_spec %>%
+    pull(range) %>%
+    na.omit() %>%
+    .[. != ""] %>%
+    unique()
+
+  range_bounds <- if (length(expected_range) > 0) parse_range(expected_range[1]) else NULL
+
   ### CHECKS
   
   checks <- list(
@@ -122,6 +131,34 @@ evaluate_final_data <- function(metric_var,
       expr = function() check_NA_across_rows(data),
       cond = isTRUE(confidence_intervals),
       msg = "Confidence interval and quality variables don't have NA values in alignemnet."
+    ),
+    list(
+      # Check metric values fall within the expected range from the tech spec
+      chk = "Value Ranges",
+      expr = function() check_value_ranges(data, metric_var, range_bounds),
+      cond = !is.null(range_bounds),
+      msg = "Some metric values are outside the expected range from the tech spec."
+    ),
+    list(
+      # Check for duplicate rows based on key columns
+      chk = "Duplicate Rows",
+      expr = function() check_duplicates(data, geo, subgroups),
+      cond = TRUE,
+      msg = "Duplicate rows detected in the data."
+    ),
+    list(
+      # Check quality flag columns only contain valid values (1, 2, 3, or NA)
+      chk = "Quality Flag Values",
+      expr = function() check_quality_flag_values(data),
+      cond = TRUE,
+      msg = "Quality flag columns contain values other than 1, 2, 3, or NA."
+    ),
+    list(
+      # Check number of unique geographies per year is within expected range
+      chk = "Row Counts",
+      expr = function() check_row_counts(data, geo),
+      cond = TRUE,
+      msg = "Number of unique geographies per year is outside the expected range."
     )
   )
   
@@ -526,38 +563,226 @@ check_subgroup_values <- function(data, expected_subgroups) {
 #' throws warning if fewer than all expected metric years are present)
 #'  
 check_expected_years <- function(data, exp_years, subgroups) {
-  
+
   if (isTRUE(subgroups)) {
-    
+
     for (i in 1:nrow(exp_years)) {
       subgrp_type <- exp_years$subgroup_type[[i]]
       years <- exp_years$subgroup_years[[i]]
-      
+
       data_years <- unique(dplyr::pull(data %>% filter(subgroup_type == subgrp_type), year))
-      
+
       missing_years <- setdiff(years, data_years)
-      
+
       if (length(missing_years) > 0) {
-        warning(paste0("Subgroup type '", subgrp_type, "' is missing expected years: ", 
+        warning(paste0("Subgroup type '", subgrp_type, "' is missing expected years: ",
                        paste(missing_years, collapse = ", "), "."))
       }
-      
+
       stopifnot(all(data_years %in% years))
     }
-    
+
   } else {
-    
+
     data_years <- unique(dplyr::pull(data, year))
-    
+
     missing_years <- setdiff(exp_years, data_years)
-    
+
     if (length(missing_years) > 0) {
-      warning(paste0("Metric is missing expected years: ", 
+      warning(paste0("Metric is missing expected years: ",
                      paste(missing_years, collapse = ", "), "."))
     }
-    
+
     stopifnot(all(data_years %in% exp_years))
-    
+
+  }
+}
+
+
+#' Parses a range string from the tech spec into numeric bounds
+#'
+#' Handles formats: "0-1", "0-50000", "-3 to 3", and empty/NA (returns NULL).
+#'
+#' @param range_str A character string describing the expected value range.
+#' @returns A numeric vector c(min, max), or NULL if the range is empty/NA.
+#'
+parse_range <- function(range_str) {
+  if (is.na(range_str) || trimws(range_str) == "") return(NULL)
+
+  range_str <- trimws(range_str)
+
+  if (grepl(" to ", range_str)) {
+    parts <- strsplit(range_str, " to ")[[1]]
+  } else {
+    parts <- strsplit(range_str, "-")[[1]]
+    # Handle leading negative sign: "-3-3" splits to c("", "3", "3")
+    if (parts[1] == "" && length(parts) == 3) {
+      parts <- c(paste0("-", parts[2]), parts[3])
+    }
+  }
+
+  bounds <- as.numeric(trimws(parts))
+
+  if (length(bounds) != 2 || any(is.na(bounds))) {
+    warning(paste0("Could not parse range: '", range_str, "'"))
+    return(NULL)
+  }
+
+  bounds
+}
+
+
+#' Checks that non-NA metric values fall within the expected range
+#'
+#' @param data The final data frame.
+#' @param metric_var The metric variable name (column to check).
+#' @param range_bounds A numeric vector c(min, max) from parse_range().
+#'
+#' @returns NULL (throws error if values are out of range)
+#'
+check_value_ranges <- function(data, metric_var, range_bounds) {
+  if (is.null(range_bounds)) return(invisible(NULL))
+
+  range_min <- range_bounds[1]
+  range_max <- range_bounds[2]
+
+  metric_vals <- data[[metric_var]]
+  metric_vals <- metric_vals[!is.na(metric_vals)]
+
+  if (length(metric_vals) == 0) return(invisible(NULL))
+
+  out_of_range <- metric_vals < range_min | metric_vals > range_max
+
+  if (any(out_of_range)) {
+    n_bad <- sum(out_of_range)
+    bad_range <- range(metric_vals[out_of_range])
+    stop(paste0(
+      n_bad, " values in '", metric_var, "' are outside expected range [",
+      range_min, ", ", range_max, "]. ",
+      "Observed range of violations: [", bad_range[1], ", ", bad_range[2], "]."
+    ))
+  }
+}
+
+
+#' Checks for duplicate rows based on key columns
+#'
+#' Key columns are (year, state, county/place) for non-subgroup data,
+#' or (year, state, county/place, subgroup_type, subgroup) for subgroup data.
+#'
+#' @param data The final data frame.
+#' @param geo Either "county" or "place".
+#' @param subgroups Logical indicating if the data has subgroups.
+#'
+#' @returns NULL (throws error if duplicates are found)
+#'
+check_duplicates <- function(data, geo, subgroups) {
+  if (isTRUE(subgroups)) {
+    key_cols <- c("year", "state", geo, "subgroup_type", "subgroup")
+  } else {
+    key_cols <- c("year", "state", geo)
+  }
+
+  dupes <- data %>%
+    dplyr::group_by(across(all_of(key_cols))) %>%
+    dplyr::filter(n() > 1) %>%
+    dplyr::ungroup()
+
+  if (nrow(dupes) > 0) {
+    n_dupe_keys <- dupes %>%
+      dplyr::distinct(across(all_of(key_cols))) %>%
+      nrow()
+    stop(paste0(
+      nrow(dupes), " duplicate rows found across ", n_dupe_keys,
+      " key combinations. Key columns: ",
+      paste(key_cols, collapse = ", "), "."
+    ))
+  }
+}
+
+
+#' Checks that quality flag columns only contain valid values
+#'
+#' Valid values are 1 (strong), 2 (marginal), 3 (weak), or NA.
+#'
+#' @param data The final data frame.
+#'
+#' @returns NULL (throws error if invalid quality flag values are found)
+#'
+check_quality_flag_values <- function(data) {
+  quality_cols <- names(data)[grepl("_quality$", names(data))]
+
+  if (length(quality_cols) == 0) return(invisible(NULL))
+
+  allowed_values <- c(1, 2, 3)
+
+  for (col in quality_cols) {
+    vals <- data[[col]]
+    vals <- vals[!is.na(vals)]
+
+    invalid <- vals[!vals %in% allowed_values]
+
+    if (length(invalid) > 0) {
+      stop(paste0(
+        "Column '", col, "' contains invalid quality flag values: ",
+        paste(unique(invalid), collapse = ", "), ". ",
+        "Expected only 1, 2, 3, or NA."
+      ))
+    }
+  }
+}
+
+
+#' Checks that the number of unique geographies per year is within expected range
+#'
+#' Expected counts based on crosswalk analysis (county-populations.csv,
+#' place-populations.csv):
+#' - County pre-2022: 3,141 to 3,143 (varies due to Valdez-Cordova AK split)
+#' - County 2022+: exactly 3,144 (CT planning regions added)
+#' - Place pre-2018: 485 to 486
+#' - Place 2018+: exactly 486
+#'
+#' @param data The final data frame.
+#' @param geo Either "county" or "place".
+#'
+#' @returns NULL (throws error if geography count is outside expected range)
+#'
+check_row_counts <- function(data, geo) {
+  if (!geo %in% c("county", "place")) return(invisible(NULL))
+
+  geo_counts <- data %>%
+    dplyr::group_by(year) %>%
+    dplyr::summarise(
+      n_geos = dplyr::n_distinct(state, .data[[geo]]),
+      .groups = "drop"
+    )
+
+  # Apply year-specific expected ranges
+  if (geo == "county") {
+    bad_years <- geo_counts %>%
+      dplyr::mutate(
+        min_expected = ifelse(year >= 2022, 3144, 3141),
+        max_expected = ifelse(year >= 2022, 3144, 3143)
+      )
+  } else {
+    bad_years <- geo_counts %>%
+      dplyr::mutate(
+        min_expected = ifelse(year >= 2018, 486, 485),
+        max_expected = ifelse(year >= 2018, 486, 486)
+      )
+  }
+
+  bad_years <- bad_years %>%
+    dplyr::filter(n_geos < min_expected | n_geos > max_expected)
+
+  if (nrow(bad_years) > 0) {
+    details <- paste0(
+      "year ", bad_years$year, ": ", bad_years$n_geos,
+      " geographies (expected ", bad_years$min_expected, "-",
+      bad_years$max_expected, ")",
+      collapse = "; "
+    )
+    stop(paste0("Unexpected number of unique geographies. ", details))
   }
 }
 
