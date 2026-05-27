@@ -1,6 +1,77 @@
 # Mobility Metrics: Data Review Standards
 
-Standards for reviewing PRs that update metric data. Use this as a checklist during code review.
+Standards for reviewing PRs that update metric data. The review checklist below is what to check on every PR. The reference sections after it explain each standard in detail.
+
+## PR Review Checklist
+
+When reviewing a PR that updates a metric, check these in order:
+
+### 1. Does the QMD call `evaluate_final_data()` before writing the CSV?
+
+Every metric QMD should source the test function and call it on the final data frame right before `write_csv()`. If the call is missing, the automated checks (column order, FIPS formatting, value ranges, row counts, duplicates, quality flags) won't run.
+
+```r
+source(here::here("functions", "testing", "evaluate_final_data_checks.R"))
+# ... build final_data ...
+evaluate_final_data(metric_var = "share_employed", data = final_data, geo = "county", ...)
+write_csv(final_data, here("path/to/final.csv"))
+```
+
+If the function call is commented out or missing, flag it.
+
+### 2. Are crosswalk joins in the right direction?
+
+This is the most common source of missing geographies. The crosswalk must be the left table:
+
+```r
+# Correct: crosswalk on the left
+crosswalk %>% left_join(metric_data, by = c("state", "county"))
+
+# Wrong: drops geographies the metric doesn't cover
+metric_data %>% left_join(crosswalk, by = c("state", "county"))
+```
+
+A reversed join turns 3,144 expected rows into, say, 2,991. Look for `left_join` calls where the metric data is on the left side.
+
+### 3. Do the row counts look right?
+
+If the PR includes final data CSVs, check the row count per year. The expected counts are:
+
+- **County**: exactly 3,144 for 2022+, 3,141-3,143 for earlier years
+- **Place**: exactly 486 for 2018+, 485-486 for earlier years
+
+If a metric is significantly below these counts, the crosswalk join is likely wrong (see #2).
+
+### 4. Are FIPS codes stored as character, not numeric?
+
+Look for `read_csv()` calls that don't specify column types. If `state`, `county`, or `place` get read as numeric, leading zeros are dropped (e.g., Alabama becomes `1` instead of `"01"`). The fix is usually `col_types` in `read_csv()` or `mutate(state = str_pad(state, 2, pad = "0"))`.
+
+### 5. Does the code use `here::here()` for all file paths?
+
+No `setwd()`, no absolute paths, no bare relative paths like `"data/file.csv"`. All paths should go through `here::here()`.
+
+### 6. If the PR adds a new year of data:
+
+- Is the new year added to `metrics_technical_spec_2026.csv`?
+- Are evaluation forms updated (if using the legacy system)?
+- Does the code handle year-specific edge cases? In particular:
+  - **2020**: most ACS-based metrics skip 2020 entirely (low COVID response rates)
+  - **2022+**: Connecticut replaced 8 counties with 9 planning regions. If the metric uses tract-level data, it needs the right crosswalk for 2022+.
+  - **Pre-2020**: Valdez-Cordova AK (`02261`) hadn't split yet. Some metrics harmonize this forward, others don't.
+
+### 7. Are `share_*` values between 0 and 1?
+
+Shares are proportions, not percentages. A value of `52.3` instead of `0.523` means the metric wasn't divided by 100. Similarly, `_quality` columns should only contain 1, 2, 3, or NA.
+
+### 8. For subgroup files: is the structure right?
+
+Subgroup data should be long format with `subgroup_type` and `subgroup` columns after `county`/`place`. Check that "All" is included as a subgroup value, and that race-ethnicity values match the standard labels (see Subgroup Conventions below).
+
+---
+
+## Reference
+
+The sections below document each standard in detail.
 
 ## Data Structure
 
