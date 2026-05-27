@@ -33,6 +33,8 @@ metric_data %>% left_join(crosswalk, by = c("state", "county"))
 
 A reversed join turns 3,144 expected rows into, say, 2,991. Look for `left_join` calls where the metric data is on the left side.
 
+Good metrics verify joins explicitly. Look for (and encourage) patterns like `anti_join()` to check for unmatched rows, or `stopifnot(nrow(result) == expected)` after a join.
+
 ### 3. Do the row counts look right?
 
 If the PR includes final data CSVs, check the row count per year. The expected counts are:
@@ -54,6 +56,7 @@ No `setwd()`, no absolute paths, no bare relative paths like `"data/file.csv"`. 
 
 - Is the new year added to `metrics_technical_spec_2026.csv`?
 - Are evaluation forms updated (if using the legacy system)?
+- **Check for hardcoded year lists.** Several QMDs have Connecticut exclusion filters like `filter(!(state == "09" & year %in% c(2022, 2023, 2024)))`. If you're adding 2025 data, those lists need updating or the new year's CT rows will be wrong.
 - Does the code handle year-specific edge cases? In particular:
   - **2020**: most ACS-based metrics skip 2020 entirely (low COVID response rates)
   - **2022+**: Connecticut replaced 8 counties with 9 planning regions. If the metric uses tract-level data, it needs the right crosswalk for 2022+.
@@ -66,6 +69,25 @@ Shares are proportions, not percentages. A value of `52.3` instead of `0.523` me
 ### 8. For subgroup files: is the structure right?
 
 Subgroup data should be long format with `subgroup_type` and `subgroup` columns after `county`/`place`. Check that "All" is included as a subgroup value, and that race-ethnicity values match the standard labels (see Subgroup Conventions below).
+
+### 9. Are suppressed counties added back as NA?
+
+Most ACS-based metrics suppress counties with fewer than 30 effective observations. The standard pattern is: filter out small-sample counties, calculate the metric, then join the suppressed counties back in so they appear as NA rows. If the "join back" step is missing, the final data will have fewer rows than expected (see #3). Look for the pattern:
+
+```r
+# 1. Identify counties to suppress
+small_counties <- data %>% filter(effective_sample < 30)
+
+# 2. Calculate metric on remaining counties
+results <- data %>% filter(effective_sample >= 30) %>% ...
+
+# 3. Join suppressed counties back as NA (this step is sometimes missing)
+results <- bind_rows(results, small_counties %>% mutate(metric = NA))
+```
+
+### 10. Watch for `filter()` silently dropping NA rows
+
+In R, `filter(x != "foo")` drops rows where `x` is NA. If NAs should be kept, use `filter(x != "foo" | is.na(x))`. This comes up when filtering out specific states, years, or subgroups. If a metric's row count is slightly off, a filter that accidentally dropped NAs is a common cause.
 
 ---
 
