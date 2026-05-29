@@ -1,6 +1,10 @@
-# Mobility Metrics: Data Review Standards
+# Mobility Metrics: Code Review Instructions
 
-Standards for reviewing PRs that update metric data. The review checklist below is what to check on every PR. The reference sections after it explain each standard in detail.
+You are reviewing PRs for a data pipeline that produces 25 mobility metrics across 3,144 US counties and 486 cities. Most PRs either add a new year of data to an existing metric or fix a data processing issue.
+
+## What the automated tests cover
+
+Each metric QMD should call `evaluate_final_data()` before writing the final CSV. That function checks column order, column names, FIPS formatting, subgroup values, expected years, NA alignment, value ranges, duplicates, quality flag values, and row counts. If `evaluate_final_data()` runs and passes, the mechanical data structure is correct. Your job as a reviewer is to check the things the function can't: whether the code logic is right, whether joins go the right direction, whether edge cases are handled, and whether the QMD renders cleanly.
 
 ## PR Review Checklist
 
@@ -8,7 +12,7 @@ When reviewing a PR that updates a metric, check these in order:
 
 ### 1. Does the QMD call `evaluate_final_data()` before writing the CSV?
 
-Every metric QMD should source the test function and call it on the final data frame right before `write_csv()`. If the call is missing, the automated checks (column order, FIPS formatting, value ranges, row counts, duplicates, quality flags) won't run.
+This is the single most important check. If the call is missing or commented out, none of the automated data validation runs. Look for this pattern near the end of the QMD:
 
 ```r
 source(here::here("functions", "testing", "evaluate_final_data_checks.R"))
@@ -35,7 +39,11 @@ A reversed join turns 3,144 expected rows into, say, 2,991. Look for `left_join`
 
 Good metrics verify joins explicitly. Look for (and encourage) patterns like `anti_join()` to check for unmatched rows, or `stopifnot(nrow(result) == expected)` after a join.
 
-### 3. Do the row counts look right?
+### 3. Does the QMD render without errors?
+
+If the PR includes the rendered HTML output, confirm it exists and isn't empty. If it doesn't include the HTML, check whether the QMD has any obvious issues that would prevent rendering (missing libraries, broken file paths, syntax errors in code chunks).
+
+### 4. Do the row counts look right?
 
 If the PR includes final data CSVs, check the row count per year. The expected counts are:
 
@@ -44,15 +52,15 @@ If the PR includes final data CSVs, check the row count per year. The expected c
 
 If a metric is significantly below these counts, the crosswalk join is likely wrong (see #2).
 
-### 4. Are FIPS codes stored as character, not numeric?
+### 5. Are FIPS codes stored as character, not numeric?
 
 Look for `read_csv()` calls that don't specify column types. If `state`, `county`, or `place` get read as numeric, leading zeros are dropped (e.g., Alabama becomes `1` instead of `"01"`). The fix is usually `col_types` in `read_csv()` or `mutate(state = str_pad(state, 2, pad = "0"))`.
 
-### 5. Does the code use `here::here()` for all file paths?
+### 6. Does the code use `here::here()` for all file paths?
 
 No `setwd()`, no absolute paths, no bare relative paths like `"data/file.csv"`. All paths should go through `here::here()`.
 
-### 6. If the PR adds a new year of data:
+### 7. If the PR adds a new year of data:
 
 - Is the new year added to `metrics_technical_spec_2026.csv`?
 - Are evaluation forms updated (if using the legacy system)?
@@ -62,17 +70,17 @@ No `setwd()`, no absolute paths, no bare relative paths like `"data/file.csv"`. 
   - **2022+**: Connecticut replaced 8 counties with 9 planning regions. If the metric uses tract-level data, it needs the right crosswalk for 2022+.
   - **Pre-2020**: Valdez-Cordova AK (`02261`) hadn't split yet. Some metrics harmonize this forward, others don't.
 
-### 7. Are `share_*` values between 0 and 1?
+### 8. Are `share_*` values between 0 and 1?
 
 Shares are proportions, not percentages. A value of `52.3` instead of `0.523` means the metric wasn't divided by 100. Similarly, `_quality` columns should only contain 1, 2, 3, or NA.
 
-### 8. For subgroup files: is the structure right?
+### 9. For subgroup files: is the structure right?
 
 Subgroup data should be long format with `subgroup_type` and `subgroup` columns after `county`/`place`. Check that "All" is included as a subgroup value, and that race-ethnicity values match the standard labels (see Subgroup Conventions below).
 
-### 9. Are suppressed counties added back as NA?
+### 10. Are suppressed counties added back as NA?
 
-Most ACS-based metrics suppress counties with fewer than 30 effective observations. The standard pattern is: filter out small-sample counties, calculate the metric, then join the suppressed counties back in so they appear as NA rows. If the "join back" step is missing, the final data will have fewer rows than expected (see #3). Look for the pattern:
+Most ACS-based metrics suppress counties with fewer than 30 effective observations. The standard pattern is: filter out small-sample counties, calculate the metric, then join the suppressed counties back in so they appear as NA rows. If the "join back" step is missing, the final data will have fewer rows than expected (see #4). Look for the pattern:
 
 ```r
 # 1. Identify counties to suppress
@@ -85,7 +93,7 @@ results <- data %>% filter(effective_sample >= 30) %>% ...
 results <- bind_rows(results, small_counties %>% mutate(metric = NA))
 ```
 
-### 10. Watch for `filter()` silently dropping NA rows
+### 11. Watch for `filter()` silently dropping NA rows
 
 In R, `filter(x != "foo")` drops rows where `x` is NA. If NAs should be kept, use `filter(x != "foo" | is.na(x))`. This comes up when filtering out specific states, years, or subgroups. If a metric's row count is slightly off, a filter that accidentally dropped NAs is a common cause.
 
