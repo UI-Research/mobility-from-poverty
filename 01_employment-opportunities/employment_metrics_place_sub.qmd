@@ -13,7 +13,7 @@ execute:
 editor_options: 
   chunk_output_type: console
 params:
-  year: "2023"
+  year: "2014"
 ---
 
 *Program for the creation of the Subgroup calculations for the Employment Opportunities Upward Mobility Predictor at the Place-level*
@@ -68,13 +68,13 @@ For internal reviewers, if you plan to utilize AWS keep this date as it was last
 
 ```{r}
 ipums_extract_date <- "02_28_25"
-ipums_repwt_extract_date <- "03_06_25"
+ipums_repwt_extract_date <- "01_13_25"
 ```
 
 If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
 
 ```{r}
-single_year_update = "No"
+single_year_update = "Yes"
 ```
 
 Define existing intermediate years and read them into function to combine. 
@@ -138,7 +138,8 @@ repwts <- ipums_repwt_employment_aws(
   Metric Predictors. American Community Survey,", params$year, "(5-year)."),
   survey = acs_surveys
 )  %>% 
-  select(-cbserial, -cbpernum)
+  select(-cbserial, -cbpernum, -multyear)
+
 ```
 
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
@@ -576,20 +577,22 @@ Create a variable in the ACS data indicating whether the survey is pre or post-2
 
 ```{r}
 acs_clean <- acs_clean %>% 
-  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
-
+  mutate(crosswalk_period = case_when(multyear < 2012 ~ "2k",
+                                      multyear >= 2012 & multyear < 2022 ~ "2012",
+                                      multyear >= 2022 ~ "2022"))
 ```
 
 Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
 
 ```{r}
-count(acs_clean, crosswalk_period, year)
+count(acs_clean, crosswalk_period, year, multyear)
 
 ```
 
 Join the cleaned ACS data onto the crosswalk.
 
 ```{r}
+
 acs_crosswalked <- left_join(
   acs_clean, 
   puma_place_crosswalk, 
@@ -627,6 +630,13 @@ acs_crosswalked <- acs_crosswalked %>%
 
 ```
 
+Update the crosswalk period so that it is uniform for 2014 subgroup data.
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  mutate(crosswalk_period = ifelse(crosswalk_period %in% c("2k"), "2012", crosswalk_period))
+```
+
 Adjust the person weight to account for PUMA-to-place mapping (those where the PUMA is not entirely inside the place).
 ```{r}
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact)
@@ -636,7 +646,6 @@ acs_crosswalked <- acs_crosswalked %>%
   mutate(across(matches("repwtp[0-9]+"), ~.x * afact))
 
 select(acs_crosswalked, perwt, repwtp1, repwtp80, afact) 
-
 ```
 
 ## Prepare computational variables
@@ -737,6 +746,8 @@ expanded_place_list <- place_list %>%
 results_all_expand <- expanded_place_list %>% 
   left_join(results_all, by = c("year", "statefip", "place")) %>% 
   filter(!is.na(year))
+
+
 
 stopifnot(nrow(results_all_expand) == 486 * n_distinct(results_all_expand$year))
 ```
