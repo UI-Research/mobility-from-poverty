@@ -59,7 +59,7 @@ cw_files <- c("puma_county_2020", "puma_county_2010", "puma_county_2k")
 
 ## Read data
 
-Read the PUMA to County crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using three crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 Place. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 Place for 2012 to 2021 ACS and we use a crosswalk from 2K PUMA to 2014 Place for pre-2012 ACS.
+Read the PUMA to County crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using three crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 County. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 County for 2012 to 2021 ACS and we use a crosswalk from 2K PUMA to 2014 County for pre-2012 ACS.
 
 
 ## Data Sources Detail
@@ -236,7 +236,7 @@ puma_county_2010 <- puma_county_2010 %>%
          county = ifelse(statefip == "46" & county == "113", "102", county),
          flag = ifelse(statefip == "02" & county == "261", "1", "0")) %>% 
   filter(flag != "1") %>% 
-  bind_rows(alaska_split) %>% 
+  bind_rows(alaska_split %>% mutate(crosswalk_period = "2012")) %>% 
   select(-flag)
 
 puma_county_2k <- puma_county_2k %>% 
@@ -244,7 +244,7 @@ puma_county_2k <- puma_county_2k %>%
          county = ifelse(statefip == "46" & county == "113", "102", county),
          flag = ifelse(statefip == "02" & county == "261", "1", "0")) %>% 
   filter(flag != "1") %>% 
-  bind_rows(alaska_split) %>% 
+  bind_rows(alaska_split %>% mutate(crosswalk_period = "2k")) %>% 
   select(-flag)
 ```
 
@@ -254,30 +254,19 @@ Add the necessary components to the crosswalk for producing a data quality flag.
 
 Create flags in the PUMA-county crosswalk for counties where a high percentage of the data comes from outside of the county. Per agreed upon guidance, 75% or more from the county is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of PUMA in the county and percentage of county in the PUMA for each county-PUMA pairing, and summing across the county.
 
-First remove ZERO afact values
+First remove ZERO afact values and create new variable "products". This is the sum of the share of the county captured in the PUMA (afact2) and the share of the PUMA captured in the county (afact).
 
 ```{r}
 puma_county20 <- puma_county_2020 %>%
-  filter(afact > 0)
-
-puma_county10 <- puma_county_2010 %>%
-  filter(afact > 0)
-
-puma_county2k <- puma_county_2k %>%
-  filter(afact > 0)
-```
-
-
-Create new variable "products". This is the sum of the share of the county captured in the PUMA (afact2) and the share of the PUMA captured in the county (afact).
-
-```{r}
-puma_county20 <- puma_county_2020 %>%
+  filter(afact > 0) %>%
   mutate(products = afact * afact2)
 
 puma_county10 <- puma_county_2010 %>%
+  filter(afact > 0) %>%
   mutate(products = afact * afact2)
 
 puma_county2k <- puma_county_2k %>%
+  filter(afact > 0) %>%
   mutate(products = afact * afact2)
 ```
 
