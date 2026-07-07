@@ -1,0 +1,129 @@
+---
+title: "Geo-crosswalk Update Quality Check"
+author: "JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Overview and House keeping
+
+During the process of the tranche3 update to the Upward Mobility Metrics the data team made a small change to the geographic crosswalk process for metrics using 5-year ACS IPUMS data for 2014 calculations. This impacts the following metrics:
+
+- 01_employment-opportunities
+- 03_opportunities-for-income
+- 06_access_to_preschool
+- 07_preperation-for-college
+
+The update includes pre-2012 PUMA crosswalks to have a more accurate match for the multi-years 2009-2011 that are included in the 5-year 2014 data. This correction does not apply to post-2022 data because IPUMS updated PUMAs to be unviersal in the 5-year data for this period.
+
+Read in packages.
+
+```{r}
+library(tidyverse)
+library(reactable)
+library(scales)
+library(furrr)
+library(tictoc)
+library(here)
+
+options(scipen = 999)
+
+source(here("functions", "construction", "compare_data.R"))
+source(here("functions", "construction", "compare_metric_differences.R"))
+
+theme_set(theme_minimal())
+```
+
+
+## Read data 
+
+First read in the pre-update historical files from the remote data catalog, the updated version and combine into a list. Note the data catalog link will break when the files are updated next, this analysis is not intended to be updated.
+
+```{r}
+#| label: load-data
+
+# Increase timeout for large file downloads
+options(timeout = 300)
+
+read_data <- function(file, date, local_path, root_url) {
+
+  message("Reading: ", file)
+
+  data <- 
+    list(
+      `local` = read_csv(here(local_path, str_remove(file, "_0")), show_col_types = FALSE),
+      `catalog` = read_csv(paste0(root_url, date, file), show_col_types = FALSE)
+    )
+  
+  return(data)
+  
+}
+
+root_url <- "https://urban-data-catalog.s3.amazonaws.com/drupal-root-live/"
+local_path <- here("data")
+
+data_urls <- tribble(
+  ~date, ~file,
+   "2026/06/03/", "61_mobility-metrics_place_longitudinal.csv",
+  "2026/06/03/", "62_mobility-metrics_place_race-ethnicity_longitudinal.csv",
+  "2026/06/03/", "66_mobility-metrics_place_gender_longitudinal.csv",
+  "2026/06/03/", "68_mobility-metrics_place_disability_longitudinal.csv"
+)
+
+data <- map2(
+  .x = data_urls$file |>
+    purrr::set_names(),
+  .y = data_urls$date,
+  .f = ~read_data(
+    file = .x, 
+    date = .y,
+    local_path = local_path, 
+    root_url = root_url
+  )
+)
+
+```
+
+
+## Data quality
+
+```{r}
+#| label: compare-data
+#| results: asis
+
+walk2(
+  .x = data,
+  .y = names(data),
+  .f = ~compare_data(.x, .y)
+)
+
+```
+
+## Largest share_employed differences
+
+```{r}
+#| label: compare-share-employed-differences
+#| results: asis
+
+walk2(
+  .x = data,
+  .y = names(data),
+  .f = ~compare_metric_differences(
+    data_list = .x,
+    header = .y,
+    metric = "share_employed",
+    top_n = 30
+  )
+)
+
+```
+
