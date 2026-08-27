@@ -1,0 +1,548 @@
+---
+title: "ELA LEARNING GROWTH: average annual learning growth between 3rd and 8th grade"
+author: "Written originally by E Gutierrez and translated to R by JP Walsh"
+date: today
+format:
+  html:
+    toc: true
+    toc_float: true
+    embed-resources: true
+    code-fold: show
+execute: 
+  warning: false
+editor_options: 
+  chunk_output_type: console
+params:
+  year: "2026"
+---
+
+*Program for the creation of the english language arts growth metric at the city level*
+
+This file creates county-level learning rate estimates for years (fall) 2013 - 2017 and subgroups by economic disadvantage, race, and gender. However, for the purposes of creating the community dashboards we focus on the 2015 race and economic disadvantage subgroups only. 
+
+Uses MEPS: the share of students attending schools where 20% or more students are in Poverty  **
+ - Uses 2014-2024 data
+ - Produces city level data
+
+
+## Housekeeping
+
+Read in packages for use. Set the global year to the latest education data.
+
+```{r, results='hide'}
+library(tidyverse)
+library(Hmisc)
+library(ipumsr)
+library(reactable)
+library(srvyr)
+library(scales)
+library(educationdata)
+library(haven)
+library(broom)        # For regression output processing
+library(future)       # For parallel processing
+library(future.apply) # For parallel apply functions
+library(glue)
+
+options(scipen = 999)
+options(timeout=60*10)
+
+# Set up parallel processing for computational efficiency
+plan(multisession, workers = parallel::detectCores() - 1)
+
+
+# Configuration and file paths
+config <- list(
+  # Update these paths for your local environment
+  git_folder = "C:/Users/jwalsh/Desktop/mobility-from-poverty",
+  current_year = 2020,    # Spring of school year (2019-20)  
+  latest_year = 2019,     # Fall of current SEDA year (2019-20)
+  
+  # Quality thresholds for learning rate estimates
+  quality_thresholds = list(
+    high_quality = list(min_grades = 5, min_sample = 30),      # Quality = 1
+    medium_quality = list(min_grades = 4, min_sample = 30),    # Quality = 2
+    low_quality = list(min_grades = 3, min_sample = 10)        # Quality = 3
+  )
+)
+
+
+# Demographic subgroups to process
+subgroups <- c("all", "wht", "blk", "hsp", "nec", "ecd", "mal", "fem")
+```
+
+Source the function `evaluate_final_data.R`. 
+
+```{r}
+source(here::here("functions", "testing", "evaluate_final_data.R"))
+```
+
+## Import and save raw data
+
+Read in the county crosswalk file 
+
+```{r}
+#| label: read-county-file
+county <- read_csv(here::here("geographic-crosswalks", "data", "county-populations.csv"))
+```
+
+
+Clean city names 
+
+```{r}
+#| label: clean-county-file
+county_clean <- county %>% 
+  mutate(county = str_pad(county, width = 3, side = "left", pad = "0"),
+         state = str_pad(state, width = 2, side = "left", pad= "0"))
+```
+
+### Download SEDA
+
+SEDA data are downloaded from Stanford's SEDA website: https://edopportunity.org/get-the-data/seda-archive-downloads/ 
+	** SEDA data standardize EDFacts assessments data across states and years using NAEP data **
+
+
+```{r}
+#| label: download-seda
+
+if(!file.exists(here::here("07_effective-public-education", "Data", "Raw", "seda_county.csv"))) {
+  
+download.file("https://stacks.stanford.edu/file/xh833nn4025/seda_county_long_gcs_6.0.csv", dest = here::here("07_effective-public-education", "Data", "Raw", "seda_county.csv"))
+  
+}
+
+seda <- data.table::fread(here::here("07_effective-public-education", "Data", "Raw", "seda_county.csv"))
+```
+
+
+Filter for the relevant subject "rla" and define cohorts. Cohort are defined by the year a cohort reaches 8th grade. Eg, the 2016 cohort is the cohort that is in 8th grade in 2016, in 7th grade in 2015, in 6th grade in 2014, etc
+
+```{r}
+#| label: clean-seda
+seda <- seda %>% 
+  filter(subject == "rla") %>% 
+  mutate(cohort = year - grade + 8) %>% 
+  filter(cohort >= 2015, !is.na(cohort)) 
+
+```
+
+
+Combine Asian and native american students to "other"
+
+```{r}
+#| label: create-other-cat
+seda <- seda %>% 
+  mutate(tot_asmt_oth = tot_asmt_asn + tot_asmt_nam,
+         temp_asn = gcs_mn_asn*tot_asmt_asn,
+         temp_nam = gcs_mn_nam*tot_asmt_nam,
+         gcs_mn_oth = temp_asn + temp_nam,
+         gcs_mn_oth = gcs_mn_oth/tot_asmt_oth)
+```
+
+## Clean and Calculate Growth Estimates for each subgroup
+
+*Outline the process for creating the data: SEDA data are manually downloaded and read in, 
+*and a regression of mean assessment scores was run on grade (as a continuous variable) 
+*interacted with each county in order to obtain county-specific grade slopes. 
+*Regressions are weighted by the number of test-takers for each year, grade, and county. 
+*95% confidence intervals are calculated as the slope estimate plus or minus 1.96 times the standard error of the estimate. 
+*A flag indicates how many grades are included in each estimate.
+
+
+```{r learning-rates}
+#| label: learning-rates
+
+calculate_learning_rates <- function(education_data, subgroups) {
+  
+  cat("Calculating learning rates by subgroup...\n")
+  
+  # Function to calculate learning rate for a single subgroup-cohort combination
+  calc_subgroup_rates <- function(data, subgroup, cohort_year) {
+    
+    # Column names for this subgroup
+    score_col <- glue("gcs_mn_{subgroup}")
+    n_col <- glue("tot_asmt_{subgroup}")
+    
+    # Prepare data for regression
+    reg_data <- data %>%
+      filter(cohort == cohort_year) %>%
+      select(sedacounty, grade, all_of(score_col), all_of(n_col)) %>%
+      rename(score = !!score_col, n_students = !!n_col) %>%
+      filter(!is.na(score), n_students > 0)
+    
+    if (nrow(reg_data) == 0) return(NULL)
+    
+    # Run weighted regression: score ~ grade × district 
+    # This gives district-specific slopes (learning rates)
+    model <- lm(score ~ grade:factor(sedacounty) + factor(sedacounty), 
+                data = reg_data, weights = n_students)
+    
+    # Extract coefficients and standard errors
+    coef_summary <- tidy(model) %>%
+      filter(str_detect(term, "grade:factor\\(sedacounty\\)")) %>%
+      mutate(
+        sedacounty = as.numeric(str_extract(term, "(?<=sedacounty\\))\\d+"))
+      ) %>%
+      select(sedacounty, estimate, std.error) %>%
+      rename(learning_rate = estimate, se = std.error)
+    
+    # Calculate quality metrics for each district
+    quality_metrics <- reg_data %>%
+      group_by(sedacounty) %>%
+      summarise(
+        num_grades_included = n(),
+        min_sample_size = min(n_students, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Combine results
+    results <- coef_summary %>%
+      left_join(quality_metrics, by = "sedacounty") %>%
+      mutate(
+        cohort = cohort_year,
+        subgroup = subgroup,
+        
+        # Calculate confidence intervals
+        learning_rate_lb = learning_rate - 1.96 * se,
+        learning_rate_ub = learning_rate + 1.96 * se,
+        
+        # Assign quality flags based on sample size and grade coverage
+        learning_rate_quality = case_when(
+          (num_grades_included >= 5 & min_sample_size >= 30) ~ 1L,  # High quality
+          (num_grades_included >= 4 & min_sample_size >= 30) ~ 2L,  # Medium quality  
+          (!is.na(learning_rate)) ~ 3L,                             # Low quality
+          TRUE ~ NA_integer_
+        ),
+        
+        # Remove false zeros (artifact of regression procedure)
+        learning_rate = ifelse(learning_rate == 0 & learning_rate_lb == 0 & learning_rate_ub == 0, 
+                               NA_real_, learning_rate),
+        learning_rate_lb = ifelse(is.na(learning_rate), NA_real_, learning_rate_lb),
+        learning_rate_ub = ifelse(is.na(learning_rate), NA_real_, learning_rate_ub),
+        learning_rate_quality = ifelse(is.na(learning_rate), NA_integer_, learning_rate_quality)
+      ) %>%
+      
+      select(cohort, sedacounty, subgroup, learning_rate, learning_rate_lb, 
+             learning_rate_ub, learning_rate_quality)
+    
+    return(results)
+  }
+  
+  # Calculate learning rates for all subgroups and cohorts
+  # Use parallel processing for efficiency
+  all_combinations <- expand_grid(
+    subgroup = subgroups,
+    cohort = unique(education_data$cohort)
+  )
+  
+  #Increase future max limit 
+  
+  oopts <- options(future.globals.maxSize = 1.0 * 1e9)  ## 1.0 GB
+  on.exit(options(oopts))
+  
+  learning_rates <- furrr::future_map2_dfr(
+    all_combinations$subgroup, 
+    all_combinations$cohort,
+    ~ calc_subgroup_rates(education_data, .x, .y),
+    .progress = TRUE
+  )
+  
+cat(glue("✓ Calculated learning rates for {format(nrow(learning_rates), big.mark = ",")} county-subgroup-cohort combinations\n"))
+
+  return(learning_rates)
+}
+
+# Calculate learning rates
+county_learning_rates <- calculate_learning_rates(seda, subgroups)
+
+```
+
+## City-Level Aggregation
+
+Aggregate district-level learning rates to city level using enrollment weighting.
+
+```{r city-aggregation}
+#| label: city-aggregation
+
+county_learning_rates_clean <- county_learning_rates %>% 
+  rename(year = cohort) %>% 
+  mutate(year = year - 1,
+         county = str_pad(sedacounty, width = 5, side = "left", pad = "0"),
+         state = str_sub(county, 1, 2),
+         county = str_sub(county, 3, 5))
+```
+
+Join on crosswalk 
+
+```{r}
+county_learning_rates_merge <- county_clean %>% 
+  left_join(county_learning_rates_clean, by = c("year", "state", "county")) %>% 
+  filter(year >= 2014, year <= config$current_year-1)
+```
+
+## Data Quality Assessment
+
+Evaluate the quality and coverage of the learning rate estimates.
+
+```{r quality-assessment}
+#| label: quality-assessment
+
+assess_data_quality <- function(county_data) {
+  
+  cat("=== DATA QUALITY ASSESSMENT ===\n\n")
+  
+  # Overall summary statistics by quality level
+  cat("Learning Rate Distributions by Quality Level:\n")
+  quality_summary <- county_data %>%
+    filter(subgroup == "all") %>%
+    group_by(learning_rate_quality) %>%
+    summarise(
+      n_obs = n(),
+      mean_rate = mean(learning_rate, na.rm = TRUE),
+      median_rate = median(learning_rate, na.rm = TRUE),
+      sd_rate = sd(learning_rate, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  print(quality_summary)
+  cat("\n")
+  
+  # Coverage by year and subgroup
+  cat("Data Coverage by Year and Subgroup:\n")
+  coverage <- county_data %>%
+    group_by(year, subgroup) %>%
+    summarise(
+      total_counties = n(),
+      counties_with_data = sum(!is.na(learning_rate)),
+      pct_coverage = round(100 * counties_with_data / total_counties, 1),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(names_from = subgroup, values_from = c(counties_with_data, pct_coverage))
+  
+  print(coverage)
+  cat("\n")
+  
+  # Check for logical consistency in confidence intervals  
+  cat("Confidence Interval Consistency Checks:\n")
+  ci_issues <- county_data %>%
+    filter(!is.na(learning_rate)) %>%
+    summarise(
+      below_lower_bound = sum(learning_rate < learning_rate_lb, na.rm = TRUE),
+      above_upper_bound = sum(learning_rate > learning_rate_ub, na.rm = TRUE)
+    )
+  
+  cat(glue("• Estimates below lower bound: {ci_issues$below_lower_bound}\n"))
+  cat(glue("• Estimates above upper bound: {ci_issues$above_upper_bound}\n\n"))
+  
+  # Quality flag completeness
+  cat("Quality Flag Assessment:\n")
+  quality_flags <- county_data %>%
+    summarise(
+      total_observations = n(),
+      missing_quality_flags = sum(is.na(learning_rate_quality)),
+      quality_flag_when_missing_rate = sum(is.na(learning_rate) & !is.na(learning_rate_quality))
+    )
+  
+  cat(glue("• Missing quality flags: {quality_flags$missing_quality_flags}\n"))
+  cat(glue("• Quality flags when rate is missing: {quality_flags$quality_flag_when_missing_rate}\n\n"))
+  
+  return(invisible(county_data))
+}
+
+# Assess data quality  
+final_data <- assess_data_quality(county_learning_rates_merge)
+```
+
+## Data Visualization
+
+Create diagnostic visualizations to understand the distribution and quality of learning rate estimates.
+
+```{r visualizations}
+#| label: visualizations
+
+create_diagnostic_plots <- function(county_data) {
+  
+  # Distribution of learning rates by quality level for all students
+  p1 <- county_data %>%
+    filter(subgroup == "all", !is.na(learning_rate)) %>%
+    ggplot(aes(x = learning_rate)) +
+    geom_histogram(bins = 30, alpha = 0.7, fill = "steelblue") +
+    facet_grid(learning_rate_quality ~ year, labeller = label_both) +
+    labs(
+      title = "Distribution of ELA Learning Rates by Quality Level and Year",
+      subtitle = "All Students",
+      x = "Learning Rate (Grade Equivalents per Year)",
+      y = "Number of Cities"
+    ) +
+    theme_minimal()
+  
+  # Learning rates by demographic subgroup
+  p2 <- county_data %>%
+    filter(!is.na(learning_rate), year == 2019) %>%
+    ggplot(aes(x = learning_rate, fill = subgroup)) +
+    geom_density(alpha = 0.6) +
+    facet_wrap(~ subgroup, scales = "free_y") +
+    labs(
+      title = "Learning Rate Distributions by Demographic Subgroup",
+      subtitle = glue("Most Recent Year: {max(county_data$year, na.rm = TRUE)}"),
+      x = "Learning Rate (Grade Equivalents per Year)",
+      y = "Density"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Quality distribution over time
+  p3 <- county_data %>%
+    filter(subgroup == "all", year != 2021) %>%
+    count(year, learning_rate_quality) %>%
+    ggplot(aes(x = factor(year), y = n, fill = factor(learning_rate_quality))) +
+    geom_col(position = "stack") +
+    labs(
+      title = "Data Quality Distribution Over Time",
+      subtitle = "All Students",
+      x = "Year",
+      y = "Number of Cities",
+      fill = "Quality Level"
+    ) +
+    scale_fill_manual(
+      values = c("1" = "#2E8B57", "2" = "#FFD700", "3" = "#CD5C5C"),
+      labels = c("1" = "High", "2" = "Medium", "3" = "Low"),
+      na.value = "grey80"
+    ) +
+    theme_minimal()
+  
+  # Return plots as a list
+  return(list(
+    quality_by_year = p1,
+    subgroup_distributions = p2, 
+    quality_over_time = p3
+  ))
+}
+
+# Generate diagnostic plots
+plots <- create_diagnostic_plots(final_data)
+
+# Display plots (uncomment to show)
+plots$quality_by_year
+plots$subgroup_distributions  
+plots$quality_over_time
+
+```
+
+Create rows for all subgroups for all base counties in the data. 
+
+```{r}
+seda_all_counties <-
+  left_join(
+    county_clean %>% rename(year_join = year) %>% 
+      filter(year_join %in% c(2015:2020)),
+    final_data %>% mutate(year_join = year + 1, geoid = paste0(state, county)),
+    by = c("year_join", "county", "state")
+  ) %>% 
+  expand(year_join, geoid, subgroup) %>% 
+  filter(!is.na(subgroup), !is.na(year_join)) %>% 
+   mutate(state = str_sub(geoid, 1, 2),
+         county = str_sub(geoid, 3, 7)) 
+
+final_data <- left_join(
+  seda_all_counties,
+  final_data %>% mutate(year_join = year + 1),
+   by = c("year_join", "county", "state", "subgroup")
+) %>% 
+  select(-year) %>% 
+  mutate(year = year_join - 1) %>% 
+  filter(!is.na(county))
+
+```
+
+
+## Data Export
+
+Format the data long with subgroup titles
+
+```{r data-export}
+#| label: data-export
+
+long_format <- final_data %>%
+    
+    # Create proper subgroup labels and categories
+    mutate(
+      subgroup_type = case_when(
+        subgroup == "all" ~ "all",
+        subgroup %in% c("wht", "blk", "hsp") ~ "race-ethnicity", 
+        subgroup %in% c("mal", "fem") ~ "gender",
+        subgroup %in% c("ecd", "nec") ~ "income",
+        TRUE ~ "other"
+      ),
+      
+      subgroup = case_when(
+        subgroup == "all" ~ "All",
+        subgroup == "wht" ~ "White, Non-Hispanic",
+        subgroup == "blk" ~ "Black, Non-Hispanic", 
+        subgroup == "hsp" ~ "Hispanic",
+        subgroup == "mal" ~ "Male",
+        subgroup == "fem" ~ "Female",
+        subgroup == "ecd" ~ "Economically Disadvantaged",
+        subgroup == "nec" ~ "Not Economically Disadvantaged",
+        TRUE ~ subgroup
+      )
+    ) %>%
+    
+    # Final column ordering
+    select(year, state, county, subgroup_type, subgroup, 
+           learning_rate, learning_rate_lb, learning_rate_ub, learning_rate_quality) %>%
+    
+    arrange(desc(year), state, county, subgroup_type, subgroup)
+
+  
+```
+
+Write out all file
+```{r}
+
+all <- long_format %>% 
+  filter(subgroup_type %in% c("all")) %>% 
+  select(-subgroup_type, -subgroup)
+
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_overall_county.csv",
+                data = all,  geography = "county",
+                subgroups = FALSE, confidence_intervals = TRUE)
+
+data.table::fwrite(all, here::here("07_effective-public-education", "Data", "Final", "seda_all_county.csv"))
+                   
+```
+
+
+Write out subgroup files
+```{r}
+#| error: true
+
+race_eth <- long_format %>% 
+  filter(subgroup_type %in% c("all", "race-ethnicity"))
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_race_ethnicity_county.csv",
+                data = race_eth,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
+
+data.table::fwrite(race_eth, here::here("07_effective-public-education", "Data", "Final", "seda_race_ethnicity_all_county.csv"))
+
+gender <- long_format %>% 
+  filter(subgroup_type %in% c("all", "gender"))
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_gender_county.csv",
+                data = gender,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
+
+data.table::fwrite(gender, here::here("07_effective-public-education", "Data", "Final", "seda_gender_all_county.csv"))
+
+income <- long_format %>% 
+  filter(subgroup_type %in% c("all", "income"))
+
+evaluate_final_data(exp_form_path = "10a_final-evaluation/evaluation_form_ela_income_county.csv",
+                data = income,  geography = "county",
+                subgroups = TRUE, confidence_intervals = TRUE)
+
+data.table::fwrite(income, here::here("07_effective-public-education", "Data", "Final", "seda_income_all_county.csv"))
+                   
+```
+
