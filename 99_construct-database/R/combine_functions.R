@@ -63,7 +63,25 @@ safe_read_csv <- function(file, geography) {
 #' @param data A data frame
 #'
 quiet <- function(data) {
-  
+
   quiet <- data
-  
+
+}
+
+#' Round numeric metric columns to appropriate precision before writing CSVs
+#'
+#' Applied just before write_csv() so assertions run on full-precision data.
+#' See https://github.com/UI-Research/mobility-from-poverty/issues/545
+#'
+#' @param data A data frame from the construct-database pipeline
+#'
+round_metrics <- function(data) {
+  data |>
+    mutate(
+      across(starts_with("pctl_") & where(is.numeric), \(x) round(x, 0)),
+      across(starts_with("share_") & where(is.numeric), \(x) round(x, 4)),
+      across(starts_with("rate_") & !starts_with("rate_learning") & where(is.numeric), \(x) round(x, 1)),
+      across(starts_with("rate_learning") & where(is.numeric), \(x) round(x, 2)),
+      across(any_of("ratio_living_wage") & where(is.numeric), \(x) round(x, 4))
+    )
 }

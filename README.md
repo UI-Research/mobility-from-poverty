@@ -62,7 +62,7 @@ This guide is a work-in-progress. If there are any ambiguities or unresolved que
 
 # Repository Contents
 
-This repository was previously organized by nine domains. Due to updates in the framework, we are in the process of moving code and data to folders for the 24 predictors. The migration is ongoing, so you may see a mix of domain-based folders (e.g., `01_financial-well-being/`, `02_housing/`) and predictor-based organization.
+This repository was previously organized by nine domains. Due to updates in the framework, we are in the process of moving code and data to folders for the 24 predictors. The migration is ongoing, so you may see a mix of domain-based folders (e.g., `01_financial-well-being/`) and predictor-based organization.
 
 | Predictor folder |
 |:----------------|
@@ -520,7 +520,7 @@ You shouldn't make substantive changes on some else's branch.
 
 # Creating the All Metrics Combined Files
 
-The code to create the final collective files that combine all metrics is in `10_construct-database/`
+The code to create the final collective files that combine all metrics is in `99_construct-database/`
 
 There will be two final files.
 The first file with be a year-county file with one row per county per year.

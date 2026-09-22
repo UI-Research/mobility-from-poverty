@@ -1,3 +1,14 @@
+## v2026.02
+
+- Update the repository structure to use numbered predictors instead of numbered domains (#595).
+- Create new tests to improve data quality (#605), create functions to better validate metrics (#593), and validate geographic crosswalks (#519).
+- Limit precision of combined data (#545). 
+- Add 2019 data for annual improvement in English language arts (#501).
+- Add 2024 data for share of infants with low birth weights (#512).
+- Add 2024 data for deaths caused by injury per 100,000 people (#514).
+- Add 2024 data for numbers of reported property crimes and reported violent crimes per 100,000 people (#517). 
+- Add 2024 data for the number of juvenile arrests per 100,000 people (#518).
+
 ## v2026.01
 
 - Continue migrating metrics into predictor-specific folders.
@@ -13,7 +24,7 @@
 ## v2025.02
 
 - Begin migrating metrics into predictor-specific folders. 
-- Add 2022 data to for access to health services and improve the code for acquiring and processing the data (#528).
+- Add 2022 data for access to health services and improve the code for acquiring and processing the data (#528).
 - Add 2023 data for number of membership associations per 10,000 people (#509).
 - Migrate school economic diversity from Stata to R. Add data for 2022. (#414)
 - Migrate jobs paying a living wage from Stata to R. Add data for 2015, 2016, 2017, 2019, 2020, and 2024. (#497) 
