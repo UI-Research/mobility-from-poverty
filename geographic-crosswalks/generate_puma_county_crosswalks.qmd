@@ -16,6 +16,17 @@ editor_options:
 
 *Program for the creation of the PUMA to County crosswalk for UMF predictors*
 
+## Executive Summary
+
+This document generates PUMA-to-County crosswalk files for the UMF mobility metrics project. **NEW**: This version includes 2000 PUMA boundaries to support historical analysis back to the 2000 Census period.
+
+**Three crosswalk periods:**
+- **2000 PUMA → 2014 County** (for 2000-2011 ACS data)
+- **2012 PUMA → 2014 County** (for 2012-2021 ACS data) 
+- **2020 PUMA → 2020 County** (for 2022+ ACS data)
+
+This enables consistent geographic analysis across 25+ years of Census data.
+
 Program: Initially written by Tina Chelidze and updated by JP Walsh 2023-2024.
 
 Latest update to bring in Connecticut Planning Regions for the 2025 metric update.
@@ -42,17 +53,32 @@ library(ipumsr)
 library(reactable)
 
 options(scipen = 999)
+
+cw_files <- c("puma_county_2020", "puma_county_2010", "puma_county_2k")
 ```
 
 ## Read data
 
-Read the PUMA to County crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using two crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 County. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 county.
+Read the PUMA to County crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using three crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 County. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 County for 2012 to 2021 ACS and we use a crosswalk from 2K PUMA to 2014 County for pre-2012 ACS.
+
+
+## Data Sources Detail
 
 The GeoCorr website allows for a variety of selections in creating your crosswalk file. The selections used to create the files read here are detailed below:
 
+### GeoCorr Configuration Parameters
+| Parameter | 2000 PUMAs | 2012 PUMAs | 2020 PUMAs |
+|-----------|------------|------------|------------|
+| Source Geography | 2000 PUMA | 2012 PUMA | 2020 PUMA |
+| Target Geography | 2014 County | 2014 County | 2020 County |
+| Weight Variable | 2010 Census Pop | 2010 Census Pop | 2020 Census Pop |
+| Coverage | All US States | All US States | All US States |
+
+**Rationale**: Using 2010 population weights for both 2000 and 2012 PUMAs ensures consistency for pre-2020 Census period analysis.
+
 [Geocorr2018](https://mcdc.missouri.edu/applications/geocorr2018.html)
 *States:* All
-*Source geography:* 2012 PUMA
+*Source geography:* 2012 PUMA & 2k PUMA
 *Target geography:* 2014 County
 *Weighting variable:* Population (2010 census)
 *Output Options:* Format CSV & Generate second allocation factor 
@@ -61,136 +87,104 @@ The GeoCorr website allows for a variety of selections in creating your crosswal
 PUMA to County
 *States:* All
 *Source geography:* 2020 PUMA
-*Target geography:* 2020 County
+*Target geography:* 2020 County (includes CT planning regions)
 *Weighting variable:* Population (2020 census)
 *Output Options:* Format CSV & Generate second allocation factor 
-Puma to Planning Regions
-*States:* Connecticut
-*Source geography:* 2020 PUMA
-*Target geography:* Connecticut Planning Region
-*Weighting variable:* Population (2020 census)
-*Output Options:* Format CSV & Generate second allocation factor 
+
 
 Read in the crosswalk files from the raw folder inside the geographic-crosswalk data folder.
 ```{r}
 puma_county_2020 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2022_puma_county_2020.csv"))
-puma_county_2010 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_county_2010.csv"))
+puma_county_2010 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_county_2010.csv")) %>% 
+  rename(county = county14)
+puma_county_2k <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_county_2k.csv")) %>% 
+  rename(county = county14)
 ```
 
 Check that all states are present in the raw data and count the number of unique counties in each state.
 ```{r}
-state_county_20 <- puma_county_2020 %>% 
-  select(state, county) %>% 
-  unique() %>% 
-  group_by(state) %>% 
-  summarise(unique_counties20 = n())
 
-puma_county_2010 %>% 
-  select(state, county14) %>% 
-  unique() %>% 
-  group_by(state) %>% 
-  summarise(unique_counties10 = n()) %>% 
-  left_join(state_county_20, by = c("state")) %>% 
-    reactable()
+check_unique_counties <- function(df_name) {
+  df <- get(df_name)
+  df %>% 
+    select(state, county) %>% 
+    unique() %>% 
+    mutate(cw_period = df_name)
+}
+
+# Validation function
+validate_crosswalk <- function(df, period_name) {
+  cat("Validation for", period_name, "period:\n")
+  cat("- Rows:", nrow(df), "\n")
+  cat("- Unique PUMAs:", n_distinct(df$puma), "\n") 
+  cat("- Unique Counties:", n_distinct(paste(df$statefip, df$county)), "\n")
+  cat("- Missing afact values:", sum(is.na(df$afact)), "\n")
+  cat("- Zero afact values:", sum(df$afact == 0, na.rm = TRUE), "\n\n")
+}
+
+coverage_summary <- map_dfr(cw_files, check_unique_counties) %>% 
+  group_by(state, cw_period) %>% 
+  summarise(unique_counties = n(), .groups = "drop") %>%
+  pivot_wider(names_from = "cw_period", values_from = unique_counties) %>% 
+  select(state, puma_county_2k, puma_county_2010, puma_county_2020)
+
+coverage_summary %>% reactable()
+
+# Coverage visualization
+coverage_summary %>%
+  pivot_longer(cols = -state, names_to = "cw_period", values_to = "unique_counties") %>%
+  ggplot(aes(x = reorder(state, unique_counties), y = unique_counties, fill = cw_period)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  coord_flip() +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "County Coverage by State Across PUMA Periods",
+    x = "State", 
+    y = "Number of Counties"
+  ) +
+  theme_minimal()
 ```
-
-Replace counties from the state of Connecticut with Planning Regions for the 2020 crosswalk.
-
-First read-in the PUMA to Connecticut Planning Regions crosswalk file and rename the variable so they align with the PUMA to County crosswalk files.
-```{r}
-ct_planning_regions <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2022_puma_2020_planning_regions_2022.csv")) %>% 
-  rename(county = ctregion, CountyName = ctregname) %>% 
-  rename_with(tolower) %>% 
-  filter(!str_detect(state, "State")) %>% 
-  select(state, puma22, county, pop20, afact, afact2)
-```
-
-Check number of unique Connecticut Planning Regions from the crosswalk file. The results show 9 which checks out with our expectations. 
-
-```{r}
-ct_planning_regions %>% 
-  select(county) %>% 
-  unique()
-```
-
-Next, bind the Connecticut planning regions file onto the 2020 PUMA to County crosswalk file. The program filters out Connecticut from the PUMA->County file so that when we join on the Planning Region file we are not including overlapping geographies for Connecticut. 
-
-```{r}
-puma_county_2020 <- puma_county_2020 %>% 
-  filter(state != "09") %>% 
-  bind_rows(ct_planning_regions)
-```
-
-Check again the number of unique geographies for Connecticut to confirm we have only planning regions (9). The results show 9 which checks out with our expectations. 
-
-```{r}
-puma_county_2020 %>% 
-  filter(state == "09") %>% 
-  select(county) %>% 
-  unique()
-```
-
 
 ## Clean crosswalks
 
 Filter out the row containing metadata and select only needed variables.
 
 ```{r}
-puma_county_2020 <- puma_county_2020 %>%
-  rename_with(tolower) %>% 
-  filter(!str_detect(state, "State")) %>% 
-  select(state, puma22, county, pop20, afact, afact2)
 
-puma_county_2010 <- puma_county_2010 %>%
-  rename_with(tolower) %>% 
-  filter(!str_detect(state, "State")) %>% 
-  select(state, puma12, county14, pop10, afact, afact2)
+clean_cw <- function(.x,  .cw_period) {
+  .x %>% 
+  rename_with(tolower) %>%
+  filter(!str_detect(state, "State")) %>%
+  select(state, starts_with("puma"), -ends_with("name"), county, starts_with("pop"), afact, afact2) %>% 
+  mutate(crosswalk_period = .cw_period)
+}
+
+puma_county_2020 <- clean_cw(puma_county_2020, "2022")
+puma_county_2010 <- clean_cw(puma_county_2010, "2012")
+puma_county_2k <- clean_cw(puma_county_2k, "2k")
 ```
 
 Rename GeoCorr variables for working purposes. Add leading zeros to state fips, PUMAs and counties to make them uniform in length.
 
 ```{r}
-puma_county_2020 <- puma_county_2020 %>%
-  rename(
-    puma = puma22,
+create_geo_indicators <- function(.x) {
+  .x %>% 
+    rename(
+    puma = starts_with("puma"),
     statefip = state
     ) %>%
   mutate(
     statefip = sprintf("%0.2d", as.numeric(statefip)),
     puma = sprintf("%0.5d", as.numeric(puma)),
-    county = sprintf("%0.5d", as.numeric(county))
+    county = sprintf("%0.5d", as.numeric(county)),
+    across(contains("afact"), ~ as.double(.)),
+    across(contains("pop"), ~ as.double(.))
   )
+}
 
-puma_county_2010 <- puma_county_2010 %>%
-  rename(
-    puma = puma12,
-    statefip = state,
-    county = county14
-    ) %>%
-  mutate(
-    statefip = sprintf("%0.2d", as.numeric(statefip)),
-    puma = sprintf("%0.5d", as.numeric(puma)),
-    county = sprintf("%0.5d", as.numeric(county)
-    )
-  )
-```
-
-Convert weight variables to be type numeric.
-
-```{r}
-puma_county_2020 <- puma_county_2020 %>%
-  mutate(
-  afact = as.double(afact),
-    afact2 = as.double(afact2),
-    pop20 = as.double(pop20)
-  )
-
-puma_county_2010 <- puma_county_2010 %>%
-  mutate(
-    afact = as.double(afact),
-    afact2 = as.double(afact2),
-    pop10 = as.double(pop10)
-  )
+puma_county_2020 <- create_geo_indicators(puma_county_2020)
+puma_county_2010 <- create_geo_indicators(puma_county_2010)
+puma_county_2k <- create_geo_indicators(puma_county_2k)
 ```
 
 Break out the county FIP code from the county variable which includes the state FIPs code as the first two digits.
@@ -201,6 +195,18 @@ puma_county_2020 <- puma_county_2020 %>%
 
 puma_county_2010 <- puma_county_2010 %>% 
   mutate(county = str_sub(county, start = 3L, end = 5L))
+
+puma_county_2k <- puma_county_2k %>% 
+  mutate(county = str_sub(county, start = 3L, end = 5L))
+```
+
+
+## Apply validation to each dataset
+
+```{r}
+validate_crosswalk(puma_county_2020, "2022")
+validate_crosswalk(puma_county_2010, "2012")
+validate_crosswalk(puma_county_2k, "2k")
 ```
 
 Make changes to county definitions so they are consistent between the 2010 and 2020 crosswalks. All changes during the 2010 period are documented on this census [website page] (https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes.2010.html#list-tab-957819518). Only need to address changes in 2014 and beyond.
@@ -214,6 +220,8 @@ For this change, use the ratio of afact from 2012 PUMA to 2020 counties to break
 *Code changes:*
 - Kusilvak Census Area, Alaska (02-158): Changed name and code from Wade Hampton Census Area (02-270) effective July 1, 2015.
 - Oglala Lakota County, South Dakota (46-102): Changed name and code from Shannon County (46-113) effective May 1, 2015.
+
+Note for the 2k crosswalk we use PUMA to county ratio from the 2012 census. The 2k PUMA to 2020 county breakout is not easily accessible and looking at how the PUMAs were distributed among the counties in 2K there is less than a 5 percent difference compared to 2012. We do not believe this will impact the metrics in any meaingful way. 
 
 ```{r}
 alaska_split <- tibble(
@@ -230,68 +238,16 @@ puma_county_2010 <- puma_county_2010 %>%
          county = ifelse(statefip == "46" & county == "113", "102", county),
          flag = ifelse(statefip == "02" & county == "261", "1", "0")) %>% 
   filter(flag != "1") %>% 
-  bind_rows(alaska_split) %>% 
+  bind_rows(alaska_split %>% mutate(crosswalk_period = "2012")) %>% 
   select(-flag)
-```
 
-Check on the distribution of crosswalk variables related to population and weighting. We want to ensure there are no abnormal outliers or missing values. 
-
-Visualize key variables for the 2020 crosswalk.
-```{r}
-puma_county_2020 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2020 AFACT distribution") +
-  ylab("Count")
-
-puma_county_2020 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2020 AFACT2 distribution") +
-  ylab("Count")
-
-puma_county_2020 %>% 
-  ggplot(aes(x = pop20)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("2020 Population Distribution in PUMAs") +
-  ylab("Density") 
-```
-
-Visualize key variables for the 2018 crosswalk.
-```{r}
-puma_county_2010 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2010 AFACT distribution") +
-  ylab("Count")
-
-puma_county_2010 %>% 
-  ggplot(aes(x = afact2)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2010 AFACT2 distribution") +
-  ylab("Count")
-
-puma_county_2010 %>% 
-  ggplot(aes(x = pop10)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("2010 Population Distribution in PUMAs") +
-  ylab("Density") 
-```
-
-Drop observations where the weight adjustment is zero. These PUMAs have no overlap with the counties we want to include in the data.
-
-```{r}
-puma_county_2020 <- puma_county_2020 %>%
-  filter(afact != 0.000)
-
-puma_county_2010 <- puma_county_2010 %>%
-  filter(afact != 0.000)
+puma_county_2k <- puma_county_2k %>% 
+  mutate(county = ifelse(statefip == "02" & county == "270", "158", county),
+         county = ifelse(statefip == "46" & county == "113", "102", county),
+         flag = ifelse(statefip == "02" & county == "261", "1", "0")) %>% 
+  filter(flag != "1") %>% 
+  bind_rows(alaska_split %>% mutate(crosswalk_period = "2k")) %>% 
+  select(-flag)
 ```
 
 ## Create quality variable
@@ -300,13 +256,19 @@ Add the necessary components to the crosswalk for producing a data quality flag.
 
 Create flags in the PUMA-county crosswalk for counties where a high percentage of the data comes from outside of the county. Per agreed upon guidance, 75% or more from the county is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of PUMA in the county and percentage of county in the PUMA for each county-PUMA pairing, and summing across the county.
 
-Create new variable "products". This is the sum of the share of the county captured in the PUMA (afact2) and the share of the PUMA captured in the county (afact).
+First remove ZERO afact values and create new variable "products". This is the sum of the share of the county captured in the PUMA (afact2) and the share of the PUMA captured in the county (afact).
 
 ```{r}
 puma_county20 <- puma_county_2020 %>%
+  filter(afact > 0) %>%
   mutate(products = afact * afact2)
 
 puma_county10 <- puma_county_2010 %>%
+  filter(afact > 0) %>%
+  mutate(products = afact * afact2)
+
+puma_county2k <- puma_county_2k %>%
+  filter(afact > 0) %>%
   mutate(products = afact * afact2)
 ```
 
@@ -324,11 +286,22 @@ puma_county10 <- puma_county10 %>%
   mutate(sum_products = sum(products),
          county_pop = sum(pop10)) %>% 
   ungroup() 
+
+puma_county2k <- puma_county2k %>%
+  group_by(statefip, county) %>%
+  mutate(sum_products = sum(products),
+         county_pop = sum(pop10)) %>% 
+  ungroup() 
 ```
 
 The average sum of products in the 2020 crosswalk is 54% and 53% in the 2010 crosswalk (more PUMAs have good quality than less than good).
 
 ```{r}
+
+puma_county2k %>% 
+  select(sum_products) %>% 
+  summary()
+
 puma_county10 %>% 
   select(sum_products) %>% 
   summary()
@@ -341,60 +314,25 @@ puma_county20 %>%
 Rank sum_product based on the guidance described above (1 to 3, with 1 being best) and create a new variable representing the quality of geographic allocation.
 
 ```{r}
-puma_county10 <- puma_county10 %>%
-  mutate(
+
+geographic_allocation <- function(.x) {
+  .x %>% 
+    mutate(
     geographic_allocation_quality =
       case_when(
         sum_products >= 0.75 ~ 1,
         sum_products >= 0.35 ~ 2,
         sum_products < 0.35 ~ 3
       )
-  )
+    )
+}
 
-puma_county20 <- puma_county20 %>%
-  mutate(
-    geographic_allocation_quality =
-      case_when(
-        sum_products >= 0.75 ~ 1,
-        sum_products >= 0.35 ~ 2,
-        sum_products < 0.35 ~ 3
-      )
-  )
+puma_county20 <- geographic_allocation(puma_county20)
+puma_county10 <- geographic_allocation(puma_county10)
+puma_county2k <- geographic_allocation(puma_county2k)
 ```
 
-Look at the counts of the geographic quality flag.
-
-```{r}
-
-puma_county20 %>% 
-  ggplot(aes(x = geographic_allocation_quality)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
-  ggtitle("Quality Flag 2020") +
-  ylab("Count")
-  
-puma_county10 %>% 
-ggplot(aes(x = geographic_allocation_quality)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
-  ggtitle("Quality Flag 2010") +
-  ylab("Count")
-  
-```
-
-We want to join the crosswalks together so they can be merged onto multi-year census files. First create an indicator of which period the crosswalk applies to so they can be joined appropriately. 
-
-```{r}
-
-puma_county20 <- puma_county20 %>% 
-  mutate(crosswalk_period = "2022") 
-
-
-puma_county10 <- puma_county10 %>% 
-  mutate(crosswalk_period = "pre-2022")
-
-```
-
+We want to join the crosswalks together so they can be merged onto multi-year census files. 
 Make the variable names universal.
 
 ```{r}
@@ -405,14 +343,88 @@ puma_county20 <- puma_county20 %>%
 puma_county10 <- puma_county10 %>% 
   rename(population = pop10) 
 
+puma_county2k <- puma_county2k %>% 
+  rename(population = pop10) 
+
 ```
 
-Finally, bind the crosswalks together and sort by cross-walk period, state, and county. 
+## Comparative Data Quality Analysis
+
+Visualize key variables across all three crosswalk periods for comparison.
 
 ```{r}
+# Create combined quality comparison
+quality_comparison <- bind_rows(
+  puma_county20 %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2020"),
+  puma_county10 %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2010"),
+  puma_county2k %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2000")
+)
+
+quality_comparison %>%
+  ggplot(aes(x = factor(geographic_allocation_quality), fill = type)) +
+  geom_bar(position = "dodge", alpha = 0.8) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "Geographic Allocation Quality Comparison Across PUMA Periods",
+    subtitle = "1=High Quality (75%+), 2=Medium Quality (35-75%), 3=Low Quality (<35%)",
+    x = "Quality Rating", 
+    y = "Count of Counties"
+  ) +
+  theme_minimal()
+
+# Combined population distribution
+pop_combined <- bind_rows(
+  puma_county20 %>% select(population, crosswalk_period) %>% mutate(period = "2020"),
+  puma_county10 %>% select(population, crosswalk_period) %>% mutate(period = "2010"),
+  puma_county2k %>% select(population, crosswalk_period) %>% mutate(period = "2000")
+)
+
+pop_combined %>%
+  ggplot(aes(x = population, fill = period)) +
+  geom_density(alpha = 0.6) +
+  scale_x_log10(labels = scales::comma_format()) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "Population Distribution Across PUMA Periods",
+    subtitle = "Log scale - weighted population in PUMA-County overlaps",
+    x = "Population (log scale)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# AFACT distribution comparison
+afact_combined <- bind_rows(
+  puma_county20 %>% select(afact, crosswalk_period) %>% mutate(period = "2020"),
+  puma_county10 %>% select(afact, crosswalk_period) %>% mutate(period = "2010"),
+  puma_county2k %>% select(afact, crosswalk_period) %>% mutate(period = "2000")
+)
+
+afact_combined %>%
+  ggplot(aes(x = afact, fill = period)) +
+  geom_histogram(alpha = 0.7, position = "identity", binwidth = 0.02) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "AFACT Distribution Comparison Across PUMA Periods",
+    x = "AFACT (Allocation Factor)",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+## Finalize 
+
+Finally, bind the crosswalks together and sort by cross-walk period, state, and county. Clean up intermediate objects for memory management.
+
+```{r}
+# Clean up intermediate objects
+rm(puma_county_2020, puma_county_2010, puma_county_2k)
+
+# Combine all crosswalks with optimized memory usage
 puma_county <- puma_county20 %>% 
-  bind_rows(puma_county10) %>% 
-  arrange(crosswalk_period, statefip, county)
+  bind_rows(puma_county10, puma_county2k) %>% 
+  arrange(crosswalk_period, statefip, county) %>%
+  select(crosswalk_period, statefip, county, puma, afact, afact2, 
+         population, products, sum_products, geographic_allocation_quality)
 ```
 
 

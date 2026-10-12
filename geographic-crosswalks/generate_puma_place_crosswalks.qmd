@@ -16,6 +16,17 @@ editor_options:
 
 *Program for the creation of the PUMA to place crosswalk for UMF predictors*
 
+## Executive Summary
+
+This document generates PUMA-to-Place crosswalk files for the UMF mobility metrics project. **NEW**: This version includes 2000 PUMA boundaries to support historical analysis back to the 2000 Census period.
+
+**Three crosswalk periods:**
+- **2000 PUMA → 2014 Place** (for 2000-2011 ACS data)
+- **2012 PUMA → 2014 Place** (for 2012-2021 ACS data) 
+- **2020 PUMA → 2020 Place** (for 2022+ ACS data)
+
+This enables consistent geographic analysis across 25+ years of Census data.
+
 Program: Initially written by Tina Chelidze and updated by JP Walsh 2022-2023.
 
 Primary data derived from the University of Missouri's [geographic correspondence engine](https://mcdc.missouri.edu/applications/geocorr.html).
@@ -39,17 +50,30 @@ library(reactable)
 
 options(scipen = 999)
 
+cw_files <- c("puma_place_2020", "puma_place_2010", "puma_place_2k")
 ```
 
 ## Read data
 
-Read the PUMA to Place crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using two crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 Place. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 Place.
+Read the PUMA to Place crosswalks from the raw data file in the geographic-crosswalks folder. The project is currently using three crosswalk files that are utilized based on the year of the Census data. For 2022 ACS and onward we use a crosswalk going from 2020 PUMA to 2020 Place. For pre-2022 ACS data, we use a crosswalk from 2012 PUMA to 2014 Place for 2012 to 2021 ACS and we use a crosswalk from 2K PUMA to 2014 Place for pre-2012 ACS.
+
+## Data Sources Detail
 
 The GeoCorr website allows for a variety of selections in creating your crosswalk file. The selections used to create the files read here are detailed below:
 
+### GeoCorr Configuration Parameters
+| Parameter | 2000 PUMAs | 2012 PUMAs | 2020 PUMAs |
+|-----------|------------|------------|------------|
+| Source Geography | 2000 PUMA | 2012 PUMA | 2020 PUMA |
+| Target Geography | 2014 Place | 2014 Place | 2020 Place |
+| Weight Variable | 2010 Census Pop | 2010 Census Pop | 2020 Census Pop |
+| Coverage | All US States | All US States | All US States |
+
+**Rationale**: Using 2010 population weights for both 2000 and 2012 PUMAs ensures consistency for pre-2020 Census period analysis.
+
 [Geocorr2018](https://mcdc.missouri.edu/applications/geocorr2018.html)
 *States:* All
-*Source geography:* 2012 PUMA
+*Source geography:* 2012 PUMA & 2K PUMA
 *Target geography:* 2014 Place (City, Town, Village, CDP, etc.)
 *Weighting variable:* Population (2010 census)
 *Output Options:* Format CSV & Generate second allocation factor 
@@ -64,25 +88,56 @@ The GeoCorr website allows for a variety of selections in creating your crosswal
 Read in the crosswalk files from the raw folder inside the geographic-crosswalk data folder.
 ```{r}
 puma_place_2020 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2022_puma_place_2020.csv")) 
-puma_place_2010 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_place_2010.csv"))
+puma_place_2010 <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_place_2010.csv")) %>% 
+  rename(place = placefp14)
+puma_place_2k <- read_csv(here::here("geographic-crosswalks", "data", "raw", "geocorr2018_puma_place_2k.csv"))%>% 
+  rename(place = placefp14)
 ```
 
 Check that all states are present in the raw data and count the number of unique places in each state.
 
 ```{r}
-state_place_20 <- puma_place_2020 %>%
-  select(state, place) %>%
-  unique() %>%
-  group_by(state) %>%
-  summarise(unique_places20 = n())
 
-puma_place_2010 %>%
-  select(state, placefp14) %>%
-  unique() %>%
-  group_by(state) %>%
-  summarise(unique_places10 = n()) %>%
-  left_join(state_place_20, by = c("state")) %>%
-  reactable()
+check_unique_place <- function(df_name) {
+  df <- get(df_name)
+  df %>% 
+    select(state, place) %>% 
+    unique() %>% 
+    mutate(cw_period = df_name)
+}
+
+# Validation function
+validate_crosswalk <- function(df, period_name) {
+  cat("Validation for", period_name, "period:\n")
+  cat("- Rows:", nrow(df), "\n")
+  cat("- Unique PUMAs:", n_distinct(df$puma), "\n") 
+  cat("- Unique Places:", n_distinct(paste(df$statefip, df$place)), "\n")
+  cat("- Missing afact values:", sum(is.na(df$afact)), "\n")
+  cat("- Zero afact values:", sum(df$afact == 0, na.rm = TRUE), "\n\n")
+}
+
+coverage_summary <- map_dfr(cw_files, check_unique_place) %>% 
+  group_by(state, cw_period) %>% 
+  summarise(unique_places = n(), .groups = "drop") %>%
+  pivot_wider(names_from = "cw_period", values_from = unique_places) %>% 
+  select(state, puma_place_2k, puma_place_2010, puma_place_2020)
+
+coverage_summary %>% reactable()
+
+# Coverage visualization
+coverage_summary %>%
+  pivot_longer(cols = -state, names_to = "cw_period", values_to = "unique_places") %>%
+  ggplot(aes(x = reorder(state, unique_places), y = unique_places, fill = cw_period)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  coord_flip() +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "Place Coverage by State Across PUMA Periods",
+    x = "State", 
+    y = "Number of Places"
+  ) +
+  theme_minimal()
+
 ```
 
 ## Clean crosswalks
@@ -90,68 +145,48 @@ puma_place_2010 %>%
 Filter out the row containing metadata and select only needed variables.
 
 ```{r}
-puma_place_2020 <- puma_place_2020 %>%
+
+# Consolidated processing functions
+clean_cw <- function(.x,  .cw_period) {
+  .x %>% 
   rename_with(tolower) %>%
   filter(!str_detect(state, "State")) %>%
-  select(state, puma22, place, pop20, afact, afact2)
+  select(state, starts_with("puma"), -ends_with("name"), place, starts_with("pop"), afact, afact2) %>% 
+  mutate(crosswalk_period = .cw_period)
+}
 
-puma_place_2010 <- puma_place_2010 %>%
-  rename_with(tolower) %>%
-  filter(!str_detect(state, "State")) %>%
-  select(state, puma12, placefp14, pop10, afact, afact2)
-```
-
-Rename GeoCorr variables for working purposes. Add leading zeros to state fips, PUMAs and places to make them uniform in length.
-
-```{r}
-puma_place_2020 <- puma_place_2020 %>%
-  rename(
-    puma = puma22,
+create_geo_indicators <- function(.x) {
+  .x %>% 
+    rename(
+    puma = starts_with("puma"),
     statefip = state
     ) %>%
   mutate(
     statefip = sprintf("%0.2d", as.numeric(statefip)),
     puma = sprintf("%0.5d", as.numeric(puma)),
-    place = sprintf("%0.5d", as.numeric(place))
+    place = sprintf("%0.5d", as.numeric(place)),
+    across(contains("afact"), ~ as.double(.)),
+    across(contains("pop"), ~ as.double(.))
   )
+}
 
-puma_place_2010 <- puma_place_2010 %>%
-  rename(
-    puma = puma12,
-    statefip = state,
-    place = placefp14
-    ) %>%
-  mutate(
-    statefip = sprintf("%0.2d", as.numeric(statefip)),
-    puma = sprintf("%0.5d", as.numeric(puma)),
-    place = sprintf("%0.5d", as.numeric(place))
-  )
-```
+# Process datasets with consolidated functions
+puma_place_2020 <- clean_cw(puma_place_2020, .cw_period = "2022")
+puma_place_2010 <- clean_cw(puma_place_2010, .cw_period = "2012")
+puma_place_2k <- clean_cw(puma_place_2k, .cw_period = "2k")
 
-Convert weight variables to be type numeric.
-
-```{r}
-puma_place_2020 <- puma_place_2020 %>%
-  mutate(
-    afact = as.double(afact),
-    afact2 = as.double(afact2),
-    pop20 = as.double(pop20)
-  )
-
-puma_place_2010 <- puma_place_2010 %>%
-  mutate(
-    afact = as.double(afact),
-    afact2 = as.double(afact2),
-    pop10 = as.double(pop10)
-  )
+puma_place_2020 <- create_geo_indicators(puma_place_2020)
+puma_place_2010 <- create_geo_indicators(puma_place_2010)
+puma_place_2k <- create_geo_indicators(puma_place_2k)
 ```
 
 We want to limit the crosswalk only to Places that will be used in the final mobility metric data - this will help limit the size of future data steps. Bring in the Places population file (place-populations.csv) to select only places included in the UMF data. Keep only one year of place information. 
 
 ```{r}
 places <- read_csv(here::here("geographic-crosswalks", "data", "place-populations.csv")) %>%
-  filter(year == 2021) %>% 
+  filter(year == 2024) %>% 
   select(-population, -year)
+
 ```
 
 Rename the Place population variables to prep for merge.
@@ -161,186 +196,194 @@ places <- places %>%
   rename(statefip = state)
 ```
 
-Left join crosswalk data onto the Place population file to get rid of irrelevant Places in the crosswalk data.
+# Left join to filter crosswalks to only relevant places
+
 ```{r}
 puma_place_2020 <- left_join(places, puma_place_2020, by=c("statefip","place"))
 puma_place_2010 <- left_join(places, puma_place_2010, by=c("statefip","place"))
+puma_place_2k <- left_join(places, puma_place_2k, by=c("statefip","place"))
 ```
 
-Check on the distribution of crosswalk variables related to population and weighting. We want to ensure there are no abnormal outliers or missing values. 
+# Apply validation to each dataset
 
-Visualize key variables for the 2020 crosswalk.
-```{r}
-puma_place_2020 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2020 AFACT distribution") +
-  ylab("Count")
-
-puma_place_2020 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2020 AFACT2 distribution") +
-  ylab("Count")
-
-puma_place_2020 %>% 
-  ggplot(aes(x = pop20)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("2020 Population Distribution in PUMAs") +
-  ylab("Density") 
-```
-
-Visualize key variables for the 2018 crosswalk.
-```{r}
-puma_place_2010 %>% 
-  ggplot(aes(x = afact)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2010 AFACT distribution") +
-  ylab("Count")
-
-puma_place_2010 %>% 
-  ggplot(aes(x = afact2)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 0.02) +
-  theme_minimal() +
-  ggtitle("2010 AFACT2 distribution") +
-  ylab("Count")
-
-puma_place_2010 %>% 
-  ggplot(aes(x = pop10)) +
-  geom_density(color = "blue", fill = alpha("blue", 0.3)) +
-  theme_minimal() +
-  ggtitle("2010 Population Distribution in PUMAs") +
-  ylab("Density") 
-```
-
-Drop observations where the weight adjustment is zero. These PUMAs have no overlap with the places we want to include in the data.
+We can see that some of the rows in the Geocorr data have msising or zero afact values. We clean these in the next step.
 
 ```{r}
-puma_place_2020 <- puma_place_2020 %>%
-  filter(afact != 0.000)
-
-puma_place_2010 <- puma_place_2010 %>%
-  filter(afact != 0.000)
+validate_crosswalk(puma_place_2020, "2022")
+validate_crosswalk(puma_place_2010, "2012")
+validate_crosswalk(puma_place_2k, "2k")
 ```
 
-## Create quality variable
+# Create quality varaible
 
 Add the necessary components to the crosswalk for producing a data quality flag.
 
 Create flags in the PUMA-place crosswalk for places where a high percentage of the data comes from outside of the Place. Per agreed upon guidance, 75% or more from the place is good, below 35% is bad, in between is marginal. This is calculated by taking the product of percentage of PUMA in place and percentage of place in PUMA for each place-PUMA pairing, and summing across the place.
 
-Create new variable "products". This is the sum of the share of the place captured in the PUMA (afact2) and the share of the PUMA captured in the place (afact).
+Create new variable “products”. This is the sum of the share of the place captured in the PUMA (afact2) and the share of the PUMA captured in the place (afact).
 
 ```{r}
-puma_place20 <- puma_place_2020 %>%
-  mutate(products = afact * afact2)
+#Function for setting quality variables
+geographic_allocation <- function(.x) {
+  .x %>% 
+    mutate(
+    geographic_allocation_quality =
+      case_when(
+        sum_products >= 0.75 ~ 1,
+        sum_products >= 0.35 ~ 2,
+        sum_products < 0.35 ~ 3
+      )
+    )
+}
 
-puma_place10 <- puma_place_2010 %>%
-  mutate(products = afact * afact2)
+puma_place_2020 <- puma_place_2020 %>%
+  filter(afact != 0.000) %>%
+  mutate(products = afact * afact2) %>%
+  group_by(statefip, place) %>%
+  mutate(
+    sum_products = sum(products),
+    place_pop = sum(pop20)
+  ) %>% 
+  ungroup() %>%
+  geographic_allocation()
+
+puma_place_2010 <- puma_place_2010 %>%
+  filter(afact != 0.000) %>%
+  mutate(products = afact * afact2) %>%
+  group_by(statefip, place) %>%
+  mutate(
+    sum_products = sum(products),
+    place_pop = sum(pop10)
+  ) %>% 
+  ungroup() %>%
+  geographic_allocation()
+
+puma_place_2k <- puma_place_2k %>%
+  filter(afact != 0.000) %>%
+  mutate(products = afact * afact2) %>%
+  group_by(statefip, place) %>%
+  mutate(
+    sum_products = sum(products),
+    place_pop = sum(pop10)
+  ) %>% 
+  ungroup() %>%
+  geographic_allocation()
 ```
 
-Calculate the total place population by summing the GeoCorr pop10 and pop20 variables. These pop variables count the population in the PUMA that overlap with the place - note that GeoCorr presents these numbers so that it already accounts for afact (see What is a Correlation List? on the [GeoCorr website](https://mcdc.missouri.edu/applications/docs/geocorr-help.html#weightVar)).
+All afacts now have values.
+```{r}
+validate_crosswalk(puma_place_2020, "2022")
+validate_crosswalk(puma_place_2010, "2012")
+validate_crosswalk(puma_place_2k, "2k")
+```
+
+
+## Comparative Data Quality Analysis
+
+Visualize key variables across all three crosswalk periods for comparison.
 
 ```{r}
-puma_place20 <- puma_place20 %>%
-  group_by(statefip, place) %>%
-  mutate(sum_products = sum(products),
-         place_pop = sum(pop20)) %>% 
-  ungroup() 
+# Create combined quality comparison
+quality_comparison <- bind_rows(
+  puma_place_2020 %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2020"),
+  puma_place_2010 %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2010"),
+  puma_place_2k %>% select(crosswalk_period, geographic_allocation_quality) %>% mutate(type = "2000")
+)
 
-puma_place10 <- puma_place10 %>%
-  group_by(statefip, place) %>%
-  mutate(sum_products = sum(products),
-         place_pop = sum(pop10)) %>% 
-  ungroup() 
+quality_comparison %>%
+  ggplot(aes(x = factor(geographic_allocation_quality), fill = type)) +
+  geom_bar(position = "dodge", alpha = 0.8) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "Geographic Allocation Quality Comparison Across PUMA Periods",
+    subtitle = "1=High Quality (75%+), 2=Medium Quality (35-75%), 3=Low Quality (<35%)",
+    x = "Quality Rating", 
+    y = "Count of Places"
+  ) +
+  theme_minimal()
+
+# Combined population distribution
+pop_combined <- bind_rows(
+  puma_place_2020 %>% select(place_pop, crosswalk_period) %>% mutate(period = "2020"),
+  puma_place_2010 %>% select(place_pop, crosswalk_period) %>% mutate(period = "2010"),
+  puma_place_2k %>% select(place_pop, crosswalk_period) %>% mutate(period = "2000")
+)
+
+pop_combined %>%
+  ggplot(aes(x = place_pop, fill = period)) +
+  geom_density(alpha = 0.6) +
+  scale_x_log10(labels = scales::comma_format()) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "Population Distribution Across PUMA Periods",
+    subtitle = "Log scale - weighted population in PUMA-Place overlaps",
+    x = "Population (log scale)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# AFACT distribution comparison
+afact_combined <- bind_rows(
+  puma_place_2020 %>% select(afact, crosswalk_period) %>% mutate(period = "2020"),
+  puma_place_2010 %>% select(afact, crosswalk_period) %>% mutate(period = "2010"),
+  puma_place_2k %>% select(afact, crosswalk_period) %>% mutate(period = "2000")
+)
+
+afact_combined %>%
+  ggplot(aes(x = afact, fill = period)) +
+  geom_histogram(alpha = 0.7, position = "identity", binwidth = 0.02) +
+  scale_fill_viridis_d(name = "PUMA Period") +
+  labs(
+    title = "AFACT Distribution Comparison Across PUMA Periods",
+    x = "AFACT (Allocation Factor)",
+    y = "Count"
+  ) +
+  theme_minimal()
 ```
 
 The average sum of products in the 2020 crosswalk is 77% and 55% in the 2010 crosswalk (more PUMAs have good quality than less than good).
 It is expected that 2010 will have lower quality because the PUMA boundaries and place boundaries are removed by two years (2012 to 2014).
 
 ```{r}
-puma_place10 %>% 
+
+puma_place_2k %>% 
   select(sum_products) %>% 
   summary()
 
-puma_place20 %>% 
+puma_place_2010 %>% 
+  select(sum_products) %>% 
+  summary()
+
+puma_place_2020 %>% 
   select(sum_products) %>% 
   summary()
 ```
 
-Rank sum_product based on the guidance described above (1 to 3, with 1 being best) and create a new variable representing the quality of geographic allocation.
-```{r}
-puma_place10 <- puma_place10 %>%
-  mutate(
-    geographic_allocation_quality =
-      case_when(
-        sum_products >= 0.75 ~ 1,
-        sum_products >= 0.35 ~ 2,
-        sum_products < 0.35 ~ 3
-      )
-  )
 
-puma_place20 <- puma_place20 %>%
-  mutate(
-    geographic_allocation_quality =
-      case_when(
-        sum_products >= 0.75 ~ 1,
-        sum_products >= 0.35 ~ 2,
-        sum_products < 0.35 ~ 3
-      )
-  )
-```
-
-Look at the counts of the geographic quality flag.
+# Rename for consistency with county processing
 
 ```{r}
-puma_place20 %>% 
-  ggplot(aes(x = geographic_allocation_quality)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
-  ggtitle("Geographic Allocation Flag 2020") +
-  ylab("Count")
-  
-puma_place10 %>% 
-ggplot(aes(x = geographic_allocation_quality)) +
-  geom_histogram(color = "blue", fill = alpha("blue", 0.3), binwidth = 1.0) +
-  theme_minimal() +
-  ggtitle("Geographic Allocation Flag 2010") +
-  ylab("Count")
+puma_place20 <- puma_place_2020 %>% rename(population = pop20)
+puma_place10 <- puma_place_2010 %>% rename(population = pop10) 
+puma_place2k <- puma_place_2k %>% rename(population = pop10)
 ```
 
 
-We want to join the crosswalks together so they can be merged onto multi-year census files. First create an indicator of which period the crosswalk applies to so they can be joined appropriately. 
-```{r}
-puma_place20 <- puma_place20 %>% 
-  mutate(crosswalk_period = "2022") 
-
-
-puma_place10 <- puma_place10 %>% 
-  mutate(crosswalk_period = "pre-2022")
-```
-
-Make the variable names universal.
+# Clean up intermediate objects for memory management
 
 ```{r}
-puma_place20 <- puma_place20 %>% 
- rename(population = pop20)
-
-puma_place10 <- puma_place10 %>% 
-  rename(population = pop10) 
+rm(puma_place_2020, puma_place_2010, puma_place_2k)
 ```
 
-Finally, bind the crosswalks together. 
+# Combine all crosswalks with optimized memory usage
 
 ```{r}
 puma_place <- puma_place20 %>% 
-  bind_rows(puma_place10)
+  bind_rows(puma_place10, puma_place2k) %>%
+  arrange(crosswalk_period, statefip, place) %>%
+  select(crosswalk_period, statefip, place, puma, afact, afact2, 
+         population, products, sum_products, geographic_allocation_quality)
 ```
-
 
 ## Write files
 
