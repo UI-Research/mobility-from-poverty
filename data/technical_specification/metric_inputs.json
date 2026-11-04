@@ -313,18 +313,14 @@
             "r_function": "get_education_data(level='schools', source='ccd', topic='directory')",
             "requires_key": false
           },
-          "notes": "Used for school locations (county_code, city_location) and filtering to regular schools."
+          "notes": "Used for school locations (county_code; city_location in the city QMD) and total enrollment. Neither QMD filters on school type."
         },
         {
-          "name": "Small Area Income and Poverty Estimates (SAIPE)",
-          "provider": "US Census Bureau",
-          "access_method": "api",
-          "api_details": {
-            "r_package": "educationdata",
-            "r_function": "get_education_data(level='school-districts', source='saipe')",
-            "requires_key": false
-          },
-          "notes": "District-level poverty rates used to identify high-poverty schools (>20% poverty)."
+          "name": "Model Estimates of Poverty in Schools (MEPS)",
+          "provider": "Urban Institute",
+          "access_method": "local_file",
+          "landing_page": "https://www.urban.org/research/publication/model-estimates-poverty-schools",
+          "notes": "School-level modeled poverty share (meps_poverty_pct); a school is high poverty when meps_poverty_pct >= 20. Read from a local Stata file, data/raw/Abrv Set of Portal Variables.dta, that is not in the repo. The Education Data Portal API also has MEPS for 2014-2022 (commented-out code in both QMDs)."
         }
       ],
       "crosswalks_used": [
@@ -348,13 +344,13 @@
           "access_method": "api",
           "api_details": {
             "r_package": "ipumsr",
-            "project_function": "extract_ipums_aws()",
-            "function_path": "functions/API/ipums_repwt_college_aws.R",
+            "project_function": "extract_ipums_aws() for person records; ipums_repwt_college_aws.R for replicate weights",
+            "function_path": "functions/API/extract_ipums_aws.R",
             "requires_key": true,
             "key_name": "IPUMS_API_KEY"
           },
-          "url": "https://www.ipums.org/",
-          "notes": "Uses EDUC variable for educational attainment. See https://usa.ipums.org/usa-action/variables/EDUC#codes_section"
+          "url": "https://usa.ipums.org/usa/",
+          "notes": "Uses EDUCD (detailed codes; a high school diploma or GED is EDUCD >= 62). See https://usa.ipums.org/usa-action/variables/EDUC#codes_section"
         }
       ],
       "crosswalks_used": [
@@ -377,13 +373,12 @@
           "access_method": "api",
           "api_details": {
             "r_package": "ipumsr",
-            "project_function": "extract_ipums_aws()",
-            "function_path": "functions/API/extract_ipums_aws.R",
+            "project_function": "get_ipums_extract(), defined in the QMD (wraps ipumsr::define_extract_micro()); extracts saved to data/raw/ipums/, not S3",
             "requires_key": true,
             "key_name": "IPUMS_API_KEY"
           },
-          "url": "https://www.ipums.org/",
-          "notes": "Uses CIHISPEED variable for high-speed internet access. Some 2023 data suppressed by IPUMS (see https://usa.ipums.org/usa-action/variables/CIHISPEED#comparability_section)."
+          "url": "https://usa.ipums.org/usa/",
+          "notes": "Samples us2018c, us2021c, and us2023c. Uses CIHISPEED variable for high-speed internet access. Some 2023 data suppressed by IPUMS (see https://usa.ipums.org/usa-action/variables/CIHISPEED#comparability_section)."
         }
       ],
       "crosswalks_used": [
@@ -408,18 +403,17 @@
       ],
       "data_sources": [
         {
-          "name": "American Community Survey 5-Year (ACS)",
+          "name": "American Community Survey 1-Year (ACS)",
           "provider": "IPUMS USA",
           "access_method": "api",
           "api_details": {
             "r_package": "ipumsr",
-            "project_function": "extract_ipums_aws()",
-            "function_path": "functions/API/extract_ipums_aws.R",
+            "project_function": "ipumsr::define_extract_micro(), called directly in the QMD",
             "requires_key": true,
             "key_name": "IPUMS_API_KEY"
           },
-          "url": "https://www.ipums.org/",
-          "notes": "Uses RENT, RENTGRS, VALUEH, ADJUST variables. ADJUST standardizes income within calendar year."
+          "url": "https://usa.ipums.org/usa/",
+          "notes": "1-year samples (usYYYYa): one occupied-housing and one vacant-unit extract per year. Uses RENT, RENTGRS, OWNCOST, VALUEH, VACANCY, HHINCOME, ADJUST variables. ADJUST standardizes income within calendar year."
         },
         {
           "name": "HUD Section 8 Income Limits (Area Median Income)",
@@ -435,11 +429,10 @@
             "https://www.huduser.gov/portal/datasets/il/il21/Section8-FY21.xlsx",
             "https://www.huduser.gov/portal/datasets/il/il22/Section8-FY22.xlsx",
             "https://www.huduser.gov/portal/datasets/il/il23/Section8-FY23.xlsx",
-            "https://www.huduser.gov/portal/datasets/il/il24/Section8-FY24.xlsx",
-            "https://www.huduser.gov/portal/datasets/il/il25/Section8-FY25.xlsx"
+            "https://www.huduser.gov/portal/datasets/il/il24/Section8-FY24.xlsx"
           ],
           "landing_page": "https://www.huduser.gov/portal/datasets/il.html#data_2022",
-          "notes": "AMI thresholds (30%, 50%, 80%) used to define affordability. One file per fiscal year."
+          "notes": "AMI thresholds (30%, 50%, 80%) used to define affordability. One file per fiscal year. The committed QMD downloads FY24 from il23/Section8-FY24.xlsx; il24/ is the correct folder."
         },
         {
           "name": "CT Town-to-Planning-Region Crosswalk",
@@ -453,6 +446,7 @@
       ],
       "crosswalks_used": [
         "geographic-crosswalks/data/county-populations.csv",
+        "geographic-crosswalks/data/county_place_crosswalk_longitudinal.csv",
         "geographic-crosswalks/data/crosswalk_puma_to_county.csv",
         "geographic-crosswalks/data/crosswalk_puma_to_place.csv",
         "geographic-crosswalks/data/geocorr2018_county_place_2014_thru_2019.csv",
@@ -486,7 +480,19 @@
             "https://eddataexpress.ed.gov/sites/default/files/data_download/EID_11718/SY2122_FS118_DG655_LEA_data_files.zip"
           ],
           "landing_page": "https://eddataexpress.ed.gov/download/data-builder/data-download-tool",
-          "notes": "Older years (2014-2018) use direct CSV links from ed.gov. Newer years (2019+) are ZIP files from eddataexpress.ed.gov. Data is at LEA level, aggregated to county/place."
+          "notes": "2014-2018 use direct CSV links from ed.gov, which return a bot challenge (HTTP 403) to scripts as of 2026-11. 2019-2021 are ZIP files from eddataexpress.ed.gov. 2022-23 is a manual download from the EdDataExpress data builder. Data is at LEA level; each LEA is assigned to one county and one place."
+        },
+        {
+          "name": "Common Core of Data (CCD) - School District Directory",
+          "provider": "National Center for Education Statistics (NCES)",
+          "access_method": "api",
+          "api_details": {
+            "r_package": "educationdata",
+            "r_function": "get_education_data(level='school-districts', source='ccd', topic='directory')",
+            "requires_key": false
+          },
+          "landing_page": "https://educationdata.urban.org/",
+          "notes": "District enrollment (the share denominator) and location (county_code, city_location)."
         }
       ],
       "crosswalks_used": [
@@ -512,11 +518,11 @@
             "r_package": "censusapi",
             "r_function": "getCensus()",
             "requires_key": true,
-            "key_name": "CENSUS_API_KEY",
+            "key_name": "CENSUS_KEY",
             "api_endpoint": "acs/acs5"
           },
           "documentation_url": "https://api.census.gov/data/2021/acs/acs5/variables.html",
-          "notes": "Pulls tract-level poverty counts (Table B17001) via Census API, then aggregates to county/place using population weights."
+          "notes": "Pulls tract-level poverty counts (Table B17001) via Census API, then sums tracts to counties and allocates tracts to places with the Geocorr allocation factor (afact)."
         }
       ],
       "crosswalks_used": [
@@ -550,7 +556,7 @@
             "r_package": "censusapi",
             "r_function": "getCensus()",
             "requires_key": true,
-            "key_name": "CENSUS_API_KEY",
+            "key_name": "CENSUS_KEY",
             "api_endpoint": "acs/acs5"
           },
           "notes": "Pulls tract-level race/ethnicity population counts via Census API. Aggregates to county using tract-level population weights."
