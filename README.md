@@ -1,4 +1,4 @@
-# Boosting Upward Mobility from Poverty
+# Upward Mobility Initiative Data Repository 
 
 This repository contains code to construct 26 metrics for 24 predictors of mobility across 5 pillars that broadly measure mobility from poverty.
 The data are available for more than 3,000 counties and 486 selected cities.
@@ -11,8 +11,8 @@ To learn more about the upward mobility framework, please read:
 
 To learn more about the data, please read:
 
--   [Mobility metrics Urban Institute Data Catalog page](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action)
--   [Mobility metrics data dictionary](https://ui-research.github.io/mobility-from-poverty/)
+-   [Mobility metrics Urban Institute Data Catalog page](https://datacatalog.urban.org/dataset/mobility-metrics-data-upward-mobility-framework)
+-   [Mobility metrics data dictionary](https://ui-research.github.io/mobility-from-poverty-dictionary/)
 -   [Mobility metrics methodological notes](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md)
 
 # Motivation
@@ -91,16 +91,20 @@ This repository was previously organized by nine domains. Due to updates in the 
 | 23_safety-from-crime/ |
 | 24_just-policing/ |
 
-*Note: As the repository structure transitions from domain-based to predictor-based organization, folder names and locations may not yet align with the predictor names listed above. Consult the actual repository structure for current folder locations.*
+*Note: Historical versions of this repository were based around "domains" and thus folder names and locations may not have yet aligned with the predictor names listed above. Current folder locations should now match the structure above.*
 
 # File Descriptions
 
-The [all metrics combined datasets](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action-10) for this project are read out into several file formats which are described below.
+The [combined metric datasets](https://datacatalog.urban.org/dataset/mobility-metrics-data-upward-mobility-framework) for this project are read out into several file formats which are described below.
 The main difference is the geographic level of the data (city vs county), the number of years included and whether subgroups (i.e. race/ethnicity) are included.
-The all metrics combined files are in the ["long" format](https://www.theanalysisfactor.com/wide-and-long-data/) as opposed to a "wide" format, meaning that in the files covering multiple years or subgroup each unique geography will account for more than one row.
+The combined metric files are in the ["long" format](https://www.theanalysisfactor.com/wide-and-long-data/) as opposed to a "wide" format, meaning that in the files covering multiple years or subgroup each unique geography will account for more than one row.
 The data are hosted publicly on the [Urban Institute data catalog](https://datacatalog.urban.org/).
 
 ## Multi-Year Files
+
+Multi-year files are available for both places and counties. The section below describes the format of each of these files.
+
+### County
 
 -   The multi-year county file contains one observation per county per year.
     It contains missing values where metrics are unavailable, suppressed, or have not been computed.
@@ -112,12 +116,23 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
     | 2014 |  01   |  001   | "Alabama"  | "Autauga County" |         |
     | 2014 |  01   |  003   | "Alabama"  | "Baldwin County" |         |
     | 2014 |  01   |  005   | "Alabama"  | "Barbour County" |         |
+    
+
+### Place
 
 -   The multi-year city file contains one observation per large city per year.
     It contains missing values where metrics are unavailable, suppressed, or have not been computed.
     This file has 486 observations per year.
+    
+    | year | state | place | state_name |   place_name      | Var1... |
+    |:----:|:-----:|:------:|:----------:|:----------------:|:-------:|
+    | 2014 |  01   |  3076  | "Alabama"  | "Auburn city"    |         |
+    | 2014 |  01   |  7000  | "Alabama"  | "Birmingham city"|         |
+    | 2014 |  01   |  35896 | "Alabama"  | "Hoover city"    |         |
+
 
 ## Subgroups Files
+
 
 -   The subgroups county files contain multiple observations per county per year. These files are long and have multiple observations per county per year are for subgroups like race/ethnicity and poverty status.
 
@@ -133,10 +148,10 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 # Project Organization
 
--   Each predictor should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
+-   Each predictor has its own directory. The name of the directory contains lower case letters, numbers, and hyphens. Do not include spaces.
 -   The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
 -   Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable.
--   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric data should be added to GitHub.
+-   **Only add final metric data to the repository.** Each sub-folder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric data should be added to the GitHub repository.
 -   If possible, download your data with code or pull your data from an API with code.
 -   **Do not include any credentials in the repository.** Please reach out to Aaron R. Williams if this creates issues.
 -   Use names that play well with default ordering (e.g. 01, 02 and YYYY-MM-DD dates) for directory and file names.
@@ -145,7 +160,7 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 
 ## GitHub Standards 
 
--   Do not work on the `main` branch. This project uses a staging branch called `tranche#` that all updates should work through as if it were the main branch. All updates should be pushed to this branch.
+-   Do not work on the `main` branch. This project uses a staging branch called `tranche#` that all updates work through as if it were the main branch. All updates should be pushed to the relevant tranche.
 -   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric files should be added to GitHub.
 -   Regularly pull from the remote `tranche#` branch to keep your local and remote branches up-to-date. Most merges will automatically resolve. [Here](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/resolving-a-merge-conflict-using-the-command-line) are tips for resolving other merge conflicts.
 -   [GitHub issues](https://docs.github.com/en/github/managing-your-work-on-github/about-issues) exist for each metric and work branches should always be tied to an issue.
@@ -213,9 +228,9 @@ This section will walk through the standards around data starting with the raw d
 
 ### Starting or raw data practices
 
--   Starting or raw data should be pulled using code or should be added to Box. Only final data files should be added GitHub repository.
+-   Starting or raw data should be pulled programmatically whenever possible. In cases when is is not possible to bring in the raw data through the code, metric lead should added the raw data to the UMI Raw Data folder on [Box](https://urbanorg.box.com/s/goqb6qemmgx6djgejvuzyz8rg1b8i9mq). Only final data files should be pushed to the GitHub repository.
 -   Whenever possible, programs should pull data directly from the original source, meaning raw data does not have to be downloaded manually prior to code execution for the program to work. For example, programs that rely on aggregated American Community Survey (ACS) data should write code that uses the [Census API](https://www.census.gov/data/developers/data-sets.html) to pull in micro data; for [R programmers] the [ipumsr package](https://developer.ipums.org/docs/v2/apiprogram/clients/) is a great tool for pulling ACS microdata from IPUMS using code.
--   When it is not possible to pull data in code, please download the data raw data files into this [Box folder](https://urbanorg.app.box.com/folder/277418607770?s=gpqd26sk5kqlymnfngyvjfs4qf9o2zvc) so that it can be made universally available to all contributors on the project. Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
+- Ensure that files have clear names and code is clearly commented so it is clear to other users what data is being used and where it is stored. Also, ensure that programs are written so they do not save over the starting/raw data file(s).
 -   Programs should have detailed commentary on where the data is being pulled from and any specifics around accessing it (where to go, what to select, etc.) regardless of whether it is downloaded in the code or on to Box.
 
 ## Joining variables
@@ -232,7 +247,7 @@ This section will walk through the standards around data starting with the raw d
     -   `tract` should be a six character FIPS code.
         All geography variables should have leading zeros for ids beginning in zeros.
 
-#### Subgroups Specific Variables
+### Subgroups Specific Variables
 
 The all metrics combined subgroup datasets will contain a subset of metrics from the original/years dataset because not all metrics will be extended for subgroup analysis.
 
@@ -320,21 +335,22 @@ This may seem foreign to some Stata and SAS programmers but it has several advan
 - Include data visualizations (e.g. histograms or scatterplots) and six-number summaries (min, 25th percentile, median, mean, 75th percentile, max) to explore the distribution of calculated metrics. Ensure that values make sense (e.g. median income should not be $8 million).
 - If possible, compare calculated values against external data sources. This is useful for intermediate steps (e.g. does the number of votes in a state match published totals?) and final metrics (e.g. does median household income in California align with Census Bureau estimates?)
 
+## Reading out Final Files
+
+All metrics need to have a CSV output of the final data that will be merged into the aggregate files that end up on the data catalogue. To keep this merge process smooth there are several conventions for naming and reading out final files. 
+
 ### File Names
 
-1.  Final metric files should have descriptive names related to the metric and must only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case).
-    Do not use spaces.It is up to you how to name the files for your metric but the file names need to be consistent (meaning you should refer to the metric in the file name the same way every time) and should be concise.
+1.  Final metric files should have descriptive names that include metric name, year (or years) of data included and whether or not the file includes subgroups. Names must only include lower case letters, numbers, and underscores (lower camel case, i.e. camel_case). Do not use spaces. 
 
-    -   For example, the 2022 county metric file for the share of low-weight births metric, which fall under the Neonatal Health predictor, could be named "lwb_metric_2022_county.csv"
-  
+    -   For example, the overall county metric file for the share of pre-K aged students attending preschool metric, which falls under the Access to Preschool predictor, is named "metrics_preschool_county_all_longitudinal.csv"
+    -   For combined files, replace the year with "all". 
+    - For subgroup data include the subgroup-type in the title. A combined county file for the pre-K metric that includes the income subgroup is titled "metrics_preschool_county_income_longitudinal.csv"
 
-2.  Save data in a folder titled "final" to keep the repository organized.
-    When saving files, include the year, geography (county or place), and subgroup information in the file name unless the file is combined (e.g. the file contains multiple years).
 
-    -   For combined files, replace the year with "all". Continuing with the low-weight birth example, to be consistent with the name above the combined place level file  would be named "lwb_metric_all_place.csv" 
-    - For subgroup data, a combined county file with subgroup data would be titled "lwb_metric_all_subgroups_plce.csv"
+2.  Data should be saved in a "data" folder within the predictor folder. Save data in a sub-folder titled "final" to keep the repository organized.
 
-### Final Metric Files
+### Final Metric File Format
 
 -   All final files should be in the `.csv` format. The files should be delimited with a comma.
 -   Do not open and save any `.csv` files in Microsoft Excel. Excel defaults lead to analytic errors.
