@@ -13,7 +13,7 @@ To learn more about the data, please read:
 
 -   [Mobility metrics Urban Institute Data Catalog page](https://datacatalog.urban.org/dataset/boosting-upward-mobility-metrics-inform-local-action)
 -   [Mobility metrics data dictionary](https://ui-research.github.io/mobility-from-poverty/)
--   [Mobility metrics methodological notes](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md)
+-   [Mobility metrics predictor notes](documentation/all-predictor-notes.md)
 
 # Motivation
 
@@ -134,7 +134,10 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 # Project Organization
 
 -   Each predictor should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
--   The [overview documentation file](https://github.com/UI-Research/mobility-from-poverty/blob/main/documentation/overview.md) includes information about the metrics. It should contain clear instructions for running the code. It should contain a brief list of the assumptions and methodology used to create each metric.
+-   Each predictor folder has a `predictor-notes.md` that documents the metric: years, sources, crosswalks, data quality flags, missing values, and known issues. It follows the template in `.github/predictor-notes-template.md`. **Update it in the same PR as any metric update:**
+    1.  Ask an LLM to update `predictor-notes.md` from the code in the folder.
+    2.  Review the changes and add anything you learned during the update that isn't in the code.
+    3.  Set `last_updated` to today's date and your name.
 -   Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable.
 -   **Only add final metric data to the repository.** Each subfolder should contain a `data/` folder for intermediate data files. The `data/` folder should be added to the `.gitignore`. The final metric data should be added to GitHub.
 -   If possible, download your data with code or pull your data from an API with code.
