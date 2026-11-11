@@ -59,7 +59,9 @@ if (!file.exists(destfilecounty14)) {
   download.file(countyurl14, destfilecounty14, mode = "wb")
 }
 
-pep_2014 <- read_csv(destfilecounty14) %>%
+# the 2014 file is Latin-1 encoded (later vintages are UTF-8); without this,
+# Doña Ana County, NM fails to split into state_name and county_name
+pep_2014 <- read_csv(destfilecounty14, locale = locale(encoding = "latin1")) %>%
   rename_with(tolower) %>%
   # Convert state to character and add a leading zero
   mutate(
@@ -373,6 +375,16 @@ final_population |>
   ungroup() |>
   distinct(state, county, state_name, county_name) |>
   print(n = Inf)
+
+```
+
+**Check:** Are county and state names complete and well-formed? A Latin-1 encoded source file (e.g., the 2014 PEP file) can cause `separate()` to fail silently, leaving the full "State, County" string in `state_name` and NA in `county_name`.
+
+```{r}
+final_population |>
+  assert(not_na, state_name, county_name) |>
+  assert(validUTF8, state_name, county_name) |>
+  verify(!str_detect(state_name, ","))
 
 ```
 
