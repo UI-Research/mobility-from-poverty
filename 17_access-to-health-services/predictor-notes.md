@@ -38,26 +38,13 @@ last_updated:
 ## Summary
 Number of people in the county per primary care physician (PCP), from the Area Health Resources File (AHRF) count of nonfederal primary care physicians excluding residents, divided into the county population from `county-populations.csv`. Higher values mean fewer physicians per person. Counties with 2,000 or fewer people and no PCPs get a value of 0.
 
-## Process
-1. Render `access-health-services-all.qmd`. It downloads and unzips three AHRF SAS releases into `data/` with its own `ahrf_fetch()` function (the `data/` folder is gitignored):
-   - 2021–2022 release (`ahrf2022.sas7bdat`): PCP counts and populations for 2014–2020 (variables `f1467514`–`f1467520` and `f1198414`–`f1198419`, `f0453020`)
-   - 2022–2023 release (`ahrf2023.sas7bdat`): 2021 (`phys_nf_prim_care_pc_exc_rsdt_21`, `popn_est_21`)
-   - 2023–2024 release (`ahrf2024_feb2025.sas7bdat`): 2022 (`phys_nf_prim_care_pc_exc_rsdt_22`, `popn_est_22`)
-2. Full-join the three files by state and county, drop Guam, Puerto Rico, and the US Virgin Islands, and reshape long by year.
-3. Read `county-populations.csv`, dropping 2023 (`filter(!year %in% c(2023))`). A `testthat` check requires its years to equal the AHRF years.
-4. Fix and drop AHRF counties that don't match the county file (`fix-missing-urban` chunk):
-   - 2014: recode Oglala Lakota, SD (46102) to 46113 and Kusilvak, AK (02158) to 02270, the codes in the county file
-   - Drop all Connecticut rows for 2021 and 2022
-   - Drop 02001 (not a valid FIPS code), 02201, 02232, 02280, 51515, and 51560 (counties that no longer exist)
-   - Drop Chugach and Copper River, AK (02063, 02066) for 2014–2019 and Valdez-Cordova, AK (02261) for 2020–2022
-5. `left_join()` the AHRF data onto `county-populations.csv`. A `stopifnot()` checks that the Urban population equals the AHRF population in every matched row.
-6. Ratio, following the County Health Rankings suppression rule:
-   - 0 PCPs and population of 2,000 or less: `0`
-   - 0 PCPs and population above 2,000: `NA` (treated as a false zero)
-   - 1 or more PCPs: `round(population / pc_physicians)`
-7. Quality flag from the ratio's sensitivity to one more physician (see Data quality flag).
-8. Validation (doesn't change the output): downloads the 2023 County Health Rankings file and the Census Vintage 2020 county estimates to `data/` and compares 2020 ratios with County Health Rankings.
-9. `evaluate_final_data()` against `99a_final-evaluation/evaluation_form_ratio_population_pc_physician_overall_county.csv`, then write `final/ratio_pop_pcp_metric_all_county.csv`.
+## Methodology
+- **Numerator**: total county population from `county-populations.csv`. In every county-year that matches the Area Health Resources File (AHRF), it equals the population AHRF reports.
+- **Denominator**: AHRF's count of nonfederal primary care physicians (PCPs), excluding residents (`phys_nf_prim_care_pc_exc_rsdt_*` and the matching 2021–2022 release variables), which comes from the American Medical Association (AMA) Physician Masterfile. PCPs are MDs and DOs under age 75 in general practice, family medicine, internal medicine, and pediatrics. Nurse practitioners, physician assistants, and hospital residents aren't counted.
+- **Ratio**: population divided by PCPs, rounded to a whole number. It's people per physician, so higher values mean fewer physicians per person.
+- **Zero physicians**: follows the County Health Rankings suppression rule. A county with 0 PCPs gets a ratio of 0 if it has 2,000 or fewer people and `NA` if it has more, treating a reported 0 in a larger county as a likely false zero.
+- **Vintages**: each year comes from one AHRF release (see Comparability across years). 2020 is in both the 2021–2022 and 2022–2023 releases with the same values; the 2021–2022 release is used.
+- **Geography**: county only, since AHRF has no city data. AHRF counties are matched to `county-populations.csv` by FIPS code. For 2014, AHRF's codes for Oglala Lakota, SD and Kusilvak, AK are recoded to the codes the county file uses for that year (46113 and 02270). Counties that no longer exist are dropped, as are all Connecticut rows for 2021 and 2022, so Connecticut has no values after 2020. Valdez-Cordova, AK (02261) is used through 2019 and Chugach and Copper River (02063, 02066) from 2020.
 
 ## Data quality flag
 Sensitivity = the percent change in the ratio when 1 is added to the county's PCP count (`calculate-sensitivity` chunk):
@@ -77,23 +64,7 @@ Tallies: 20,599 rows are `1`, 3,857 are `2`, 2,482 are `3` (9 percent of nonmiss
 - Everything else (134–169 a year) is a false zero: a county with more than 2,000 people and 0 PCPs. The largest is Crawford County, MO (29055), with 24,302 people in 2016. These are concentrated in Texas (182 county-years), North Dakota (120), Georgia (119), South Dakota (96), Kansas (70), and Nebraska (67).
 - 260 counties are missing in at least one year and 74 in every year.
 
-## Known issues
-- **A value of 0 means no physicians, not the best access.** The ratio is population per PCP, so lower is better, but counties with 2,000 or fewer people and no PCPs are set to 0 (`create-ratio` chunk). 67–76 counties a year are 0, all quality `3` (data check), for example Alpine County, CA and Denali Borough, AK. Anyone ranking or averaging the values needs to treat them separately.
-- **Connecticut planning regions are dropped even though AHRF has them for 2022.** The .qmd notes that the 2023–2024 release has the nine planning regions, but `fix-missing-urban` drops every Connecticut row for 2021 and 2022, so the 2022 planning regions are `NA` (data check).
-- **Rerunning fails the year check.** `county-populations.csv` now has 2014–2025 (2024 and 2025 were added in October and November 2025), and the code only drops 2023, so the `testthat` check that the county file and AHRF have the same years fails.
-- **The flag is a physician count.** It doesn't account for population: a county of 45,996 with 1 PCP and a county of 900 with 1 PCP both get `3`, and a county with 5 PCPs gets `1` at any population (formula above, `assign-data-quality` chunk).
-- **Large outliers.** Logan County, OK (40083) is 45,996–46,784 in 2015–2017 (1 PCP) and about 23,000–25,000 in the other years. Ripley County, IN (18137) jumps from 14,350 in 2015 to 28,846 in 2016, and Lincoln County, MO (29113) from 20,529 in 2021 to 31,578 in 2022. 55–67 county-years a year are 10,000 or more (data check).
-- The AHRF counts nonfederal PCPs and excludes residents (variable names `phys_nf_prim_care_pc_exc_rsdt_*`; [AHRF](https://data.hrsa.gov/topics/health-workforce/ahrf)). Physicians are counted where they're recorded in the AMA Physician Masterfile, which can differ from where patients go for care.
-
 ## Comparability across years
 - Each year comes from one AHRF release: 2014–2020 from the 2021–2022 release, 2021 from the 2022–2023 release, and 2022 from the 2023–2024 release. Starting with the 2022–2023 release, AHRF only includes the two most recent years of each variable (.qmd section 2), so later releases can't be used to rebuild earlier years.
 - Missing values rise from 134 in 2014 to 179 in 2022, mostly from more false zeros, so the set of counties with a value changes across years.
 - Alaska: Valdez-Cordova (02261) through 2019, Chugach and Copper River (02063, 02066) from 2020. Connecticut has no values after 2020.
-
-## Open questions
-- Should the 2022 Connecticut planning regions be kept, since AHRF has them?
-- The .qmd text says "To get all years 2014-2021, we need to download two versions of the AHRF data", but the code downloads three releases and covers 2014–2022. Section 4.2 says the only unmatched counties are Connecticut in 2021.
-- The .qmd says a ratio change of 40–59 percent is quality `3`, but there's no rule for 60 percent or more; in practice the change never exceeds about 50 percent, so every nonmissing ratio gets a flag. Should the flag account for population?
-- The check after the quality flag, `stopifnot(!all(is.na(ratio) & is.na(quality)))`, only fails if every row is missing both. It doesn't check what its comment says ("If the `ratio` value is `NA`, the `quality` value is also `NA`").
-- Are the Logan County, OK (2015–2017), Ripley County, IN (2016 on), and Lincoln County, MO (2022) jumps real, or AHRF reporting changes?
-- The rendered `access-health-services-all.html` (1.2 MB) is committed next to the .qmd. Is it still needed?

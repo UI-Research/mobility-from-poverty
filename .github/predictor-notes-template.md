@@ -26,8 +26,8 @@ last_updated:
 ## Summary
 What the metric measures, in one or two sentences.
 
-## Process
-Steps to build the metric, including manual downloads, Box files, and run order.
+## Methodology
+Key methodological decisions a reader needs to interpret the values: what the numerator and denominator are, which population or unit is counted, how sources and years are combined, how values are assigned to counties and places, and how subgroups are defined. Not a step-by-step restatement of the code.
 
 ## Data quality flag
 What makes an observation a 1, 2, or 3.
@@ -35,11 +35,5 @@ What makes an observation a 1, 2, or 3.
 ## Missing values
 Which geographies are missing, in which years, and why.
 
-## Known issues
-Data quirks, vintage changes, and anything else that doesn't fit in the footnotes.
-
 ## Comparability across years
 Breaks in the series and which year-to-year changes shouldn't be compared.
-
-## Open questions
-Things to check or fix before the next update.

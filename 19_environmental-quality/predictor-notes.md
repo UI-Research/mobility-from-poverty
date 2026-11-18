@@ -43,17 +43,15 @@ last_updated:
 ## Summary
 A 0–100 index of exposure to air toxics, from the Environmental Protection Agency's (EPA) modeled cancer risk and respiratory and neurological hazard for each census tract. Each tract gets its national percentile rank on the combined hazard, flipped so that higher values mean less hazard, and county and city values are the population-weighted averages of their tracts. The subgroup files repeat the average for tracts grouped by poverty rate and by racial and ethnic makeup.
 
-## Process
-1. The EPA files are already in `data/raw/2014/`, `data/raw/2018/`, and `data/raw/2019/`: three national by-tract files per year (cancer risk, neurological hazard index, and respiratory hazard index), downloaded by hand from the EPA assessment pages. The .qmd also points to a Box copy.
-2. Set a Census API key for `tidycensus` (the `census_api_key()` line is commented out, line 41), then render `air_toxicity_metric.qmd`. One render writes all six files; there are no parameters.
-3. Tracts: for each year, bind the three EPA files, keep `total_cancer_risk_per_million`, `total_neurological_hazard_quotient`, and `total_respiratory_hazard_quotient`, and drop Puerto Rico and the US Virgin Islands. 25 tract codes that changed after 2010 are recoded by hand (for example, Wade Hampton, AK, 02270 to Kusilvak, 02158, and Shannon, SD, 46113 to Oglala Lakota, 46102). Only tracts in the 2015–2019 ACS tract list are kept (line 314), which drops the EPA's nontract rows.
-4. Tract index: within each year, convert each of the three measures to a z-score across tracts, add them, multiply by −1, and take `percent_rank() × 100`, rounded (lines 346–379).
-5. ACS: pull tract population (B01003_001), race and ethnicity (B03002_001 and B03002_003), and poverty (B17001_001 and B17001_002) from the 2014, 2018, and 2019 5-year files. Classify each tract:
-   - Race and ethnicity: Majority Non-White (60 percent or more people of color), No Majority Race/Ethnicity (more than 40 and less than 60 percent), and Majority White, Non-Hispanic (the rest)
-   - Poverty: High-Poverty (40 percent or more in poverty) and Not High-Poverty
-6. County: assign tracts to counties with `tract-county-crosswalk_2018.csv` (the same tracts in every year) and take the mean of the tract index weighted by tract population, for all tracts and for each tract class. The county list is every distinct county in `crosswalk_puma_to_county.csv`, across all crosswalk periods (line 509).
-7. City: assign tracts to places with `geocorr2018_tract_to_place.csv`, weighting each tract by population × `afact` (the share of the tract's population in the place), and keep places in `place-populations.csv`.
-8. Set the quality flag, round the index to a whole number, and write the files. The subgroup files include the `All` rows (`subgroup_type = "all"`). The .qmd doesn't call `evaluate_final_data()`.
+## Methodology
+- **Hazard measures**: three Environmental Protection Agency (EPA) modeled estimates for each census tract: `total_cancer_risk_per_million`, `total_respiratory_hazard_quotient`, and `total_neurological_hazard_quotient`. 2014 comes from the National Air Toxics Assessment (NATA) and 2018 and 2019 from AirToxScreen.
+- **Tract index**: within each year, each measure is converted to a z-score across tracts, the three are summed, and the sum is multiplied by −1. Tracts are then given their national percentile rank (0–100, unweighted by population), so higher values mean less hazard compared with other tracts in the same year.
+- **Tracts**: all three years use 2010 tracts. Only tracts in the 2015–2019 American Community Survey (ACS) tract list are kept, which drops the EPA's nontract rows, after 25 tract codes that changed after 2010 are recoded. Puerto Rico and the US Virgin Islands are excluded.
+- **County and city values**: the mean of the tract index, weighted by tract population from the ACS 5-year table B01003 (2010–2014 for 2014, 2014–2018 for 2018, and 2015–2019 for 2019). Tracts with no index are left out of the mean and counted toward the quality flag.
+  - Counties: each tract is assigned in full to its county with `tract-county-crosswalk_2018.csv`.
+  - Cities: tracts are assigned with `geocorr2018_tract_to_place.csv`, and each tract's weight is its population × `afact`, the share of the tract's population in the place.
+- **Race-ethnicity subgroups**: tracts, not people, are classified by the share of residents who are people of color (total population minus White, Non-Hispanic, from ACS table B03002): Majority Non-White is 60 percent or more, No Majority Race/Ethnicity is more than 40 and less than 60 percent, and Majority White, Non-Hispanic is 40 percent or less. A subgroup value is the population-weighted mean index of the county's or city's tracts in that class, so it describes neighborhoods, not residents of a given race or ethnicity.
+- **Poverty subgroups**: High-Poverty tracts have a poverty rate of 40 percent or more among people for whom poverty status is determined (ACS table B17001); all others are Not High-Poverty. Tracts are weighted by total population, not by the number of people in or out of poverty.
 
 ## Data quality flag
 - `1`: tracts with no index value (or, for subgroups, no subgroup class) hold less than 5 percent of the geography's population
@@ -81,25 +79,8 @@ City all file (483 rows a year, against 485–486):
 
 City subgroup files, missing per year: High-Poverty 201–260, Not High-Poverty 3, Majority Non-White 88–105, No Majority Race/Ethnicity 65–75, Majority White, Non-Hispanic 57–70.
 
-## Known issues
-- The index is relative. Tracts are ranked against all other tracts in the same year (`percent_rank()`, line 379), unweighted, so a county's value says where its residents' tracts fall in that year's national distribution, not how much air toxics they're exposed to.
-- Higher values mean less hazard, although the variable is named `index_air_hazard`: the summed z-scores are multiplied by −1 before ranking (line 371). Cities average 39–42 and counties 63–70 (data check).
-- The rows in the files don't match the code's own row checks. The .qmd stops unless the county files have 3,143 counties a year and the city files 486 (`stopifnot()` at lines 567 and 830), but the committed county all file has 3,141 and the city all file 483 (data check). For cities, the final files are built from `all_enviro_place` (line 946), not from `haz_index_place_all`, the table joined onto the full place list that the check tests, so places with no tracts drop out of the `All` rows.
-- A rerun would fail the county row check. Since #606, `crosswalk_puma_to_county.csv` has 3,152 distinct counties across its periods, including the nine Connecticut planning regions, and the county list takes all of them (line 509; data check). That would also add planning-region rows to 2014–2019.
-- Values of 0 and 100 are common at the county level: 68 counties are 100 in 2014, 39 in 2018, and 38 in 2019 (data check). Between 2018 and 2019, 96 counties move more than 20 points; the largest is Mariposa County, CA, from 8 to 83.
-- The EPA says its assessments shouldn't be used "to characterize or compare risks or exposures at local levels (such as between neighborhoods)" ([AirToxScreen frequent questions](https://www.epa.gov/AirToxScreen/airtoxscreen-frequent-questions), A4). The subgroup values compare groups of tracts within a county or city.
-
 ## Comparability across years
 - The EPA says it "can be misleading to compare this version of AirToxScreen with previous assessments", because the emissions inventory, models, background concentrations, health benchmarks, and weather year change between assessments ([AirToxScreen frequent questions](https://www.epa.gov/AirToxScreen/airtoxscreen-frequent-questions)). 2014 comes from NATA, the predecessor to AirToxScreen.
 - Because the index is a within-year rank, changes over time show movement relative to other tracts, not changes in exposure.
 - The tract classes use different ACS samples each year (2010–2014, 2014–2018, and 2015–2019), and 2014–2018 and 2015–2019 overlap.
 - All three years use 2010 tracts and the 2018 tract-to-county and 2010-place crosswalks.
-
-## Open questions
-- Should the metric move to newer years? The EPA has published the 2020 AirToxScreen, at the census block level instead of the tract level ([AirToxScreen frequent questions](https://www.epa.gov/AirToxScreen/airtoxscreen-frequent-questions), A5), so the tract steps would need to change.
-- Which run produced the committed files? Their county and place counts (3,141 and 483 a year) don't match the `stopifnot()` checks in the .qmd.
-- Why are Kusilvak and Oglala Lakota missing in 2014? The EPA tracts are recoded to the new county codes, but the 2010–2014 ACS may still use the old codes (02270, 46113), which would leave those tracts without a population weight.
-- Should Valdez-Cordova, Chugach, and Copper River get values, and should the three cities missing from the 2010-place crosswalk use a newer one?
-- Do the large 2018 drops in rural California and Oregon counties (Mariposa, Siskiyou, Trinity, Curry), which recover in 2019, reflect wildfire emissions in the 2018 assessment?
-- The two "Remove results form Puerto Rico and Virgin Islands" notes (lines 248 and 465): the second chunk only selects columns. The "Save … for 2019" notes (lines 998 and 1016) write all three years.
-- The rendered `air_toxicity_metric.html` (1.9 MB) is committed. Is it still needed?

@@ -40,27 +40,24 @@ last_updated:
 ## Summary
 Average weekly wage of jobs in the county, from the Quarterly Census of Employment and Wages (QCEW), divided by the weekly living wage for one adult with two children, from the Living Wage Institute (LWI). A value above 1 means average pay covers the living wage. The industry file repeats the calculation for seven industry groups.
 
-## Process
-1. Save the four LWI files from Box to `data/living-wage/`: `mit-living-wage.csv` (2018), `mit-living-wage-2022.csv`, `mit-living-wage-2023.csv`, and `LWI-BenchmarkSeries-County-Urban Institute-2025-10-10.xlsx`.
-2. Render `jobs-paying-living-wages.qmd` (all) and `jobs-paying-living-wages_industry.qmd` (industry), in either order. They don't depend on each other. Each downloads the annual QCEW files to `data/qcew/` if they aren't there.
-3. QCEW: keep county rows, drop county `999` (unknown area), and convert zero wages and establishment counts to `NA`. The all file keeps `ownership == "Total Covered"`. The industry file maps QCEW codes to seven groups:
-   - Goods Producing: `naics == 101`
-   - Trade, Transit, Utilities: `1021`
-   - Information Services: `1022`
-   - Professional Services: `1023` (Financial Activities) and `1024` (Professional and Business Services)
-   - Education and Health: `1025`
-   - Leisure and Other: `1026` (Leisure and Hospitality) and `1027` (Other Services)
-   - Public Administration: `naics == 10` with ownership `1`, `2`, or `3` (federal, state, and local government)
-
-   Groups built from more than one code take the `mean()` of the weekly wages and the sum of the establishment counts.
-4. Living wage: keep `1 Adult, 2 Children`. Weekly living wage = hourly wage × 40. Years without their own LWI file are filled from another one:
-   - 2014–2018: the 2018 file, adjusted to each year with the CPI-U
-   - 2019–2022: the 2022 file, adjusted to each year with the CPI-U
-   - 2023: the 2023 file
-   - 2024: the Benchmark Series file, relabeled `mutate(year = 2024)`
-5. `inner_join()` QCEW and the living wage on year, state, and county, then `ratio_living_wage = annual_average_weekly_wage / weekly_living_wage`.
-6. `left_join()` onto `county-populations.csv` (expanded to every industry group in the industry file) so every county-year has a row.
-7. Each .qmd ends with `evaluate_final_data()` against its form in `99a_final-evaluation/`.
+## Methodology
+- **Numerator**: Quarterly Census of Employment and Wages (QCEW) annual average weekly wage for all jobs covered by unemployment insurance in the county, across private and government employers. QCEW counts jobs where they are located, and counts full- and part-time jobs alike ([BLS Handbook of Methods](https://www.bls.gov/opub/hom/cew/concepts.htm)). Zero wages and establishment counts are treated as missing.
+- **Denominator**: the Living Wage Institute (LWI) hourly living wage for a household of one adult and two children, multiplied by 40 hours to get a weekly living wage.
+- **Living wage years**: values are in nominal dollars of each year, to match QCEW wages. Years without their own LWI file are filled with the Consumer Price Index for All Urban Consumers (CPI-U):
+  - 2014–2018: the 2018 file, adjusted to each year with the CPI-U
+  - 2019–2022: the 2022 file, treated as 2022 dollars and adjusted to each earlier year by the CPI-U relative to 2022
+  - 2023: the 2023 file, unadjusted
+  - 2024: the LWI Benchmark Series file, unadjusted
+- **Geography**: QCEW and LWI values are matched by county Federal Information Processing Standards (FIPS) code. County-years present in only one source have no value. QCEW's "unknown or undefined" county (`999`) is dropped.
+- **Industry groups**: the industry file uses QCEW supersector codes.
+  - Goods Producing: `101`
+  - Trade, Transit, Utilities: `1021`
+  - Information Services: `1022`
+  - Professional Services: `1023` (financial activities) and `1024` (professional and business services)
+  - Education and Health: `1025`
+  - Leisure and Other: `1026` (leisure and hospitality) and `1027` (other services)
+  - Public Administration: all jobs at federal, state, and local government employers (QCEW [ownership codes](https://www.bls.gov/cew/classifications/ownerships/ownership-titles.htm) 1–3), not the QCEW public administration supersector
+- **Combined groups**: for groups built from more than one code, the weekly wage is the simple average of the codes' weekly wages, and establishment counts are summed.
 
 ## Data quality flag
 - `1`: annual average establishment count is 30 or more
@@ -86,21 +83,7 @@ Industry file, counties missing per year:
 - Goods Producing: 24–36
 - Trade, Transit, Utilities: 8–24
 
-## Known issues
-- The QCEW average weekly wage includes part-time jobs. QCEW employment counts "filled jobs, whether full or part time" ([BLS Handbook of Methods](https://www.bls.gov/opub/hom/cew/concepts.htm)); the old `documentation/overview.md` noted the same.
-- Every industry group except All and Public Administration covers private-sector jobs only. In the QCEW county files, codes `101` and `1021`–`1027` exist only for private ownership (`own == 5`; checked in the 2014 and 2024 files), so public school and public hospital jobs count toward Public Administration, not Education and Health.
-- Public Administration here means all government-owned jobs (QCEW [ownership codes](https://www.bls.gov/cew/classifications/ownerships/ownership-titles.htm) 1–3), not the QCEW supersector of the same name (`1028`, [industry titles](https://www.bls.gov/cew/classifications/industry/industry-supersectors.htm)).
-- Groups built from more than one code use an unweighted `mean()` of the weekly wages (`jobs-paying-living-wages_industry.qmd`), so a small code counts as much as a large one. This applies to Professional Services, Leisure and Other, and Public Administration (federal, state, and local).
-- Industry ratios have a long right tail: 36 county-industry-years are above 3, with a max of 11.5 (Information Services, county 30057, 2020, quality `3`).
-
 ## Comparability across years
 - The 2024 living wage comes from a different LWI product (the Benchmark Series) than 2023.
 - Within 2014–2018 and within 2019–2022, the living wage comes from one file, so changes within those blocks reflect wage growth and the CPI-U only.
 - Public Administration has far fewer missing counties from 2022 on.
-
-## Open questions
-- The .qmd text lists the 2022 file only for 2021, but the code also uses it for 2019, 2020, and 2022.
-- `living_wage_county_all_longitudinal.csv` and `living_wage_county_industry_longitudinal.csv` at the folder root only have 2014, 2018, and 2021–2023. They look like stale copies of the `data/final/` files.
-- `scrape-living-wages.R` sources `01_employment-opportunities/get_living_wages.R`, which doesn't exist (`get_living_wages.R` is in this folder). Neither script is called by the .qmd files. Are they still needed?
-- Why did Public Administration missing values drop in 2022, and why did missing values rise across industries in 2024?
-- Can we get living wages for the Connecticut planning regions?

@@ -37,17 +37,15 @@ last_updated:
 ## Summary
 Share of people in poverty in a county or city who live in census tracts where more than 40 percent of people are in poverty. A value of 0 means no one in poverty lives in a high-poverty tract; a value of 1 means everyone in poverty does. The race-ethnicity files repeat the calculation for four groups.
 
-## Process
-1. Copy `R/census_api_key-template.R` to `R/census_api_key.R` and add a Census API key. Both .qmd files source it, and it sets `CENSUS_KEY`, which `censusapi` reads.
-2. Set `years` in both .qmd files (now `c(2014, 2016, 2018, 2021, 2023)`). Each year is the end year of an ACS 5-year sample.
-3. Render `poverty-exposure-county.qmd` and `poverty-exposure-city.qmd`, in either order. Whichever runs first pulls tract data for every state and DC (not Puerto Rico) and caches it in `data/tracts.csv`; the other reads the cache. The county file also caches `data/counties.csv` and the city file `data/places.csv`, which are only used for comparison checks.
-4. Tracts: drop tracts with no people (`people > 0`, where `people` is B17001_001, the population for whom poverty status is determined). Build Other Races and Ethnicities as the sum of the American Indian and Alaska Native, Asian, Native Hawaiian and Other Pacific Islander, some other race, and two or more races poverty counts. Its margin of error (MOE) combines the group MOEs, keeping only the largest MOE among groups with a zero estimate.
-5. A tract is high poverty if `poverty / people > 0.4`. Each group's high-poverty count is its poverty count in those tracts, and 0 elsewhere. The tract's overall rate decides this for every group.
-6. County: sum tracts to counties. City: allocate tracts to places with the Geocorr allocation factor `afact` and sum. The 2010-tract-to-2014-place crosswalk is used for 2014, 2016, and 2018, the 2020 crosswalk for 2021, and the 2020 crosswalk with Connecticut tracts recoded to the planning regions for 2023. Only places in `place-populations.csv` are kept.
-7. `share_poverty_exposure = high_poverty / poverty`. For subgroups, a group with no people in poverty gets 0.
-8. Suppress (set to `NA`) any estimate where the group's estimated poverty count is 30 or less, then assign the quality flag.
-9. County files are `left_join()`ed onto `county-populations.csv` (expanded to all five subgroups in the race-ethnicity file). The city all file is written from the place summary without a join; the city race-ethnicity file is joined onto `place-populations.csv`.
-10. Each .qmd ends with `evaluate_final_data()` against its forms in `99a_final-evaluation/` (`evaluation_form_exposure_poverty_*`).
+## Methodology
+- **Universe**: people for whom poverty status is determined in American Community Survey (ACS) table B17001 (`B17001_001`). The Census Bureau doesn't determine poverty status for people in institutional group quarters, military group quarters, or college dormitories, or for unrelated individuals under age 15 ([How the Census Bureau measures poverty](https://www.census.gov/topics/income-poverty/poverty/guidance/poverty-measures.html)). Tracts with no one in this universe are dropped.
+- **High-poverty tract**: a census tract where more than 40 percent of the poverty universe is below the poverty line. The tract's overall poverty rate decides this for every race-ethnicity group, so a group's members count as living in a high-poverty tract based on the whole tract, not on the group's own rate.
+- **Numerator and denominator**: people in poverty who live in high-poverty tracts, divided by all people in poverty in the county or city. Both are sums of tract counts.
+- **Year**: `year` is the end year of an ACS 5-year sample, so `2014` is 2010–2014.
+- **Subgroups**: each group uses its own B17001 iteration. Black is B17001B (Black alone) and Hispanic is B17001I. White, Non-Hispanic is B17001H. Other Races and Ethnicities is the sum of B17001C–G (American Indian and Alaska Native, Asian, Native Hawaiian and Other Pacific Islander, some other race, and two or more races). The race tables other than B17001H include Hispanic people, so Hispanic people are also counted in Black or Other Races and Ethnicities. A group with no people in poverty gets 0 before suppression.
+- **Margins of error**: the Other Races and Ethnicities margin of error combines the five group margins as a root sum of squares, counting only the largest margin among groups with a zero estimate, as the [Census Bureau recommends](https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180418_MOE_Webinar_Transcript.pdf). These margins feed the quality flag only; the exposure share has no confidence interval.
+- **Geography**: counties sum the tracts inside them. Cities allocate tract counts to places with the Geocorr population allocation factor (`afact`, the share of a tract's population in the place): the 2010-tract-to-2014-place crosswalk for 2014–2018, the 2020 crosswalk for 2021, and the 2020 crosswalk with Connecticut tracts recoded to planning regions for 2023. A tract partly in a city is classified as high poverty using the whole tract's rate.
+- **Small counts**: a value is suppressed when the group's estimated number of people in poverty in the county or city is 30 or less.
 
 ## Data quality flag
 Based on the coefficient of variation (CV) of the group's poverty count in the county or city, not of the exposure share itself:
@@ -83,25 +81,8 @@ City files:
 - Black: 2–7 cities a year (e.g., 4848768, 4944320, 4970850 in several years)
 - Hispanic: Rochester Hills, MI (2669035) in 2021
 
-## Known issues
-- Most counties are exactly 0: 2,393–2,513 a year (76–80 percent) in the all file. In cities, 200–262 a year (41–54 percent) are 0. Checked in the final files.
-- Values of exactly 1 occur in 2–8 counties a year, mostly in South Dakota (Corson 46031, Mellette 46095, Todd 46121, Ziebach 46137, which are 1 in most years). In the city race-ethnicity file, Black exposure is 1 in Pharr, TX (4857200) in 2021, with quality `3`. Checked in the final files.
-- The race-ethnicity groups overlap. Black (B17001B), the five groups in Other Races and Ethnicities (B17001C–G), and Hispanic (B17001I) are race-alone or ethnicity tables, so Hispanic people are also counted in a race group. Only White, Non-Hispanic (B17001H) excludes Hispanic people. The labels in the files are "Black" and "Hispanic" (`recode()` in both .qmd files; the [ACS 5-year variable list](https://api.census.gov/data/2021/acs/acs5/variables.html) gives the table titles).
-- The city CVs are on a different scale from the county CVs. The county standard error is `sqrt(sum(moe^2)) / 1.645`; the city standard error is `sqrt(sum(afact * moe^2))`, without dividing by 1.645 (`places_summary` in `poverty-exposure-city.qmd`). The [Census Bureau worked examples](https://www2.census.gov/programs-surveys/acs/tech_docs/accuracy/2018_ACS_Accuracy_Document_Worked_Examples.pdf) convert MOEs to standard errors with 1.645.
-- The suppression threshold is applied to the weighted estimate of people in poverty (`suppress_county(race = poverty, ...)` and `suppress_place()`), not to an unweighted sample count.
-- The tract cache isn't refreshed when `years` changes. Both .qmd files only call the API `if (!file.exists("13_economic-inclusion/data/tracts.csv"))`, so a new year is silently skipped unless the cached file is deleted first.
-- A city tract counts as high poverty based on the whole tract's rate, even when only part of the tract is in the city (stated in `poverty-exposure-city.qmd`, step 3).
-
 ## Comparability across years
 - Every pair of consecutive years uses overlapping 5-year samples (for example, 2010–2014 and 2012–2016). The Census Bureau advises against [comparing overlapping 5-year estimates](https://www.census.gov/programs-surveys/acs/guidance/comparing-acs-data.html).
 - 2014–2018 use 2010 tract boundaries and 2021–2023 use 2020 boundaries, so which tracts cross the 40 percent line can change between 2018 and 2021 because of the redrawn tracts alone.
 - City values for 2014–2018 come from a 2010-tract-to-2014-place crosswalk and later values from a 2020 crosswalk.
 - Connecticut: the 2014–2021 county files use the eight old counties, and 2023 uses the nine planning regions (09110–09190), so there are 3,144 county rows in 2023.
-
-## Open questions
-- `R/census_api_key.R` is not in `.gitignore`. The ignore rules cover `R/census_api_key.R` at the repo root and `06_neighborhoods/R/census_api_key.R`, an old folder name, so a key added here as Process step 1 says could be committed. `13_economic-inclusion/data/` (the cached tract files) isn't ignored either.
-- The county .qmd text says the latest data is the 2017–2021 ACS, but the code pulls through 2019–2023.
-- The city .qmd says it suppresses estimates "with thirty or fewer unweighted observations", but the code uses the weighted poverty count. It also describes the place allocation as areal interpolation by area overlap, but the Geocorr crosswalks carry population columns (`pop10`, `pop20`); check which weighting the crosswalks used.
-- The city .qmd says there are 485 cities through 2014–2018, but `place-populations.csv` has 486 in 2018 (South Fulton). Should the city all file be joined onto `place-populations.csv` like the other files, so 2018 has a row for South Fulton?
-- `R/get_vars.R` is sourced by both .qmd files, but `get_vars()` is never called. Is it still needed?
-- The county check that the summed tract poverty rates match the published county rates is `eval: false` and noted as failing for two New York counties (36103, 36111).

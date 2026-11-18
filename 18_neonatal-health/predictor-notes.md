@@ -29,17 +29,19 @@ last_updated:
 ## Summary
 Share of births in the county with a low birthweight (under 2,500 grams), among births with a known birthweight, by the mother's county of residence. The subgroup file repeats the calculation by the mother's race and ethnicity (four groups) and the mother's education (four groups). Counties with fewer than 100,000 people get their state's pooled value for all such counties, because CDC WONDER doesn't report them separately.
 
-## Process
-1. Download 18 extracts per year from [CDC WONDER Natality](https://wonder.cdc.gov/natality-current.html), following section 2 of the .qmd: all births and low birthweight births, overall (2) and for each of the eight subgroups (16). Group by county, keep "Show Suppressed Values" and "Show Zero Values" on, and select one year at a time. Births are all birthweight categories except "All Weights" and "Unknown or Not Stated"; low birthweight births are the five categories under 2,500 grams. The data can't be queried by county through the CDC WONDER API, so this is done by hand. The raw extracts for this update are on Box (`Data/UMI Raw Data/Metrics_2026_round/18_neonatal-health/data`).
-2. Save the `.txt` files with the names the .qmd expects: `all_births_YYYY.txt` and `lbw_births_YYYY.txt` in `data/all/`, and `all_births_{race|momed}_{subgroup}_YYYY.txt` and `lbw_births_...` in `data/subgroups/` (subgroups `nhwhite`, `nhblack`, `hisp`, `nhother`, `lths`, `hs`, `somecol`, `baplus`). Both folders are gitignored. Year, birth type, and subgroup are parsed from the file names.
-3. Render `neonatal-health-all.qmd`. It reads every file in both folders, drops the notes rows at the bottom of each file, and reshapes to one row per county and year.
-4. Drop Cape May County, NJ (34009) and Portsmouth city, VA (51740) from the CDC WONDER data. CDC WONDER recoded them to "Unidentified Counties" after 2013 ([CDC WONDER natality help](https://wonder.cdc.gov/wonder/help/natality.html)).
-5. Drop Connecticut for 2022–2024 from both the births data and `county-populations.csv`, since CDC WONDER still uses the eight old counties and the target file uses the nine planning regions.
-6. `full_join()` the births data onto `county-populations.csv` (2016 on). Counties with no match get the values of their state's "Unidentified Counties" row (county code `999`), separately for each subgroup, and are flagged as unidentified.
-7. Counts marked "Suppressed" (1–9 births) become `NA` and are flagged.
-8. `rate_low_birth_weight = births_lbw / births_all`, set to `NA` when `births_all` is under 30.
-9. Assign the quality flag (below) and 95 percent confidence intervals: `p ± 1.96 × sqrt(p × (1 − p) / births_all)`, the normal approximation for percents in the NCHS User Guide to the 2010 Natality Public Use File (section 8 of the .qmd).
-10. Add the nine Connecticut planning regions back for 2022–2024 with every value `NA`, then write the all file and the subgroup file. `evaluate_final_data()` checks the all file against `evaluation_form_low_birth_overall_county.csv` and the subgroup file, split by subgroup type, against the race-ethnicity and mothers-education forms in `99a_final-evaluation/`.
+## Methodology
+- **Numerator**: births under 2,500 grams (CDC WONDER's five birthweight categories below 2,500 grams) to mothers living in the county, for one calendar year.
+- **Denominator**: births in every birthweight category except "Unknown or Not Stated," so births with an unknown birthweight are excluded from both counts.
+- **Small counties**: CDC WONDER reports counties with 100,000 or more people in the 2010 Census on their own and combines all others into one "Unidentified Counties" row per state ([CDC WONDER natality help](https://wonder.cdc.gov/wonder/help/natality.html)). Each county without its own row gets its state's "Unidentified Counties" births and low birthweight births, separately for each subgroup, so all small counties in a state share one value. Cape May County, NJ and Portsmouth city, VA, which CDC WONDER moved into "Unidentified Counties" after 2013, also get the pooled value.
+- **Suppressed and small counts**: CDC WONDER suppresses counts of 1–9 births. Suppressed counts become `NA`, so the share is `NA`, while counts of 0 are kept. Shares based on fewer than 30 births are set to `NA`.
+- **Subgroups**: race and ethnicity use the mother's single race and Hispanic origin. Hispanic includes any race, and Other Races and Ethnicities combines non-Hispanic American Indian or Alaska Native, Asian, Native Hawaiian or Other Pacific Islander, and more than one race. Mother's education groups are:
+  - Less than High School: 8th grade or less, or 9th–12th grade with no diploma
+  - GED/High School Degree: high school graduate or GED
+  - Some College: some college credit but no degree, or an associate degree
+  - College Degree or Higher: bachelor's, master's, doctorate, or professional degree
+- **Confidence intervals**: 95 percent normal approximation for a proportion, p ± 1.96 × √(p × (1 − p) / B), where B is births with a known birthweight, following the NCHS User Guide to the 2010 Natality Public Use File. For counties with their state's pooled value, B is the pooled births, so the interval describes the pooled share.
+- **Connecticut**: CDC WONDER still reports the eight old counties for 2022–2024, so those rows aren't used and the nine planning regions are `NA` in those years.
+- **Units**: `rate_low_birth_weight` is a share between 0 and 1 (low birthweight births / all births), not a rate per population.
 
 ## Data quality flag
 Applied from lowest to highest quality (`assign-quality` chunk):
@@ -65,24 +67,8 @@ Subgroup file, counties missing per year (2016–2024 range):
 
 When a state's pooled "Unidentified Counties" value is missing, all of that state's small counties are missing together. For example, in 2024 every county in Montana (56) and Wyoming (23) is missing for Black, Non-Hispanic, as are 42 of 58 California counties.
 
-## Known issues
-- Most counties don't have their own value. CDC WONDER only identifies counties that had 100,000 or more people in the 2010 Census, for all of 2014–2024 ([CDC WONDER natality help](https://wonder.cdc.gov/wonder/help/natality.html)). Every other county gets the pooled value of its state's unidentified counties (`assign-unidentified` chunk). In the all file, all 23,081 quality `3` rows share their value with other counties in the same state and year, in groups of up to 215 (Texas). Wyoming has no identified counties, so every Wyoming county has one value each year.
-- Because the set of identified counties is fixed by the 2010 Census, counties that passed 100,000 people after 2010 are still pooled, and the quality flags don't change from year to year (data check: only Alaska and Connecticut, whose county codes change, have different flags in different years).
-- Confidence intervals for pooled counties understate uncertainty. They use the pooled state births as the denominator (`construct-CIs` chunk), so they describe the pooled rate, not the county. The median interval width is 0.007 for quality `3` rows, compared with 0.021 for quality `1` rows (data check on the all file).
-- The `2` flag mostly reflects the state, not the county. It applies to identified counties in states with few unidentified counties or few counties (`quality2` in the `quality-criteria` chunk), so counties with their own value in Delaware, DC, and (through 2021) Connecticut, where no county is pooled, are `2` instead of `1`.
-- Suppression removes small nonzero counts but keeps zeros. Counts of 1–9 are suppressed by CDC WONDER ([CDC WONDER natality help](https://wonder.cdc.gov/wonder/help/natality.html)) and become `NA`, while zero low birthweight births are shown, so small subgroups are either 0 or have at least 10 low birthweight births. 45 subgroup rows are exactly 0 (17 Black, Non-Hispanic; 14 Hispanic; 11 Other Races and Ethnicities; 3 Less than High School), with confidence intervals of 0 to 0.
-- Subgroup outliers come from small denominators: the highest values are Black, Non-Hispanic births in counties 29097 (0.35, 2018), 35013 (0.33, 2017), and 55117 (0.32, 2016), all quality `3`. The highest All value is 0.167 (county 28049, 2024, quality `1`).
-- The variables are named `rate_` but are shares (low birthweight births divided by all births), not rates per population.
-
 ## Comparability across years
 - The same counties are identified in every year (2010 Census populations): 578 through 2021 and 570 from 2022, when Connecticut's eight drop out. The pooling is consistent across 2016–2024, but a pooled county's value moves with its state's small-county births, not its own.
 - Connecticut has values for the eight old counties through 2021 and none for 2022–2024.
 - Alaska has Valdez-Cordova (02261) through 2019 and Chugach (02063) and Copper River (02066) from 2020, following `county-populations.csv`.
 - The previous round's quality rule also gave a `2` to counties with 10–29 low birthweight births; that rule was dropped in this update (section 1.1 of the .qmd).
-
-## Open questions
-- Can Connecticut 2022–2024 get values? The CDC WONDER help says the 2022–2024 data have an "Unidentified Counties" category for the combined Connecticut planning regions, which may allow a statewide value for all nine regions.
-- Should identified counties in states like Delaware and DC be `1`? The current `2` rule depends on the number of counties and unidentified counties in the state, not on the county's own data.
-- The .qmd text says to expect 20,516 counties only in the population file (the `check-wont-match-counties` chunk). The arithmetic in the same chunk, with 2024 included, gives 23,081.
-- Section 1.3 of the .qmd suggests allocating the pooled births by county population instead of giving every small county the pooled rate. Should this be done in the next update?
-- The rendered `neonatal-health-all.html` (1.5 MB) is committed next to the .qmd. Is it still needed?

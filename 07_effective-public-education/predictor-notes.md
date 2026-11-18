@@ -43,20 +43,14 @@ last_updated:
 ## Summary
 Average annual learning growth in English language arts (ELA) between third and eighth grade, from the Stanford Education Data Archive (SEDA). The metric is the slope of a cohort's mean test scores across grades, so 1 means a cohort gains about one grade level per year. County estimates come from SEDA's county file. City estimates come from SEDA's school district file, aggregated to cities. Final files are in `Data/Final/` (capital D and F), not `data/final/`.
 
-## Process
-1. Render `SEDA_metrics_race_county.qmd` (county) and `SEDA_metrics_race_city.qmd` (city), in either order. Both write raw downloads to `Data/Raw/`, which isn't in the repo, so create it first.
-2. SEDA: download the county file (county .qmd) or the geographic school district file (city .qmd) if it isn't in `Data/Raw/`. Keep `subject == "rla"`, define `cohort = year - grade + 8` (the year the cohort reaches eighth grade), and keep cohorts from 2015 on.
-3. City only: download the CCD district directory for 2008–2019 with `get_education_data(level = "school-districts", source = "ccd", topic = "directory")`. Join SEDA districts to CCD on `leaid` and year, fill each district's `city_location` across years, and `inner_join()` to `place-populations.csv` on lowercased city name and state. Ten place names are hand-edited to match CCD spellings (for example, "Boise City" becomes "Boise"). Districts that never match a place are dropped.
-4. For each subgroup and cohort, run a regression of mean score on grade interacted with county (or district), weighted by the number of test-takers: `lm(score ~ grade:factor(sedacounty) + factor(sedacounty), weights = n_students)`. The grade slope is `learning_rate`; the bounds are the slope ± 1.96 standard errors. Slopes that are exactly 0 with bounds of 0 are set to `NA`.
-5. City only: aggregate district estimates to cities with a weighted mean using each subgroup's test-taker counts. The rate, both bounds, and the quality flag are each averaged this way; the quality flag is then rounded.
-6. `year = cohort - 1`. Join to `county-populations.csv` or `place-populations.csv` for 2014–2019 and expand so every geography has a row for every subgroup.
-7. Split into all, race-ethnicity, gender, and income files and write them with `data.table::fwrite()`. Each split calls `evaluate_final_data()` first, but see Open questions.
-
-Subgroups, by SEDA code:
-- `all`: All
-- `wht`, `blk`, `hsp`: White, Non-Hispanic; Black, Non-Hispanic; Hispanic
-- `mal`, `fem`: Male, Female
-- `ecd`, `nec`: Economically Disadvantaged, Not Economically Disadvantaged
+## Methodology
+- **Scores**: SEDA 6.0 mean English language arts (reading/language arts) test scores on the grade cohort standardized (GCS) scale, which places state test results from EDFacts on a common national scale linked to the National Assessment of Educational Progress (NAEP). One unit is about one grade level of learning.
+- **Cohorts**: a cohort is the set of students who reach eighth grade in the same spring. Each estimate follows one cohort through grades 3–8 (for example, third grade in spring 2010 through eighth grade in spring 2015). `year` is the fall of that cohort's eighth-grade school year, so `2014` is the cohort in eighth grade in 2014–15.
+- **Learning rate**: for each cohort and subgroup, a regression of mean score on grade, with a separate intercept and grade slope for each county (or school district), weighted by the number of test-takers in each grade. The county's grade slope is its learning rate. Grades with no score or no test-takers are left out, so an estimate can rest on fewer than six grades (see Data quality flag).
+- **Confidence intervals**: the slope plus or minus 1.96 standard errors from that regression.
+- **Subgroups**: SEDA's own groups: White, Non-Hispanic; Black, Non-Hispanic; Hispanic; Male; Female; Economically Disadvantaged; and Not Economically Disadvantaged.
+- **Counties**: estimates come directly from SEDA's county file.
+- **Cities**: estimates are computed for SEDA geographic school districts, then combined. Each district is assigned in full to the city named in its Common Core of Data (CCD) directory record (`city_location`), matched to the place name and state. City values (the rate and both bounds) are the mean of the district values, weighted by each district's test-takers in that subgroup and cohort; the quality flag is the rounded weighted mean of the district flags.
 
 ## Data quality flag
 - `1`: five or more grades in the estimate and at least 30 test-takers in every grade
@@ -82,21 +76,6 @@ Subgroups, share missing per year:
 - County gender: 6–10 percent. County income: Economically Disadvantaged 6–10 percent; Not Economically Disadvantaged 10–17 percent.
 - City subgroups: 14–29 percent, close to the city All rate except Black, Non-Hispanic (22–29 percent).
 
-## Known issues
-- The race-ethnicity files have no Other Races and Ethnicities rows. Both .qmd files build `gcs_mn_oth` (Asian and Native American combined), but `oth` isn't in `subgroups <- c("all", "wht", "blk", "hsp", "nec", "ecd", "mal", "fem")`, and `99_construct-database/test_file_updates.R` expects "Other Races and Ethnicities" when it checks these files.
-- City confidence bounds are test-taker-weighted means of the district bounds (`aggregate_to_cities()` in `SEDA_metrics_race_city.qmd`), not intervals estimated for the city.
-- City quality flags carry little information: rounding the weighted mean of district flags puts every nonmissing row of `seda_all_city.csv` at `1`.
-- A city includes only districts whose CCD `city_location` matches the place name, so districts serving a city but located under another name are left out (`inner_join()` on `city_name` and `state` in `SEDA_metrics_race_city.qmd`).
-- County rates go below zero in 27 county-years (min −1.55); 26 of them are quality `3`.
-
 ## Comparability across years
 - Each year is a different cohort: `year` = the year the cohort reaches eighth grade, minus 1, and the estimate uses that cohort's scores from grades 3–8.
 - New York (2018–2019) and Alaska (2019) drop out entirely, which changes the set of counties behind any state or national comparison in those years.
-
-## Open questions
-- Both .qmd files call `evaluate_final_data()` with forms in `10a_final-evaluation/`, which doesn't exist; the forms are in `99a_final-evaluation/`. The city chunks use `#| error: true`, so the check fails silently; the county all-file chunk doesn't, so the county render stops there.
-- `Data/Raw/` isn't in the repo or `.gitignore`. The code doesn't create it, and the downloaded raw files would show up as untracked files.
-- The text at the top of both .qmd files is out of date: it says years "2013 - 2017" (county) or "2013 - 2018" (city), "Uses MEPS," "Uses 2014-2024 data," and the county file says it "Produces city level data." The code produces 2014–2019 ELA learning rates.
-- Both .qmd files point to https://edopportunity.org/get-the-data/seda-archive-downloads/ for SEDA, which returns 404. The SEDA 6.0 archive is at https://purl.stanford.edu/xh833nn4025.
-- The end year is hardcoded (`config$current_year = 2020`). Does SEDA 6.0 support years after 2019?
-- Should Florida and Hawaii cities be matched another way (e.g., by place geography instead of district city name)?

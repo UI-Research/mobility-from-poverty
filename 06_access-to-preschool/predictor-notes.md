@@ -40,18 +40,15 @@ last_updated:
 ## Summary
 Share of 3- and 4-year-olds who attend nursery school or preschool, from American Community Survey (ACS) 5-year microdata. The county and place files have 95 percent confidence intervals, and the subgroup files split the share by race and ethnicity and by household income (below $50,000 versus $50,000 or more).
 
-## Process
-1. Set an IPUMS API key once (`set_ipums_api_key()`); never commit it. If you change an extract, update `ipums_extract_date` and `ipums_repwt_extract_date` in the Housekeeping chunk (both are `02_28_25`).
-2. Each .qmd runs one ACS year, set by `params$year` (default `"2023"`). Render `preschool_county.qmd` and `preschool_place.qmd` once per year. `run_preschool_years.qmd` is meant to loop over `years` but doesn't run as written (see Open questions).
-3. Pull person records (`extract_ipums_aws()`, sample `us{year}c`) and person replicate weights for 3- and 4-year-olds (`ipums_repwt_pre_k_aws()`, which filters age in the API call). Keep ages 3 and 4, join the replicate weights by person, and `stopifnot()` that row counts match and nothing is missing. Both households and group quarters are kept.
-4. Build the subgroups:
-   - Race and ethnicity: `hispan != "Not Hispanic"` is Hispanic; otherwise White, Non-Hispanic; Black, Non-Hispanic; or Other Races and Ethnicities.
-   - Income: `hhincome` of 9999999 is set to `NA`; $50,000 or More versus Less than $50,000.
-5. Join to the PUMA-to-county or PUMA-to-place crosswalk on `crosswalk_period`, `statefip`, and `puma`. Drop records with missing or zero `afact`, and multiply `perwt` and all 80 replicate weights by `afact`.
-6. Keep children whose `grade_attending` is Nursery school/preschool, N/A, or Kindergarten. `preschool` is TRUE only for Nursery school/preschool.
-7. Effective sample = sum of `afact` per geography (and per subgroup). Geographies under 30 are dropped before estimating, then added back as `NA`.
-8. `share_in_preschool` = `survey_mean(preschool)` with JK1 replicate weights (`scale = 4/80`, `mse = TRUE`) in `R/calc_survey_mean.R`. `R/finalize_metric.R` caps the bounds to 0 and 1.
-9. Each run writes intermediate files to S3 (`mobility-from-poverty-test`) or to `data/intermediate/`. With `single_year_update = "No"`, the .qmd reads every year in `existing_years` (2014, 2016, 2018, 2021, 2023), runs checks, calls `evaluate_final_data()` against the preschool forms in `99a_final-evaluation/`, and writes the six final files.
+## Methodology
+- **Universe**: children ages 3 and 4 in ACS 5-year microdata, including those in households and in group quarters. The year is the last year of the 5-year sample (for example, `2014` is 2010–2014).
+- **Numerator**: children whose grade attending (`GRADEATT`) is nursery school or preschool.
+- **Denominator**: children in nursery school or preschool, in kindergarten, or not attending school. A `GRADEATT` of N/A is treated as not in school. Children ages 3 and 4 reported in first grade or higher are excluded.
+- **Weights and confidence intervals**: estimates use the person weight (`perwt`). The 95 percent confidence intervals come from the 80 ACS person replicate weights (variance scaled by 4/80, as the Census Bureau specifies for ACS replicate weights) and are truncated to the 0–1 range.
+- **Race and ethnicity**: the child's own race and Hispanic origin. Any Hispanic origin is Hispanic. Non-Hispanic children are White, Non-Hispanic; Black, Non-Hispanic; or Other Races and Ethnicities, which includes everyone else, including multiracial children.
+- **Income**: the total income of the child's household (`HHINCOME`), split at $50,000 into Less than $50,000 and $50,000 or More. The same cutoff applies in every year. Children with no household income value, including those in group quarters, are left out of the income subgroups but kept in the overall share.
+- **Geography**: ACS microdata identify public use microdata areas (PUMAs), not counties or places. Each child is spread across the counties or places their PUMA overlaps, with the person weight and every replicate weight multiplied by the crosswalk allocation factor (`afact`). 2014–2021 use 2012 PUMAs; 2023 uses 2020 PUMAs.
+- **Small samples**: the effective sample is the sum of `afact` across children in the geography (or geography and subgroup). Estimates with an effective sample under 30 are suppressed and reported as `NA`.
 
 ## Data quality flag
 - `NA` when `share_in_preschool` is `NA` (effective sample under 30).
@@ -68,21 +65,7 @@ Share of 3- and 4-year-olds who attend nursery school or preschool, from America
 - County subgroups, missing per year: White, Non-Hispanic 1,803–1,856; Black, Non-Hispanic 2,913–2,957; Hispanic 2,835–2,863; Other Races and Ethnicities 2,858–2,953; $50,000 or More 1,879–2,138; Less than $50,000 2,247–2,619.
 - Place subgroups, missing per year: White, Non-Hispanic 95–166; Hispanic 235–291; Black, Non-Hispanic 369–397; Other Races and Ethnicities 345–410; $50,000 or More 4–75; Less than $50,000 148–295.
 
-## Known issues
-- 3- and 4-year-olds in kindergarten count in the denominator as not in preschool, and any in first grade or higher are dropped (`filter(grade_attending %in% c("Nursery school/preschool", "N/A", "Kindergarten"))` in both .qmd files).
-- A `gradeatt` of N/A (code 0) is treated as not in school; the .qmd text states this as an assumption.
-- The 2014–2018 county rows use later county codes, not that year's: they have 02063 and 02066 instead of 02261, and 2014 also has 02158 and 46102 instead of 02270 and 46113 (compared with `county-populations.csv`). The county list comes from the PUMA crosswalk, not the target county file, so those years have 3,143 rows instead of 3,142.
-- Confidence intervals come from replicate weights (`R/calc_survey_mean.R`), while the old `documentation/overview.md` described a normal-approximation formula.
-
 ## Comparability across years
 - Each year is a 5-year ACS sample, so neighboring years overlap (for example, 2014 and 2016 share 2012–2014).
 - The code joins 2014–2021 to the pre-2022 crosswalk period and 2023 to the 2022 period (2020 PUMAs), so the county and place allocation changes in 2023.
 - Connecticut has its 8 old counties through 2021 and its 9 planning regions in 2023.
-
-## Open questions
-- `run_preschool_years.qmd` builds the county output name from `params$metric_name`, but the file has no `params`, so it errors as written.
-- Without S3 access, both .qmd files write intermediate files to `data/intermediate/` but read them back from `data/intermediate/preschool/`, so a local run with `single_year_update = "No"` can't find its own files.
-- The code sets `crosswalk_period` to `"pre-2022"` for years before 2022, but `crosswalk_puma_to_county.csv` and `crosswalk_puma_to_place.csv` now use `"2k"`, `"2012"`, and `"2022"`. Re-running 2014–2021 would drop every record at the crosswalk join.
-- The place .qmd text says suppressed places get a quality flag of 3; the code sets them to `NA`.
-- The place .qmd describes the metric as "in pre-K or higher" and the county .qmd as "enrolled in pre-K"; both compute nursery school or preschool only.
-- Four files in `data/final/` aren't written by the code or read by `99_construct-database/`: `metrics_preschool_county_all_longitudinal.csv` (2014–2021), `metrics_preschool_place_all_longitudinal.csv` (2018 and 2021), `metrics_preschool_place_all_longitudinal_2014_16.csv`, and `metrics_preschool_place_race-ethnicity_longitudinal_2014_16.csv`. Are they still needed?

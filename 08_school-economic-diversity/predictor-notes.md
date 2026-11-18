@@ -40,18 +40,15 @@ last_updated:
 ## Summary
 Share of Black, Hispanic, and White students in the county or city who attend a school where 20 percent or more of students live in poverty. School poverty comes from the Urban Institute's Model Estimates of Poverty in Schools (MEPS), the modeled share of students with family incomes at or below 100 percent of the federal poverty level ([MEPS report](https://www.urban.org/sites/default/files/2022-06/Model%20Estimates%20of%20Poverty%20in%20Schools.pdf)). There is no value for all students.
 
-## Process
-1. Put the MEPS file `Abrv Set of Portal Variables.dta` in `data/raw/`. It isn't in the repo and isn't downloaded in code. The commented-out code that pulls MEPS from the Education Data Portal API is still in both .qmd files.
-2. Render `MEPS_metric_county.qmd` and `MEPS_metric_city.qmd`, in either order. They don't depend on each other. The first one to run downloads the Common Core of Data (CCD) enrollment and directory files for 2014–2022 from the Education Data Portal and caches them as `.rds` files in `data/raw/`; the second reads the cache. The enrollment download is large and slow.
-3. The years are hardcoded as `year_ed = 2022` and `year_meps = 2022`. The `year: "2025"` parameter in the YAML header isn't used.
-4. Enrollment: keep `grade = 99` (all grades), set negative counts to `NA`, sum by school and race, and reshape wide by race.
-5. Join the CCD directory (total enrollment, county code, and city name) to the race enrollment and to MEPS by `year` and `ncessch`. Set negative directory enrollment to 0, then drop schools with missing or zero enrollment.
-6. Flag a school as high poverty when `meps_poverty_pct / 100 >= 0.20`. For each race, the numerator is that race's enrollment in flagged schools.
-7. Geography:
-   - County: drop schools with county code `-2`, then sum numerators and enrollment by year, state, and county.
-   - City: lowercase the CCD `city_location` and match it to the place name in `place-populations.csv`, after removing " city", " town", " municipality", " village", and " urban county" and renaming 10 cities by hand (for example, "Louisville/Jefferson County metro government (balance)" to "louisville"). The state comes from the school's county code.
-8. Share = numerator / enrollment for Black, Hispanic, and White students, set to `NA` when the group's enrollment is 0. `left_join()` onto the county or place file.
-9. Each .qmd ends with `evaluate_final_data()` against its form in `99a_final-evaluation/` (`evaluation_form_meps_overall_county.csv`, `evaluation_form_meps_overall_place.csv`) and writes `data/final/meps_<geography>_2014-2022.csv`.
+## Methodology
+- **High-poverty school**: a school whose MEPS share of students at or below 100 percent of the federal poverty level is 20 percent or more. Schools with no MEPS value are not counted as high poverty.
+- **Numerator**: Black, Hispanic, or White students enrolled in high-poverty schools in the county or city, from Common Core of Data (CCD) enrollment by race and ethnicity, all grades combined.
+- **Denominator**: all students of that group enrolled in schools in the county or city, including schools without a MEPS value. Schools with missing or zero total enrollment in the CCD directory are excluded. When a group has no students enrolled, the share is `NA`.
+- **Race and ethnicity**: the CCD categories Black, Hispanic, and White, as reported by schools. There is no value for all students or for other groups.
+- **Schools counted**: every school in the CCD directory with enrollment, regardless of school type.
+- **Year**: `year` is the fall of the school year, and MEPS and CCD are matched by school and year, so `2014` uses 2014–15 enrollment and 2014–15 MEPS.
+- **Counties**: each school is assigned to the county in its CCD directory record.
+- **Cities**: each school is assigned to the city named in its CCD directory record (`city_location`), matched to the place name and state, not to the place boundary. Place names are standardized for the match by dropping suffixes such as "city" and "town" and by renaming 10 consolidated or differently spelled cities by hand (for example, "Louisville/Jefferson County metro government (balance)" to "Louisville").
 
 ## Data quality flag
 Based on the group's total enrollment in the county or city:
@@ -81,25 +78,8 @@ City file, all three variables missing:
 - St. Paul, MN (2758000): 2021–2022
 - 2015 only: all 15 Illinois cities, plus Charleston and North Charleston, SC (4513330, 4550875). 2015 has 22 missing cities, compared with 3–5 in other years.
 
-## Known issues
-- Cities are matched by name, not by location. The city .qmd joins on the lowercased CCD `city_location`, so a school counts toward a city when its address city matches, whether or not it's inside the city boundary, and spelling differences drop cities. Examples checked against the Education Data Portal API: St. Paul schools are "SAINT PAUL" in 2021 and the place file has "St. Paul"; Lee's Summit schools are "LEES SUMMIT" in 2018; "Urban Honolulu CDP" and "Indianapolis city (balance)" aren't covered by the name cleaning.
-- In 2015, 4,239 of the 4,241 Illinois schools in the CCD directory have `city_location = "-1"` (checked via the Education Data Portal API; in 2016 Chicago schools have "Chicago"), which is why all Illinois cities are missing in 2015.
-- Schools without a MEPS value count as not high poverty. Their enrollment stays in the denominator, but `numerator` is `NA` and the county sum uses `na.rm = TRUE`. In the last render (`MEPS_metric_county.html`), 30,164 school-years had no MEPS value, and only 90–93 percent of directory schools matched MEPS each year.
-- There is no "All" value and no Other Races and Ethnicities group. `meps20_total` is computed but dropped by `select()`. The final files are wide (one column per race), not the long `subgroup_type`/`subgroup` format, and are checked with `subgroups = FALSE`.
-- Many values are exactly 0 or 1: 37 percent of county Black values, 34 percent of Hispanic, and 32 percent of White. Most quality `3` rows are 0 or 1 (4,419 of 5,943 for Black).
-- Neither .qmd filters on school type, so every school in the CCD directory with enrollment counts, whatever its type.
-
 ## Comparability across years
 - `year` is the fall of the school year: 2014 is the 2014–15 school year and 2022 is 2022–23.
 - 2022 county rows use Connecticut's nine planning regions (09110–09190), as in `county-populations.csv`; earlier years use the eight old counties.
 - The average county share falls every year from 2014 to 2020 and then rises in 2021 (Black students: 53 percent in 2014, 30 percent in 2020, and 37 percent in 2021; the other groups follow the same pattern).
-- Illinois cities have no 2015 values (see Known issues).
-
-## Open questions
-- Where does `Abrv Set of Portal Variables.dta` come from, and who has it? The .qmd says it's temporary internal data while the Education Data Portal is updated. The portal API now returns MEPS for 2014–2022 (checked for one school), so the commented-out API code could replace the local file.
-- The .qmd text says the MEPS merge "is good outside of years 2021 and 2022", but the rendered match rates for 2021 and 2022 (91 percent) are similar to other years.
-- `filter(sex != 99)` and the note above it ("Add the number of enrolled male and female students") don't do anything: the race endpoint only returns `sex = 99` (Total) rows, and with `add_labels = TRUE` the value is the label "Total", which never equals 99.
-- The histogram is titled "MEPS mod poverty pct share" but plots `meps_poverty_pct` (100 percent of the federal poverty level), not `meps_mod_poverty_pct`.
-- `filter(!year %in% c(2023))` has no effect, since the data only go through 2022.
-- Is the 2014–2020 decline and the 2021 rise a real change in school poverty, or a change in MEPS or CCD inputs?
-- Should cities be built from school locations (latitude and longitude or a place code) instead of address city names?
+- Illinois cities have no 2015 values.

@@ -65,23 +65,14 @@ last_updated:
 ## Summary
 Votes cast for president divided by the citizen voting-age population (CVAP), for the 2016, 2020, and 2024 elections. Counties use county vote totals from the MIT Election Data and Science Lab. Cities use precinct results from the Voting and Election Science Team (VEST), apportioned to places by area. There is no city file for 2024.
 
-## Process
-Each election has its own file. The 2016 and 2020 files are R Markdown (.Rmd); 2024 is Quarto (.qmd).
-
-1. County numerator (MIT county returns):
-   - Recode Shannon County, SD (46113) to Oglala Lakota County (46102), and set every Alaska row to `02000`, because MIT reports Alaska by election district.
-   - 2016: drop the three rows without a FIPS code, set Bedford County, VA to `NA` (its `totalvotes` is 0), and sum `candidatevotes`.
-   - 2020: assign DC its FIPS code (11001), drop the four Rhode Island "FEDERAL PRECINCT" rows, and sum `candidatevotes`.
-   - 2024: keep one `totalvotes` per county, since some states have a "total" vote `mode` row that would double count if candidate votes were summed. Then apportion the eight old Connecticut counties to the nine planning regions with `votes * afact` from `connecticut_planning_regions_to_pre_2023_counties.csv` (2020 population shares).
-   - Each file compares state totals with a Wayback Machine copy of Wikipedia's results table. The 2024 file also compares with the Census P20 table.
-2. County denominator: CVAP `Total` rows from the ACS 5-year special tabulation ending in the election year (2012–2016, 2016–2020, 2020–2024), Puerto Rico dropped.
-3. `left_join()` CVAP to the votes, then `share_election_turnout = votes / cvap`. Values above 1 are set to 1.
-4. `left_join()` onto `county-populations.csv` for the election year and write the yearly file. The 2024 .qmd also stacks the 2016, 2020, and 2024 files into `voter-turnout-2016-2024.csv`, so it must run last.
-5. Cities (`voter-turnout-city-2016.Rmd`, `voter-turnout-city-2020.Rmd`):
-   - Download the VEST precinct shapefiles for each state and the place boundaries from `tigris`, and keep the places in `place-populations.csv`.
-   - Drop Z/M dimensions and repair invalid precinct geometries.
-   - Apportion precinct votes to places by share of precinct area (areal weighted interpolation, `areal`), and record a `messiness` score for how many precincts are split.
-   - Divide by the place CVAP from the 2016–2020 tabulation (both years). Only the 2016 city file runs `evaluate_final_data()`.
+## Methodology
+- **Numerator**: votes cast for president, the "highest office" on the ballot. For counties, this is the sum of all candidates' votes in the MIT Election Data and Science Lab returns in 2016 and 2020, and MIT's county `totalvotes` in 2024, because some states' 2024 returns include a "total" vote-mode row that would double count if candidate votes were summed. For cities, it is the sum of all presidential candidates' votes in each VEST precinct (`G16PRE*` or `G20PRE*` fields).
+- **Denominator**: the citizen voting-age population (CVAP), US citizens ages 18 and older, from the Census Bureau's CVAP special tabulation of the American Community Survey (ACS). Counties use the 5-year tabulation ending in the election year (2012–2016, 2016–2020, 2020–2024). Cities use the 2016–2020 tabulation for both 2016 and 2020.
+- **Cap at 1**: county turnout above 1 (more votes than estimated CVAP) is set to 1. City values don't exceed 1, so no cap is applied.
+- **Counties with nonstandard reporting**: MIT reports Alaska by election district, so Alaska returns are pooled to one statewide code and Alaska boroughs get no value. Kalawao County, HI is reported with Maui County. Votes reported under Shannon County, SD (46113) are assigned to Oglala Lakota County (46102).
+- **Connecticut in 2024**: votes for the eight former counties are split across the nine planning regions in proportion to 2020 population, using the allocation factors in `connecticut_planning_regions_to_pre_2023_counties.csv`.
+- **Cities**: precinct votes are apportioned to places by the share of each precinct's area inside the place (areal weighted interpolation), which assumes votes are spread evenly across a precinct. Precinct geometries that are invalid are repaired before the overlay.
+- **Quality inputs**: the county flag reflects only the CVAP coefficient of variation (CV), computed from the published margin of error divided by 1.645. City flags also reflect how many precincts are split by the place boundary (`messiness`, the vote-weighted average distance of each precinct's area share from 0 or 1) and whether VEST allocated the state's results to precincts from larger reporting units.
 
 ## Data quality flag
 Counties:
@@ -101,26 +92,8 @@ Counties:
 
 Cities: none. The 2016 file has 485 places because `place-populations.csv` has 485 in 2016.
 
-## Known issues
-- The 2016 and 2020 .Rmd files can't be rerun as they are. They read and write under `05_local-governance/voter-turnout/`, and their YAML loads `05_local-governance/www/web_report.css`; that folder no longer exists. `voter-turnout-city-2016.Rmd` also reads its evaluation form from `10a_final-evaluation/`, which is now `99a_final-evaluation/`, and `voter-turnout-city-2020.Rmd` writes to `05_local-governance/voter-turnout/voter-turnout-city-2020.csv`, not `data/final/`.
-- `data/final/voter-turnout-city-2020.csv` names its columns `election_turnout` and `election_turnout_quality`. The 2016 city file and all county files use `share_election_turnout` and `share_election_turnout_quality`.
-- Capped values aren't always flagged. The code says counties with turnout above 1 "will be flagged", but the flag only uses the CV. Hanson County, SD (46061) has turnout set to 1 in 2020 with quality `1`. Sixteen county-years are exactly 1 (4 in 2016, 6 in 2020, 6 in 2024).
-- The 2016 city file divides 2016 votes by the 2016–2020 CVAP (`voter-turnout-city-2016.Rmd`, `download-cvap` chunk), while the 2016 county file uses the 2012–2016 CVAP.
-- The 2024 Connecticut values assume each old county's votes split across planning regions in proportion to 2020 population (`votes * afact`), not by where votes were cast.
-- Area-based apportionment assumes voters are spread evenly within each precinct. The city files keep places with less than 100 percent precinct coverage, mostly because place boundaries include water (`voter-turnout-city-2020.Rmd`, "Place Coverage").
-- The county .Rmd and .qmd files don't call `evaluate_final_data()`.
-
 ## Comparability across years
 - Each county year uses a different CVAP tabulation (2012–2016, 2016–2020, 2020–2024).
 - County votes are summed candidate votes in 2016 and 2020 and MIT's `totalvotes` in 2024. The 2020 .Rmd notes the two match in 2020.
 - Connecticut has 8 counties in 2016 and 2020 and 9 planning regions in 2024, so its values can't be compared county by county.
 - The Kentucky and New Jersey allocation downgrade applies to 2020 cities only.
-
-## Open questions
-- Should the 2016 and 2020 .Rmd files be moved to Quarto and have their paths updated, or kept as a record of how those files were built?
-- Should `voter-turnout-city-2020.csv` be renamed to `share_election_turnout` to match the other files?
-- Is a 2024 city file planned?
-- Should the 2016 city file use the 2012–2016 CVAP, as the 2016 county file does?
-- The 2020 city .Rmd text says "`1` = messiness > 0.05", but the code assigns `1` when `messiness < 0.05`.
-- The 2024 .qmd text says to save the MIT file to `21_political-participation/voter-turnout/data/mit`, but the code uses `21_political-participation/data/mit`.
-- The rendered `.html` files for all five .Rmd and .qmd files (2–9 MB each) are committed. Are they still needed?

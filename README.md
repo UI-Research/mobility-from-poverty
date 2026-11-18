@@ -134,8 +134,8 @@ The data are hosted publicly on the [Urban Institute data catalog](https://datac
 # Project Organization
 
 -   Each predictor should have its own directory. The name of the directory should only contain lower case letters, numbers, and hyphens. Do not include spaces.
--   Each predictor folder has a `predictor-notes.md` that documents the metric: years, sources, crosswalks, data quality flags, missing values, and known issues. It follows the template in `.github/predictor-notes-template.md`. **Update it in the same PR as any metric update:**
-    1.  Ask an LLM to update `predictor-notes.md` from the code in the folder.
+-   Each predictor folder has a `predictor-notes.md` that documents the metric: years, sources, crosswalks, key methodological decisions, data quality flags, missing values, and comparability across years. It follows the template in `.github/predictor-notes-template.md`. **Update it in the same PR as any metric update:**
+    1.  Ask an LLM to update `predictor-notes.md` from the code in the folder. The Methodology section should describe key methodological decisions, not restate the code step by step.
     2.  Review the changes and add anything you learned during the update that isn't in the code.
     3.  Set `last_updated` to today's date and your name.
 -   Avoid absolute file paths, meaning code should never reference a folder that exists outside of this repository. If using R, use `.Rproj`. If using Stata, use projects. Otherwise, set the working directory. This ensures that the code is portable.
