@@ -70,6 +70,7 @@ The checklist below outlines key steps that should be taken during the process o
 -   [ ] The program reads out a final file in the form of a CSV document or multiple CSVs into a data folder in the relevant metric folder
 -   [ ] Final files include the relevant years in title if the metric has multiple files separated by year
 -   [ ] All final files being read out by the update program are put through the evaluate final data function
+-   [ ] predictor-notes.md is updated and last_updated is set
 
 *Review*
 
