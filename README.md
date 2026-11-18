@@ -1,4 +1,4 @@
-# Upward Mobility Initiative Data Repository 
+# Upward Mobility Initiative
 
 This repository contains code to construct 26 metrics for 24 predictors of mobility across 5 pillars that broadly measure mobility from poverty.
 The data are available for more than 3,000 counties and 486 selected cities.
@@ -90,8 +90,6 @@ This repository was previously organized by nine domains. Due to updates in the 
 | 22_descriptive-representation/ |
 | 23_safety-from-crime/ |
 | 24_just-policing/ |
-
-*Note: Historical versions of this repository were based around "domains" and thus folder names and locations may not have yet aligned with the predictor names listed above. Current folder locations should now match the structure above.*
 
 # File Descriptions
 
