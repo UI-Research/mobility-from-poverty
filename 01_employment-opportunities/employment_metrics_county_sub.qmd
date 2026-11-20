@@ -13,7 +13,7 @@ execute:
 editor_options: 
   chunk_output_type: console
 params:
-  year: "2023"
+  year: "2014"
 ---
 
 *Program for the creation of the Subgroup calculations for the Employment Opportunities Upward Mobility Predictor at the County-level*
@@ -68,7 +68,7 @@ For internal reviewers, if you plan to utilize AWS keep this date as it was last
 
 ```{r}
 ipums_extract_date <- "02_28_25"
-ipums_repwt_extract_date <- "03_06_25"
+ipums_repwt_extract_date <- "01_13_25"
 ```
 
 If this is to update a single year of new data please set single_year_update to "Yes". If not, set it to "No".
@@ -107,13 +107,12 @@ acs <- extract_ipums_aws(
     extract_date = ipums_extract_date,
   extract_description = paste0("Microdata pull for Employment Opp. Metric Predictor. American Community Survey", params$year, "(5-year)."),
     survey = acs_surveys)
-
 ```
 
 Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
 
 ```{r}
-count(acs, sample)
+count(acs, sample, multyear)
 ```
 
 Isolate the data to 25-54 year-olds. This is the age-range included in the employment calculation. Note: the replicate weights are limited to these ages during the data pull. 
@@ -137,7 +136,7 @@ repwts <- ipums_repwt_employment_aws(
   Metric Predictors. American Community Survey,", params$year, "(5-year)."),
   survey = acs_surveys
 )  %>% 
-  select(-cbserial, -cbpernum)
+  select(-cbserial, -cbpernum, -multyear)
 ```
 
 Look at the distribution of ACS survey samples in the data. The number of different samples should align with the number of surveys selected in the extract ipums function.
@@ -567,16 +566,16 @@ puma_county_crosswalk <- read_csv(
 Create a version with just unique counties for creating a version of the data that matches the UMF county list.
 
 ```{r}
-if(params$year < 2022){
+if(params$year >= 2022){
   county_list <- puma_county_crosswalk %>%
-    filter(crosswalk_period == "pre-2022") %>% 
+    filter(crosswalk_period == "2022") %>% 
     select(statefip, county) %>% 
     filter(statefip != 72) %>% 
     unique()
 
 }else{
   county_list <- puma_county_crosswalk %>% 
-  filter(crosswalk_period == "2022") %>% 
+  filter(crosswalk_period == "2012") %>% 
   select(statefip, county) %>% 
   filter(statefip != 72) %>% 
   unique()
@@ -589,15 +588,17 @@ if(params$year < 2022){
 Create a variable in the ACS data indicating whether the survey is pre or post-2022. This will be used to join on the correct crosswalk information.
 
 ```{r}
-acs_clean <- acs_clean %>% 
-  mutate(crosswalk_period = ifelse(year < 2022, "pre-2022", "2022"))
-
+if (params$year >= 2022) {
+  acs_clean <- acs_clean %>% mutate(crosswalk_period = "2022")
+} else {
+  acs_clean <- acs_clean %>% mutate(crosswalk_period = if_else(multyear < 2012, "2k", "2012"))
+}
 ```
 
-Check that the assignment worked. All years prior to 2022 should be designated "pre-2022".
+Check that the assignment worked. All years prior to 2022 should be designated "pre-2022" or "2k.
 
 ```{r}
-count(acs_clean, crosswalk_period, year)
+count(acs_clean, crosswalk_period, year, multyear)
 
 ```
 
@@ -616,9 +617,11 @@ acs_crosswalked <- left_join(
 Run an anti_join to see what data does not combine. We keep all counties so there should be no observations resulting from the anti-join.
 
 ```{r}
-anti_join(acs_clean, 
-          puma_county_crosswalk, 
-          by = c("crosswalk_period", "statefip","puma")
+stopifnot(
+  
+  nrow(anti_join(acs_clean, 
+                 puma_county_crosswalk, 
+                 by = c("crosswalk_period", "statefip","puma"))) == 0
 )
 ```
 
@@ -643,6 +646,14 @@ acs_crosswalked <- acs_crosswalked %>%
   filter(afact > 0)
 
 ```
+
+Update the crosswalk period so that it is uniform for 2014 subgroup data.
+
+```{r}
+acs_crosswalked <- acs_crosswalked %>% 
+  mutate(crosswalk_period = ifelse(crosswalk_period %in% c("2k"), "2012", crosswalk_period))
+```
+
 
 Adjust the person weight to account for PUMA-to-county mapping (those where the PUMA is not entirely inside the county).
 
@@ -1018,7 +1029,9 @@ metrics_employment_sub <- results_all_expand %>%
   bind_rows(results_race_ethnicity_expanded, results_disability_expanded, results_gender_expanded)
 ```
 
-Now create the metric quality variable. The `share_employed_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_employed` metric is being suppressed due to sample size and is given a quality flag of 3.  
+Now create the metric quality variable. The `share_employed_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_employed` metric is being suppressed due to sample size and is given a quality flag of 3. 
+
+For the 2014 5-year data, quality numbers are not always integers due to different quality between the 2k and 2012 crosswalks. We round these to the higher whole number so that the quality flags are consistent. 
 
 ```{r}
 metrics_employment_sub <- metrics_employment_sub %>% 
@@ -1026,7 +1039,7 @@ metrics_employment_sub <- metrics_employment_sub %>%
     share_employed_quality = if_else(
       is.na(share_employed), 
       NA_real_,
-      geographic_allocation_quality
+      ceiling(geographic_allocation_quality)
     )
   )
 ```
