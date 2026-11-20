@@ -107,7 +107,6 @@ acs <- extract_ipums_aws(
     extract_date = ipums_extract_date,
   extract_description = paste0("Microdata pull for Employment Opp. Metric Predictor. American Community Survey", params$year, "(5-year)."),
     survey = acs_surveys)
-
 ```
 
 Look at the distribution of survey samples in the data. The number of unique samples in the data should match the number of surveys selected in the `extract_ipums()` function above.
@@ -618,9 +617,11 @@ acs_crosswalked <- left_join(
 Run an anti_join to see what data does not combine. We keep all counties so there should be no observations resulting from the anti-join.
 
 ```{r}
-anti_join(acs_clean, 
-          puma_county_crosswalk, 
-          by = c("crosswalk_period", "statefip","puma")
+stopifnot(
+  
+  nrow(anti_join(acs_clean, 
+                 puma_county_crosswalk, 
+                 by = c("crosswalk_period", "statefip","puma"))) == 0
 )
 ```
 
@@ -1028,7 +1029,9 @@ metrics_employment_sub <- results_all_expand %>%
   bind_rows(results_race_ethnicity_expanded, results_disability_expanded, results_gender_expanded)
 ```
 
-Now create the metric quality variable. The `share_employed_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_employed` metric is being suppressed due to sample size and is given a quality flag of 3.  
+Now create the metric quality variable. The `share_employed_quality` variable combines information on the quality of the crosswalk and the sample size (effective sample) to create a final quality flag. Note that any county with NA for the `share_employed` metric is being suppressed due to sample size and is given a quality flag of 3. 
+
+For the 2014 5-year data, quality numbers are not always integers due to different quality between the 2k and 2012 crosswalks. We round these to the higher whole number so that the quality flags are consistent. 
 
 ```{r}
 metrics_employment_sub <- metrics_employment_sub %>% 
@@ -1036,7 +1039,7 @@ metrics_employment_sub <- metrics_employment_sub %>%
     share_employed_quality = if_else(
       is.na(share_employed), 
       NA_real_,
-      geographic_allocation_quality
+      ceiling(geographic_allocation_quality)
     )
   )
 ```
