@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-*Program for the creation of the Air Quality index metric under the Environemntal quality predictor*
+*Program for the creation of the Air Quality index metric under the Environmental quality predictor*
 
 ACS Code: Initially written by Rebecca Marx and updated by JP Walsh 2022-2023.
 
@@ -36,17 +36,20 @@ library(readxl)
 library(tidylog)
 library(reactable)
 library(janitor)
+library(curl)
 
 #Enter census API key here.
 #census_api_key(YOUR KEY)
 
-options(scipen = 999)
+options(scipen = 999, timeout = 1800)
+
 ```
 
 ## Program Overview {#program-overview}
 
 Original data pulled from the EPA website:
 
+[2020 Data](https://www.epa.gov/AirToxScreen/2019-airtoxscreen-assessment-results#nationwide)
 [2019 Data](https://www.epa.gov/AirToxScreen/2019-airtoxscreen-assessment-results#nationwide) [2018 Data](https://www.epa.gov/AirToxScreen/2018-airtoxscreen-assessment-results#nationwide) [2014 Data](https://www.epa.gov/national-air-toxics-assessment/2014-nata-assessment-results)
 
 Downloaded data is available in the Air Quality folder inside the Metrics_2024_round [box folder](https://urbanorg.box.com/s/n82wl2bv8n2nmrdcgwa07q1dyn5bldvc).
@@ -57,39 +60,100 @@ This code updates the program titled AirTox_2018_clean.R which was written by Re
 
 ## Read data {#read-data}
 
-Import AirTox Screen Data on Cancer, Neuroligical and Respitory health for years 2014, 2018 and 2019. These data are in three seperate excel files for each year. Bind them together using map.
+Import AirTox Screen Data on Cancer health for year of available data. Starting in 2020 these data have to be imported at the block level for each EPA region. Download and bind these files directly from the EPA website.
+
+To create tract level results take the population weighted mean of the block cancer data at the tract level.
 
 ```{r}
-airtox_data19 <- map_df(list.files(here::here("19_environmental-quality/data/raw/2019/")), 
-~read_excel(paste0(here::here("19_environmental-quality/data/raw/2019"), "/", .x))) %>% 
-  clean_names() %>% 
-  mutate(year = "2019")
-  
-airtox_data18 <- map_df(list.files(here::here("19_environmental-quality/data/raw/2018/")), 
-~read_excel(paste0(here::here("19_environmental-quality/data/raw/2018"), "/", .x))) %>%  
-  clean_names() %>% 
-  mutate(year = "2018")
 
-airtox_data14 <- map_df(list.files(here::here("19_environmental-quality/data/raw/2014/")), 
-~read_excel(paste0(here::here("19_environmental-quality/data/raw/2014"), "/", .x))) %>% 
-  clean_names() %>% 
-  mutate(year = "2014")
+read_airtox_20 <- function(epa_region) {
+  
+  local_file <- here::here(glue::glue("19_environmental-quality/data/raw/2020/Region File/Region{epa_region}_CancerRisk_by_block_srcgrp.xlsx"))
+  
+  # Use local file if it exists, otherwise download
+  if (!file.exists(local_file)) {
+    temp_file <- tempfile(fileext = ".xlsx")
+    curl_download(
+      paste0("https://gaftp.epa.gov/rtrmodeling_public/AirToxScreen/2020/Cancer/BySource/Region", epa_region, "_CancerRisk_by_block_srcgrp.xlsx"), 
+      destfile = temp_file, 
+      mode = "wb", 
+      quiet = FALSE
+    )
+    file.copy(temp_file, local_file)
+    unlink(temp_file)
+    
+    Sys.sleep(runif(1, min = 2, max = 5))
+    
+  }
+  
+  read_excel(local_file) %>% 
+    clean_names() %>% 
+    mutate(tract = str_sub(block, 1, 11)) %>% 
+    group_by(tract, state, county, fips) %>% 
+    summarise(total_cancer_risk_per_million = weighted.mean(total_cancer_risk_per_million, population), .groups = 'drop')
+}
+
+if(!file.exists(here::here("19_environmental-quality/data/raw/2020/2020_National_CancerRisk_by_tract_srcgrp.csv"))) {
+airtox_data20 <- map_df(.x = c(1:3, "4a", "4b", "5a", "5b", "6a", "6b", 7:10), .f = read_airtox_20) %>% write_csv(here::here("19_environmental-quality/data/raw/2020/2020_National_CancerRisk_by_tract_srcgrp.csv"))
+
+}
+```
+
+
+```{r}
+read_tox_files <- function(epa_year) {
+  
+  if(epa_year <2020) {
+  
+read_excel(paste0("19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.xlsx$"))) %>% 
+    clean_names() %>% 
+    mutate(year = epa_year)
+    
+  }
+  
+  else {
+    read_csv(paste0("19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.csv$"))) %>% 
+    clean_names() %>% 
+    mutate(year = epa_year)
+  }
+
+}
+
+airtox_data <- map_df(.x = c(2014, 2018:2020), .f = read_tox_files) 
+
 ```
 
 Confirm that the census tracts included are the same for each year of data.
 
 ```{r}
-tracts19 <- airtox_data19 %>% 
+
+tracts20 <- airtox_data %>%
+  filter(year == 2020) %>% 
+  select(year20 = year, tract) %>% 
+  unique()
+
+tracts19 <- airtox_data %>%
+  filter(year == 2019) %>% 
   select(year19 = year, tract) %>% 
   unique()
 
-tracts18 <- airtox_data18 %>% 
+tracts18 <- airtox_data %>%
+  filter(year == 2018) %>% 
   select(year18 = year, tract) %>% 
   unique()
 
-tracts14 <- airtox_data14 %>% 
+tracts14 <- airtox_data %>%
+  filter(year == 2014) %>% 
   select(year14 = year, tract) %>% 
   unique()
+
+```
+
+Comparing the 2020 and 2019/2018 data the tract list is exactly the same.
+
+```{r}
+anti_join(tracts20, tracts19)
+
 ```
 
 Comparing the 2019 and 2018 data the tract list is exactly the same.
@@ -100,9 +164,10 @@ anti_join(tracts18, tracts19)
 
 ```
 
-For 2014 there are several tracts that are included but changed in the 18/19 data.These are corrrected for in the crosswalk section below.
+For 2014 there are several tracts that are included but changed in the 18/19 data.These are corrected for in the crosswalk section below.
 
 ```{r}
+anti_join(tracts14, tracts20)
 anti_join(tracts14, tracts19)
 anti_join(tracts14, tracts18)
 ```
@@ -112,10 +177,8 @@ Create versions of the data with only the census tract ID and tract level risk i
 Starting with the cancer indicator, select only cases where total_cancer_risk is filled in the data and bind the individual years. The data frame cancer_data will now have the cancer metric for 2014, 2018 and 2019.
 
 ```{r}
-cancer_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_cancer_risk_per_million)), 
-                               airtox_data18 %>% filter(!is.na(total_cancer_risk_per_million)),
-                         airtox_data14 %>% filter(!is.na(total_cancer_risk_per_million))) %>% 
-  select(year, tract, total_cancer_risk_per_million)
+cancer_data <- airtox_data %>% 
+  select(year, tract, canc = total_cancer_risk_per_million)
 ```
 
 Check the distribution of the cancer metric by year.There are some significant outliers in the data where tracts have a very high cancer hazard risk (we can leave these in as there is no reason to belive the EPA made a mistake). The second graph removes outliers and shows that after 2014 the EPA started rounding this statistic to the nearest 10th (not sure if this was intentional or an unintended consequence of using the xlsx format).
@@ -123,91 +186,21 @@ Check the distribution of the cancer metric by year.There are some significant o
 ```{r}
 cancer_data %>% 
   mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_cancer_risk_per_million, color = year, fill = year)) +
+  ggplot(aes(x = canc, color = year, fill = year)) +
   geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion") +
   ylab("Density")
 
 cancer_data %>% 
-  filter(total_cancer_risk_per_million < 100) %>% 
+  filter(canc < 100) %>% 
   mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_cancer_risk_per_million, color = year, fill = year)) +
+  ggplot(aes(x = canc, color = year, fill = year)) +
   geom_density(adjust = 4, alpha = 0.15) +
   theme_minimal() +
   ggtitle("Tracts by cancer risk hazard, distriubtion (no outliers)") +
   ylab("Density")
 
-```
-
-Next, select only cases where total_neurological_hazard is filled in and bind all years.
-
-```{r}
-nuero_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_neurological_hazard_quotient)), 
-                               airtox_data18 %>% filter(!is.na(total_neurological_hazard_quotient)),
-                         airtox_data14 %>% filter(!is.na(total_neurological_hazard_quotient))) %>% 
-  select(year, tract, total_neurological_hazard_quotient)
-```
-
-Check the distribution of the nuero metric by year.There are some significant outliers in the data where tracts have a very high nuero hazard risk. The same issue exists as above with rounding.
-
-```{r}
-nuero_data %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_neurological_hazard_quotient, color = year, fill = year)) +
-  geom_density(adjust = 4, alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Tracts by cancer risk hazard, distriubtion") +
-  ylab("Density")
-
-nuero_data %>% 
-  filter(total_neurological_hazard_quotient < 0.15) %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_neurological_hazard_quotient, color = year, fill = year)) +
-  geom_density(adjust = 4, alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Tracts by cancer risk hazard, distriubtion (no outliers)") +
-  ylab("Density")
-```
-
-Next, select only cases where total_respiratory_hazard is filled in and bind all years.
-
-```{r}
-resp_data <- bind_rows(airtox_data19 %>% filter(!is.na(total_respiratory_hazard_quotient)), 
-                               airtox_data18 %>% filter(!is.na(total_respiratory_hazard_quotient)),
-                         airtox_data14 %>% filter(!is.na(total_respiratory_hazard_quotient))) %>% 
-  select(year, tract, total_respiratory_hazard_quotient)
-
-```
-
-Check the distribution of the nuero metric by year. Graph 1 again shows there are some tracts with significantly higher respo risk. Note same issue as prior years with rounding.
-
-```{r}
-resp_data %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_respiratory_hazard_quotient, color = year, fill = year)) +
-  geom_density(adjust = 4, alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Tracts by resp risk hazard, distriubtion") +
-  ylab("Density")
-
-resp_data %>% 
-  filter(total_respiratory_hazard_quotient < 1) %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot(aes(x = total_respiratory_hazard_quotient, color = year, fill = year)) +
-  geom_density(adjust = 4, alpha = 0.15) +
-  theme_minimal() +
-  ggtitle("Tracts by resp risk hazard, distriubtion (no outliers)") +
-  ylab("Density")
-```
-
-Join the data sets for each risk category by census tract. Rename the variables so they are easily referenced throughout the program.
-
-```{r}
-enviro_all <- left_join(cancer_data, nuero_data, by = c("tract", "year")) %>%
-  left_join(resp_data, by = c("tract", "year")) %>% 
-  select(year, tract, resp = total_respiratory_hazard_quotient, canc = total_cancer_risk_per_million,
-         neuro = total_neurological_hazard_quotient)
 ```
 
 ### ACS Tract Data
@@ -236,10 +229,10 @@ pull_acs <- function(years) {
                       geometry = FALSE,
                       output = "wide"
   ) %>% 
-    mutate(year = as.character(years))
+    mutate(year = years)
 }
 
-acs_tracts <- map_dfr(list(2019, 2018, 2014), pull_acs)
+acs_tracts <- map_dfr(list(2020, 2019, 2018, 2014), pull_acs)
 
 ```
 
@@ -249,7 +242,7 @@ Remove results form Puerto Rico and Virgin Islands.
 
 ```{r}
 
-enviro_all_clean <- enviro_all %>%
+enviro_all_clean <- cancer_data %>%
   mutate(state = str_sub(tract, 1, 2)) %>%
   filter(state != 72 & state != 78) 
 
@@ -287,6 +280,8 @@ enviro_all_clean <- enviro_all_clean %>%
       tract ==  "46113940900" ~ "46102940900", 
       TRUE ~ tract
     ))
+
+	
 ```
 
 The data contains some results that are not at the tract level. Some of these rows can be identified because the tract ID will be entirely zeros.
@@ -298,12 +293,12 @@ enviro_all_clean <- enviro_all_clean %>%
   mutate(tract_id = str_sub(tract, start = 6, end = 11))
 ```
 
-Count the number of these rows.
+Count the number of rows that are state level or county level summaries by year (note these do not exist for 2020).
 
 ```{r}
 enviro_all_clean %>% 
   filter(tract_id == "000000") %>% 
-  group_by(tract_id) %>% 
+  group_by(tract_id, year) %>% 
   count()
 ```
 
@@ -311,9 +306,8 @@ Join onto the ACS tract data so we know we are only keeping census tract level d
 
 ```{r}
 enviro_all_tracts <- acs_tracts %>% 
-  filter(year == 2019) %>% 
-  select(GEOID) %>% 
-  left_join(enviro_all_clean, by = c("GEOID" = "tract")) %>% 
+  select(GEOID, year) %>% 
+  left_join(enviro_all_clean, by = c("GEOID" = "tract", "year" = "year")) %>% 
   filter(!is.na(tract_id)) %>% 
   rename(tract = GEOID)
 ```
@@ -324,7 +318,7 @@ This leaves us with approximately 72,525 tracts per year (note 2014 has one addi
 count(enviro_all_clean, year)
 count(enviro_all_tracts, year)
 
-anti_join(acs_tracts, enviro_all_tracts, by = c("GEOID" = "tract")) %>% 
+check <- anti_join(acs_tracts, enviro_all_tracts, by = c("GEOID" = "tract")) %>% 
   filter(total_popE != 0)
 ```
 
@@ -344,12 +338,8 @@ Create variables with the mean and standard deviation of each health metric for 
 ```{r}
 enviro_index_all <- enviro_all_tracts %>% 
   group_by(year) %>% 
-  mutate(resp_mean = mean(resp, na.rm = TRUE),
-         canc_mean = mean(canc, na.rm = TRUE),
-         neuro_mean = mean(neuro, na.rm = TRUE),
-         resp_stdv = sd(resp, na.rm = TRUE),
-         canc_stdv = sd(canc, na.rm = TRUE),
-         neuro_stdv = sd(neuro, na.rm = TRUE)) %>% 
+  mutate(canc_mean = mean(canc, na.rm = TRUE),
+         canc_stdv = sd(canc, na.rm = TRUE)) %>% 
   ungroup()
 ```
 
