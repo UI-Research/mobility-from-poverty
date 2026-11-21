@@ -17,4 +17,7 @@ From 2014-2019, this has 3142 observations.
 From 2020-2021, this has 3143 observations.
 From 2022-2023, this has 3143 observations.
 
+county_place_crosswalk_longitudinal.csv
+This file maps counties to places for each year from 2010 to 2029, using the 2014 GeoCorr county-place crosswalk through 2019, the 2020 crosswalk for 2020-2021, and the 2020 crosswalk with the 9 Connecticut planning regions from 2022 onward. It is created by generate_county_place_crosswalks.qmd and is not committed (it is about 58 MB), so render that file before running 23_safety-from-crime or 24_just-policing.
+
 
