@@ -16,7 +16,7 @@ editor_options:
 
 *Program for the creation of the Air Quality index metric under the Environmental quality predictor*
 
-ACS Code: Initially written by Rebecca Marx and updated by JP Walsh 2022-2023.
+ACS Code: Initially written by Rebecca Marx and updated by JP Walsh in 2026.
 
 Primary data derived from the EPA AirTox Screen Assessment (data source linked below).
 
@@ -105,14 +105,14 @@ read_tox_files <- function(epa_year) {
   
   if(epa_year <2020) {
   
-read_excel(paste0("19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.xlsx$"))) %>% 
+read_excel(paste0(here::here(), "/19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.xlsx$"))) %>% 
     clean_names() %>% 
     mutate(year = epa_year)
     
   }
   
   else {
-    read_csv(paste0("19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.csv$"))) %>% 
+    read_csv(paste0(here::here(), "/19_environmental-quality/data/raw/", epa_year, "/", list.files((here::here(paste0("19_environmental-quality/data/raw/", epa_year))), pattern = "\\.csv$"))) %>% 
     clean_names() %>% 
     mutate(year = epa_year)
   }
@@ -280,8 +280,6 @@ enviro_all_clean <- enviro_all_clean %>%
       tract ==  "46113940900" ~ "46102940900", 
       TRUE ~ tract
     ))
-
-	
 ```
 
 The data contains some results that are not at the tract level. Some of these rows can be identified because the tract ID will be entirely zeros.
@@ -293,7 +291,7 @@ enviro_all_clean <- enviro_all_clean %>%
   mutate(tract_id = str_sub(tract, start = 6, end = 11))
 ```
 
-Count the number of rows that are state level or county level summaries by year (note these do not exist for 2020).
+Count the number of rows that are state level or county level summaries by year (note these do not exist for 2020 data because we pulled them directly from the block level results).
 
 ```{r}
 enviro_all_clean %>% 
@@ -312,7 +310,7 @@ enviro_all_tracts <- acs_tracts %>%
   rename(tract = GEOID)
 ```
 
-This leaves us with approximately 72,525 tracts per year (note 2014 has one additional tract). Looking at the removed tracts, these are all cases where the EPA did not have tract level information. Many of these have small population counts.
+This leaves us with approximately 72,525 tracts per year between 2014 and 2019 (note 2014 has one additional tract). In 2020 the EPA swithced to 2020 census tracts which increases the count to 83,848. Looking at the removed tracts, these are all cases where the EPA did not have tract level information. Many of these have small population counts.
 
 ```{r}
 count(enviro_all_clean, year)
@@ -348,17 +346,15 @@ Create the Environmental Health Indicator using the statistics calculated above.
 ```{r}
 
 enviro_index_all  <- enviro_index_all  %>%
-  mutate(resp_norm = (resp - resp_mean)/resp_stdv,
-         canc_norm = (canc - canc_mean)/canc_stdv,
-         neuro_norm = (neuro - neuro_mean)/neuro_stdv)
+  mutate(canc_norm = (canc - canc_mean)/canc_stdv)
 
 ```
 
-Add together the normalized results and multiple by negative 1 to create the index.
+Multiply the normalized results by negative 1 to create the index.
 
 ```{r}
 enviro_index_all  <- enviro_index_all  %>%
-  mutate(envhealth = (resp_norm + canc_norm + neuro_norm)*-1)
+  mutate(envhealth = canc_norm*-1)
 ```
 
 Percent rank the calculated value, again grouping by year.
@@ -374,7 +370,8 @@ Keep only the tract and hazard index variable.
 
 ```{r}
 haz_index_all <- enviro_index_all  %>% 
-  select(year, tract, index_air_hazard)
+  select(year, tract, index_air_hazard) %>% 
+  mutate(year = as.character(year))
 ```
 
 Visualize the distribution to see how it looks. Note that 2018 and 2019 have slightly less even distributions due to the inclusion of 100ths in the EPA data.
@@ -429,15 +426,26 @@ race_pov <- acs_tracts %>%
       percent_poc <= .6 ~ "Majority White, Non-Hispanic"), 
     poverty_type = case_when(
       percent_pov < .4 ~ "Not High-Poverty",
-      percent_pov >=  .4 ~ "High-Poverty")
+      percent_pov >=  .4 ~ "High-Poverty"),
+      year = as.character(year)
   ) %>% 
-  select(year, geoid, race_ind, poverty_type, total_pop)
+  select(year, geoid, race_ind, poverty_type, total_pop) 
 
 ```
 
 ## Crosswalk to County
 
 Crosswalk the individual years of data onto the UMF geographic crosswalk for counties file taken from the geographic-crosswalks folder. This will create a version of the data where all tracts that fall within counties used in the main UMF data set are present in the final data (regardless of missing EPA data). Note that the EPA did not change which counties are included between 2014, 2018 and 2019.
+
+First read in the 2020 crosswalk file
+
+```{r}
+crosswalk_cnty_20 <- read_csv(here::here("geographic-crosswalks/data", "tract-county-crosswalk_2020.csv")) %>% 
+    mutate(tract = paste0(state, county, tract),
+           year = as.character(year)) %>% 
+  select(tract, year) 
+```
+
 
 Read in county crosswalk and create tract level variable that combines state, county and tract IDs. To merge with AirTox index which includes 2014, 2018 and 2019, create a tract to county row for each year in the data.
 
@@ -449,7 +457,10 @@ crosswalk_cnty <- read_csv(here::here("geographic-crosswalks/data", "tract-count
          tract = paste0(state, county, tract)) %>% 
   select(tract, year1:year3) %>% 
   pivot_longer(!tract, values_to = "year", names_to = "value") %>% 
-  select(-value)
+  select(-value) %>% 
+  bind_rows(crosswalk_cnty_20)
+
+
 ```
 
 Remove results form Puerto Rico and Virgin Islands.
@@ -497,15 +508,17 @@ Read in crosswalk file with all counties.
 
 ```{r}
 county_crosswalk <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_county.csv")) %>% 
+  filter(crosswalk_period == "pre-2022") %>% 
   select(state = statefip, county) %>% 
   unique() %>% 
   filter(state != 72) %>% 
-   mutate(year1 = "2019",
-         year2 = "2018",
-         year3 = "2014") %>% 
+   mutate(year1 = "2020",
+          year2 = "2019",
+         year3 = "2018",
+         year4 = "2014") %>% 
   pivot_longer(!c(state, county), values_to = "year", names_to = "value") %>% 
   select(-value) %>% 
-  mutate(county_id = paste0(state, county))
+  mutate(county_id = paste0(state, county)) 
 ```
 
 ## Create AriTox Index Metric: County
@@ -554,7 +567,7 @@ haz_index_county_all <- left_join(
   
 )
   
-stopifnot(nrow(haz_index_county_all) == 3143 * 3)
+stopifnot(nrow(haz_index_county_all) == 3143 * 4)
 ```
 
 ### Subgroups
@@ -608,7 +621,7 @@ haz_by_poverty <- haz_index_sub_pov_expand  %>%
          state = str_sub(county_id, 1, 2),
          county = str_sub(county_id, 3, 5))
 
-stopifnot(nrow(haz_by_poverty) == 3143 * 3 *2)
+stopifnot(nrow(haz_by_poverty) == 3143 * 4 *2)
 
 ```
 
@@ -663,7 +676,7 @@ haz_by_race <- haz_index_sub_race_expand %>%
          state = str_sub(county_id, 1, 2),
          county = str_sub(county_id, 3, 5))
 
-stopifnot(nrow(haz_by_race) == 3143 * 3 *3)
+stopifnot(nrow(haz_by_race) == 3143 * 4 *3)
 ```
 
 ### Clean county data
@@ -711,6 +724,20 @@ final_data_county_all <- final_data_county_sub %>%
 
 Crosswalk the individual years of data onto the UMF geographic tract crosswalk for places file taken from the geographic-crosswalks folder. This will create a version of the data where all tracts that fall within places used in the main UMF data set are present in the final data (regardless of missing EPA data). Note that the EPA did not change which counties are included between 2014, 2018 and 2019.
 
+Start with the 2020 crosswalk  
+
+```{r}
+crosswalk_tract_place20 <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2022_tract_to_place.csv")) %>% 
+  mutate(county = str_sub(county, start = -3L, end = -1L),
+         state = str_pad(state, 2, side = "left", pad = "0"),
+         tract = tract * 100,
+         tract = str_pad(tract, 6, side = "left", pad = "0"),
+         tract = paste0(state, county, tract),
+         year = "2020") %>% 
+  select(place, tract, afact,  year) 
+```
+
+
 ```{r}
 
 crosswalk_tract_place <- read_csv(here::here("geographic-crosswalks", "data", "geocorr2018_tract_to_place.csv")) %>% 
@@ -724,7 +751,8 @@ crosswalk_tract_place <- read_csv(here::here("geographic-crosswalks", "data", "g
          year3 = "2014") %>% 
   select(place = placefp, tract, afact,  year1:year3) %>% 
   pivot_longer(!c(place, tract, afact), values_to = "year", names_to = "value") %>% 
-  select(-value)
+  select(-value) %>% 
+  bind_rows(crosswalk_tract_place20)
 ```
 
 Pad the place variable with a leading zero.
@@ -763,11 +791,13 @@ Read in file with just places used in UMF data.
 
 ```{r}
 place_file <- read_csv(here::here("geographic-crosswalks", "data", "crosswalk_puma_to_place.csv")) %>% 
+  filter(crosswalk_period == "pre-2022") %>% 
   select(state = statefip, place) %>% 
   unique() %>% 
-   mutate(year1 = "2019",
-         year2 = "2018",
-         year3 = "2014") %>% 
+   mutate(year1 = "2020",
+          year2 = "2019",
+         year3 = "2018",
+         year4 = "2014") %>% 
   pivot_longer(!c(state, place), values_to = "year", names_to = "value") %>% 
   select(-value) %>% 
   mutate(place_id = paste0(state, place))
@@ -817,7 +847,7 @@ haz_index_place_all <- left_join(
   
 )
   
-stopifnot(nrow(haz_index_place_all) == 486 * 3)
+stopifnot(nrow(haz_index_place_all) == 485 * 4)
 ```
 
 ### Poverty level
@@ -872,7 +902,7 @@ hazard_by_pov_sub_place <- haz_index_sub_pov_expand %>%
          place = str_sub(place_id, 3, 8)) %>%
   filter(!is.na(subgroup))
 
-stopifnot(nrow(hazard_by_pov_sub_place) == 486 * 3 *2)
+stopifnot(nrow(hazard_by_pov_sub_place) == 485 * 4 *2)
 ```
 
 ### Neighborhood race status
@@ -924,7 +954,7 @@ hazard_by_race_sub_place <- haz_index_sub_race_expand %>%
          place = str_sub(place_id, 3, 8)) %>%
   filter(!is.na(subgroup))
 
-stopifnot(nrow(hazard_by_race_sub_place) == 486 * 3 *3)
+stopifnot(nrow(hazard_by_race_sub_place) == 485 * 4 *3)
 ```
 
 ### Clean data
